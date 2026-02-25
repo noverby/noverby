@@ -5,13 +5,14 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    ActivationSource, Commandline, CpuQuota, CpuWeight, DeferTrigger, Delegate, DevicePolicy,
-    EnvVars, FileDescriptorStorePreserve, IOSchedulingClass, IoDeviceLimit, IoWeight, KeyringMode,
-    KillMode, MemoryLimit, MemoryPressureWatch, NotifyKind, OnFailureJobMode, ParsedMountSection,
-    ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit, RestrictNamespaces,
-    RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput, StatusStarted,
-    StatusStopped, StdIoOption, TasksMax, Timeout, Timestamping, UnitAction, UnitCondition, UnitId,
-    UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode, acquire_locks,
+    ActivationSource, BindIPv6Only, Commandline, CpuQuota, CpuWeight, DeferTrigger, Delegate,
+    DevicePolicy, EnvVars, FileDescriptorStorePreserve, IOSchedulingClass, IoDeviceLimit, IoWeight,
+    KeyringMode, KillMode, MemoryLimit, MemoryPressureWatch, NotifyKind, OnFailureJobMode,
+    ParsedMountSection, ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit,
+    RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput,
+    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, Timestamping, UnitAction,
+    UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
+    UtmpMode, acquire_locks,
 };
 
 use std::path::PathBuf;
@@ -2412,6 +2413,117 @@ pub struct SocketConfig {
     /// as well (i.e. O_RDWR rather than O_RDONLY). Defaults to false.
     /// Parsed and stored; no runtime enforcement yet. See systemd.socket(5).
     pub writable: bool,
+
+    /// Backlog= — the maximum length of the queue of pending connections
+    /// for stream sockets (the second argument to `listen()`). Takes an
+    /// unsigned integer. Defaults to SOMAXCONN (typically 4096).
+    /// See systemd.socket(5).
+    pub backlog: Option<u32>,
+
+    /// BindIPv6Only= — controls the IPV6_V6ONLY socket option. Takes
+    /// "default", "both", or "ipv6-only". See systemd.socket(5).
+    pub bind_ipv6_only: BindIPv6Only,
+
+    /// BindToDevice= — bind the socket to a specific network interface
+    /// (SO_BINDTODEVICE). Takes a network interface name. See systemd.socket(5).
+    pub bind_to_device: Option<String>,
+
+    /// SocketUser= — the UNIX user that owns the AF_UNIX socket file node.
+    /// Takes a username or numeric UID. Defaults to root. See systemd.socket(5).
+    pub socket_user: Option<String>,
+
+    /// SocketGroup= — the UNIX group that owns the AF_UNIX socket file node.
+    /// Takes a group name or numeric GID. Defaults to root. See systemd.socket(5).
+    pub socket_group: Option<String>,
+
+    /// FreeBind= — whether to set IP_FREEBIND/IPV6_FREEBIND, allowing binding
+    /// to addresses not yet assigned to an interface. Defaults to false.
+    /// See systemd.socket(5).
+    pub free_bind: bool,
+
+    /// Transparent= — whether to set IP_TRANSPARENT, allowing binding to
+    /// non-local addresses and transparent proxying. Defaults to false.
+    /// See systemd.socket(5).
+    pub transparent: bool,
+
+    /// Broadcast= — whether to set SO_BROADCAST on datagram sockets.
+    /// Defaults to false. See systemd.socket(5).
+    pub broadcast: bool,
+
+    /// ReusePort= — whether to set SO_REUSEPORT, allowing multiple sockets
+    /// to bind to the same port. Defaults to false. See systemd.socket(5).
+    pub reuse_port: bool,
+
+    /// KeepAlive= — whether to enable SO_KEEPALIVE on TCP sockets.
+    /// Defaults to false. See systemd.socket(5).
+    pub keep_alive: bool,
+
+    /// KeepAliveTimeSec= — idle time before TCP keepalive probes start
+    /// (TCP_KEEPIDLE). Takes a timespan in seconds. See systemd.socket(5).
+    pub keep_alive_time_sec: Option<u64>,
+
+    /// KeepAliveIntervalSec= — interval between TCP keepalive probes
+    /// (TCP_KEEPINTVL). Takes a timespan in seconds. See systemd.socket(5).
+    pub keep_alive_interval_sec: Option<u64>,
+
+    /// KeepAliveProbes= — number of unacknowledged keepalive probes before
+    /// connection is considered dead (TCP_KEEPCNT). See systemd.socket(5).
+    pub keep_alive_probes: Option<u32>,
+
+    /// NoDelay= — whether to enable TCP_NODELAY, disabling Nagle's algorithm.
+    /// Defaults to false. See systemd.socket(5).
+    pub no_delay: bool,
+
+    /// Priority= — socket priority (SO_PRIORITY). See systemd.socket(5).
+    pub priority: Option<i32>,
+
+    /// Mark= — firewall mark (SO_MARK) for packets. See systemd.socket(5).
+    pub mark: Option<u32>,
+
+    /// IPTOS= — IP Type-Of-Service byte (IP_TOS). Takes an integer or
+    /// one of "low-delay", "throughput", "reliability", "low-cost".
+    /// See systemd.socket(5).
+    pub ip_tos: Option<i32>,
+
+    /// IPTTL= — IP Time-To-Live (IP_TTL), 1–255. See systemd.socket(5).
+    pub ip_ttl: Option<u32>,
+
+    /// PipeSize= — pipe buffer size (F_SETPIPE_SZ) in bytes for FIFOs.
+    /// See systemd.socket(5).
+    pub pipe_size: Option<u64>,
+
+    /// FlushPending= — whether to flush the socket of pending data on
+    /// the first accepted connection. Defaults to false. See systemd.socket(5).
+    pub flush_pending: bool,
+
+    /// TriggerLimitIntervalSec= — rate-limiting interval within which
+    /// TriggerLimitBurst= activations are permitted. Defaults to 2s.
+    /// See systemd.socket(5).
+    pub trigger_limit_interval_sec: Option<u64>,
+
+    /// TriggerLimitBurst= — maximum activations within the interval before
+    /// entering failure state. Defaults to 200. See systemd.socket(5).
+    pub trigger_limit_burst: Option<u32>,
+
+    /// SocketProtocol= — socket protocol ("udplite" or "sctp").
+    /// See systemd.socket(5).
+    pub socket_protocol: Option<String>,
+
+    /// SELinuxContextFromNet= — set SELinux context from the network peer.
+    /// Defaults to false. See systemd.socket(5).
+    pub selinux_context_from_net: bool,
+
+    /// SmackLabel= — SMACK security label for the socket file node.
+    /// See systemd.socket(5).
+    pub smack_label: Option<String>,
+
+    /// SmackLabelIPIn= — SMACK label for incoming IP packets.
+    /// See systemd.socket(5).
+    pub smack_label_ipin: Option<String>,
+
+    /// SmackLabelIPOut= — SMACK label for outgoing IP packets.
+    /// See systemd.socket(5).
+    pub smack_label_ipout: Option<String>,
 
     pub exec_config: ExecConfig,
 }

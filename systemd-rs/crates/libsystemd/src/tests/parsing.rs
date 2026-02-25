@@ -46673,3 +46673,1586 @@ fn test_exec_security_directives_preserved_after_unit_conversion() {
         _ => panic!("Expected service unit"),
     }
 }
+
+// ===== New socket directive tests =====
+
+#[test]
+fn test_backlog_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.backlog, None);
+}
+
+#[test]
+fn test_backlog_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Backlog = 256
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.backlog, Some(256));
+}
+
+#[test]
+fn test_backlog_zero() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Backlog = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.backlog, Some(0));
+}
+
+#[test]
+fn test_backlog_empty_resets_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Backlog =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.backlog, None);
+}
+
+#[test]
+fn test_backlog_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Backlog = abc
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_bind_ipv6_only_defaults_to_default() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.bind_ipv6_only,
+        crate::units::BindIPv6Only::Default
+    );
+}
+
+#[test]
+fn test_bind_ipv6_only_both() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    BindIPv6Only = both
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.bind_ipv6_only, crate::units::BindIPv6Only::Both);
+}
+
+#[test]
+fn test_bind_ipv6_only_ipv6_only() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    BindIPv6Only = ipv6-only
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.bind_ipv6_only,
+        crate::units::BindIPv6Only::Ipv6Only
+    );
+}
+
+#[test]
+fn test_bind_ipv6_only_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    BindIPv6Only = invalid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_bind_to_device_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.bind_to_device, None);
+}
+
+#[test]
+fn test_bind_to_device_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    BindToDevice = eth0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.bind_to_device, Some("eth0".to_owned()));
+}
+
+#[test]
+fn test_bind_to_device_empty_resets() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    BindToDevice =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.bind_to_device, None);
+}
+
+#[test]
+fn test_socket_user_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_user, None);
+}
+
+#[test]
+fn test_socket_user_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketUser = nobody
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_user, Some("nobody".to_owned()));
+}
+
+#[test]
+fn test_socket_user_numeric_uid() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketUser = 1000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_user, Some("1000".to_owned()));
+}
+
+#[test]
+fn test_socket_group_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_group, None);
+}
+
+#[test]
+fn test_socket_group_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketGroup = nogroup
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_group, Some("nogroup".to_owned()));
+}
+
+#[test]
+fn test_socket_user_and_group_together() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketUser = www-data
+    SocketGroup = www-data
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_user, Some("www-data".to_owned()));
+    assert_eq!(socket.sock.socket_group, Some("www-data".to_owned()));
+}
+
+#[test]
+fn test_free_bind_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.free_bind);
+}
+
+#[test]
+fn test_free_bind_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    FreeBind = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.free_bind);
+}
+
+#[test]
+fn test_transparent_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.transparent);
+}
+
+#[test]
+fn test_transparent_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    Transparent = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.transparent);
+}
+
+#[test]
+fn test_broadcast_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.broadcast);
+}
+
+#[test]
+fn test_broadcast_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenDatagram = 0.0.0.0:5353
+    Broadcast = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.broadcast);
+}
+
+#[test]
+fn test_reuse_port_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.reuse_port);
+}
+
+#[test]
+fn test_reuse_port_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    ReusePort = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.reuse_port);
+}
+
+#[test]
+fn test_keep_alive_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.keep_alive);
+}
+
+#[test]
+fn test_keep_alive_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    KeepAlive = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.keep_alive);
+}
+
+#[test]
+fn test_keep_alive_time_sec_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.keep_alive_time_sec, None);
+}
+
+#[test]
+fn test_keep_alive_time_sec_seconds() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    KeepAliveTimeSec = 60
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.keep_alive_time_sec, Some(60));
+}
+
+#[test]
+fn test_keep_alive_interval_sec_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.keep_alive_interval_sec, None);
+}
+
+#[test]
+fn test_keep_alive_interval_sec_seconds() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    KeepAliveIntervalSec = 30
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.keep_alive_interval_sec, Some(30));
+}
+
+#[test]
+fn test_keep_alive_probes_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.keep_alive_probes, None);
+}
+
+#[test]
+fn test_keep_alive_probes_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    KeepAliveProbes = 9
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.keep_alive_probes, Some(9));
+}
+
+#[test]
+fn test_keep_alive_all_settings_combined() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    KeepAlive = yes
+    KeepAliveTimeSec = 120
+    KeepAliveIntervalSec = 15
+    KeepAliveProbes = 5
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.keep_alive);
+    assert_eq!(socket.sock.keep_alive_time_sec, Some(120));
+    assert_eq!(socket.sock.keep_alive_interval_sec, Some(15));
+    assert_eq!(socket.sock.keep_alive_probes, Some(5));
+}
+
+#[test]
+fn test_no_delay_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.no_delay);
+}
+
+#[test]
+fn test_no_delay_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    NoDelay = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.no_delay);
+}
+
+#[test]
+fn test_priority_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.priority, None);
+}
+
+#[test]
+fn test_priority_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    Priority = 6
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.priority, Some(6));
+}
+
+#[test]
+fn test_mark_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.mark, None);
+}
+
+#[test]
+fn test_mark_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    Mark = 42
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.mark, Some(42));
+}
+
+#[test]
+fn test_ip_tos_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_tos, None);
+}
+
+#[test]
+fn test_ip_tos_numeric_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTOS = 16
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_tos, Some(16));
+}
+
+#[test]
+fn test_ip_tos_low_delay() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTOS = low-delay
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_tos, Some(0x10));
+}
+
+#[test]
+fn test_ip_tos_throughput() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTOS = throughput
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_tos, Some(0x08));
+}
+
+#[test]
+fn test_ip_tos_reliability() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTOS = reliability
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_tos, Some(0x04));
+}
+
+#[test]
+fn test_ip_tos_low_cost() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTOS = low-cost
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_tos, Some(0x02));
+}
+
+#[test]
+fn test_ip_tos_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTOS = invalid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_ip_ttl_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_ttl, None);
+}
+
+#[test]
+fn test_ip_ttl_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTTL = 64
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_ttl, Some(64));
+}
+
+#[test]
+fn test_ip_ttl_max_255() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTTL = 255
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.ip_ttl, Some(255));
+}
+
+#[test]
+fn test_ip_ttl_zero_out_of_range() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTTL = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_ip_ttl_256_out_of_range() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    IPTTL = 256
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_pipe_size_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenFifo = /run/test.fifo
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.pipe_size, None);
+}
+
+#[test]
+fn test_pipe_size_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenFifo = /run/test.fifo
+    PipeSize = 65536
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.pipe_size, Some(65536));
+}
+
+#[test]
+fn test_pipe_size_with_suffix() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenFifo = /run/test.fifo
+    PipeSize = 1M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.pipe_size, Some(1048576));
+}
+
+#[test]
+fn test_flush_pending_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.flush_pending);
+}
+
+#[test]
+fn test_flush_pending_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    FlushPending = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.flush_pending);
+}
+
+#[test]
+fn test_trigger_limit_interval_sec_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.trigger_limit_interval_sec, None);
+}
+
+#[test]
+fn test_trigger_limit_interval_sec_seconds() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TriggerLimitIntervalSec = 5
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.trigger_limit_interval_sec, Some(5));
+}
+
+#[test]
+fn test_trigger_limit_burst_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.trigger_limit_burst, None);
+}
+
+#[test]
+fn test_trigger_limit_burst_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TriggerLimitBurst = 200
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.trigger_limit_burst, Some(200));
+}
+
+#[test]
+fn test_trigger_limit_interval_and_burst_together() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TriggerLimitIntervalSec = 10
+    TriggerLimitBurst = 50
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.trigger_limit_interval_sec, Some(10));
+    assert_eq!(socket.sock.trigger_limit_burst, Some(50));
+}
+
+#[test]
+fn test_socket_protocol_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_protocol, None);
+}
+
+#[test]
+fn test_socket_protocol_sctp() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    SocketProtocol = sctp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_protocol, Some("sctp".to_owned()));
+}
+
+#[test]
+fn test_socket_protocol_udplite() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenDatagram = 0.0.0.0:8080
+    SocketProtocol = udplite
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_protocol, Some("udplite".to_owned()));
+}
+
+#[test]
+fn test_socket_protocol_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    SocketProtocol = tcp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_selinux_context_from_net_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.selinux_context_from_net);
+}
+
+#[test]
+fn test_selinux_context_from_net_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    SELinuxContextFromNet = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.selinux_context_from_net);
+}
+
+#[test]
+fn test_smack_label_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.smack_label, None);
+    assert_eq!(socket.sock.smack_label_ipin, None);
+    assert_eq!(socket.sock.smack_label_ipout, None);
+}
+
+#[test]
+fn test_smack_labels_explicit_values() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SmackLabel = my_label
+    SmackLabelIPIn = in_label
+    SmackLabelIPOut = out_label
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.smack_label, Some("my_label".to_owned()));
+    assert_eq!(socket.sock.smack_label_ipin, Some("in_label".to_owned()));
+    assert_eq!(socket.sock.smack_label_ipout, Some("out_label".to_owned()));
+}
+
+#[test]
+fn test_all_new_socket_directives_combined() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    Backlog = 512
+    BindIPv6Only = both
+    BindToDevice = eth0
+    SocketUser = www-data
+    SocketGroup = www-data
+    FreeBind = yes
+    Transparent = no
+    Broadcast = no
+    ReusePort = yes
+    KeepAlive = yes
+    KeepAliveTimeSec = 60
+    KeepAliveIntervalSec = 10
+    KeepAliveProbes = 3
+    NoDelay = yes
+    Priority = 6
+    Mark = 100
+    IPTOS = low-delay
+    IPTTL = 64
+    FlushPending = no
+    TriggerLimitIntervalSec = 2
+    TriggerLimitBurst = 200
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.backlog, Some(512));
+    assert_eq!(socket.sock.bind_ipv6_only, crate::units::BindIPv6Only::Both);
+    assert_eq!(socket.sock.bind_to_device, Some("eth0".to_owned()));
+    assert_eq!(socket.sock.socket_user, Some("www-data".to_owned()));
+    assert_eq!(socket.sock.socket_group, Some("www-data".to_owned()));
+    assert!(socket.sock.free_bind);
+    assert!(!socket.sock.transparent);
+    assert!(!socket.sock.broadcast);
+    assert!(socket.sock.reuse_port);
+    assert!(socket.sock.keep_alive);
+    assert_eq!(socket.sock.keep_alive_time_sec, Some(60));
+    assert_eq!(socket.sock.keep_alive_interval_sec, Some(10));
+    assert_eq!(socket.sock.keep_alive_probes, Some(3));
+    assert!(socket.sock.no_delay);
+    assert_eq!(socket.sock.priority, Some(6));
+    assert_eq!(socket.sock.mark, Some(100));
+    assert_eq!(socket.sock.ip_tos, Some(0x10));
+    assert_eq!(socket.sock.ip_ttl, Some(64));
+    assert!(!socket.sock.flush_pending);
+    assert_eq!(socket.sock.trigger_limit_interval_sec, Some(2));
+    assert_eq!(socket.sock.trigger_limit_burst, Some(200));
+}
+
+#[test]
+fn test_new_socket_directives_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    Backlog = 128
+    BindIPv6Only = ipv6-only
+    BindToDevice = lo
+    SocketUser = daemon
+    SocketGroup = daemon
+    FreeBind = true
+    ReusePort = true
+    KeepAlive = true
+    KeepAliveTimeSec = 30
+    KeepAliveIntervalSec = 5
+    KeepAliveProbes = 7
+    NoDelay = true
+    Priority = 3
+    Mark = 42
+    IPTOS = throughput
+    IPTTL = 128
+    PipeSize = 64K
+    FlushPending = true
+    TriggerLimitIntervalSec = 5
+    TriggerLimitBurst = 100
+    SocketProtocol = sctp
+    SELinuxContextFromNet = true
+    SmackLabel = test_label
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+
+    match &unit.specific {
+        crate::units::Specific::Socket(specific) => {
+            assert_eq!(specific.conf.backlog, Some(128));
+            assert_eq!(
+                specific.conf.bind_ipv6_only,
+                crate::units::BindIPv6Only::Ipv6Only
+            );
+            assert_eq!(specific.conf.bind_to_device, Some("lo".to_owned()));
+            assert_eq!(specific.conf.socket_user, Some("daemon".to_owned()));
+            assert_eq!(specific.conf.socket_group, Some("daemon".to_owned()));
+            assert!(specific.conf.free_bind);
+            assert!(specific.conf.reuse_port);
+            assert!(specific.conf.keep_alive);
+            assert_eq!(specific.conf.keep_alive_time_sec, Some(30));
+            assert_eq!(specific.conf.keep_alive_interval_sec, Some(5));
+            assert_eq!(specific.conf.keep_alive_probes, Some(7));
+            assert!(specific.conf.no_delay);
+            assert_eq!(specific.conf.priority, Some(3));
+            assert_eq!(specific.conf.mark, Some(42));
+            assert_eq!(specific.conf.ip_tos, Some(0x08));
+            assert_eq!(specific.conf.ip_ttl, Some(128));
+            assert_eq!(specific.conf.pipe_size, Some(65536));
+            assert!(specific.conf.flush_pending);
+            assert_eq!(specific.conf.trigger_limit_interval_sec, Some(5));
+            assert_eq!(specific.conf.trigger_limit_burst, Some(100));
+            assert_eq!(specific.conf.socket_protocol, Some("sctp".to_owned()));
+            assert!(specific.conf.selinux_context_from_net);
+            assert_eq!(specific.conf.smack_label, Some("test_label".to_owned()));
+        }
+        _ => panic!("Expected socket unit"),
+    }
+}
+
+#[test]
+fn test_new_socket_directives_defaults_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+
+    match &unit.specific {
+        crate::units::Specific::Socket(specific) => {
+            assert_eq!(specific.conf.backlog, None);
+            assert_eq!(
+                specific.conf.bind_ipv6_only,
+                crate::units::BindIPv6Only::Default
+            );
+            assert_eq!(specific.conf.bind_to_device, None);
+            assert_eq!(specific.conf.socket_user, None);
+            assert_eq!(specific.conf.socket_group, None);
+            assert!(!specific.conf.free_bind);
+            assert!(!specific.conf.transparent);
+            assert!(!specific.conf.broadcast);
+            assert!(!specific.conf.reuse_port);
+            assert!(!specific.conf.keep_alive);
+            assert_eq!(specific.conf.keep_alive_time_sec, None);
+            assert_eq!(specific.conf.keep_alive_interval_sec, None);
+            assert_eq!(specific.conf.keep_alive_probes, None);
+            assert!(!specific.conf.no_delay);
+            assert_eq!(specific.conf.priority, None);
+            assert_eq!(specific.conf.mark, None);
+            assert_eq!(specific.conf.ip_tos, None);
+            assert_eq!(specific.conf.ip_ttl, None);
+            assert_eq!(specific.conf.pipe_size, None);
+            assert!(!specific.conf.flush_pending);
+            assert_eq!(specific.conf.trigger_limit_interval_sec, None);
+            assert_eq!(specific.conf.trigger_limit_burst, None);
+            assert_eq!(specific.conf.socket_protocol, None);
+            assert!(!specific.conf.selinux_context_from_net);
+            assert_eq!(specific.conf.smack_label, None);
+            assert_eq!(specific.conf.smack_label_ipin, None);
+            assert_eq!(specific.conf.smack_label_ipout, None);
+        }
+        _ => panic!("Expected socket unit"),
+    }
+}
+
+#[test]
+fn test_new_socket_directives_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    Backlog = 128
+    BindIPv6Only = both
+    BindToDevice = eth0
+    SocketUser = root
+    SocketGroup = root
+    FreeBind = yes
+    Transparent = no
+    Broadcast = no
+    ReusePort = yes
+    KeepAlive = yes
+    KeepAliveTimeSec = 60
+    KeepAliveIntervalSec = 10
+    KeepAliveProbes = 5
+    NoDelay = yes
+    Priority = 6
+    Mark = 1
+    IPTOS = low-delay
+    IPTTL = 64
+    PipeSize = 4096
+    FlushPending = no
+    TriggerLimitIntervalSec = 2
+    TriggerLimitBurst = 200
+    SocketProtocol = sctp
+    SELinuxContextFromNet = no
+    SmackLabel = label
+    SmackLabelIPIn = in
+    SmackLabelIPOut = out
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    // Should parse without errors — none of these should trigger "unsupported"
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_backlog_with_whitespace() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Backlog =   512
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.backlog, Some(512));
+}
+
+#[test]
+fn test_bind_ipv6_only_case_insensitive() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    BindIPv6Only = Both
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.bind_ipv6_only, crate::units::BindIPv6Only::Both);
+}
+
+#[test]
+fn test_new_socket_directives_with_existing_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    SocketMode = 0660
+    DirectoryMode = 0755
+    Accept = no
+    MaxConnections = 128
+    PassCredentials = yes
+    ReceiveBuffer = 8K
+    SendBuffer = 8K
+    Backlog = 4096
+    FreeBind = yes
+    ReusePort = yes
+    NoDelay = yes
+    KeepAlive = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // Existing directives still work
+    assert_eq!(socket.sock.socket_mode, Some(0o660));
+    assert_eq!(socket.sock.directory_mode, Some(0o755));
+    assert!(!socket.sock.accept);
+    assert_eq!(socket.sock.max_connections, 128);
+    assert!(socket.sock.pass_credentials);
+    assert_eq!(socket.sock.receive_buffer, Some(8192));
+    assert_eq!(socket.sock.send_buffer, Some(8192));
+
+    // New directives also work
+    assert_eq!(socket.sock.backlog, Some(4096));
+    assert!(socket.sock.free_bind);
+    assert!(socket.sock.reuse_port);
+    assert!(socket.sock.no_delay);
+    assert!(socket.sock.keep_alive);
+}
