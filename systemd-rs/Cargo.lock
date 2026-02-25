@@ -1504,6 +1504,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-nspawn"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-oomd"
 version = "0.1.0"
 dependencies = [

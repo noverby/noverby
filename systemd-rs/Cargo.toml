@@ -67,5 +67,6 @@ members = [
   "crates/udevd",
   "crates/udevadm",
   "crates/networkd-wait-online",
+  "crates/nspawn",
 ]
 resolver = "2"
