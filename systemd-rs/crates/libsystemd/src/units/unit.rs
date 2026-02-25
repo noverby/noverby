@@ -1890,6 +1890,116 @@ pub struct ExecConfig {
     /// "login", "systemd-user", or "sshd". Defaults to None (no PAM session).
     /// Parsed and stored; no runtime PAM enforcement yet. See systemd.exec(5).
     pub pam_name: Option<String>,
+
+    // ── Resource limits (LimitXXX=) ──────────────────────────────────
+    /// LimitCORE= — maximum size of core dump files. Applied via
+    /// `setrlimit(RLIMIT_CORE)`. See systemd.exec(5).
+    pub limit_core: Option<ResourceLimit>,
+    /// LimitFSIZE= — maximum size of files the process may create. Applied
+    /// via `setrlimit(RLIMIT_FSIZE)`. See systemd.exec(5).
+    pub limit_fsize: Option<ResourceLimit>,
+    /// LimitDATA= — maximum size of the process's data segment. Applied via
+    /// `setrlimit(RLIMIT_DATA)`. See systemd.exec(5).
+    pub limit_data: Option<ResourceLimit>,
+    /// LimitSTACK= — maximum size of the process stack. Applied via
+    /// `setrlimit(RLIMIT_STACK)`. See systemd.exec(5).
+    pub limit_stack: Option<ResourceLimit>,
+    /// LimitRSS= — maximum resident set size. Applied via
+    /// `setrlimit(RLIMIT_RSS)`. See systemd.exec(5).
+    pub limit_rss: Option<ResourceLimit>,
+    /// LimitNPROC= — maximum number of processes for the real user ID.
+    /// Applied via `setrlimit(RLIMIT_NPROC)`. See systemd.exec(5).
+    pub limit_nproc: Option<ResourceLimit>,
+    /// LimitMEMLOCK= — maximum number of bytes of memory that may be locked.
+    /// Applied via `setrlimit(RLIMIT_MEMLOCK)`. See systemd.exec(5).
+    pub limit_memlock: Option<ResourceLimit>,
+    /// LimitAS= — maximum size of the process's virtual memory (address
+    /// space). Applied via `setrlimit(RLIMIT_AS)`. See systemd.exec(5).
+    pub limit_as: Option<ResourceLimit>,
+    /// LimitLOCKS= — maximum number of flock/fcntl locks. Applied via
+    /// `setrlimit(RLIMIT_LOCKS)`. See systemd.exec(5).
+    pub limit_locks: Option<ResourceLimit>,
+    /// LimitSIGPENDING= — maximum number of signals that may be queued.
+    /// Applied via `setrlimit(RLIMIT_SIGPENDING)`. See systemd.exec(5).
+    pub limit_sigpending: Option<ResourceLimit>,
+    /// LimitMSGQUEUE= — maximum number of bytes in POSIX message queues.
+    /// Applied via `setrlimit(RLIMIT_MSGQUEUE)`. See systemd.exec(5).
+    pub limit_msgqueue: Option<ResourceLimit>,
+    /// LimitNICE= — maximum nice priority allowed to raise to (range 0–40,
+    /// mapped to nice values 20..-20). Applied via `setrlimit(RLIMIT_NICE)`.
+    /// See systemd.exec(5).
+    pub limit_nice: Option<ResourceLimit>,
+    /// LimitRTPRIO= — maximum realtime scheduling priority. Applied via
+    /// `setrlimit(RLIMIT_RTPRIO)`. See systemd.exec(5).
+    pub limit_rtprio: Option<ResourceLimit>,
+    /// LimitRTTIME= — maximum number of microseconds a realtime-scheduled
+    /// process may consume without blocking. Applied via
+    /// `setrlimit(RLIMIT_RTTIME)`. See systemd.exec(5).
+    pub limit_rttime: Option<ResourceLimit>,
+
+    // ── Directory management ─────────────────────────────────────────
+    /// CacheDirectory= — directories to create under /var/cache/ before the
+    /// service starts. Ownership is set to the service user/group and the
+    /// CACHE_DIRECTORY environment variable is set to a colon-separated
+    /// list of the absolute paths. Matches systemd.exec(5).
+    pub cache_directory: Vec<String>,
+    /// CacheDirectoryMode= — the file system access mode to use when creating
+    /// the cache directories specified with CacheDirectory=. Takes an access
+    /// mode in octal notation (e.g. 0755). Defaults to 0755.
+    /// See systemd.exec(5).
+    pub cache_directory_mode: Option<u32>,
+    /// ConfigurationDirectory= — directories to create under /etc/ before the
+    /// service starts. Ownership is set to the service user/group and the
+    /// CONFIGURATION_DIRECTORY environment variable is set to a
+    /// colon-separated list of the absolute paths. Matches systemd.exec(5).
+    pub configuration_directory: Vec<String>,
+    /// ConfigurationDirectoryMode= — the file system access mode to use when
+    /// creating the configuration directories specified with
+    /// ConfigurationDirectory=. Takes an access mode in octal notation
+    /// (e.g. 0755). Defaults to 0755. See systemd.exec(5).
+    pub configuration_directory_mode: Option<u32>,
+    /// StateDirectoryMode= — the file system access mode to use when creating
+    /// the state directories specified with StateDirectory=. Takes an access
+    /// mode in octal notation (e.g. 0755). Defaults to 0755.
+    /// See systemd.exec(5).
+    pub state_directory_mode: Option<u32>,
+    /// RuntimeDirectoryMode= — the file system access mode to use when
+    /// creating the runtime directories specified with RuntimeDirectory=.
+    /// Takes an access mode in octal notation (e.g. 0755). Defaults to 0755.
+    /// See systemd.exec(5).
+    pub runtime_directory_mode: Option<u32>,
+
+    // ── Path-based mount namespace directives ────────────────────────
+    /// ReadOnlyPaths= — a space-separated list of file system paths that
+    /// should be made read-only for the service within its mount namespace.
+    /// Multiple directives accumulate; an empty assignment resets the list.
+    /// See systemd.exec(5).
+    pub read_only_paths: Vec<String>,
+    /// InaccessiblePaths= — a space-separated list of file system paths that
+    /// should be made completely inaccessible (hidden) for the service within
+    /// its mount namespace. Multiple directives accumulate; an empty
+    /// assignment resets the list. See systemd.exec(5).
+    pub inaccessible_paths: Vec<String>,
+    /// BindPaths= — bind-mount host paths into the service's mount namespace
+    /// (read-write). Each entry is "SOURCE[:DEST[:OPTIONS]]". Multiple
+    /// directives accumulate; an empty assignment resets the list.
+    /// See systemd.exec(5).
+    pub bind_paths: Vec<String>,
+    /// BindReadOnlyPaths= — bind-mount host paths into the service's mount
+    /// namespace (read-only). Same format as BindPaths=. Multiple directives
+    /// accumulate; an empty assignment resets the list. See systemd.exec(5).
+    pub bind_read_only_paths: Vec<String>,
+    /// TemporaryFileSystem= — mount tmpfs file systems on the specified paths
+    /// within the service's mount namespace. Each entry is "PATH[:OPTIONS]".
+    /// Multiple directives accumulate; an empty assignment resets the list.
+    /// See systemd.exec(5).
+    pub temporary_file_system: Vec<String>,
+
+    // ── Logging directives ───────────────────────────────────────────
+    /// SyslogIdentifier= — sets the process name ("tag") to prefix log
+    /// messages with. Defaults to the name of the executed process.
+    /// See systemd.exec(5).
+    pub syslog_identifier: Option<String>,
 }
 
 #[cfg(target_os = "linux")]

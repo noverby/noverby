@@ -546,6 +546,40 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             nice: parsed.nice,
             remove_ipc: parsed.remove_ipc,
             pam_name: parsed.pam_name,
+
+            // Resource limits
+            limit_core: parsed.limit_core,
+            limit_fsize: parsed.limit_fsize,
+            limit_data: parsed.limit_data,
+            limit_stack: parsed.limit_stack,
+            limit_rss: parsed.limit_rss,
+            limit_nproc: parsed.limit_nproc,
+            limit_memlock: parsed.limit_memlock,
+            limit_as: parsed.limit_as,
+            limit_locks: parsed.limit_locks,
+            limit_sigpending: parsed.limit_sigpending,
+            limit_msgqueue: parsed.limit_msgqueue,
+            limit_nice: parsed.limit_nice,
+            limit_rtprio: parsed.limit_rtprio,
+            limit_rttime: parsed.limit_rttime,
+
+            // Directory management
+            cache_directory: parsed.cache_directory,
+            cache_directory_mode: parsed.cache_directory_mode,
+            configuration_directory: parsed.configuration_directory,
+            configuration_directory_mode: parsed.configuration_directory_mode,
+            state_directory_mode: parsed.state_directory_mode,
+            runtime_directory_mode: parsed.runtime_directory_mode,
+
+            // Path-based mount namespace directives
+            read_only_paths: parsed.read_only_paths,
+            inaccessible_paths: parsed.inaccessible_paths,
+            bind_paths: parsed.bind_paths,
+            bind_read_only_paths: parsed.bind_read_only_paths,
+            temporary_file_system: parsed.temporary_file_system,
+
+            // Logging directives
+            syslog_identifier: parsed.syslog_identifier,
         })
     }
 }

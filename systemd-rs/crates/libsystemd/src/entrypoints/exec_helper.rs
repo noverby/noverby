@@ -362,10 +362,121 @@ pub struct ExecHelperConfig {
     /// See systemd.exec(5).
     #[serde(default)]
     pub proc_subset: String,
+
+    // ── Resource limits (LimitXXX=) ──────────────────────────────────
+    // All Limit* directives follow the same format: a numeric value, a
+    // soft:hard pair, or "infinity". Applied via setrlimit() before exec.
+    #[serde(default)]
+    pub limit_core: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_fsize: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_data: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_stack: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_rss: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_nproc: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_memlock: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_as: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_locks: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_sigpending: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_msgqueue: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_nice: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_rtprio: Option<ResourceLimit>,
+    #[serde(default)]
+    pub limit_rttime: Option<ResourceLimit>,
+
+    // ── Directory management ─────────────────────────────────────────
+    /// CacheDirectory= — directories to create under /var/cache/.
+    #[serde(default)]
+    pub cache_directory: Vec<String>,
+    /// CacheDirectoryMode= — octal mode for cache directories.
+    #[serde(default)]
+    pub cache_directory_mode: Option<u32>,
+    /// ConfigurationDirectory= — directories to create under /etc/.
+    #[serde(default)]
+    pub configuration_directory: Vec<String>,
+    /// ConfigurationDirectoryMode= — octal mode for configuration directories.
+    #[serde(default)]
+    pub configuration_directory_mode: Option<u32>,
+    /// StateDirectoryMode= — octal mode for state directories.
+    #[serde(default)]
+    pub state_directory_mode: Option<u32>,
+    /// RuntimeDirectoryMode= — octal mode for runtime directories.
+    #[serde(default)]
+    pub runtime_directory_mode: Option<u32>,
+
+    // ── Path-based mount namespace directives ────────────────────────
+    /// ReadOnlyPaths= — paths to make read-only in the mount namespace.
+    #[serde(default)]
+    pub read_only_paths: Vec<String>,
+    /// InaccessiblePaths= — paths to make inaccessible in the mount namespace.
+    #[serde(default)]
+    pub inaccessible_paths: Vec<String>,
+    /// BindPaths= — paths to bind-mount read-write into the mount namespace.
+    #[serde(default)]
+    pub bind_paths: Vec<String>,
+    /// BindReadOnlyPaths= — paths to bind-mount read-only into the mount namespace.
+    #[serde(default)]
+    pub bind_read_only_paths: Vec<String>,
+    /// TemporaryFileSystem= — paths to mount tmpfs on in the mount namespace.
+    #[serde(default)]
+    pub temporary_file_system: Vec<String>,
+
+    // ── Logging directives ───────────────────────────────────────────
+    /// SyslogIdentifier= — the process name ("tag") to prefix log messages with.
+    #[serde(default)]
+    pub syslog_identifier: Option<String>,
 }
 
 fn default_true() -> bool {
     true
+}
+
+/// Apply a single resource limit via `setrlimit()`. If the limit is `None`,
+/// this is a no-op. On failure, logs an error and exits (matching systemd's
+/// behavior — resource limit failures are fatal for service startup).
+fn apply_resource_limit(
+    name: &str,
+    resource: libc::__rlimit_resource_t,
+    limit: &Option<ResourceLimit>,
+) {
+    let limit = match limit {
+        Some(l) => l,
+        None => return,
+    };
+    let soft = match limit.soft {
+        RLimitValue::Value(v) => v as libc::rlim_t,
+        RLimitValue::Infinity => libc::RLIM_INFINITY,
+    };
+    let hard = match limit.hard {
+        RLimitValue::Value(v) => v as libc::rlim_t,
+        RLimitValue::Infinity => libc::RLIM_INFINITY,
+    };
+    let rlim = libc::rlimit {
+        rlim_cur: soft,
+        rlim_max: hard,
+    };
+    let ret = unsafe { libc::setrlimit(resource, &rlim) };
+    if ret != 0 {
+        log::error!(
+            "Failed to set {} (soft={}, hard={}): {}",
+            name,
+            soft,
+            hard,
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
 }
 
 fn prepare_exec_args(
@@ -848,31 +959,34 @@ pub fn run_exec_helper() {
     // open the TTY independently for output.
     setup_tty_output(&config);
 
-    // Apply LimitNOFILE resource limit before anything else
-    if let Some(ref limit) = config.limit_nofile {
-        let soft = match limit.soft {
-            RLimitValue::Value(v) => v as libc::rlim_t,
-            RLimitValue::Infinity => libc::RLIM_INFINITY,
-        };
-        let hard = match limit.hard {
-            RLimitValue::Value(v) => v as libc::rlim_t,
-            RLimitValue::Infinity => libc::RLIM_INFINITY,
-        };
-        let rlim = libc::rlimit {
-            rlim_cur: soft,
-            rlim_max: hard,
-        };
-        let ret = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &rlim) };
-        if ret != 0 {
-            log::error!(
-                "Failed to set RLIMIT_NOFILE (soft={}, hard={}): {}",
-                soft,
-                hard,
-                std::io::Error::last_os_error()
-            );
-            std::process::exit(1);
-        }
-    }
+    // ── Apply all LimitXXX= resource limits before anything else ──────
+    apply_resource_limit("RLIMIT_NOFILE", libc::RLIMIT_NOFILE, &config.limit_nofile);
+    apply_resource_limit("RLIMIT_CORE", libc::RLIMIT_CORE, &config.limit_core);
+    apply_resource_limit("RLIMIT_FSIZE", libc::RLIMIT_FSIZE, &config.limit_fsize);
+    apply_resource_limit("RLIMIT_DATA", libc::RLIMIT_DATA, &config.limit_data);
+    apply_resource_limit("RLIMIT_STACK", libc::RLIMIT_STACK, &config.limit_stack);
+    apply_resource_limit("RLIMIT_RSS", libc::RLIMIT_RSS, &config.limit_rss);
+    apply_resource_limit("RLIMIT_NPROC", libc::RLIMIT_NPROC, &config.limit_nproc);
+    apply_resource_limit(
+        "RLIMIT_MEMLOCK",
+        libc::RLIMIT_MEMLOCK,
+        &config.limit_memlock,
+    );
+    apply_resource_limit("RLIMIT_AS", libc::RLIMIT_AS, &config.limit_as);
+    apply_resource_limit("RLIMIT_LOCKS", libc::RLIMIT_LOCKS, &config.limit_locks);
+    apply_resource_limit(
+        "RLIMIT_SIGPENDING",
+        libc::RLIMIT_SIGPENDING,
+        &config.limit_sigpending,
+    );
+    apply_resource_limit(
+        "RLIMIT_MSGQUEUE",
+        libc::RLIMIT_MSGQUEUE,
+        &config.limit_msgqueue,
+    );
+    apply_resource_limit("RLIMIT_NICE", libc::RLIMIT_NICE, &config.limit_nice);
+    apply_resource_limit("RLIMIT_RTPRIO", libc::RLIMIT_RTPRIO, &config.limit_rtprio);
+    apply_resource_limit("RLIMIT_RTTIME", libc::RLIMIT_RTTIME, &config.limit_rttime);
 
     if let Err(e) =
         crate::services::fork_os_specific::post_fork_os_specific(&config.platform_specific)
@@ -940,12 +1054,26 @@ pub fn run_exec_helper() {
     // namespace is applied with those directories whitelisted as writable.
     if !config.state_directory.is_empty() {
         let base = Path::new("/var/lib");
+        let mode = config.state_directory_mode.unwrap_or(0o755);
         let mut full_paths = Vec::new();
         for dir_name in &config.state_directory {
             let full_path = base.join(dir_name);
             if let Err(e) = std::fs::create_dir_all(&full_path) {
                 log::error!("Failed to create state directory {:?}: {}", full_path, e);
                 std::process::exit(1);
+            }
+            // Apply StateDirectoryMode=
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(mode);
+                if let Err(e) = std::fs::set_permissions(&full_path, perms) {
+                    log::warn!(
+                        "Failed to set mode {:o} on state directory {:?}: {}",
+                        mode,
+                        full_path,
+                        e
+                    );
+                }
             }
             // Set ownership to the service user/group
             let uid = nix::unistd::Uid::from_raw(config.user);
@@ -971,16 +1099,18 @@ pub fn run_exec_helper() {
                 std::process::exit(1);
             }
             // Apply LogsDirectoryMode=
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(mode);
-            if let Err(e) = std::fs::set_permissions(&full_path, perms) {
-                log::error!(
-                    "Failed to set mode {:o} on logs directory {:?}: {}",
-                    mode,
-                    full_path,
-                    e
-                );
-                std::process::exit(1);
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(mode);
+                if let Err(e) = std::fs::set_permissions(&full_path, perms) {
+                    log::error!(
+                        "Failed to set mode {:o} on logs directory {:?}: {}",
+                        mode,
+                        full_path,
+                        e
+                    );
+                    std::process::exit(1);
+                }
             }
             // Set ownership to the service user/group
             let uid = nix::unistd::Uid::from_raw(config.user);
@@ -997,12 +1127,26 @@ pub fn run_exec_helper() {
 
     if !config.runtime_directory.is_empty() {
         let base = Path::new("/run");
+        let mode = config.runtime_directory_mode.unwrap_or(0o755);
         let mut full_paths = Vec::new();
         for dir_name in &config.runtime_directory {
             let full_path = base.join(dir_name);
             if let Err(e) = std::fs::create_dir_all(&full_path) {
                 log::error!("Failed to create runtime directory {:?}: {}", full_path, e);
                 std::process::exit(1);
+            }
+            // Apply RuntimeDirectoryMode=
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(mode);
+                if let Err(e) = std::fs::set_permissions(&full_path, perms) {
+                    log::warn!(
+                        "Failed to set mode {:o} on runtime directory {:?}: {}",
+                        mode,
+                        full_path,
+                        e
+                    );
+                }
             }
             // Set ownership to the service user/group
             let uid = nix::unistd::Uid::from_raw(config.user);
@@ -1015,6 +1159,88 @@ pub fn run_exec_helper() {
         }
         // TODO: Audit that the environment access only happens in single-threaded code.
         unsafe { std::env::set_var("RUNTIME_DIRECTORY", full_paths.join(":")) };
+    }
+
+    // ── Create CacheDirectory= directories under /var/cache/ ──────────
+    if !config.cache_directory.is_empty() {
+        let base = Path::new("/var/cache");
+        let mode = config.cache_directory_mode.unwrap_or(0o755);
+        let mut full_paths = Vec::new();
+        for dir_name in &config.cache_directory {
+            let full_path = base.join(dir_name);
+            if let Err(e) = std::fs::create_dir_all(&full_path) {
+                log::error!("Failed to create cache directory {:?}: {}", full_path, e);
+                std::process::exit(1);
+            }
+            // Apply CacheDirectoryMode=
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(mode);
+                if let Err(e) = std::fs::set_permissions(&full_path, perms) {
+                    log::warn!(
+                        "Failed to set mode {:o} on cache directory {:?}: {}",
+                        mode,
+                        full_path,
+                        e
+                    );
+                }
+            }
+            // Set ownership to the service user/group
+            let uid = nix::unistd::Uid::from_raw(config.user);
+            let gid = nix::unistd::Gid::from_raw(config.group);
+            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
+                log::error!("Failed to chown cache directory {:?}: {}", full_path, e);
+                std::process::exit(1);
+            }
+            full_paths.push(full_path.to_string_lossy().into_owned());
+        }
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("CACHE_DIRECTORY", full_paths.join(":")) };
+    }
+
+    // ── Create ConfigurationDirectory= directories under /etc/ ────────
+    if !config.configuration_directory.is_empty() {
+        let base = Path::new("/etc");
+        let mode = config.configuration_directory_mode.unwrap_or(0o755);
+        let mut full_paths = Vec::new();
+        for dir_name in &config.configuration_directory {
+            let full_path = base.join(dir_name);
+            if let Err(e) = std::fs::create_dir_all(&full_path) {
+                log::error!(
+                    "Failed to create configuration directory {:?}: {}",
+                    full_path,
+                    e
+                );
+                std::process::exit(1);
+            }
+            // Apply ConfigurationDirectoryMode=
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(mode);
+                if let Err(e) = std::fs::set_permissions(&full_path, perms) {
+                    log::warn!(
+                        "Failed to set mode {:o} on configuration directory {:?}: {}",
+                        mode,
+                        full_path,
+                        e
+                    );
+                }
+            }
+            // Set ownership to the service user/group
+            let uid = nix::unistd::Uid::from_raw(config.user);
+            let gid = nix::unistd::Gid::from_raw(config.group);
+            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
+                log::error!(
+                    "Failed to chown configuration directory {:?}: {}",
+                    full_path,
+                    e
+                );
+                std::process::exit(1);
+            }
+            full_paths.push(full_path.to_string_lossy().into_owned());
+        }
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("CONFIGURATION_DIRECTORY", full_paths.join(":")) };
     }
 
     // ── Namespace-based isolation (must happen before privilege drop) ──
@@ -1030,6 +1256,11 @@ pub fn run_exec_helper() {
         || config.protect_clock
         || config.protect_hostname
         || !config.read_write_paths.is_empty()
+        || !config.read_only_paths.is_empty()
+        || !config.inaccessible_paths.is_empty()
+        || !config.bind_paths.is_empty()
+        || !config.bind_read_only_paths.is_empty()
+        || !config.temporary_file_system.is_empty()
         || matches!(config.protect_system.as_str(), "yes" | "full" | "strict")
         || matches!(config.protect_home.as_str(), "yes" | "read-only" | "tmpfs");
 
@@ -1473,6 +1704,18 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
                 bind_mount_readwrite(&full, config);
             }
         }
+        for dir_name in &config.cache_directory {
+            let full = format!("/var/cache/{}", dir_name);
+            if Path::new(&full).exists() {
+                bind_mount_readwrite(&full, config);
+            }
+        }
+        for dir_name in &config.configuration_directory {
+            let full = format!("/etc/{}", dir_name);
+            if Path::new(&full).exists() {
+                bind_mount_readwrite(&full, config);
+            }
+        }
     }
 
     log::trace!("mount_ns: implicit RW paths done, ReadWritePaths...");
@@ -1631,6 +1874,237 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
             }
         }
     }
+    // ── ReadOnlyPaths= ────────────────────────────────────────────────
+    if !config.read_only_paths.is_empty() {
+        log::trace!(
+            "mount_ns: ReadOnlyPaths ({} entries)...",
+            config.read_only_paths.len()
+        );
+        for path in &config.read_only_paths {
+            // Strip leading '-' prefix (makes it non-fatal if path doesn't exist)
+            let (optional, path) = if let Some(stripped) = path.strip_prefix('-') {
+                (true, stripped)
+            } else {
+                (false, path.as_str())
+            };
+            if Path::new(path).exists() {
+                remount_read_only(path, config);
+            } else if !optional {
+                log::warn!("ReadOnlyPaths= path does not exist: {}", path);
+            }
+        }
+    }
+
+    // ── InaccessiblePaths= ────────────────────────────────────────────
+    if !config.inaccessible_paths.is_empty() {
+        log::trace!(
+            "mount_ns: InaccessiblePaths ({} entries)...",
+            config.inaccessible_paths.len()
+        );
+        for path in &config.inaccessible_paths {
+            let (optional, path) = if let Some(stripped) = path.strip_prefix('-') {
+                (true, stripped)
+            } else {
+                (false, path.as_str())
+            };
+            if Path::new(path).exists() {
+                make_inaccessible(path, config);
+            } else if !optional {
+                log::warn!("InaccessiblePaths= path does not exist: {}", path);
+            }
+        }
+    }
+
+    // ── BindPaths= ───────────────────────────────────────────────────
+    // Format: SOURCE[:DEST[:OPTIONS]]
+    // If DEST is omitted, SOURCE is used as both source and destination.
+    if !config.bind_paths.is_empty() {
+        log::trace!(
+            "mount_ns: BindPaths ({} entries)...",
+            config.bind_paths.len()
+        );
+        for entry in &config.bind_paths {
+            let parts: Vec<&str> = entry.splitn(3, ':').collect();
+            let source = parts[0];
+            let dest = if parts.len() > 1 { parts[1] } else { source };
+            let recursive = parts.len() > 2 && parts[2].contains("rbind");
+            if Path::new(source).exists() {
+                // Ensure the destination mount point exists
+                if !Path::new(dest).exists() {
+                    if Path::new(source).is_dir() {
+                        let _ = std::fs::create_dir_all(dest);
+                    } else {
+                        // Create parent dirs and touch the file
+                        if let Some(parent) = Path::new(dest).parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::File::create(dest);
+                    }
+                }
+                let c_src = match std::ffi::CString::new(source) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let c_dest = match std::ffi::CString::new(dest) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let flags = if recursive {
+                    libc::MS_BIND | libc::MS_REC
+                } else {
+                    libc::MS_BIND
+                };
+                let ret = unsafe {
+                    libc::mount(
+                        c_src.as_ptr(),
+                        c_dest.as_ptr(),
+                        std::ptr::null(),
+                        flags,
+                        std::ptr::null(),
+                    )
+                };
+                if ret != 0 {
+                    log::warn!(
+                        "Failed to bind-mount {} -> {}: {}",
+                        source,
+                        dest,
+                        std::io::Error::last_os_error()
+                    );
+                }
+            } else {
+                log::warn!("BindPaths= source does not exist: {}", source);
+            }
+        }
+    }
+
+    // ── BindReadOnlyPaths= ───────────────────────────────────────────
+    // Same as BindPaths= but the destination is remounted read-only.
+    if !config.bind_read_only_paths.is_empty() {
+        log::trace!(
+            "mount_ns: BindReadOnlyPaths ({} entries)...",
+            config.bind_read_only_paths.len()
+        );
+        for entry in &config.bind_read_only_paths {
+            let parts: Vec<&str> = entry.splitn(3, ':').collect();
+            let source = parts[0];
+            let dest = if parts.len() > 1 { parts[1] } else { source };
+            let recursive = parts.len() > 2 && parts[2].contains("rbind");
+            if Path::new(source).exists() {
+                if !Path::new(dest).exists() {
+                    if Path::new(source).is_dir() {
+                        let _ = std::fs::create_dir_all(dest);
+                    } else {
+                        if let Some(parent) = Path::new(dest).parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::File::create(dest);
+                    }
+                }
+                let c_src = match std::ffi::CString::new(source) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let c_dest = match std::ffi::CString::new(dest) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let flags = if recursive {
+                    libc::MS_BIND | libc::MS_REC
+                } else {
+                    libc::MS_BIND
+                };
+                // First: bind-mount
+                let ret = unsafe {
+                    libc::mount(
+                        c_src.as_ptr(),
+                        c_dest.as_ptr(),
+                        std::ptr::null(),
+                        flags,
+                        std::ptr::null(),
+                    )
+                };
+                if ret != 0 {
+                    log::warn!(
+                        "Failed to bind-mount {} -> {}: {}",
+                        source,
+                        dest,
+                        std::io::Error::last_os_error()
+                    );
+                    continue;
+                }
+                // Second: remount read-only
+                let ret = unsafe {
+                    libc::mount(
+                        std::ptr::null(),
+                        c_dest.as_ptr(),
+                        std::ptr::null(),
+                        libc::MS_BIND | libc::MS_REMOUNT | libc::MS_RDONLY | libc::MS_REC,
+                        std::ptr::null(),
+                    )
+                };
+                if ret != 0 {
+                    log::warn!(
+                        "Failed to remount {} read-only: {}",
+                        dest,
+                        std::io::Error::last_os_error()
+                    );
+                }
+            } else {
+                log::warn!("BindReadOnlyPaths= source does not exist: {}", source);
+            }
+        }
+    }
+
+    // ── TemporaryFileSystem= ──────────────────────────────────────────
+    // Format: PATH[:OPTIONS]
+    if !config.temporary_file_system.is_empty() {
+        log::trace!(
+            "mount_ns: TemporaryFileSystem ({} entries)...",
+            config.temporary_file_system.len()
+        );
+        for entry in &config.temporary_file_system {
+            let (path, options) = if let Some((p, o)) = entry.split_once(':') {
+                (p, o)
+            } else {
+                (entry.as_str(), "")
+            };
+            if !Path::new(path).exists() {
+                let _ = std::fs::create_dir_all(path);
+            }
+            let c_path = match std::ffi::CString::new(path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            // Build mount options: always include mode=0755 as default,
+            // then append user-specified options
+            let opts = if options.is_empty() {
+                "mode=0755".to_string()
+            } else {
+                format!("mode=0755,{}", options)
+            };
+            let c_opts = match std::ffi::CString::new(opts.as_str()) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let ret = unsafe {
+                libc::mount(
+                    c"tmpfs".as_ptr(),
+                    c_path.as_ptr(),
+                    c"tmpfs".as_ptr(),
+                    libc::MS_NOSUID | libc::MS_NODEV | libc::MS_STRICTATIME,
+                    c_opts.as_ptr().cast(),
+                )
+            };
+            if ret != 0 {
+                log::warn!(
+                    "Failed to mount tmpfs on {}: {}",
+                    path,
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
+    }
+
     log::trace!("mount_ns: ALL STEPS COMPLETE");
 }
 
