@@ -28,28 +28,40 @@
     # Let networkd handle DHCP per-interface via its .network files
   };
 
-  # Configure networkd to DHCP on all ethernet interfaces
-  systemd.network = {
-    enable = true;
-    networks."10-ethernet" = {
-      matchConfig.Name = "en* eth*";
-      networkConfig = {
-        DHCP = "ipv4";
-        IPv6AcceptRA = true;
-      };
-      dhcpV4Config = {
-        UseDNS = true;
-        UseRoutes = true;
+  systemd = {
+    # Configure networkd to DHCP on all ethernet interfaces
+    network = {
+      enable = true;
+      networks."10-ethernet" = {
+        matchConfig.Name = "en* eth*";
+        networkConfig = {
+          DHCP = "ipv4";
+          IPv6AcceptRA = true;
+        };
+        dhcpV4Config = {
+          UseDNS = true;
+          UseRoutes = true;
+        };
       };
     };
-  };
 
-  # Disable systemd-networkd-wait-online.service — the upstream C binary tries
-  # to talk to networkd via varlink/D-Bus, but the Rust networkd doesn't
-  # implement those interfaces yet.  The service currently exits quickly
-  # (connection refused), so it doesn't block boot, but keeping it disabled
-  # avoids a spurious failure in the activation graph.
-  systemd.services.systemd-networkd-wait-online.enable = lib.mkForce false;
+    services = {
+      # Workaround: disable PrivateDevices for resolved and timesyncd.
+      # The Rust exec_helper's mount namespace setup does not yet fully support
+      # PrivateDevices=yes — services crash with SIGABRT inside the namespace.
+      # The upstream unit files set PrivateDevices=yes, so we override it here
+      # until the exec_helper implementation is fixed.
+      systemd-resolved.serviceConfig.PrivateDevices = lib.mkForce false;
+      systemd-timesyncd.serviceConfig.PrivateDevices = lib.mkForce false;
+
+      # Disable systemd-networkd-wait-online.service — the upstream C binary tries
+      # to talk to networkd via varlink/D-Bus, but the Rust networkd doesn't
+      # implement those interfaces yet.  The service currently exits quickly
+      # (connection refused), so it doesn't block boot, but keeping it disabled
+      # avoids a spurious failure in the activation graph.
+      systemd-networkd-wait-online.enable = lib.mkForce false;
+    };
+  };
 
   # Enable systemd-resolved for DNS resolution (tests the Rust resolved)
   services.resolved = {
