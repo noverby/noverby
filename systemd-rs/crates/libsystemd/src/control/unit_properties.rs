@@ -73,6 +73,35 @@ pub fn collect_properties(unit: &Unit) -> BTreeMap<String, String> {
                 "RestartCount",
                 &state.common.restart_count.to_string(),
             );
+
+            // ── sd_notify reported fields ─────────────────────────────
+            if let Some(errno) = state.srvc.notify_errno {
+                insert(&mut props, "StatusErrno", &errno.to_string());
+            } else {
+                insert(&mut props, "StatusErrno", "0");
+            }
+            if let Some(ref bus_error) = state.srvc.notify_bus_error {
+                insert(&mut props, "StatusBusError", bus_error);
+            }
+            if let Some(ref exit_status) = state.srvc.notify_exit_status {
+                insert(&mut props, "StatusExitStatus", exit_status);
+            }
+            if let Some(ref invocation_id) = state.srvc.invocation_id {
+                insert(&mut props, "InvocationID", invocation_id);
+            }
+            if let Some(usec) = state.srvc.watchdog_usec_override {
+                insert(&mut props, "WatchdogUSec", &usec.to_string());
+            }
+            insert(
+                &mut props,
+                "NFileDescriptorStore",
+                &state.srvc.stored_fds.len().to_string(),
+            );
+            insert(
+                &mut props,
+                "FileDescriptorStoreMax",
+                &svc.conf.file_descriptor_store_max.to_string(),
+            );
         }
         Specific::Socket(sock) => {
             insert_socket_config(&mut props, &sock.conf);

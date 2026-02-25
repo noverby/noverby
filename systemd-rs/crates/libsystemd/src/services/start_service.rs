@@ -151,6 +151,21 @@ fn start_service_with_filedescriptors(
         names.extend(sock_names);
     }
 
+    // Also pass any file descriptors stored via FDSTORE=1 sd_notify messages.
+    // These are FDs the service asked PID 1 to hold across restarts.
+    // They are appended after socket-activation FDs, matching real systemd
+    // behavior where sd_listen_fds() returns socket FDs first, then stored FDs.
+    if !srvc.stored_fds.is_empty() {
+        trace!(
+            "Service {name}: passing {} stored fd(s) from FDSTORE",
+            srvc.stored_fds.len()
+        );
+        for (fd_name, raw_fd) in &srvc.stored_fds {
+            fds.push(*raw_fd);
+            names.push(fd_name.clone());
+        }
+    }
+
     // We first exec into our own executable again and apply this config
     // We transfer the config via a anonymous shared memory file
     let exec_helper_conf = crate::entrypoints::ExecHelperConfig {
