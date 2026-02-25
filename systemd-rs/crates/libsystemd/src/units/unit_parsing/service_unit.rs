@@ -469,6 +469,37 @@ fn parse_service_section(
     let restart_max_delay_sec = section.remove("RESTARTMAXDELAYSEC");
     let exec_condition = section.remove("EXECCONDITION");
 
+    // 9 missing service directives
+    let guess_main_pid = section.remove("GUESSMAINPID");
+    let timeout_start_failure_mode = section.remove("TIMEOUTSTARTFAILUREMODE");
+    let timeout_stop_failure_mode = section.remove("TIMEOUTSTOPFAILUREMODE");
+    let runtime_randomized_extra_sec = section.remove("RUNTIMERANDOMIZEDEXTRASEC");
+    let root_directory_start_only = section.remove("ROOTDIRECTORYSTARTONLY");
+    let non_blocking = section.remove("NONBLOCKING");
+    let usb_function_descriptors = section.remove("USBFUNCTIONDESCRIPTORS");
+    let usb_function_strings = section.remove("USBFUNCTIONSTRINGS");
+    let open_file = section.remove("OPENFILE");
+
+    // 18 missing resource-control directives
+    let cpu_quota_period_sec = section.remove("CPUQUOTAPERIODSEC");
+    let allowed_cpus = section.remove("ALLOWEDCPUS");
+    let startup_allowed_cpus = section.remove("STARTUPALLOWEDCPUS");
+    let allowed_memory_nodes = section.remove("ALLOWEDMEMORYNODES");
+    let startup_allowed_memory_nodes = section.remove("STARTUPALLOWEDMEMORYNODES");
+    let default_memory_min = section.remove("DEFAULTMEMORYMIN");
+    let default_memory_low = section.remove("DEFAULTMEMORYLOW");
+    let memory_zswap_max = section.remove("MEMORYZSWAPMAX");
+    let io_device_latency_target_sec = section.remove("IODEVICELATENCYTARGETSEC");
+    let disable_controllers = section.remove("DISABLECONTROLLERS");
+    let memory_pressure_threshold_sec = section.remove("MEMORYPRESSURETHRESHOLDSEC");
+    let ip_ingress_filter_path = section.remove("IPINGRESSFILTERPATH");
+    let ip_egress_filter_path = section.remove("IPEGRESSFILTERPATH");
+    let bpf_program = section.remove("BPFPROGRAM");
+    let socket_bind_allow = section.remove("SOCKETBINDALLOW");
+    let socket_bind_deny = section.remove("SOCKETBINDDENY");
+    let restrict_network_interfaces = section.remove("RESTRICTNETWORKINTERFACES");
+    let nft_set = section.remove("NFTSET");
+
     let exec_config = super::parse_exec_section(&mut section)?;
 
     for key in section.keys() {
@@ -1693,6 +1724,446 @@ fn parse_service_section(
             Some(vec) => parse_cmdlines(&vec)?,
             None => Vec::new(),
         },
+
+        // 9 new service directives
+        guess_main_pid: guess_main_pid
+            .map(|vec| {
+                if vec.len() == 1 {
+                    string_to_bool(&vec[0].1)
+                } else {
+                    true // default
+                }
+            })
+            .unwrap_or(true), // GuessMainPID= defaults to true
+        timeout_start_failure_mode: match timeout_start_failure_mode {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "terminate" | "" => super::TimeoutFailureMode::Terminate,
+                        "abort" => super::TimeoutFailureMode::Abort,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "TimeoutStartFailureMode".to_owned(),
+                                other.to_owned(),
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "TimeoutStartFailureMode".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::TimeoutFailureMode::default(),
+        },
+        timeout_stop_failure_mode: match timeout_stop_failure_mode {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "terminate" | "" => super::TimeoutFailureMode::Terminate,
+                        "abort" => super::TimeoutFailureMode::Abort,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "TimeoutStopFailureMode".to_owned(),
+                                other.to_owned(),
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "TimeoutStopFailureMode".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::TimeoutFailureMode::default(),
+        },
+        runtime_randomized_extra_sec: match runtime_randomized_extra_sec {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        let t = parse_timeout(val);
+                        match t {
+                            Timeout::Duration(d) if d.is_zero() => None,
+                            other => Some(other),
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "RuntimeRandomizedExtraSec".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        root_directory_start_only: root_directory_start_only
+            .map(|vec| {
+                if vec.len() == 1 {
+                    string_to_bool(&vec[0].1)
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false),
+        non_blocking: non_blocking
+            .map(|vec| {
+                if vec.len() == 1 {
+                    string_to_bool(&vec[0].1)
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false),
+        usb_function_descriptors: match usb_function_descriptors {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(PathBuf::from(val))
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "USBFunctionDescriptors".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        usb_function_strings: match usb_function_strings {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(PathBuf::from(val))
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "USBFunctionStrings".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        open_file: match open_file {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+
+        // 18 new resource-control directives
+        cpu_quota_period_sec: match cpu_quota_period_sec {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(parse_timeout(val))
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "CPUQuotaPeriodSec".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        allowed_cpus: match allowed_cpus {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(val.to_owned())
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "AllowedCPUs".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        startup_allowed_cpus: match startup_allowed_cpus {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(val.to_owned())
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "StartupAllowedCPUs".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        allowed_memory_nodes: match allowed_memory_nodes {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(val.to_owned())
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "AllowedMemoryNodes".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        startup_allowed_memory_nodes: match startup_allowed_memory_nodes {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(val.to_owned())
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "StartupAllowedMemoryNodes".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        default_memory_min: match default_memory_min {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    super::parse_memory_limit(vec[0].1.trim()).map_err(|e| {
+                        ParsingErrorReason::Generic(format!("DefaultMemoryMin: {e}"))
+                    })?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "DefaultMemoryMin".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        default_memory_low: match default_memory_low {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    super::parse_memory_limit(vec[0].1.trim()).map_err(|e| {
+                        ParsingErrorReason::Generic(format!("DefaultMemoryLow: {e}"))
+                    })?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "DefaultMemoryLow".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        memory_zswap_max: match memory_zswap_max {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    super::parse_memory_limit(vec[0].1.trim())
+                        .map_err(|e| ParsingErrorReason::Generic(format!("MemoryZSwapMax: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemoryZSwapMax".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        io_device_latency_target_sec: match io_device_latency_target_sec {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        disable_controllers: match disable_controllers {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    for token in trimmed.split_whitespace() {
+                        entries.push(token.to_owned());
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        memory_pressure_threshold_sec: match memory_pressure_threshold_sec {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(parse_timeout(val))
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemoryPressureThresholdSec".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        ip_ingress_filter_path: match ip_ingress_filter_path {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        ip_egress_filter_path: match ip_egress_filter_path {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        bpf_program: match bpf_program {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        socket_bind_allow: match socket_bind_allow {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        socket_bind_deny: match socket_bind_deny {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        restrict_network_interfaces: match restrict_network_interfaces {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    for token in trimmed.split_whitespace() {
+                        entries.push(token.to_owned());
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        nft_set: match nft_set {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+
         exec_section: exec_config,
     })
 }
@@ -2137,5 +2608,888 @@ ExecCondition=/usr/bin/test -f /etc/ready
         let content = "[Service]\nExecStart=/bin/true\nRestartMode=NORMAL\n";
         let config = parse_service_from_str(content).unwrap();
         assert_eq!(config.srvc.restart_mode, super::super::RestartMode::Normal);
+    }
+
+    // =====================================================================
+    // 9 new service directives
+    // =====================================================================
+
+    // --- GuessMainPID= ---
+
+    #[test]
+    fn test_guess_main_pid_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.guess_main_pid, "GuessMainPID defaults to true");
+    }
+
+    #[test]
+    fn test_guess_main_pid_yes() {
+        let content = "[Service]\nExecStart=/bin/true\nGuessMainPID=yes\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.guess_main_pid);
+    }
+
+    #[test]
+    fn test_guess_main_pid_no() {
+        let content = "[Service]\nExecStart=/bin/true\nGuessMainPID=no\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(!config.srvc.guess_main_pid);
+    }
+
+    #[test]
+    fn test_guess_main_pid_false() {
+        let content = "[Service]\nExecStart=/bin/true\nGuessMainPID=false\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(!config.srvc.guess_main_pid);
+    }
+
+    // --- TimeoutStartFailureMode= ---
+
+    #[test]
+    fn test_timeout_start_failure_mode_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.timeout_start_failure_mode,
+            super::super::TimeoutFailureMode::Terminate
+        );
+    }
+
+    #[test]
+    fn test_timeout_start_failure_mode_terminate() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutStartFailureMode=terminate\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.timeout_start_failure_mode,
+            super::super::TimeoutFailureMode::Terminate
+        );
+    }
+
+    #[test]
+    fn test_timeout_start_failure_mode_abort() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutStartFailureMode=abort\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.timeout_start_failure_mode,
+            super::super::TimeoutFailureMode::Abort
+        );
+    }
+
+    #[test]
+    fn test_timeout_start_failure_mode_invalid() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutStartFailureMode=explode\n";
+        assert!(parse_service_from_str(content).is_err());
+    }
+
+    #[test]
+    fn test_timeout_start_failure_mode_case_insensitive() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutStartFailureMode=ABORT\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.timeout_start_failure_mode,
+            super::super::TimeoutFailureMode::Abort
+        );
+    }
+
+    // --- TimeoutStopFailureMode= ---
+
+    #[test]
+    fn test_timeout_stop_failure_mode_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.timeout_stop_failure_mode,
+            super::super::TimeoutFailureMode::Terminate
+        );
+    }
+
+    #[test]
+    fn test_timeout_stop_failure_mode_abort() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutStopFailureMode=abort\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.timeout_stop_failure_mode,
+            super::super::TimeoutFailureMode::Abort
+        );
+    }
+
+    #[test]
+    fn test_timeout_stop_failure_mode_invalid() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutStopFailureMode=reboot\n";
+        assert!(parse_service_from_str(content).is_err());
+    }
+
+    // --- RuntimeRandomizedExtraSec= ---
+
+    #[test]
+    fn test_runtime_randomized_extra_sec_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.runtime_randomized_extra_sec.is_none());
+    }
+
+    #[test]
+    fn test_runtime_randomized_extra_sec_value() {
+        let content = "[Service]\nExecStart=/bin/true\nRuntimeRandomizedExtraSec=120\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.runtime_randomized_extra_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(120)))
+        );
+    }
+
+    #[test]
+    fn test_runtime_randomized_extra_sec_zero() {
+        let content = "[Service]\nExecStart=/bin/true\nRuntimeRandomizedExtraSec=0\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.runtime_randomized_extra_sec.is_none());
+    }
+
+    #[test]
+    fn test_runtime_randomized_extra_sec_empty() {
+        let content = "[Service]\nExecStart=/bin/true\nRuntimeRandomizedExtraSec=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.runtime_randomized_extra_sec.is_none());
+    }
+
+    // --- RootDirectoryStartOnly= ---
+
+    #[test]
+    fn test_root_directory_start_only_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(!config.srvc.root_directory_start_only);
+    }
+
+    #[test]
+    fn test_root_directory_start_only_yes() {
+        let content = "[Service]\nExecStart=/bin/true\nRootDirectoryStartOnly=yes\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.root_directory_start_only);
+    }
+
+    #[test]
+    fn test_root_directory_start_only_no() {
+        let content = "[Service]\nExecStart=/bin/true\nRootDirectoryStartOnly=no\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(!config.srvc.root_directory_start_only);
+    }
+
+    // --- NonBlocking= ---
+
+    #[test]
+    fn test_non_blocking_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(!config.srvc.non_blocking);
+    }
+
+    #[test]
+    fn test_non_blocking_yes() {
+        let content = "[Service]\nExecStart=/bin/true\nNonBlocking=yes\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.non_blocking);
+    }
+
+    #[test]
+    fn test_non_blocking_true() {
+        let content = "[Service]\nExecStart=/bin/true\nNonBlocking=true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.non_blocking);
+    }
+
+    #[test]
+    fn test_non_blocking_no() {
+        let content = "[Service]\nExecStart=/bin/true\nNonBlocking=no\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(!config.srvc.non_blocking);
+    }
+
+    // --- USBFunctionDescriptors= ---
+
+    #[test]
+    fn test_usb_function_descriptors_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.usb_function_descriptors.is_none());
+    }
+
+    #[test]
+    fn test_usb_function_descriptors_value() {
+        let content =
+            "[Service]\nExecStart=/bin/true\nUSBFunctionDescriptors=/etc/usb/descriptors\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.usb_function_descriptors,
+            Some(PathBuf::from("/etc/usb/descriptors"))
+        );
+    }
+
+    #[test]
+    fn test_usb_function_descriptors_empty() {
+        let content = "[Service]\nExecStart=/bin/true\nUSBFunctionDescriptors=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.usb_function_descriptors.is_none());
+    }
+
+    // --- USBFunctionStrings= ---
+
+    #[test]
+    fn test_usb_function_strings_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.usb_function_strings.is_none());
+    }
+
+    #[test]
+    fn test_usb_function_strings_value() {
+        let content = "[Service]\nExecStart=/bin/true\nUSBFunctionStrings=/etc/usb/strings\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.usb_function_strings,
+            Some(PathBuf::from("/etc/usb/strings"))
+        );
+    }
+
+    // --- OpenFile= ---
+
+    #[test]
+    fn test_open_file_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.open_file.is_empty());
+    }
+
+    #[test]
+    fn test_open_file_single() {
+        let content = "[Service]\nExecStart=/bin/true\nOpenFile=/var/run/secrets/key:secret\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.open_file, vec!["/var/run/secrets/key:secret"]);
+    }
+
+    #[test]
+    fn test_open_file_multiple() {
+        let content = "[Service]\nExecStart=/bin/true\nOpenFile=/etc/ssl/cert.pem:cert\nOpenFile=/etc/ssl/key.pem:key:read-only\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.open_file.len(), 2);
+        assert_eq!(config.srvc.open_file[0], "/etc/ssl/cert.pem:cert");
+        assert_eq!(config.srvc.open_file[1], "/etc/ssl/key.pem:key:read-only");
+    }
+
+    #[test]
+    fn test_open_file_empty_resets() {
+        let content =
+            "[Service]\nExecStart=/bin/true\nOpenFile=/etc/a\nOpenFile=\nOpenFile=/etc/b\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.open_file, vec!["/etc/b"]);
+    }
+
+    // =====================================================================
+    // 18 new resource-control directives
+    // =====================================================================
+
+    // --- CPUQuotaPeriodSec= ---
+
+    #[test]
+    fn test_cpu_quota_period_sec_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.cpu_quota_period_sec.is_none());
+    }
+
+    #[test]
+    fn test_cpu_quota_period_sec_value() {
+        let content = "[Service]\nExecStart=/bin/true\nCPUQuotaPeriodSec=10\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.cpu_quota_period_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(10)))
+        );
+    }
+
+    #[test]
+    fn test_cpu_quota_period_sec_empty() {
+        let content = "[Service]\nExecStart=/bin/true\nCPUQuotaPeriodSec=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.cpu_quota_period_sec.is_none());
+    }
+
+    // --- AllowedCPUs= ---
+
+    #[test]
+    fn test_allowed_cpus_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.allowed_cpus.is_none());
+    }
+
+    #[test]
+    fn test_allowed_cpus_single() {
+        let content = "[Service]\nExecStart=/bin/true\nAllowedCPUs=0\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.allowed_cpus, Some("0".to_owned()));
+    }
+
+    #[test]
+    fn test_allowed_cpus_range() {
+        let content = "[Service]\nExecStart=/bin/true\nAllowedCPUs=0-3\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.allowed_cpus, Some("0-3".to_owned()));
+    }
+
+    #[test]
+    fn test_allowed_cpus_list() {
+        let content = "[Service]\nExecStart=/bin/true\nAllowedCPUs=0 2 4-7\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.allowed_cpus, Some("0 2 4-7".to_owned()));
+    }
+
+    #[test]
+    fn test_allowed_cpus_empty() {
+        let content = "[Service]\nExecStart=/bin/true\nAllowedCPUs=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.allowed_cpus.is_none());
+    }
+
+    // --- StartupAllowedCPUs= ---
+
+    #[test]
+    fn test_startup_allowed_cpus_value() {
+        let content = "[Service]\nExecStart=/bin/true\nStartupAllowedCPUs=0-1\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.startup_allowed_cpus, Some("0-1".to_owned()));
+    }
+
+    // --- AllowedMemoryNodes= ---
+
+    #[test]
+    fn test_allowed_memory_nodes_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.allowed_memory_nodes.is_none());
+    }
+
+    #[test]
+    fn test_allowed_memory_nodes_value() {
+        let content = "[Service]\nExecStart=/bin/true\nAllowedMemoryNodes=0-1\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.allowed_memory_nodes, Some("0-1".to_owned()));
+    }
+
+    // --- StartupAllowedMemoryNodes= ---
+
+    #[test]
+    fn test_startup_allowed_memory_nodes_value() {
+        let content = "[Service]\nExecStart=/bin/true\nStartupAllowedMemoryNodes=0\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.startup_allowed_memory_nodes,
+            Some("0".to_owned())
+        );
+    }
+
+    // --- DefaultMemoryMin= ---
+
+    #[test]
+    fn test_default_memory_min_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.default_memory_min.is_none());
+    }
+
+    #[test]
+    fn test_default_memory_min_bytes() {
+        let content = "[Service]\nExecStart=/bin/true\nDefaultMemoryMin=64M\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.default_memory_min,
+            Some(super::super::MemoryLimit::Bytes(64 * 1024 * 1024))
+        );
+    }
+
+    // --- DefaultMemoryLow= ---
+
+    #[test]
+    fn test_default_memory_low_bytes() {
+        let content = "[Service]\nExecStart=/bin/true\nDefaultMemoryLow=128M\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.default_memory_low,
+            Some(super::super::MemoryLimit::Bytes(128 * 1024 * 1024))
+        );
+    }
+
+    // --- MemoryZSwapMax= ---
+
+    #[test]
+    fn test_memory_zswap_max_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.memory_zswap_max.is_none());
+    }
+
+    #[test]
+    fn test_memory_zswap_max_bytes() {
+        let content = "[Service]\nExecStart=/bin/true\nMemoryZSwapMax=256M\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.memory_zswap_max,
+            Some(super::super::MemoryLimit::Bytes(256 * 1024 * 1024))
+        );
+    }
+
+    #[test]
+    fn test_memory_zswap_max_infinity() {
+        let content = "[Service]\nExecStart=/bin/true\nMemoryZSwapMax=infinity\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.memory_zswap_max,
+            Some(super::super::MemoryLimit::Infinity)
+        );
+    }
+
+    #[test]
+    fn test_memory_zswap_max_percentage() {
+        let content = "[Service]\nExecStart=/bin/true\nMemoryZSwapMax=50%\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.memory_zswap_max,
+            Some(super::super::MemoryLimit::Percent(50))
+        );
+    }
+
+    // --- IODeviceLatencyTargetSec= ---
+
+    #[test]
+    fn test_io_device_latency_target_sec_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.io_device_latency_target_sec.is_empty());
+    }
+
+    #[test]
+    fn test_io_device_latency_target_sec_value() {
+        let content = "[Service]\nExecStart=/bin/true\nIODeviceLatencyTargetSec=/dev/sda 25ms\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.io_device_latency_target_sec,
+            vec!["/dev/sda 25ms"]
+        );
+    }
+
+    #[test]
+    fn test_io_device_latency_target_sec_multiple() {
+        let content = "[Service]\nExecStart=/bin/true\nIODeviceLatencyTargetSec=/dev/sda 25ms\nIODeviceLatencyTargetSec=/dev/sdb 50ms\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.io_device_latency_target_sec.len(), 2);
+    }
+
+    #[test]
+    fn test_io_device_latency_target_sec_empty_resets() {
+        let content = "[Service]\nExecStart=/bin/true\nIODeviceLatencyTargetSec=/dev/sda 25ms\nIODeviceLatencyTargetSec=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.io_device_latency_target_sec.is_empty());
+    }
+
+    // --- DisableControllers= ---
+
+    #[test]
+    fn test_disable_controllers_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.disable_controllers.is_empty());
+    }
+
+    #[test]
+    fn test_disable_controllers_single() {
+        let content = "[Service]\nExecStart=/bin/true\nDisableControllers=memory\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.disable_controllers, vec!["memory"]);
+    }
+
+    #[test]
+    fn test_disable_controllers_multiple() {
+        let content = "[Service]\nExecStart=/bin/true\nDisableControllers=cpu memory io\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.disable_controllers, vec!["cpu", "memory", "io"]);
+    }
+
+    #[test]
+    fn test_disable_controllers_empty_resets() {
+        let content =
+            "[Service]\nExecStart=/bin/true\nDisableControllers=cpu\nDisableControllers=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.disable_controllers.is_empty());
+    }
+
+    // --- MemoryPressureThresholdSec= ---
+
+    #[test]
+    fn test_memory_pressure_threshold_sec_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.memory_pressure_threshold_sec.is_none());
+    }
+
+    #[test]
+    fn test_memory_pressure_threshold_sec_value() {
+        let content = "[Service]\nExecStart=/bin/true\nMemoryPressureThresholdSec=200\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.memory_pressure_threshold_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(200)))
+        );
+    }
+
+    // --- IPIngressFilterPath= ---
+
+    #[test]
+    fn test_ip_ingress_filter_path_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.ip_ingress_filter_path.is_empty());
+    }
+
+    #[test]
+    fn test_ip_ingress_filter_path_value() {
+        let content = "[Service]\nExecStart=/bin/true\nIPIngressFilterPath=/sys/fs/bpf/ingress\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.ip_ingress_filter_path,
+            vec!["/sys/fs/bpf/ingress"]
+        );
+    }
+
+    #[test]
+    fn test_ip_ingress_filter_path_empty_resets() {
+        let content = "[Service]\nExecStart=/bin/true\nIPIngressFilterPath=/sys/fs/bpf/a\nIPIngressFilterPath=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.ip_ingress_filter_path.is_empty());
+    }
+
+    // --- IPEgressFilterPath= ---
+
+    #[test]
+    fn test_ip_egress_filter_path_value() {
+        let content = "[Service]\nExecStart=/bin/true\nIPEgressFilterPath=/sys/fs/bpf/egress\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.ip_egress_filter_path,
+            vec!["/sys/fs/bpf/egress"]
+        );
+    }
+
+    // --- BPFProgram= ---
+
+    #[test]
+    fn test_bpf_program_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.bpf_program.is_empty());
+    }
+
+    #[test]
+    fn test_bpf_program_value() {
+        let content =
+            "[Service]\nExecStart=/bin/true\nBPFProgram=cgroup_skb/egress:/sys/fs/bpf/prog\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.bpf_program,
+            vec!["cgroup_skb/egress:/sys/fs/bpf/prog"]
+        );
+    }
+
+    #[test]
+    fn test_bpf_program_empty_resets() {
+        let content = "[Service]\nExecStart=/bin/true\nBPFProgram=cgroup/a\nBPFProgram=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.bpf_program.is_empty());
+    }
+
+    // --- SocketBindAllow= ---
+
+    #[test]
+    fn test_socket_bind_allow_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.socket_bind_allow.is_empty());
+    }
+
+    #[test]
+    fn test_socket_bind_allow_value() {
+        let content = "[Service]\nExecStart=/bin/true\nSocketBindAllow=tcp:8080\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.socket_bind_allow, vec!["tcp:8080"]);
+    }
+
+    #[test]
+    fn test_socket_bind_allow_multiple() {
+        let content =
+            "[Service]\nExecStart=/bin/true\nSocketBindAllow=tcp:8080\nSocketBindAllow=tcp:8443\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.socket_bind_allow.len(), 2);
+    }
+
+    // --- SocketBindDeny= ---
+
+    #[test]
+    fn test_socket_bind_deny_value() {
+        let content = "[Service]\nExecStart=/bin/true\nSocketBindDeny=any\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.socket_bind_deny, vec!["any"]);
+    }
+
+    // --- RestrictNetworkInterfaces= ---
+
+    #[test]
+    fn test_restrict_network_interfaces_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.restrict_network_interfaces.is_empty());
+    }
+
+    #[test]
+    fn test_restrict_network_interfaces_allow() {
+        let content = "[Service]\nExecStart=/bin/true\nRestrictNetworkInterfaces=eth0 wlan0\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.restrict_network_interfaces,
+            vec!["eth0", "wlan0"]
+        );
+    }
+
+    #[test]
+    fn test_restrict_network_interfaces_deny() {
+        let content = "[Service]\nExecStart=/bin/true\nRestrictNetworkInterfaces=~docker0 veth+\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.restrict_network_interfaces,
+            vec!["~docker0", "veth+"]
+        );
+    }
+
+    #[test]
+    fn test_restrict_network_interfaces_empty_resets() {
+        let content = "[Service]\nExecStart=/bin/true\nRestrictNetworkInterfaces=eth0\nRestrictNetworkInterfaces=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.restrict_network_interfaces.is_empty());
+    }
+
+    // --- NFTSet= ---
+
+    #[test]
+    fn test_nft_set_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.nft_set.is_empty());
+    }
+
+    #[test]
+    fn test_nft_set_value() {
+        let content = "[Service]\nExecStart=/bin/true\nNFTSet=inet:filter:cgroup_set\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.nft_set, vec!["inet:filter:cgroup_set"]);
+    }
+
+    #[test]
+    fn test_nft_set_empty_resets() {
+        let content = "[Service]\nExecStart=/bin/true\nNFTSet=inet:a:b\nNFTSet=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.nft_set.is_empty());
+    }
+
+    // =====================================================================
+    // Combined / integration tests for new directives
+    // =====================================================================
+
+    #[test]
+    fn test_all_new_service_directives_together() {
+        let content = "\
+[Service]
+ExecStart=/bin/daemon
+GuessMainPID=no
+TimeoutStartFailureMode=abort
+TimeoutStopFailureMode=abort
+RuntimeRandomizedExtraSec=60
+RootDirectoryStartOnly=yes
+NonBlocking=yes
+USBFunctionDescriptors=/etc/usb/desc
+USBFunctionStrings=/etc/usb/str
+OpenFile=/var/secrets/key:keyfile:read-only
+";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(!config.srvc.guess_main_pid);
+        assert_eq!(
+            config.srvc.timeout_start_failure_mode,
+            super::super::TimeoutFailureMode::Abort
+        );
+        assert_eq!(
+            config.srvc.timeout_stop_failure_mode,
+            super::super::TimeoutFailureMode::Abort
+        );
+        assert_eq!(
+            config.srvc.runtime_randomized_extra_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(60)))
+        );
+        assert!(config.srvc.root_directory_start_only);
+        assert!(config.srvc.non_blocking);
+        assert_eq!(
+            config.srvc.usb_function_descriptors,
+            Some(PathBuf::from("/etc/usb/desc"))
+        );
+        assert_eq!(
+            config.srvc.usb_function_strings,
+            Some(PathBuf::from("/etc/usb/str"))
+        );
+        assert_eq!(
+            config.srvc.open_file,
+            vec!["/var/secrets/key:keyfile:read-only"]
+        );
+    }
+
+    #[test]
+    fn test_all_new_resource_control_directives_together() {
+        let content = "\
+[Service]
+ExecStart=/bin/daemon
+CPUQuotaPeriodSec=5
+AllowedCPUs=0-3
+StartupAllowedCPUs=0-1
+AllowedMemoryNodes=0
+StartupAllowedMemoryNodes=0
+DefaultMemoryMin=32M
+DefaultMemoryLow=64M
+MemoryZSwapMax=512M
+IODeviceLatencyTargetSec=/dev/sda 10ms
+DisableControllers=cpu io
+MemoryPressureThresholdSec=100
+IPIngressFilterPath=/sys/fs/bpf/in
+IPEgressFilterPath=/sys/fs/bpf/out
+BPFProgram=cgroup_skb/egress:/sys/fs/bpf/prog
+SocketBindAllow=tcp:443
+SocketBindDeny=any
+RestrictNetworkInterfaces=eth0
+NFTSet=inet:filter:service_set
+";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.cpu_quota_period_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(5)))
+        );
+        assert_eq!(config.srvc.allowed_cpus, Some("0-3".to_owned()));
+        assert_eq!(config.srvc.startup_allowed_cpus, Some("0-1".to_owned()));
+        assert_eq!(config.srvc.allowed_memory_nodes, Some("0".to_owned()));
+        assert_eq!(
+            config.srvc.startup_allowed_memory_nodes,
+            Some("0".to_owned())
+        );
+        assert_eq!(
+            config.srvc.default_memory_min,
+            Some(super::super::MemoryLimit::Bytes(32 * 1024 * 1024))
+        );
+        assert_eq!(
+            config.srvc.default_memory_low,
+            Some(super::super::MemoryLimit::Bytes(64 * 1024 * 1024))
+        );
+        assert_eq!(
+            config.srvc.memory_zswap_max,
+            Some(super::super::MemoryLimit::Bytes(512 * 1024 * 1024))
+        );
+        assert_eq!(
+            config.srvc.io_device_latency_target_sec,
+            vec!["/dev/sda 10ms"]
+        );
+        assert_eq!(config.srvc.disable_controllers, vec!["cpu", "io"]);
+        assert_eq!(
+            config.srvc.memory_pressure_threshold_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(100)))
+        );
+        assert_eq!(config.srvc.ip_ingress_filter_path, vec!["/sys/fs/bpf/in"]);
+        assert_eq!(config.srvc.ip_egress_filter_path, vec!["/sys/fs/bpf/out"]);
+        assert_eq!(
+            config.srvc.bpf_program,
+            vec!["cgroup_skb/egress:/sys/fs/bpf/prog"]
+        );
+        assert_eq!(config.srvc.socket_bind_allow, vec!["tcp:443"]);
+        assert_eq!(config.srvc.socket_bind_deny, vec!["any"]);
+        assert_eq!(config.srvc.restrict_network_interfaces, vec!["eth0"]);
+        assert_eq!(config.srvc.nft_set, vec!["inet:filter:service_set"]);
+    }
+
+    #[test]
+    fn test_new_directives_defaults_in_no_service_section() {
+        let content = "[Unit]\nDescription=Test\n";
+        let config = parse_service_from_str(content).unwrap();
+        // Service directives
+        assert!(config.srvc.guess_main_pid);
+        assert_eq!(
+            config.srvc.timeout_start_failure_mode,
+            super::super::TimeoutFailureMode::Terminate
+        );
+        assert_eq!(
+            config.srvc.timeout_stop_failure_mode,
+            super::super::TimeoutFailureMode::Terminate
+        );
+        assert!(config.srvc.runtime_randomized_extra_sec.is_none());
+        assert!(!config.srvc.root_directory_start_only);
+        assert!(!config.srvc.non_blocking);
+        assert!(config.srvc.usb_function_descriptors.is_none());
+        assert!(config.srvc.usb_function_strings.is_none());
+        assert!(config.srvc.open_file.is_empty());
+        // Resource-control directives
+        assert!(config.srvc.cpu_quota_period_sec.is_none());
+        assert!(config.srvc.allowed_cpus.is_none());
+        assert!(config.srvc.startup_allowed_cpus.is_none());
+        assert!(config.srvc.allowed_memory_nodes.is_none());
+        assert!(config.srvc.startup_allowed_memory_nodes.is_none());
+        assert!(config.srvc.default_memory_min.is_none());
+        assert!(config.srvc.default_memory_low.is_none());
+        assert!(config.srvc.memory_zswap_max.is_none());
+        assert!(config.srvc.io_device_latency_target_sec.is_empty());
+        assert!(config.srvc.disable_controllers.is_empty());
+        assert!(config.srvc.memory_pressure_threshold_sec.is_none());
+        assert!(config.srvc.ip_ingress_filter_path.is_empty());
+        assert!(config.srvc.ip_egress_filter_path.is_empty());
+        assert!(config.srvc.bpf_program.is_empty());
+        assert!(config.srvc.socket_bind_allow.is_empty());
+        assert!(config.srvc.socket_bind_deny.is_empty());
+        assert!(config.srvc.restrict_network_interfaces.is_empty());
+        assert!(config.srvc.nft_set.is_empty());
+    }
+
+    #[test]
+    fn test_new_directives_coexist_with_existing() {
+        let content = "\
+[Service]
+Type=notify
+ExecStart=/bin/daemon
+Restart=always
+WatchdogSec=30
+GuessMainPID=no
+TimeoutStartFailureMode=abort
+AllowedCPUs=0-7
+MemoryZSwapMax=1G
+CPUQuota=200%
+MemoryMax=2G
+";
+        let config = parse_service_from_str(content).unwrap();
+        // Existing directives still work
+        assert_eq!(config.srvc.srcv_type, ServiceType::Notify);
+        assert_eq!(config.srvc.restart, ServiceRestart::Always);
+        assert!(config.srvc.watchdog_sec.is_some());
+        assert_eq!(config.srvc.cpu_quota, Some(200));
+        assert!(config.srvc.memory_max.is_some());
+        // New directives work alongside
+        assert!(!config.srvc.guess_main_pid);
+        assert_eq!(
+            config.srvc.timeout_start_failure_mode,
+            super::super::TimeoutFailureMode::Abort
+        );
+        assert_eq!(config.srvc.allowed_cpus, Some("0-7".to_owned()));
+        assert_eq!(
+            config.srvc.memory_zswap_max,
+            Some(super::super::MemoryLimit::Bytes(1024 * 1024 * 1024))
+        );
     }
 }

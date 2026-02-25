@@ -119,6 +119,62 @@ pub struct ParsedSliceSection {
     pub managed_oom_preference: Option<String>,
     /// MemoryPressureWatch= — PSI memory pressure monitoring. See systemd.resource-control(5).
     pub memory_pressure_watch: MemoryPressureWatch,
+
+    // --- New resource-control directives ---
+    /// CPUQuotaPeriodSec= — the period for CPU quota enforcement.
+    /// See systemd.resource-control(5).
+    pub cpu_quota_period_sec: Option<Timeout>,
+    /// AllowedCPUs= — CPU set restriction (cpuset controller).
+    /// See systemd.resource-control(5).
+    pub allowed_cpus: Option<String>,
+    /// StartupAllowedCPUs= — CPU set restriction during startup.
+    /// See systemd.resource-control(5).
+    pub startup_allowed_cpus: Option<String>,
+    /// AllowedMemoryNodes= — NUMA node restriction (cpuset controller).
+    /// See systemd.resource-control(5).
+    pub allowed_memory_nodes: Option<String>,
+    /// StartupAllowedMemoryNodes= — NUMA node restriction during startup.
+    /// See systemd.resource-control(5).
+    pub startup_allowed_memory_nodes: Option<String>,
+    /// DefaultMemoryMin= — default memory.min for children.
+    /// See systemd.resource-control(5).
+    pub default_memory_min: Option<MemoryLimit>,
+    /// DefaultMemoryLow= — default memory.low for children.
+    /// See systemd.resource-control(5).
+    pub default_memory_low: Option<MemoryLimit>,
+    /// MemoryZSwapMax= — hard zswap limit. See systemd.resource-control(5).
+    pub memory_zswap_max: Option<MemoryLimit>,
+    /// IODeviceLatencyTargetSec= — per-device I/O latency target.
+    /// See systemd.resource-control(5).
+    pub io_device_latency_target_sec: Vec<String>,
+    /// DisableControllers= — controllers to disable.
+    /// See systemd.resource-control(5).
+    pub disable_controllers: Vec<String>,
+    /// MemoryPressureThresholdSec= — memory pressure threshold duration.
+    /// See systemd.resource-control(5).
+    pub memory_pressure_threshold_sec: Option<Timeout>,
+    /// IPIngressFilterPath= — BPF ingress filter paths.
+    /// See systemd.resource-control(5).
+    pub ip_ingress_filter_path: Vec<String>,
+    /// IPEgressFilterPath= — BPF egress filter paths.
+    /// See systemd.resource-control(5).
+    pub ip_egress_filter_path: Vec<String>,
+    /// BPFProgram= — BPF programs to attach. See systemd.resource-control(5).
+    pub bpf_program: Vec<String>,
+    /// SocketBindAllow= — socket bind allow rules.
+    /// See systemd.resource-control(5).
+    pub socket_bind_allow: Vec<String>,
+    /// SocketBindDeny= — socket bind deny rules.
+    /// See systemd.resource-control(5).
+    pub socket_bind_deny: Vec<String>,
+    /// RestrictNetworkInterfaces= — network interface restrictions.
+    /// See systemd.resource-control(5).
+    pub restrict_network_interfaces: Vec<String>,
+    /// NFTSet= — nftables set attachments. See systemd.resource-control(5).
+    pub nft_set: Vec<String>,
+    /// DelegateSubgroup= — subgroup for delegated cgroup.
+    /// See systemd.resource-control(5).
+    pub delegate_subgroup: Option<String>,
 }
 
 /// Parsed [Path] section from a `.path` unit file.
@@ -2351,6 +2407,137 @@ pub struct ParsedServiceSection {
     /// See systemd.service(5).
     pub exec_condition: Vec<Commandline>,
 
+    // --- New service directives (systemd.service(5)) ---
+    /// GuessMainPID= — if true (default), the service manager will try to
+    /// guess the main PID of a forking service if PIDFile= is not set.
+    /// See systemd.service(5).
+    pub guess_main_pid: bool,
+
+    /// TimeoutStartFailureMode= — configures the action to take when a
+    /// start timeout is reached. Takes "terminate" (default) or "abort".
+    /// See systemd.service(5).
+    pub timeout_start_failure_mode: TimeoutFailureMode,
+
+    /// TimeoutStopFailureMode= — configures the action to take when a
+    /// stop timeout is reached. Takes "terminate" (default) or "abort".
+    /// See systemd.service(5).
+    pub timeout_stop_failure_mode: TimeoutFailureMode,
+
+    /// RuntimeRandomizedExtraSec= — an additional random time added on
+    /// top of RuntimeMaxSec=. Defaults to 0 (disabled). Parsed and stored;
+    /// no runtime enforcement yet. See systemd.service(5).
+    pub runtime_randomized_extra_sec: Option<Timeout>,
+
+    /// RootDirectoryStartOnly= — if true, the root directory (as configured
+    /// with RootDirectory=) is only applied to ExecStart= and not to the
+    /// other Exec*= settings. Defaults to false. See systemd.service(5).
+    pub root_directory_start_only: bool,
+
+    /// NonBlocking= — if true, all file descriptors passed via socket
+    /// activation are set to non-blocking mode (O_NONBLOCK). Defaults to
+    /// false. See systemd.service(5).
+    pub non_blocking: bool,
+
+    /// USBFunctionDescriptors= — path to a file containing USB FunctionFS
+    /// descriptors for the USB gadget. See systemd.service(5).
+    pub usb_function_descriptors: Option<std::path::PathBuf>,
+
+    /// USBFunctionStrings= — path to a file containing USB FunctionFS
+    /// strings for the USB gadget. See systemd.service(5).
+    pub usb_function_strings: Option<std::path::PathBuf>,
+
+    /// OpenFile= — a list of file paths to open and pass as file descriptors
+    /// to the service. Format: "path[:fdname[:options]]". Multiple directives
+    /// accumulate; an empty assignment resets the list. See systemd.service(5).
+    pub open_file: Vec<String>,
+
+    // --- New resource-control directives (systemd.resource-control(5)) ---
+    /// CPUQuotaPeriodSec= — the period for CPU quota enforcement. Defaults
+    /// to 100ms. Applied to cgroup cpu.max at runtime.
+    /// See systemd.resource-control(5).
+    pub cpu_quota_period_sec: Option<Timeout>,
+
+    /// AllowedCPUs= — restricts processes to the specified CPUs (cpuset
+    /// controller). Takes a CPU index list with ranges. Applied to
+    /// cgroup cpuset.cpus at runtime. See systemd.resource-control(5).
+    pub allowed_cpus: Option<String>,
+
+    /// StartupAllowedCPUs= — like AllowedCPUs= but only during startup.
+    /// See systemd.resource-control(5).
+    pub startup_allowed_cpus: Option<String>,
+
+    /// AllowedMemoryNodes= — restricts processes to the specified NUMA
+    /// memory nodes. Takes a node index list with ranges. Applied to
+    /// cgroup cpuset.mems at runtime. See systemd.resource-control(5).
+    pub allowed_memory_nodes: Option<String>,
+
+    /// StartupAllowedMemoryNodes= — like AllowedMemoryNodes= but only
+    /// during startup. See systemd.resource-control(5).
+    pub startup_allowed_memory_nodes: Option<String>,
+
+    /// DefaultMemoryMin= — default memory.min for children of this unit's
+    /// cgroup. See systemd.resource-control(5).
+    pub default_memory_min: Option<MemoryLimit>,
+
+    /// DefaultMemoryLow= — default memory.low for children of this unit's
+    /// cgroup. See systemd.resource-control(5).
+    pub default_memory_low: Option<MemoryLimit>,
+
+    /// MemoryZSwapMax= — hard zswap limit for the unit's cgroup. Accepts
+    /// a byte value with optional K/M/G/T/P/E suffix, a percentage, or
+    /// "infinity". Applied to cgroup memory.zswap.max at runtime.
+    /// See systemd.resource-control(5).
+    pub memory_zswap_max: Option<MemoryLimit>,
+
+    /// IODeviceLatencyTargetSec= — per-device I/O latency target (format:
+    /// "/dev/path TIMESPAN"). Applied to cgroup io.latency at runtime.
+    /// See systemd.resource-control(5).
+    pub io_device_latency_target_sec: Vec<String>,
+
+    /// DisableControllers= — a space-separated list of cgroup controllers
+    /// to disable for the unit. See systemd.resource-control(5).
+    pub disable_controllers: Vec<String>,
+
+    /// MemoryPressureThresholdSec= — memory pressure threshold duration.
+    /// Used with MemoryPressureWatch=. See systemd.resource-control(5).
+    pub memory_pressure_threshold_sec: Option<Timeout>,
+
+    /// IPIngressFilterPath= — absolute path to a pinned BPF program for
+    /// ingress IP packet filtering. Multiple directives accumulate; an
+    /// empty assignment resets. See systemd.resource-control(5).
+    pub ip_ingress_filter_path: Vec<String>,
+
+    /// IPEgressFilterPath= — absolute path to a pinned BPF program for
+    /// egress IP packet filtering. Multiple directives accumulate; an
+    /// empty assignment resets. See systemd.resource-control(5).
+    pub ip_egress_filter_path: Vec<String>,
+
+    /// BPFProgram= — attach a BPF program to the unit's cgroup. Format:
+    /// "type:path". Multiple directives accumulate; an empty assignment
+    /// resets. See systemd.resource-control(5).
+    pub bpf_program: Vec<String>,
+
+    /// SocketBindAllow= — allow binding to specific socket address families,
+    /// protocols, and ports. Format: "bind-rule". Multiple directives
+    /// accumulate; an empty assignment resets. See systemd.resource-control(5).
+    pub socket_bind_allow: Vec<String>,
+
+    /// SocketBindDeny= — deny binding to specific socket address families,
+    /// protocols, and ports. Format: "bind-rule". Multiple directives
+    /// accumulate; an empty assignment resets. See systemd.resource-control(5).
+    pub socket_bind_deny: Vec<String>,
+
+    /// RestrictNetworkInterfaces= — restrict network interfaces accessible
+    /// to the unit. Accepts a space-separated list of interface names
+    /// (prefixed with "~" for deny). Multiple directives accumulate; an
+    /// empty assignment resets. See systemd.resource-control(5).
+    pub restrict_network_interfaces: Vec<String>,
+
+    /// NFTSet= — attach the unit's cgroup to an nftables set. Format:
+    /// "family:table:set". Multiple directives accumulate; an empty
+    /// assignment resets. See systemd.resource-control(5).
+    pub nft_set: Vec<String>,
+
     pub exec_section: ParsedExecSection,
 }
 
@@ -3510,6 +3697,19 @@ pub enum RestartMode {
     /// in all versions.) Behaves the same as `Direct` in this
     /// implementation.
     Normal,
+}
+
+/// Configures the action to take when a start or stop timeout is reached.
+/// See `systemd.service(5)` `TimeoutStartFailureMode=` / `TimeoutStopFailureMode=`.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, Default)]
+pub enum TimeoutFailureMode {
+    /// Send the configured stop signal (KillSignal=), then SIGKILL after
+    /// the final timeout. This is the default.
+    #[default]
+    Terminate,
+    /// Immediately send SIGABRT, useful for triggering a core dump for
+    /// debugging.
+    Abort,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
