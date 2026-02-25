@@ -5,7 +5,7 @@ use log::{debug, trace};
 
 use crate::units::{
     EnvVars, ParsedExecSection, ParsedInstallSection, ParsedUnitSection, ParsingErrorReason,
-    StdIoOption, UnitAction,
+    RLimitValue, ResourceLimit, StdIoOption, UnitAction,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -706,6 +706,137 @@ fn make_stdio_option(setting: &str) -> Result<StdIoOption, ParsingErrorReason> {
     }
 }
 
+/// Parse a resource limit value in the format used by all LimitXXX= directives.
+/// Accepts a single value, a "soft:hard" pair, or "infinity". Byte-suffix values
+/// (K, M, G, T, P, E) are supported for byte-oriented limits when `byte_limit`
+/// is true. Returns None if the input vector is None or empty-string (reset).
+fn parse_resource_limit(
+    name: &str,
+    vec: Option<Vec<(u32, String)>>,
+    byte_limit: bool,
+) -> Result<Option<ResourceLimit>, ParsingErrorReason> {
+    let vec = match vec {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    if vec.len() != 1 {
+        return Err(ParsingErrorReason::SettingTooManyValues(
+            name.to_owned(),
+            super::map_tuples_to_second(vec),
+        ));
+    }
+    let val = vec[0].1.trim();
+    if val.is_empty() {
+        return Ok(None);
+    }
+    if val.eq_ignore_ascii_case("infinity") {
+        return Ok(Some(ResourceLimit {
+            soft: RLimitValue::Infinity,
+            hard: RLimitValue::Infinity,
+        }));
+    }
+    if let Some((soft_str, hard_str)) = val.split_once(':') {
+        let soft = parse_rlimit_value(name, soft_str.trim(), byte_limit)?;
+        let hard = parse_rlimit_value(name, hard_str.trim(), byte_limit)?;
+        Ok(Some(ResourceLimit { soft, hard }))
+    } else {
+        let v = parse_rlimit_value(name, val, byte_limit)?;
+        Ok(Some(ResourceLimit { soft: v, hard: v }))
+    }
+}
+
+/// Parse a single rlimit value: a number (with optional byte suffix if
+/// `byte_limit` is true) or "infinity".
+fn parse_rlimit_value(
+    name: &str,
+    s: &str,
+    byte_limit: bool,
+) -> Result<RLimitValue, ParsingErrorReason> {
+    if s.eq_ignore_ascii_case("infinity") {
+        return Ok(RLimitValue::Infinity);
+    }
+    if byte_limit {
+        // Try to parse with optional K/M/G/T/P/E suffix
+        let (num_str, multiplier) =
+            if let Some(prefix) = s.strip_suffix('E').or_else(|| s.strip_suffix('e')) {
+                (prefix, 1024u64 * 1024 * 1024 * 1024 * 1024 * 1024)
+            } else if let Some(prefix) = s.strip_suffix('P').or_else(|| s.strip_suffix('p')) {
+                (prefix, 1024u64 * 1024 * 1024 * 1024 * 1024)
+            } else if let Some(prefix) = s.strip_suffix('T').or_else(|| s.strip_suffix('t')) {
+                (prefix, 1024u64 * 1024 * 1024 * 1024)
+            } else if let Some(prefix) = s.strip_suffix('G').or_else(|| s.strip_suffix('g')) {
+                (prefix, 1024u64 * 1024 * 1024)
+            } else if let Some(prefix) = s.strip_suffix('M').or_else(|| s.strip_suffix('m')) {
+                (prefix, 1024u64 * 1024)
+            } else if let Some(prefix) = s.strip_suffix('K').or_else(|| s.strip_suffix('k')) {
+                (prefix, 1024u64)
+            } else {
+                (s, 1u64)
+            };
+        let num: u64 = num_str
+            .parse()
+            .map_err(|_| ParsingErrorReason::Generic(format!("{name} value is not valid: {s}")))?;
+        Ok(RLimitValue::Value(num.saturating_mul(multiplier)))
+    } else {
+        let num: u64 = s
+            .parse()
+            .map_err(|_| ParsingErrorReason::Generic(format!("{name} value is not valid: {s}")))?;
+        Ok(RLimitValue::Value(num))
+    }
+}
+
+/// Parse a space-separated list that accumulates across multiple directives.
+/// An empty assignment resets the list.
+fn parse_space_separated_list(vec: Option<Vec<(u32, String)>>) -> Vec<String> {
+    match vec {
+        Some(vec) => {
+            let mut entries = Vec::new();
+            for (_idx, line) in &vec {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    entries.clear();
+                    continue;
+                }
+                for token in trimmed.split_whitespace() {
+                    entries.push(token.to_owned());
+                }
+            }
+            entries
+        }
+        None => Vec::new(),
+    }
+}
+
+/// Parse an octal mode value (e.g. "0755") used by directory mode directives.
+fn parse_octal_mode(
+    name: &str,
+    vec: Option<Vec<(u32, String)>>,
+) -> Result<Option<u32>, ParsingErrorReason> {
+    let vec = match vec {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    if vec.len() != 1 {
+        return Err(ParsingErrorReason::SettingTooManyValues(
+            name.to_owned(),
+            super::map_tuples_to_second(vec),
+        ));
+    }
+    let trimmed = vec[0].1.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let val = u32::from_str_radix(trimmed, 8).map_err(|_| {
+        ParsingErrorReason::Generic(format!("{name} is not a valid octal mode: {trimmed}"))
+    })?;
+    if val > 0o7777 {
+        return Err(ParsingErrorReason::Generic(format!(
+            "{name} value out of range (must be a valid octal mode, max 7777): {trimmed}"
+        )));
+    }
+    Ok(Some(val))
+}
+
 pub fn parse_exec_section(
     section: &mut ParsedSection,
 ) -> Result<ParsedExecSection, ParsingErrorReason> {
@@ -774,6 +905,40 @@ pub fn parse_exec_section(
     let nice = section.remove("NICE");
     let remove_ipc = section.remove("REMOVEIPC");
     let pam_name = section.remove("PAMNAME");
+
+    // ── Resource limits (LimitXXX=) ──────────────────────────────────
+    let limit_core = section.remove("LIMITCORE");
+    let limit_fsize = section.remove("LIMITFSIZE");
+    let limit_data = section.remove("LIMITDATA");
+    let limit_stack = section.remove("LIMITSTACK");
+    let limit_rss = section.remove("LIMITRSS");
+    let limit_nproc = section.remove("LIMITNPROC");
+    let limit_memlock = section.remove("LIMITMEMLOCK");
+    let limit_as = section.remove("LIMITAS");
+    let limit_locks = section.remove("LIMITLOCKS");
+    let limit_sigpending = section.remove("LIMITSIGPENDING");
+    let limit_msgqueue = section.remove("LIMITMSGQUEUE");
+    let limit_nice = section.remove("LIMITNICE");
+    let limit_rtprio = section.remove("LIMITRTPRIO");
+    let limit_rttime = section.remove("LIMITRTTIME");
+
+    // ── Directory management ─────────────────────────────────────────
+    let cache_directory = section.remove("CACHEDIRECTORY");
+    let cache_directory_mode = section.remove("CACHEDIRECTORYMODE");
+    let configuration_directory = section.remove("CONFIGURATIONDIRECTORY");
+    let configuration_directory_mode = section.remove("CONFIGURATIONDIRECTORYMODE");
+    let state_directory_mode = section.remove("STATEDIRECTORYMODE");
+    let runtime_directory_mode = section.remove("RUNTIMEDIRECTORYMODE");
+
+    // ── Path-based mount namespace directives ────────────────────────
+    let read_only_paths = section.remove("READONLYPATHS");
+    let inaccessible_paths = section.remove("INACCESSIBLEPATHS");
+    let bind_paths = section.remove("BINDPATHS");
+    let bind_read_only_paths = section.remove("BINDREADONLYPATHS");
+    let temporary_file_system = section.remove("TEMPORARYFILESYSTEM");
+
+    // ── Logging directives ───────────────────────────────────────────
+    let syslog_identifier = section.remove("SYSLOGIDENTIFIER");
 
     let user = match user {
         None => None,
@@ -2184,6 +2349,65 @@ pub fn parse_exec_section(
                 }
             }
         },
+
+        // ── Resource limits (LimitXXX=) ──────────────────────────────
+        // Byte-oriented limits accept K/M/G/T/P/E suffixes; non-byte limits
+        // accept plain integers only.
+        limit_core: parse_resource_limit("LimitCORE", limit_core, true)?,
+        limit_fsize: parse_resource_limit("LimitFSIZE", limit_fsize, true)?,
+        limit_data: parse_resource_limit("LimitDATA", limit_data, true)?,
+        limit_stack: parse_resource_limit("LimitSTACK", limit_stack, true)?,
+        limit_rss: parse_resource_limit("LimitRSS", limit_rss, true)?,
+        limit_nproc: parse_resource_limit("LimitNPROC", limit_nproc, false)?,
+        limit_memlock: parse_resource_limit("LimitMEMLOCK", limit_memlock, true)?,
+        limit_as: parse_resource_limit("LimitAS", limit_as, true)?,
+        limit_locks: parse_resource_limit("LimitLOCKS", limit_locks, false)?,
+        limit_sigpending: parse_resource_limit("LimitSIGPENDING", limit_sigpending, false)?,
+        limit_msgqueue: parse_resource_limit("LimitMSGQUEUE", limit_msgqueue, true)?,
+        limit_nice: parse_resource_limit("LimitNICE", limit_nice, false)?,
+        limit_rtprio: parse_resource_limit("LimitRTPRIO", limit_rtprio, false)?,
+        limit_rttime: parse_resource_limit("LimitRTTIME", limit_rttime, false)?,
+
+        // ── Directory management ─────────────────────────────────────
+        cache_directory: parse_space_separated_list(cache_directory),
+        cache_directory_mode: parse_octal_mode("CacheDirectoryMode", cache_directory_mode)?,
+        configuration_directory: parse_space_separated_list(configuration_directory),
+        configuration_directory_mode: parse_octal_mode(
+            "ConfigurationDirectoryMode",
+            configuration_directory_mode,
+        )?,
+        state_directory_mode: parse_octal_mode("StateDirectoryMode", state_directory_mode)?,
+        runtime_directory_mode: parse_octal_mode("RuntimeDirectoryMode", runtime_directory_mode)?,
+
+        // ── Path-based mount namespace directives ────────────────────
+        read_only_paths: parse_space_separated_list(read_only_paths),
+        inaccessible_paths: parse_space_separated_list(inaccessible_paths),
+        bind_paths: parse_space_separated_list(bind_paths),
+        bind_read_only_paths: parse_space_separated_list(bind_read_only_paths),
+        temporary_file_system: parse_space_separated_list(temporary_file_system),
+
+        // ── Logging directives ───────────────────────────────────────
+        syslog_identifier: match syslog_identifier {
+            None => None,
+            Some(mut vec) => {
+                if vec.len() == 1 {
+                    let val = vec.remove(0).1;
+                    let trimmed = val.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_owned())
+                    }
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "SyslogIdentifier".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
+        },
     })
 }
 
@@ -2262,4 +2486,324 @@ pub fn parse_section(lines: &[&str]) -> ParsedSection {
     }
 
     entries
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::units::{RLimitValue, ResourceLimit};
+
+    // ── Helper to build the Option<Vec<(u32, String)>> input ──────────
+    fn single_val(s: &str) -> Option<Vec<(u32, String)>> {
+        Some(vec![(0, s.to_owned())])
+    }
+
+    fn multi_val(vals: &[&str]) -> Option<Vec<(u32, String)>> {
+        Some(
+            vals.iter()
+                .enumerate()
+                .map(|(i, s)| (i as u32, s.to_string()))
+                .collect(),
+        )
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // parse_rlimit_value
+    // ════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn rlimit_value_plain_number() {
+        let v = parse_rlimit_value("Test", "1024", false).unwrap();
+        assert_eq!(v, RLimitValue::Value(1024));
+    }
+
+    #[test]
+    fn rlimit_value_infinity() {
+        let v = parse_rlimit_value("Test", "infinity", false).unwrap();
+        assert_eq!(v, RLimitValue::Infinity);
+    }
+
+    #[test]
+    fn rlimit_value_infinity_case_insensitive() {
+        let v = parse_rlimit_value("Test", "INFINITY", false).unwrap();
+        assert_eq!(v, RLimitValue::Infinity);
+    }
+
+    #[test]
+    fn rlimit_value_byte_suffix_k() {
+        let v = parse_rlimit_value("Test", "4K", true).unwrap();
+        assert_eq!(v, RLimitValue::Value(4 * 1024));
+    }
+
+    #[test]
+    fn rlimit_value_byte_suffix_k_lower() {
+        let v = parse_rlimit_value("Test", "4k", true).unwrap();
+        assert_eq!(v, RLimitValue::Value(4 * 1024));
+    }
+
+    #[test]
+    fn rlimit_value_byte_suffix_m() {
+        let v = parse_rlimit_value("Test", "8M", true).unwrap();
+        assert_eq!(v, RLimitValue::Value(8 * 1024 * 1024));
+    }
+
+    #[test]
+    fn rlimit_value_byte_suffix_g() {
+        let v = parse_rlimit_value("Test", "2G", true).unwrap();
+        assert_eq!(v, RLimitValue::Value(2 * 1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn rlimit_value_byte_suffix_t() {
+        let v = parse_rlimit_value("Test", "1T", true).unwrap();
+        assert_eq!(v, RLimitValue::Value(1024u64 * 1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn rlimit_value_byte_suffix_p() {
+        let v = parse_rlimit_value("Test", "1P", true).unwrap();
+        assert_eq!(v, RLimitValue::Value(1024u64 * 1024 * 1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn rlimit_value_byte_suffix_e() {
+        let v = parse_rlimit_value("Test", "1E", true).unwrap();
+        assert_eq!(
+            v,
+            RLimitValue::Value(1024u64 * 1024 * 1024 * 1024 * 1024 * 1024)
+        );
+    }
+
+    #[test]
+    fn rlimit_value_plain_number_with_byte_flag() {
+        // No suffix should still work when byte_limit=true
+        let v = parse_rlimit_value("Test", "65536", true).unwrap();
+        assert_eq!(v, RLimitValue::Value(65536));
+    }
+
+    #[test]
+    fn rlimit_value_suffix_ignored_when_not_byte_limit() {
+        // When byte_limit=false, suffixes are not stripped — "4K" is invalid
+        assert!(parse_rlimit_value("Test", "4K", false).is_err());
+    }
+
+    #[test]
+    fn rlimit_value_invalid_string() {
+        assert!(parse_rlimit_value("Test", "abc", false).is_err());
+    }
+
+    #[test]
+    fn rlimit_value_empty_string() {
+        assert!(parse_rlimit_value("Test", "", false).is_err());
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // parse_resource_limit
+    // ════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn resource_limit_none_input() {
+        let r = parse_resource_limit("LimitCORE", None, true).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn resource_limit_empty_string_resets() {
+        let r = parse_resource_limit("LimitCORE", single_val(""), true).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn resource_limit_infinity() {
+        let r = parse_resource_limit("LimitCORE", single_val("infinity"), true).unwrap();
+        assert_eq!(
+            r,
+            Some(ResourceLimit {
+                soft: RLimitValue::Infinity,
+                hard: RLimitValue::Infinity,
+            })
+        );
+    }
+
+    #[test]
+    fn resource_limit_single_value() {
+        let r = parse_resource_limit("LimitNPROC", single_val("4096"), false).unwrap();
+        assert_eq!(
+            r,
+            Some(ResourceLimit {
+                soft: RLimitValue::Value(4096),
+                hard: RLimitValue::Value(4096),
+            })
+        );
+    }
+
+    #[test]
+    fn resource_limit_soft_hard_pair() {
+        let r = parse_resource_limit("LimitNOFILE", single_val("1024:65536"), false).unwrap();
+        assert_eq!(
+            r,
+            Some(ResourceLimit {
+                soft: RLimitValue::Value(1024),
+                hard: RLimitValue::Value(65536),
+            })
+        );
+    }
+
+    #[test]
+    fn resource_limit_soft_hard_with_infinity() {
+        let r = parse_resource_limit("LimitNOFILE", single_val("1024:infinity"), false).unwrap();
+        assert_eq!(
+            r,
+            Some(ResourceLimit {
+                soft: RLimitValue::Value(1024),
+                hard: RLimitValue::Infinity,
+            })
+        );
+    }
+
+    #[test]
+    fn resource_limit_byte_suffix_in_pair() {
+        let r = parse_resource_limit("LimitFSIZE", single_val("1M:2G"), true).unwrap();
+        assert_eq!(
+            r,
+            Some(ResourceLimit {
+                soft: RLimitValue::Value(1024 * 1024),
+                hard: RLimitValue::Value(2 * 1024 * 1024 * 1024),
+            })
+        );
+    }
+
+    #[test]
+    fn resource_limit_too_many_values_errors() {
+        let input = multi_val(&["100", "200"]);
+        assert!(parse_resource_limit("LimitCORE", input, true).is_err());
+    }
+
+    #[test]
+    fn resource_limit_whitespace_trimmed() {
+        let r = parse_resource_limit("LimitCORE", single_val("  infinity  "), true).unwrap();
+        assert_eq!(
+            r,
+            Some(ResourceLimit {
+                soft: RLimitValue::Infinity,
+                hard: RLimitValue::Infinity,
+            })
+        );
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // parse_space_separated_list
+    // ════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn space_list_none_returns_empty() {
+        let r = parse_space_separated_list(None);
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn space_list_single_entry() {
+        let r = parse_space_separated_list(single_val("/foo"));
+        assert_eq!(r, vec!["/foo"]);
+    }
+
+    #[test]
+    fn space_list_multiple_tokens_in_one_line() {
+        let r = parse_space_separated_list(single_val("/foo /bar /baz"));
+        assert_eq!(r, vec!["/foo", "/bar", "/baz"]);
+    }
+
+    #[test]
+    fn space_list_accumulates_across_lines() {
+        let r = parse_space_separated_list(multi_val(&["/foo", "/bar /baz"]));
+        assert_eq!(r, vec!["/foo", "/bar", "/baz"]);
+    }
+
+    #[test]
+    fn space_list_empty_resets() {
+        // An empty line resets, then new entries accumulate
+        let r = parse_space_separated_list(multi_val(&["/old", "", "/new"]));
+        assert_eq!(r, vec!["/new"]);
+    }
+
+    #[test]
+    fn space_list_empty_at_end_clears_all() {
+        let r = parse_space_separated_list(multi_val(&["/old", ""]));
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn space_list_whitespace_only_resets() {
+        let r = parse_space_separated_list(multi_val(&["/old", "   ", "/new"]));
+        assert_eq!(r, vec!["/new"]);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // parse_octal_mode
+    // ════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn octal_mode_none_returns_none() {
+        let r = parse_octal_mode("TestMode", None).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn octal_mode_empty_string_returns_none() {
+        let r = parse_octal_mode("TestMode", single_val("")).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn octal_mode_0755() {
+        let r = parse_octal_mode("TestMode", single_val("0755")).unwrap();
+        assert_eq!(r, Some(0o755));
+    }
+
+    #[test]
+    fn octal_mode_0700() {
+        let r = parse_octal_mode("TestMode", single_val("0700")).unwrap();
+        assert_eq!(r, Some(0o700));
+    }
+
+    #[test]
+    fn octal_mode_755_without_leading_zero() {
+        let r = parse_octal_mode("TestMode", single_val("755")).unwrap();
+        assert_eq!(r, Some(0o755));
+    }
+
+    #[test]
+    fn octal_mode_max_7777() {
+        let r = parse_octal_mode("TestMode", single_val("7777")).unwrap();
+        assert_eq!(r, Some(0o7777));
+    }
+
+    #[test]
+    fn octal_mode_out_of_range_errors() {
+        // 10000 octal = 4096 decimal > 0o7777 = 4095
+        assert!(parse_octal_mode("TestMode", single_val("10000")).is_err());
+    }
+
+    #[test]
+    fn octal_mode_invalid_digit_errors() {
+        // '9' is not a valid octal digit
+        assert!(parse_octal_mode("TestMode", single_val("0789")).is_err());
+    }
+
+    #[test]
+    fn octal_mode_non_numeric_errors() {
+        assert!(parse_octal_mode("TestMode", single_val("rwxr-xr-x")).is_err());
+    }
+
+    #[test]
+    fn octal_mode_too_many_values_errors() {
+        let input = multi_val(&["0755", "0700"]);
+        assert!(parse_octal_mode("TestMode", input).is_err());
+    }
+
+    #[test]
+    fn octal_mode_whitespace_trimmed() {
+        let r = parse_octal_mode("TestMode", single_val("  0755  ")).unwrap();
+        assert_eq!(r, Some(0o755));
+    }
 }

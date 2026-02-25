@@ -4,7 +4,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ## Current Status
 
-**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~7 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **4,982 unit tests passing** across 67 crates.
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~7 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **5,027 unit tests passing** across 68 crates.
 
 | Phase | Status |
 |-------|--------|
@@ -17,13 +17,13 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### Unit File Directive Coverage
 
-227 of 425 upstream systemd directives supported (53%). Per-section breakdown:
+253 of 425 upstream systemd directives supported (60%). Per-section breakdown:
 
 | Section | Supported | Partial | Unsupported | Total | Coverage |
 |---------|-----------|---------|-------------|-------|----------|
 | systemd.unit | 45 | 0 | 43 | 88 | 51% |
 | systemd.service | 25 | 0 | 9 | 34 | 74% |
-| systemd.exec | 74 | 2 | 71 | 147 | 51% |
+| systemd.exec | 100 | 2 | 45 | 147 | 68% |
 | systemd.socket | 27 | 0 | 33 | 60 | 45% |
 | systemd.resource-control | 28 | 0 | 20 | 48 | 58% |
 | sd_notify | 7 | 1 | 7 | 15 | 47% |

@@ -386,6 +386,40 @@ fn start_service_with_filedescriptors(
             crate::units::ProcSubset::All => "all".to_owned(),
             crate::units::ProcSubset::Pid => "pid".to_owned(),
         },
+
+        // Resource limits
+        limit_core: conf.exec_config.limit_core,
+        limit_fsize: conf.exec_config.limit_fsize,
+        limit_data: conf.exec_config.limit_data,
+        limit_stack: conf.exec_config.limit_stack,
+        limit_rss: conf.exec_config.limit_rss,
+        limit_nproc: conf.exec_config.limit_nproc,
+        limit_memlock: conf.exec_config.limit_memlock,
+        limit_as: conf.exec_config.limit_as,
+        limit_locks: conf.exec_config.limit_locks,
+        limit_sigpending: conf.exec_config.limit_sigpending,
+        limit_msgqueue: conf.exec_config.limit_msgqueue,
+        limit_nice: conf.exec_config.limit_nice,
+        limit_rtprio: conf.exec_config.limit_rtprio,
+        limit_rttime: conf.exec_config.limit_rttime,
+
+        // Directory management
+        cache_directory: conf.exec_config.cache_directory.clone(),
+        cache_directory_mode: conf.exec_config.cache_directory_mode,
+        configuration_directory: conf.exec_config.configuration_directory.clone(),
+        configuration_directory_mode: conf.exec_config.configuration_directory_mode,
+        state_directory_mode: conf.exec_config.state_directory_mode,
+        runtime_directory_mode: conf.exec_config.runtime_directory_mode,
+
+        // Path-based mount namespace directives
+        read_only_paths: conf.exec_config.read_only_paths.clone(),
+        inaccessible_paths: conf.exec_config.inaccessible_paths.clone(),
+        bind_paths: conf.exec_config.bind_paths.clone(),
+        bind_read_only_paths: conf.exec_config.bind_read_only_paths.clone(),
+        temporary_file_system: conf.exec_config.temporary_file_system.clone(),
+
+        // Logging directives
+        syslog_identifier: conf.exec_config.syslog_identifier.clone(),
     };
 
     let marshalled_config = serde_json::to_string(&exec_helper_conf).unwrap();
