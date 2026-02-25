@@ -265,6 +265,11 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Mutex to serialize tests that manipulate the NOTIFY_SOCKET env var,
+    /// since env vars are per-process global state and tests run in parallel.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_check_booted() {
@@ -274,6 +279,7 @@ mod tests {
 
     #[test]
     fn test_resolve_notify_socket_missing() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         // Remove the env var if present (in test context)
         unsafe { std::env::remove_var("NOTIFY_SOCKET") };
         assert!(resolve_notify_socket().is_err());
@@ -281,6 +287,7 @@ mod tests {
 
     #[test]
     fn test_resolve_notify_socket_present() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         unsafe { std::env::set_var("NOTIFY_SOCKET", "/run/systemd/notify") };
         assert_eq!(resolve_notify_socket().unwrap(), "/run/systemd/notify");
         unsafe { std::env::remove_var("NOTIFY_SOCKET") };

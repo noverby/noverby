@@ -1307,6 +1307,59 @@ pub fn parse_exec_section(
 
     // ── Logging directives ───────────────────────────────────────────
     let syslog_identifier = section.remove("SYSLOGIDENTIFIER");
+    let syslog_facility = section.remove("SYSLOGFACILITY");
+    let syslog_level = section.remove("SYSLOGLEVEL");
+    let syslog_level_prefix = section.remove("SYSLOGLEVELPREFIX");
+    let log_level_max = section.remove("LOGLEVELMAX");
+    let log_rate_limit_interval_sec = section.remove("LOGRATELIMITINTERVALSEC");
+    let log_rate_limit_burst = section.remove("LOGRATELIMITBURST");
+    let log_filter_patterns = section.remove("LOGFILTERPATTERNS");
+    let log_namespace = section.remove("LOGNAMESPACE");
+
+    // ── CPU scheduling directives ────────────────────────────────────
+    let cpu_scheduling_policy = section.remove("CPUSCHEDULINGPOLICY");
+    let cpu_scheduling_priority = section.remove("CPUSCHEDULINGPRIORITY");
+    let cpu_scheduling_reset_on_fork = section.remove("CPUSCHEDULINGRESETONFORK");
+    let cpu_affinity = section.remove("CPUAFFINITY");
+    let numa_policy = section.remove("NUMAPOLICY");
+    let numa_mask = section.remove("NUMAMASK");
+
+    // ── Root filesystem / image directives ───────────────────────────
+    let root_directory = section.remove("ROOTDIRECTORY");
+    let root_image = section.remove("ROOTIMAGE");
+    let root_image_options = section.remove("ROOTIMAGEOPTIONS");
+    let root_hash = section.remove("ROOTHASH");
+    let root_hash_signature = section.remove("ROOTHASHSIGNATURE");
+    let root_verity = section.remove("ROOTVERITY");
+    let root_ephemeral = section.remove("ROOTEPHEMERAL");
+    let mount_api_vfs = section.remove("MOUNTAPIVFS");
+    let extension_directories = section.remove("EXTENSIONDIRECTORIES");
+    let extension_images = section.remove("EXTENSIONIMAGES");
+    let mount_images = section.remove("MOUNTIMAGES");
+    let bind_log_sockets = section.remove("BINDLOGSOCKETS");
+
+    // ── Additional namespace directives ──────────────────────────────
+    let private_ipc = section.remove("PRIVATEIPC");
+    let private_pids = section.remove("PRIVATEPIDS");
+    let ipc_namespace_path = section.remove("IPCNAMESPACEPATH");
+    let network_namespace_path = section.remove("NETWORKNAMESPACEPATH");
+
+    // ── Security directives ──────────────────────────────────────────
+    let secure_bits = section.remove("SECUREBITS");
+    let personality = section.remove("PERSONALITY");
+    let selinux_context = section.remove("SELINUXCONTEXT");
+    let apparmor_profile = section.remove("APPARMORPROFILE");
+    let smack_process_label = section.remove("SMACKPROCESSLABEL");
+    let keyring_mode = section.remove("KEYRINGMODE");
+    let no_exec_paths = section.remove("NOEXECPATHS");
+    let exec_paths = section.remove("EXECPATHS");
+    let coredump_filter = section.remove("COREDUMPFILTER");
+
+    // ── Misc directives ─────────────────────────────────────────────
+    let timer_slack_nsec = section.remove("TIMERSLACKNSEC");
+    let standard_input_text = section.remove("STANDARDINPUTTEXT");
+    let standard_input_data = section.remove("STANDARDINPUTDATA");
+    let set_login_environment = section.remove("SETLOGINENVIRONMENT");
 
     let user = match user {
         None => None,
@@ -2776,7 +2829,179 @@ pub fn parse_exec_section(
                 }
             }
         },
+        syslog_facility: parse_optional_single_string("SyslogFacility", syslog_facility)?,
+        syslog_level: parse_optional_single_string("SyslogLevel", syslog_level)?,
+        syslog_level_prefix: parse_optional_bool("SyslogLevelPrefix", syslog_level_prefix)?,
+        log_level_max: parse_optional_single_string("LogLevelMax", log_level_max)?,
+        log_rate_limit_interval_sec: parse_optional_single_string(
+            "LogRateLimitIntervalSec",
+            log_rate_limit_interval_sec,
+        )?,
+        log_rate_limit_burst: match log_rate_limit_burst {
+            None => None,
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let trimmed = vec[0].1.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.parse::<u32>().map_err(|_| {
+                            ParsingErrorReason::Generic(format!(
+                                "LogRateLimitBurst is not valid: {trimmed}"
+                            ))
+                        })?)
+                    }
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "LogRateLimitBurst".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
+        },
+        log_filter_patterns: parse_space_separated_list(log_filter_patterns),
+        log_namespace: parse_optional_single_string("LogNamespace", log_namespace)?,
+
+        // ── CPU scheduling directives ────────────────────────────────
+        cpu_scheduling_policy: parse_optional_single_string(
+            "CPUSchedulingPolicy",
+            cpu_scheduling_policy,
+        )?,
+        cpu_scheduling_priority: match cpu_scheduling_priority {
+            None => None,
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let trimmed = vec[0].1.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.parse::<u32>().map_err(|_| {
+                            ParsingErrorReason::Generic(format!(
+                                "CPUSchedulingPriority is not valid: {trimmed}"
+                            ))
+                        })?)
+                    }
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "CPUSchedulingPriority".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
+        },
+        cpu_scheduling_reset_on_fork: parse_optional_bool(
+            "CPUSchedulingResetOnFork",
+            cpu_scheduling_reset_on_fork,
+        )?,
+        cpu_affinity: parse_space_separated_list(cpu_affinity),
+        numa_policy: parse_optional_single_string("NUMAPolicy", numa_policy)?,
+        numa_mask: parse_optional_single_string("NUMAMask", numa_mask)?,
+
+        // ── Root filesystem / image directives ───────────────────────
+        root_directory: parse_optional_single_string("RootDirectory", root_directory)?,
+        root_image: parse_optional_single_string("RootImage", root_image)?,
+        root_image_options: parse_space_separated_list(root_image_options),
+        root_hash: parse_optional_single_string("RootHash", root_hash)?,
+        root_hash_signature: parse_optional_single_string(
+            "RootHashSignature",
+            root_hash_signature,
+        )?,
+        root_verity: parse_optional_single_string("RootVerity", root_verity)?,
+        root_ephemeral: parse_optional_bool("RootEphemeral", root_ephemeral)?,
+        mount_api_vfs: parse_optional_bool("MountAPIVFS", mount_api_vfs)?,
+        extension_directories: parse_space_separated_list(extension_directories),
+        extension_images: parse_space_separated_list(extension_images),
+        mount_images: parse_space_separated_list(mount_images),
+        bind_log_sockets: parse_optional_bool("BindLogSockets", bind_log_sockets)?,
+
+        // ── Additional namespace directives ──────────────────────────
+        private_ipc: parse_optional_bool("PrivateIPC", private_ipc)?,
+        private_pids: parse_optional_bool("PrivatePIDs", private_pids)?,
+        ipc_namespace_path: parse_optional_single_string("IPCNamespacePath", ipc_namespace_path)?,
+        network_namespace_path: parse_optional_single_string(
+            "NetworkNamespacePath",
+            network_namespace_path,
+        )?,
+
+        // ── Security directives ──────────────────────────────────────
+        secure_bits: parse_space_separated_list(secure_bits),
+        personality: parse_optional_single_string("Personality", personality)?,
+        selinux_context: parse_optional_single_string("SELinuxContext", selinux_context)?,
+        apparmor_profile: parse_optional_single_string("AppArmorProfile", apparmor_profile)?,
+        smack_process_label: parse_optional_single_string(
+            "SmackProcessLabel",
+            smack_process_label,
+        )?,
+        keyring_mode: parse_optional_single_string("KeyringMode", keyring_mode)?,
+        no_exec_paths: parse_space_separated_list(no_exec_paths),
+        exec_paths: parse_space_separated_list(exec_paths),
+        coredump_filter: parse_optional_single_string("CoredumpFilter", coredump_filter)?,
+
+        // ── Misc directives ─────────────────────────────────────────
+        timer_slack_nsec: parse_optional_single_string("TimerSlackNSec", timer_slack_nsec)?,
+        standard_input_text: parse_space_separated_list(standard_input_text),
+        standard_input_data: parse_space_separated_list(standard_input_data),
+        set_login_environment: parse_optional_bool("SetLoginEnvironment", set_login_environment)?,
     })
+}
+
+/// Parse a single optional string value from a directive that allows exactly one value.
+fn parse_optional_single_string(
+    name: &str,
+    vec: Option<Vec<(u32, String)>>,
+) -> Result<Option<String>, ParsingErrorReason> {
+    match vec {
+        None => Ok(None),
+        Some(mut v) => {
+            if v.len() == 1 {
+                let trimmed = v.remove(0).1;
+                let trimmed = trimmed.trim();
+                if trimmed.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(trimmed.to_owned()))
+                }
+            } else if v.len() > 1 {
+                Err(ParsingErrorReason::SettingTooManyValues(
+                    name.to_owned(),
+                    super::map_tuples_to_second(v),
+                ))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+/// Parse a single optional boolean value from a directive.
+fn parse_optional_bool(
+    name: &str,
+    vec: Option<Vec<(u32, String)>>,
+) -> Result<Option<bool>, ParsingErrorReason> {
+    match vec {
+        None => Ok(None),
+        Some(vec) => {
+            if vec.len() == 1 {
+                let trimmed = vec[0].1.trim().to_lowercase();
+                if trimmed.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(string_to_bool(&trimmed)))
+                }
+            } else if vec.len() > 1 {
+                Err(ParsingErrorReason::SettingTooManyValues(
+                    name.to_owned(),
+                    super::map_tuples_to_second(vec),
+                ))
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 pub fn parse_install_section(
@@ -3173,5 +3398,1007 @@ mod tests {
     fn octal_mode_whitespace_trimmed() {
         let r = parse_octal_mode("TestMode", single_val("  0755  ")).unwrap();
         assert_eq!(r, Some(0o755));
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // parse_optional_single_string
+    // ════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn optional_single_string_none() {
+        let r = parse_optional_single_string("Test", None).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn optional_single_string_empty() {
+        let r = parse_optional_single_string("Test", single_val("")).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn optional_single_string_value() {
+        let r = parse_optional_single_string("Test", single_val("hello")).unwrap();
+        assert_eq!(r, Some("hello".to_owned()));
+    }
+
+    #[test]
+    fn optional_single_string_whitespace_trimmed() {
+        let r = parse_optional_single_string("Test", single_val("  hello  ")).unwrap();
+        assert_eq!(r, Some("hello".to_owned()));
+    }
+
+    #[test]
+    fn optional_single_string_too_many_values() {
+        assert!(parse_optional_single_string("Test", multi_val(&["a", "b"])).is_err());
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // parse_optional_bool
+    // ════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn optional_bool_none() {
+        let r = parse_optional_bool("Test", None).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn optional_bool_empty() {
+        let r = parse_optional_bool("Test", single_val("")).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn optional_bool_true_variants() {
+        // string_to_bool recognizes: "yes", "true", "1" (case-insensitive)
+        for val in &["true", "yes", "1", "True", "YES"] {
+            let r = parse_optional_bool("Test", single_val(val)).unwrap();
+            assert_eq!(r, Some(true), "expected true for '{val}'");
+        }
+    }
+
+    #[test]
+    fn optional_bool_false_variants() {
+        // string_to_bool returns false for anything not "yes"/"true"/"1"
+        for val in &["false", "no", "off", "0", "False", "NO"] {
+            let r = parse_optional_bool("Test", single_val(val)).unwrap();
+            assert_eq!(r, Some(false), "expected false for '{val}'");
+        }
+    }
+
+    #[test]
+    fn optional_bool_too_many_values() {
+        assert!(parse_optional_bool("Test", multi_val(&["true", "false"])).is_err());
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // New exec directives — integration tests via parse_exec_section
+    // ════════════════════════════════════════════════════════════════════
+
+    /// Helper: build a ParsedSection from key=value lines, calling
+    /// `parse_exec_section` on the result.
+    fn exec_from_lines(lines: &[&str]) -> ParsedExecSection {
+        let mut section = parse_section(lines);
+        parse_exec_section(&mut section).expect("parse_exec_section failed")
+    }
+
+    // ── Logging directives ───────────────────────────────────────────
+
+    #[test]
+    fn exec_syslog_facility_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.syslog_facility, None);
+    }
+
+    #[test]
+    fn exec_syslog_facility_daemon() {
+        let s = exec_from_lines(&["SyslogFacility=daemon"]);
+        assert_eq!(s.syslog_facility, Some("daemon".to_owned()));
+    }
+
+    #[test]
+    fn exec_syslog_facility_local0() {
+        let s = exec_from_lines(&["SyslogFacility=local0"]);
+        assert_eq!(s.syslog_facility, Some("local0".to_owned()));
+    }
+
+    #[test]
+    fn exec_syslog_level_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.syslog_level, None);
+    }
+
+    #[test]
+    fn exec_syslog_level_debug() {
+        let s = exec_from_lines(&["SyslogLevel=debug"]);
+        assert_eq!(s.syslog_level, Some("debug".to_owned()));
+    }
+
+    #[test]
+    fn exec_syslog_level_err() {
+        let s = exec_from_lines(&["SyslogLevel=err"]);
+        assert_eq!(s.syslog_level, Some("err".to_owned()));
+    }
+
+    #[test]
+    fn exec_syslog_level_prefix_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.syslog_level_prefix, None);
+    }
+
+    #[test]
+    fn exec_syslog_level_prefix_true() {
+        let s = exec_from_lines(&["SyslogLevelPrefix=true"]);
+        assert_eq!(s.syslog_level_prefix, Some(true));
+    }
+
+    #[test]
+    fn exec_syslog_level_prefix_false() {
+        let s = exec_from_lines(&["SyslogLevelPrefix=false"]);
+        assert_eq!(s.syslog_level_prefix, Some(false));
+    }
+
+    #[test]
+    fn exec_log_level_max_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.log_level_max, None);
+    }
+
+    #[test]
+    fn exec_log_level_max_warning() {
+        let s = exec_from_lines(&["LogLevelMax=warning"]);
+        assert_eq!(s.log_level_max, Some("warning".to_owned()));
+    }
+
+    #[test]
+    fn exec_log_rate_limit_interval_sec_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.log_rate_limit_interval_sec, None);
+    }
+
+    #[test]
+    fn exec_log_rate_limit_interval_sec_value() {
+        let s = exec_from_lines(&["LogRateLimitIntervalSec=30s"]);
+        assert_eq!(s.log_rate_limit_interval_sec, Some("30s".to_owned()));
+    }
+
+    #[test]
+    fn exec_log_rate_limit_burst_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.log_rate_limit_burst, None);
+    }
+
+    #[test]
+    fn exec_log_rate_limit_burst_value() {
+        let s = exec_from_lines(&["LogRateLimitBurst=10000"]);
+        assert_eq!(s.log_rate_limit_burst, Some(10000));
+    }
+
+    #[test]
+    fn exec_log_rate_limit_burst_zero() {
+        let s = exec_from_lines(&["LogRateLimitBurst=0"]);
+        assert_eq!(s.log_rate_limit_burst, Some(0));
+    }
+
+    #[test]
+    fn exec_log_rate_limit_burst_invalid() {
+        let lines: &[&str] = &["LogRateLimitBurst=abc"];
+        let mut section = parse_section(lines);
+        assert!(parse_exec_section(&mut section).is_err());
+    }
+
+    #[test]
+    fn exec_log_filter_patterns_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.log_filter_patterns.is_empty());
+    }
+
+    #[test]
+    fn exec_log_filter_patterns_single() {
+        let s = exec_from_lines(&["LogFilterPatterns=~.*debug.*"]);
+        assert_eq!(s.log_filter_patterns, vec!["~.*debug.*"]);
+    }
+
+    #[test]
+    fn exec_log_filter_patterns_multiple() {
+        let s = exec_from_lines(&["LogFilterPatterns=~.*debug.* .*error.*"]);
+        assert_eq!(s.log_filter_patterns, vec!["~.*debug.*", ".*error.*"]);
+    }
+
+    #[test]
+    fn exec_log_namespace_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.log_namespace, None);
+    }
+
+    #[test]
+    fn exec_log_namespace_value() {
+        let s = exec_from_lines(&["LogNamespace=myapp"]);
+        assert_eq!(s.log_namespace, Some("myapp".to_owned()));
+    }
+
+    // ── CPU scheduling directives ────────────────────────────────────
+
+    #[test]
+    fn exec_cpu_scheduling_policy_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.cpu_scheduling_policy, None);
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_policy_fifo() {
+        let s = exec_from_lines(&["CPUSchedulingPolicy=fifo"]);
+        assert_eq!(s.cpu_scheduling_policy, Some("fifo".to_owned()));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_policy_rr() {
+        let s = exec_from_lines(&["CPUSchedulingPolicy=rr"]);
+        assert_eq!(s.cpu_scheduling_policy, Some("rr".to_owned()));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_policy_batch() {
+        let s = exec_from_lines(&["CPUSchedulingPolicy=batch"]);
+        assert_eq!(s.cpu_scheduling_policy, Some("batch".to_owned()));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_policy_idle() {
+        let s = exec_from_lines(&["CPUSchedulingPolicy=idle"]);
+        assert_eq!(s.cpu_scheduling_policy, Some("idle".to_owned()));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_policy_other() {
+        let s = exec_from_lines(&["CPUSchedulingPolicy=other"]);
+        assert_eq!(s.cpu_scheduling_policy, Some("other".to_owned()));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_priority_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.cpu_scheduling_priority, None);
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_priority_value() {
+        let s = exec_from_lines(&["CPUSchedulingPriority=50"]);
+        assert_eq!(s.cpu_scheduling_priority, Some(50));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_priority_max() {
+        let s = exec_from_lines(&["CPUSchedulingPriority=99"]);
+        assert_eq!(s.cpu_scheduling_priority, Some(99));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_priority_min() {
+        let s = exec_from_lines(&["CPUSchedulingPriority=1"]);
+        assert_eq!(s.cpu_scheduling_priority, Some(1));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_priority_invalid() {
+        let lines: &[&str] = &["CPUSchedulingPriority=abc"];
+        let mut section = parse_section(lines);
+        assert!(parse_exec_section(&mut section).is_err());
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_reset_on_fork_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.cpu_scheduling_reset_on_fork, None);
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_reset_on_fork_true() {
+        let s = exec_from_lines(&["CPUSchedulingResetOnFork=yes"]);
+        assert_eq!(s.cpu_scheduling_reset_on_fork, Some(true));
+    }
+
+    #[test]
+    fn exec_cpu_scheduling_reset_on_fork_false() {
+        let s = exec_from_lines(&["CPUSchedulingResetOnFork=no"]);
+        assert_eq!(s.cpu_scheduling_reset_on_fork, Some(false));
+    }
+
+    #[test]
+    fn exec_cpu_affinity_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.cpu_affinity.is_empty());
+    }
+
+    #[test]
+    fn exec_cpu_affinity_single() {
+        let s = exec_from_lines(&["CPUAffinity=0"]);
+        assert_eq!(s.cpu_affinity, vec!["0"]);
+    }
+
+    #[test]
+    fn exec_cpu_affinity_range() {
+        let s = exec_from_lines(&["CPUAffinity=0-3 8-11"]);
+        assert_eq!(s.cpu_affinity, vec!["0-3", "8-11"]);
+    }
+
+    #[test]
+    fn exec_cpu_affinity_multiple() {
+        let s = exec_from_lines(&["CPUAffinity=0 1 2 3"]);
+        assert_eq!(s.cpu_affinity, vec!["0", "1", "2", "3"]);
+    }
+
+    #[test]
+    fn exec_cpu_affinity_empty_resets() {
+        let s = exec_from_lines(&["CPUAffinity=0 1", "CPUAffinity="]);
+        assert!(s.cpu_affinity.is_empty());
+    }
+
+    #[test]
+    fn exec_numa_policy_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.numa_policy, None);
+    }
+
+    #[test]
+    fn exec_numa_policy_bind() {
+        let s = exec_from_lines(&["NUMAPolicy=bind"]);
+        assert_eq!(s.numa_policy, Some("bind".to_owned()));
+    }
+
+    #[test]
+    fn exec_numa_policy_interleave() {
+        let s = exec_from_lines(&["NUMAPolicy=interleave"]);
+        assert_eq!(s.numa_policy, Some("interleave".to_owned()));
+    }
+
+    #[test]
+    fn exec_numa_policy_local() {
+        let s = exec_from_lines(&["NUMAPolicy=local"]);
+        assert_eq!(s.numa_policy, Some("local".to_owned()));
+    }
+
+    #[test]
+    fn exec_numa_mask_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.numa_mask, None);
+    }
+
+    #[test]
+    fn exec_numa_mask_value() {
+        let s = exec_from_lines(&["NUMAMask=0-3"]);
+        assert_eq!(s.numa_mask, Some("0-3".to_owned()));
+    }
+
+    // ── Root filesystem / image directives ────────────────────────────
+
+    #[test]
+    fn exec_root_directory_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.root_directory, None);
+    }
+
+    #[test]
+    fn exec_root_directory_value() {
+        let s = exec_from_lines(&["RootDirectory=/srv/myapp"]);
+        assert_eq!(s.root_directory, Some("/srv/myapp".to_owned()));
+    }
+
+    #[test]
+    fn exec_root_image_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.root_image, None);
+    }
+
+    #[test]
+    fn exec_root_image_value() {
+        let s = exec_from_lines(&["RootImage=/var/lib/machines/image.raw"]);
+        assert_eq!(s.root_image, Some("/var/lib/machines/image.raw".to_owned()));
+    }
+
+    #[test]
+    fn exec_root_image_options_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.root_image_options.is_empty());
+    }
+
+    #[test]
+    fn exec_root_image_options_value() {
+        let s = exec_from_lines(&["RootImageOptions=root:ro,nodev"]);
+        assert_eq!(s.root_image_options, vec!["root:ro,nodev"]);
+    }
+
+    #[test]
+    fn exec_root_hash_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.root_hash, None);
+    }
+
+    #[test]
+    fn exec_root_hash_value() {
+        let s = exec_from_lines(&["RootHash=abc123def456"]);
+        assert_eq!(s.root_hash, Some("abc123def456".to_owned()));
+    }
+
+    #[test]
+    fn exec_root_hash_signature_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.root_hash_signature, None);
+    }
+
+    #[test]
+    fn exec_root_hash_signature_file() {
+        let s = exec_from_lines(&["RootHashSignature=/path/to/sig.p7s"]);
+        assert_eq!(s.root_hash_signature, Some("/path/to/sig.p7s".to_owned()));
+    }
+
+    #[test]
+    fn exec_root_hash_signature_inline() {
+        let s = exec_from_lines(&["RootHashSignature=base64:AAAA"]);
+        assert_eq!(s.root_hash_signature, Some("base64:AAAA".to_owned()));
+    }
+
+    #[test]
+    fn exec_root_verity_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.root_verity, None);
+    }
+
+    #[test]
+    fn exec_root_verity_value() {
+        let s = exec_from_lines(&["RootVerity=/path/to/verity"]);
+        assert_eq!(s.root_verity, Some("/path/to/verity".to_owned()));
+    }
+
+    #[test]
+    fn exec_root_ephemeral_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.root_ephemeral, None);
+    }
+
+    #[test]
+    fn exec_root_ephemeral_true() {
+        let s = exec_from_lines(&["RootEphemeral=yes"]);
+        assert_eq!(s.root_ephemeral, Some(true));
+    }
+
+    #[test]
+    fn exec_root_ephemeral_false() {
+        let s = exec_from_lines(&["RootEphemeral=no"]);
+        assert_eq!(s.root_ephemeral, Some(false));
+    }
+
+    #[test]
+    fn exec_mount_api_vfs_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.mount_api_vfs, None);
+    }
+
+    #[test]
+    fn exec_mount_api_vfs_true() {
+        let s = exec_from_lines(&["MountAPIVFS=yes"]);
+        assert_eq!(s.mount_api_vfs, Some(true));
+    }
+
+    #[test]
+    fn exec_extension_directories_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.extension_directories.is_empty());
+    }
+
+    #[test]
+    fn exec_extension_directories_value() {
+        let s = exec_from_lines(&["ExtensionDirectories=/run/extensions/myext"]);
+        assert_eq!(s.extension_directories, vec!["/run/extensions/myext"]);
+    }
+
+    #[test]
+    fn exec_extension_images_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.extension_images.is_empty());
+    }
+
+    #[test]
+    fn exec_extension_images_value() {
+        let s = exec_from_lines(&["ExtensionImages=/var/lib/extensions/ext.raw"]);
+        assert_eq!(s.extension_images, vec!["/var/lib/extensions/ext.raw"]);
+    }
+
+    #[test]
+    fn exec_mount_images_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.mount_images.is_empty());
+    }
+
+    #[test]
+    fn exec_mount_images_value() {
+        let s = exec_from_lines(&["MountImages=/image.raw:/mnt:ro,nodev"]);
+        assert_eq!(s.mount_images, vec!["/image.raw:/mnt:ro,nodev"]);
+    }
+
+    #[test]
+    fn exec_bind_log_sockets_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.bind_log_sockets, None);
+    }
+
+    #[test]
+    fn exec_bind_log_sockets_true() {
+        let s = exec_from_lines(&["BindLogSockets=yes"]);
+        assert_eq!(s.bind_log_sockets, Some(true));
+    }
+
+    // ── Additional namespace directives ──────────────────────────────
+
+    #[test]
+    fn exec_private_ipc_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.private_ipc, None);
+    }
+
+    #[test]
+    fn exec_private_ipc_true() {
+        let s = exec_from_lines(&["PrivateIPC=yes"]);
+        assert_eq!(s.private_ipc, Some(true));
+    }
+
+    #[test]
+    fn exec_private_ipc_false() {
+        let s = exec_from_lines(&["PrivateIPC=no"]);
+        assert_eq!(s.private_ipc, Some(false));
+    }
+
+    #[test]
+    fn exec_private_pids_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.private_pids, None);
+    }
+
+    #[test]
+    fn exec_private_pids_true() {
+        let s = exec_from_lines(&["PrivatePIDs=yes"]);
+        assert_eq!(s.private_pids, Some(true));
+    }
+
+    #[test]
+    fn exec_ipc_namespace_path_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.ipc_namespace_path, None);
+    }
+
+    #[test]
+    fn exec_ipc_namespace_path_value() {
+        let s = exec_from_lines(&["IPCNamespacePath=/proc/42/ns/ipc"]);
+        assert_eq!(s.ipc_namespace_path, Some("/proc/42/ns/ipc".to_owned()));
+    }
+
+    #[test]
+    fn exec_network_namespace_path_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.network_namespace_path, None);
+    }
+
+    #[test]
+    fn exec_network_namespace_path_value() {
+        let s = exec_from_lines(&["NetworkNamespacePath=/run/netns/mynet"]);
+        assert_eq!(
+            s.network_namespace_path,
+            Some("/run/netns/mynet".to_owned())
+        );
+    }
+
+    // ── Security directives ──────────────────────────────────────────
+
+    #[test]
+    fn exec_secure_bits_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.secure_bits.is_empty());
+    }
+
+    #[test]
+    fn exec_secure_bits_single() {
+        let s = exec_from_lines(&["SecureBits=keep-caps"]);
+        assert_eq!(s.secure_bits, vec!["keep-caps"]);
+    }
+
+    #[test]
+    fn exec_secure_bits_multiple() {
+        let s = exec_from_lines(&["SecureBits=keep-caps noroot no-setuid-fixup"]);
+        assert_eq!(
+            s.secure_bits,
+            vec!["keep-caps", "noroot", "no-setuid-fixup"]
+        );
+    }
+
+    #[test]
+    fn exec_personality_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.personality, None);
+    }
+
+    #[test]
+    fn exec_personality_x86() {
+        let s = exec_from_lines(&["Personality=x86"]);
+        assert_eq!(s.personality, Some("x86".to_owned()));
+    }
+
+    #[test]
+    fn exec_personality_x86_64() {
+        let s = exec_from_lines(&["Personality=x86-64"]);
+        assert_eq!(s.personality, Some("x86-64".to_owned()));
+    }
+
+    #[test]
+    fn exec_selinux_context_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.selinux_context, None);
+    }
+
+    #[test]
+    fn exec_selinux_context_value() {
+        let s = exec_from_lines(&["SELinuxContext=system_u:system_r:httpd_t:s0"]);
+        assert_eq!(
+            s.selinux_context,
+            Some("system_u:system_r:httpd_t:s0".to_owned())
+        );
+    }
+
+    #[test]
+    fn exec_selinux_context_optional_prefix() {
+        let s = exec_from_lines(&["SELinuxContext=-system_u:system_r:httpd_t:s0"]);
+        assert_eq!(
+            s.selinux_context,
+            Some("-system_u:system_r:httpd_t:s0".to_owned())
+        );
+    }
+
+    #[test]
+    fn exec_apparmor_profile_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.apparmor_profile, None);
+    }
+
+    #[test]
+    fn exec_apparmor_profile_value() {
+        let s = exec_from_lines(&["AppArmorProfile=usr.sbin.mysqld"]);
+        assert_eq!(s.apparmor_profile, Some("usr.sbin.mysqld".to_owned()));
+    }
+
+    #[test]
+    fn exec_apparmor_profile_optional_prefix() {
+        let s = exec_from_lines(&["AppArmorProfile=-usr.sbin.mysqld"]);
+        assert_eq!(s.apparmor_profile, Some("-usr.sbin.mysqld".to_owned()));
+    }
+
+    #[test]
+    fn exec_smack_process_label_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.smack_process_label, None);
+    }
+
+    #[test]
+    fn exec_smack_process_label_value() {
+        let s = exec_from_lines(&["SmackProcessLabel=MyLabel"]);
+        assert_eq!(s.smack_process_label, Some("MyLabel".to_owned()));
+    }
+
+    #[test]
+    fn exec_keyring_mode_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.keyring_mode, None);
+    }
+
+    #[test]
+    fn exec_keyring_mode_private() {
+        let s = exec_from_lines(&["KeyringMode=private"]);
+        assert_eq!(s.keyring_mode, Some("private".to_owned()));
+    }
+
+    #[test]
+    fn exec_keyring_mode_shared() {
+        let s = exec_from_lines(&["KeyringMode=shared"]);
+        assert_eq!(s.keyring_mode, Some("shared".to_owned()));
+    }
+
+    #[test]
+    fn exec_keyring_mode_inherit() {
+        let s = exec_from_lines(&["KeyringMode=inherit"]);
+        assert_eq!(s.keyring_mode, Some("inherit".to_owned()));
+    }
+
+    #[test]
+    fn exec_no_exec_paths_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.no_exec_paths.is_empty());
+    }
+
+    #[test]
+    fn exec_no_exec_paths_single() {
+        let s = exec_from_lines(&["NoExecPaths=/tmp"]);
+        assert_eq!(s.no_exec_paths, vec!["/tmp"]);
+    }
+
+    #[test]
+    fn exec_no_exec_paths_multiple() {
+        let s = exec_from_lines(&["NoExecPaths=/tmp /var/tmp /dev/shm"]);
+        assert_eq!(s.no_exec_paths, vec!["/tmp", "/var/tmp", "/dev/shm"]);
+    }
+
+    #[test]
+    fn exec_exec_paths_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.exec_paths.is_empty());
+    }
+
+    #[test]
+    fn exec_exec_paths_single() {
+        let s = exec_from_lines(&["ExecPaths=/usr/bin"]);
+        assert_eq!(s.exec_paths, vec!["/usr/bin"]);
+    }
+
+    #[test]
+    fn exec_exec_paths_multiple() {
+        let s = exec_from_lines(&["ExecPaths=/usr/bin /usr/sbin /bin"]);
+        assert_eq!(s.exec_paths, vec!["/usr/bin", "/usr/sbin", "/bin"]);
+    }
+
+    #[test]
+    fn exec_coredump_filter_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.coredump_filter, None);
+    }
+
+    #[test]
+    fn exec_coredump_filter_value() {
+        let s = exec_from_lines(&["CoredumpFilter=private-anonymous shared-anonymous"]);
+        assert_eq!(
+            s.coredump_filter,
+            Some("private-anonymous shared-anonymous".to_owned())
+        );
+    }
+
+    #[test]
+    fn exec_coredump_filter_hex() {
+        let s = exec_from_lines(&["CoredumpFilter=0x33"]);
+        assert_eq!(s.coredump_filter, Some("0x33".to_owned()));
+    }
+
+    // ── Misc directives ─────────────────────────────────────────────
+
+    #[test]
+    fn exec_timer_slack_nsec_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.timer_slack_nsec, None);
+    }
+
+    #[test]
+    fn exec_timer_slack_nsec_value() {
+        let s = exec_from_lines(&["TimerSlackNSec=50000"]);
+        assert_eq!(s.timer_slack_nsec, Some("50000".to_owned()));
+    }
+
+    #[test]
+    fn exec_standard_input_text_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.standard_input_text.is_empty());
+    }
+
+    #[test]
+    fn exec_standard_input_text_value() {
+        let s = exec_from_lines(&["StandardInputText=hello"]);
+        assert_eq!(s.standard_input_text, vec!["hello"]);
+    }
+
+    #[test]
+    fn exec_standard_input_data_default() {
+        let s = exec_from_lines(&[]);
+        assert!(s.standard_input_data.is_empty());
+    }
+
+    #[test]
+    fn exec_standard_input_data_value() {
+        let s = exec_from_lines(&["StandardInputData=SGVsbG8gV29ybGQK"]);
+        assert_eq!(s.standard_input_data, vec!["SGVsbG8gV29ybGQK"]);
+    }
+
+    #[test]
+    fn exec_set_login_environment_default() {
+        let s = exec_from_lines(&[]);
+        assert_eq!(s.set_login_environment, None);
+    }
+
+    #[test]
+    fn exec_set_login_environment_true() {
+        let s = exec_from_lines(&["SetLoginEnvironment=yes"]);
+        assert_eq!(s.set_login_environment, Some(true));
+    }
+
+    #[test]
+    fn exec_set_login_environment_false() {
+        let s = exec_from_lines(&["SetLoginEnvironment=no"]);
+        assert_eq!(s.set_login_environment, Some(false));
+    }
+
+    // ── Combined / integration tests ─────────────────────────────────
+
+    #[test]
+    fn exec_all_new_logging_directives_together() {
+        let s = exec_from_lines(&[
+            "SyslogFacility=daemon",
+            "SyslogLevel=info",
+            "SyslogLevelPrefix=true",
+            "LogLevelMax=notice",
+            "LogRateLimitIntervalSec=10s",
+            "LogRateLimitBurst=500",
+            "LogFilterPatterns=~.*spam.*",
+            "LogNamespace=myns",
+        ]);
+        assert_eq!(s.syslog_facility, Some("daemon".to_owned()));
+        assert_eq!(s.syslog_level, Some("info".to_owned()));
+        assert_eq!(s.syslog_level_prefix, Some(true));
+        assert_eq!(s.log_level_max, Some("notice".to_owned()));
+        assert_eq!(s.log_rate_limit_interval_sec, Some("10s".to_owned()));
+        assert_eq!(s.log_rate_limit_burst, Some(500));
+        assert_eq!(s.log_filter_patterns, vec!["~.*spam.*"]);
+        assert_eq!(s.log_namespace, Some("myns".to_owned()));
+    }
+
+    #[test]
+    fn exec_all_new_cpu_directives_together() {
+        let s = exec_from_lines(&[
+            "CPUSchedulingPolicy=rr",
+            "CPUSchedulingPriority=50",
+            "CPUSchedulingResetOnFork=yes",
+            "CPUAffinity=0-3",
+            "NUMAPolicy=bind",
+            "NUMAMask=0-1",
+        ]);
+        assert_eq!(s.cpu_scheduling_policy, Some("rr".to_owned()));
+        assert_eq!(s.cpu_scheduling_priority, Some(50));
+        assert_eq!(s.cpu_scheduling_reset_on_fork, Some(true));
+        assert_eq!(s.cpu_affinity, vec!["0-3"]);
+        assert_eq!(s.numa_policy, Some("bind".to_owned()));
+        assert_eq!(s.numa_mask, Some("0-1".to_owned()));
+    }
+
+    #[test]
+    fn exec_all_new_root_directives_together() {
+        let s = exec_from_lines(&[
+            "RootDirectory=/srv/app",
+            "RootImage=/var/lib/app.raw",
+            "RootImageOptions=root:ro",
+            "RootHash=deadbeef",
+            "RootHashSignature=base64:AAAA",
+            "RootVerity=/var/lib/app.verity",
+            "RootEphemeral=yes",
+            "MountAPIVFS=yes",
+            "ExtensionDirectories=/run/ext/myext",
+            "ExtensionImages=/var/lib/ext.raw",
+            "MountImages=/img.raw:/mnt",
+            "BindLogSockets=yes",
+        ]);
+        assert_eq!(s.root_directory, Some("/srv/app".to_owned()));
+        assert_eq!(s.root_image, Some("/var/lib/app.raw".to_owned()));
+        assert_eq!(s.root_image_options, vec!["root:ro"]);
+        assert_eq!(s.root_hash, Some("deadbeef".to_owned()));
+        assert_eq!(s.root_hash_signature, Some("base64:AAAA".to_owned()));
+        assert_eq!(s.root_verity, Some("/var/lib/app.verity".to_owned()));
+        assert_eq!(s.root_ephemeral, Some(true));
+        assert_eq!(s.mount_api_vfs, Some(true));
+        assert_eq!(s.extension_directories, vec!["/run/ext/myext"]);
+        assert_eq!(s.extension_images, vec!["/var/lib/ext.raw"]);
+        assert_eq!(s.mount_images, vec!["/img.raw:/mnt"]);
+        assert_eq!(s.bind_log_sockets, Some(true));
+    }
+
+    #[test]
+    fn exec_all_new_namespace_directives_together() {
+        let s = exec_from_lines(&[
+            "PrivateIPC=yes",
+            "PrivatePIDs=yes",
+            "IPCNamespacePath=/proc/1/ns/ipc",
+            "NetworkNamespacePath=/run/netns/isolated",
+        ]);
+        assert_eq!(s.private_ipc, Some(true));
+        assert_eq!(s.private_pids, Some(true));
+        assert_eq!(s.ipc_namespace_path, Some("/proc/1/ns/ipc".to_owned()));
+        assert_eq!(
+            s.network_namespace_path,
+            Some("/run/netns/isolated".to_owned())
+        );
+    }
+
+    #[test]
+    fn exec_all_new_security_directives_together() {
+        let s = exec_from_lines(&[
+            "SecureBits=keep-caps noroot",
+            "Personality=x86-64",
+            "SELinuxContext=system_u:system_r:init_t:s0",
+            "AppArmorProfile=my-profile",
+            "SmackProcessLabel=MyLabel",
+            "KeyringMode=private",
+            "NoExecPaths=/tmp /dev/shm",
+            "ExecPaths=/usr/bin /usr/sbin",
+            "CoredumpFilter=private-anonymous",
+        ]);
+        assert_eq!(s.secure_bits, vec!["keep-caps", "noroot"]);
+        assert_eq!(s.personality, Some("x86-64".to_owned()));
+        assert_eq!(
+            s.selinux_context,
+            Some("system_u:system_r:init_t:s0".to_owned())
+        );
+        assert_eq!(s.apparmor_profile, Some("my-profile".to_owned()));
+        assert_eq!(s.smack_process_label, Some("MyLabel".to_owned()));
+        assert_eq!(s.keyring_mode, Some("private".to_owned()));
+        assert_eq!(s.no_exec_paths, vec!["/tmp", "/dev/shm"]);
+        assert_eq!(s.exec_paths, vec!["/usr/bin", "/usr/sbin"]);
+        assert_eq!(s.coredump_filter, Some("private-anonymous".to_owned()));
+    }
+
+    #[test]
+    fn exec_all_new_misc_directives_together() {
+        let s = exec_from_lines(&[
+            "TimerSlackNSec=100000",
+            "StandardInputText=hello world",
+            "StandardInputData=QUFB",
+            "SetLoginEnvironment=yes",
+        ]);
+        assert_eq!(s.timer_slack_nsec, Some("100000".to_owned()));
+        assert_eq!(s.standard_input_text, vec!["hello", "world"]);
+        assert_eq!(s.standard_input_data, vec!["QUFB"]);
+        assert_eq!(s.set_login_environment, Some(true));
+    }
+
+    #[test]
+    fn exec_new_directives_coexist_with_existing() {
+        let s = exec_from_lines(&[
+            "User=nobody",
+            "Group=nogroup",
+            "PrivateTmp=yes",
+            "ProtectSystem=strict",
+            "SyslogFacility=daemon",
+            "CPUSchedulingPolicy=fifo",
+            "RootDirectory=/srv/app",
+            "PrivateIPC=yes",
+            "SecureBits=keep-caps",
+            "TimerSlackNSec=50000",
+        ]);
+        assert_eq!(s.user, Some("nobody".to_owned()));
+        assert_eq!(s.group, Some("nogroup".to_owned()));
+        assert!(s.private_tmp);
+        assert_eq!(s.syslog_facility, Some("daemon".to_owned()));
+        assert_eq!(s.cpu_scheduling_policy, Some("fifo".to_owned()));
+        assert_eq!(s.root_directory, Some("/srv/app".to_owned()));
+        assert_eq!(s.private_ipc, Some(true));
+        assert_eq!(s.secure_bits, vec!["keep-caps"]);
+        assert_eq!(s.timer_slack_nsec, Some("50000".to_owned()));
+    }
+
+    #[test]
+    fn exec_empty_values_reset_to_none() {
+        let s = exec_from_lines(&[
+            "SyslogFacility=",
+            "SyslogLevel=",
+            "LogLevelMax=",
+            "CPUSchedulingPolicy=",
+            "RootDirectory=",
+            "Personality=",
+            "TimerSlackNSec=",
+        ]);
+        assert_eq!(s.syslog_facility, None);
+        assert_eq!(s.syslog_level, None);
+        assert_eq!(s.log_level_max, None);
+        assert_eq!(s.cpu_scheduling_policy, None);
+        assert_eq!(s.root_directory, None);
+        assert_eq!(s.personality, None);
+        assert_eq!(s.timer_slack_nsec, None);
+    }
+
+    #[test]
+    fn exec_list_directives_accumulate_and_reset() {
+        // First set values, then add more, then reset
+        let s = exec_from_lines(&["CPUAffinity=0 1", "CPUAffinity=", "CPUAffinity=4 5 6"]);
+        assert_eq!(s.cpu_affinity, vec!["4", "5", "6"]);
     }
 }
