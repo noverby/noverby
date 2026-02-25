@@ -29,8 +29,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
+use zbus::blocking::Connection;
 
 use manager::NetworkManager;
 
@@ -38,7 +37,6 @@ use manager::NetworkManager;
 
 const DBUS_NAME: &str = "org.freedesktop.network1";
 const DBUS_PATH: &str = "/org/freedesktop/network1";
-const DBUS_IFACE: &str = "org.freedesktop.network1.Manager";
 
 /// Send an sd_notify message to the service manager.
 fn sd_notify(msg: &str) {
@@ -273,8 +271,7 @@ type SharedState = Arc<Mutex<NetworkdState>>;
 
 // ── D-Bus interface: org.freedesktop.network1.Manager ──────────────────────
 
-/// Register the org.freedesktop.network1.Manager interface on a Crossroads
-/// instance.
+/// D-Bus interface struct for org.freedesktop.network1.Manager.
 ///
 /// Properties (read-only):
 ///   OperationalState (s)  — overall network operational state
@@ -290,201 +287,174 @@ type SharedState = Arc<Mutex<NetworkdState>>;
 ///   Describe() → s          — JSON description of the manager state
 ///   Reload()                — trigger configuration reload
 ///   ForceRenew(i ifindex)   — force DHCP renew on a link (stub)
-fn register_network1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
-    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
-        // --- Properties ---
+struct Network1Manager {
+    state: SharedState,
+}
 
-        b.property("OperationalState")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.oper_state.clone())
-            });
+#[zbus::interface(name = "org.freedesktop.network1.Manager")]
+impl Network1Manager {
+    // --- Properties (read-only) ---
 
-        b.property("CarrierState")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                let has_carrier = s
-                    .links
-                    .iter()
-                    .any(|l| l.oper_state != "no-carrier" && l.link_type != "loopback");
-                Ok(if has_carrier {
-                    "carrier".to_string()
-                } else {
-                    "no-carrier".to_string()
-                })
-            });
+    #[zbus(property, name = "OperationalState")]
+    fn operational_state(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.oper_state.clone()
+    }
 
-        b.property("AddressState")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                let has_addr = s.links.iter().any(|l| !l.address.is_empty());
-                Ok(if has_addr {
-                    "routable".to_string()
-                } else {
-                    "off".to_string()
-                })
-            });
+    #[zbus(property, name = "CarrierState")]
+    fn carrier_state(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let has_carrier = s
+            .links
+            .iter()
+            .any(|l| l.oper_state != "no-carrier" && l.link_type != "loopback");
+        if has_carrier {
+            "carrier".to_string()
+        } else {
+            "no-carrier".to_string()
+        }
+    }
 
-        b.property("OnlineState").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            let online = match s.oper_state.as_str() {
-                "configured" => "online",
-                "degraded" => "partial",
-                _ => "offline",
-            };
-            Ok(online.to_string())
-        });
+    #[zbus(property, name = "AddressState")]
+    fn address_state(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let has_addr = s.links.iter().any(|l| !l.address.is_empty());
+        if has_addr {
+            "routable".to_string()
+        } else {
+            "off".to_string()
+        }
+    }
 
-        b.property("NamespaceId")
-            .get(|_, _state: &mut SharedState| Ok(0u64));
+    #[zbus(property, name = "OnlineState")]
+    fn online_state(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let online = match s.oper_state.as_str() {
+            "configured" => "online",
+            "degraded" => "partial",
+            _ => "offline",
+        };
+        online.to_string()
+    }
 
-        // --- Methods ---
+    #[zbus(property, name = "NamespaceId")]
+    fn namespace_id(&self) -> u64 {
+        0u64
+    }
 
-        // ListLinks() → a(iso)
-        b.method(
-            "ListLinks",
-            (),
-            ("links",),
-            move |_, state: &mut SharedState, ()| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                let links: Vec<(i32, String, dbus::Path<'static>)> = s
-                    .links
-                    .iter()
-                    .map(|l| {
-                        (
-                            l.ifindex as i32,
-                            l.name.clone(),
-                            dbus::Path::from(link_object_path(l.ifindex)),
-                        )
-                    })
-                    .collect();
-                Ok((links,))
-            },
-        );
+    // --- Methods ---
 
-        // GetLinkByName(s name) → (io)
-        b.method(
-            "GetLinkByName",
-            ("name",),
-            ("ifindex", "path"),
-            move |_, state: &mut SharedState, (name,): (String,)| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(l) = s.links.iter().find(|l| l.name == name) {
-                    Ok((
-                        l.ifindex as i32,
-                        dbus::Path::from(link_object_path(l.ifindex)),
-                    ))
-                } else {
-                    Err(MethodErr::failed(&format!("No link '{}' known", name)))
-                }
-            },
-        );
+    /// ListLinks() → a(iso) — array of (ifindex, name, object_path)
+    fn list_links(&self) -> Vec<(i32, String, String)> {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.links
+            .iter()
+            .map(|l| {
+                (
+                    l.ifindex as i32,
+                    l.name.clone(),
+                    link_object_path(l.ifindex),
+                )
+            })
+            .collect()
+    }
 
-        // GetLinkByIndex(i ifindex) → (so)
-        b.method(
-            "GetLinkByIndex",
-            ("ifindex",),
-            ("name", "path"),
-            move |_, state: &mut SharedState, (ifindex,): (i32,)| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(l) = s.links.iter().find(|l| l.ifindex == ifindex as u32) {
-                    Ok((
-                        l.name.clone(),
-                        dbus::Path::from(link_object_path(l.ifindex)),
-                    ))
-                } else {
-                    Err(MethodErr::failed(&format!(
-                        "No link with index {}",
-                        ifindex
-                    )))
-                }
-            },
-        );
+    /// GetLinkByName(s name) → (io)
+    fn get_link_by_name(&self, name: String) -> zbus::fdo::Result<(i32, String)> {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(l) = s.links.iter().find(|l| l.name == name) {
+            Ok((l.ifindex as i32, link_object_path(l.ifindex)))
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No link '{}' known",
+                name
+            )))
+        }
+    }
 
-        // Describe() → s (JSON description)
-        b.method(
-            "Describe",
-            (),
-            ("json",),
-            move |_, state: &mut SharedState, ()| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                let mut links_json = String::from("[");
-                for (i, l) in s.links.iter().enumerate() {
-                    if i > 0 {
-                        links_json.push(',');
-                    }
-                    links_json.push_str(&format!(
-                        concat!(
-                            "{{",
-                            "\"Index\":{},",
-                            "\"Name\":\"{}\",",
-                            "\"Type\":\"{}\",",
-                            "\"OperationalState\":\"{}\",",
-                            "\"AdministrativeState\":\"{}\",",
-                            "\"Address\":\"{}\",",
-                            "\"Gateway\":\"{}\"",
-                            "}}"
-                        ),
-                        l.ifindex,
-                        json_escape(&l.name),
-                        json_escape(&l.link_type),
-                        json_escape(&l.oper_state),
-                        json_escape(&l.admin_state),
-                        json_escape(&l.address),
-                        json_escape(&l.gateway),
-                    ));
-                }
-                links_json.push(']');
+    /// GetLinkByIndex(i ifindex) → (so)
+    fn get_link_by_index(&self, ifindex: i32) -> zbus::fdo::Result<(String, String)> {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(l) = s.links.iter().find(|l| l.ifindex == ifindex as u32) {
+            Ok((l.name.clone(), link_object_path(l.ifindex)))
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No link with index {}",
+                ifindex
+            )))
+        }
+    }
 
-                let dns_json: Vec<String> = s
-                    .dns_servers
-                    .iter()
-                    .map(|d| format!("\"{}\"", json_escape(d)))
-                    .collect();
+    /// Describe() → s (JSON description)
+    fn describe(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut links_json = String::from("[");
+        for (i, l) in s.links.iter().enumerate() {
+            if i > 0 {
+                links_json.push(',');
+            }
+            links_json.push_str(&format!(
+                concat!(
+                    "{{",
+                    "\"Index\":{},",
+                    "\"Name\":\"{}\",",
+                    "\"Type\":\"{}\",",
+                    "\"OperationalState\":\"{}\",",
+                    "\"AdministrativeState\":\"{}\",",
+                    "\"Address\":\"{}\",",
+                    "\"Gateway\":\"{}\"",
+                    "}}"
+                ),
+                l.ifindex,
+                json_escape(&l.name),
+                json_escape(&l.link_type),
+                json_escape(&l.oper_state),
+                json_escape(&l.admin_state),
+                json_escape(&l.address),
+                json_escape(&l.gateway),
+            ));
+        }
+        links_json.push(']');
 
-                let domains_json: Vec<String> = s
-                    .search_domains
-                    .iter()
-                    .map(|d| format!("\"{}\"", json_escape(d)))
-                    .collect();
+        let dns_json: Vec<String> = s
+            .dns_servers
+            .iter()
+            .map(|d| format!("\"{}\"", json_escape(d)))
+            .collect();
 
-                let json = format!(
-                    concat!(
-                        "{{",
-                        "\"OperationalState\":\"{}\",",
-                        "\"NLinks\":{},",
-                        "\"Links\":{},",
-                        "\"DNS\":[{}],",
-                        "\"SearchDomains\":[{}]",
-                        "}}"
-                    ),
-                    json_escape(&s.oper_state),
-                    s.links.len(),
-                    links_json,
-                    dns_json.join(","),
-                    domains_json.join(","),
-                );
-                Ok((json,))
-            },
-        );
+        let domains_json: Vec<String> = s
+            .search_domains
+            .iter()
+            .map(|d| format!("\"{}\"", json_escape(d)))
+            .collect();
 
-        // Reload() — stub, signals are handled in the main loop
-        b.method("Reload", (), (), move |_, _state: &mut SharedState, ()| {
-            log::info!("D-Bus Reload() called");
-            Ok(())
-        });
+        format!(
+            concat!(
+                "{{",
+                "\"OperationalState\":\"{}\",",
+                "\"NLinks\":{},",
+                "\"Links\":{},",
+                "\"DNS\":[{}],",
+                "\"SearchDomains\":[{}]",
+                "}}"
+            ),
+            json_escape(&s.oper_state),
+            s.links.len(),
+            links_json,
+            dns_json.join(","),
+            domains_json.join(","),
+        )
+    }
 
-        // ForceRenew(i ifindex) — stub
-        b.method(
-            "ForceRenew",
-            ("ifindex",),
-            (),
-            move |_, _state: &mut SharedState, (_ifindex,): (i32,)| {
-                log::info!("D-Bus ForceRenew() called (stub)");
-                Ok(())
-            },
-        );
-    })
+    /// Reload() — stub, signals are handled in the main loop
+    fn reload(&self) {
+        log::info!("D-Bus Reload() called");
+    }
+
+    /// ForceRenew(i ifindex) — stub
+    fn force_renew(&self, _ifindex: i32) {
+        log::info!("D-Bus ForceRenew() called (stub)");
+    }
 }
 
 /// Convert a link ifindex to a D-Bus object path.
@@ -493,16 +463,21 @@ fn link_object_path(ifindex: u32) -> String {
 }
 
 /// Set up the D-Bus connection and register the network1 interface.
-fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
-    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
-    conn.request_name(DBUS_NAME, false, true, false)
-        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
-
-    let mut cr = Crossroads::new();
-    let iface_token = register_network1_iface(&mut cr);
-    cr.insert(DBUS_PATH, &[iface_token], shared);
-
-    Ok((conn, cr))
+///
+/// Uses zbus's blocking connection which dispatches messages automatically
+/// in a background thread. The returned `Connection` must be kept alive
+/// for as long as we want to serve D-Bus requests.
+fn setup_dbus(shared: SharedState) -> Result<Connection, String> {
+    let iface = Network1Manager { state: shared };
+    let conn = zbus::blocking::connection::Builder::system()
+        .map_err(|e| format!("D-Bus builder failed: {}", e))?
+        .name(DBUS_NAME)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?
+        .serve_at(DBUS_PATH, iface)
+        .map_err(|e| format!("D-Bus serve_at failed: {}", e))?
+        .build()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    Ok(conn)
 }
 
 /// Escape a string for embedding in JSON.
@@ -661,9 +636,9 @@ fn main() {
     let mut last_watchdog = Instant::now();
 
     // D-Bus connection is deferred to after READY=1 so we don't block
-    // early boot waiting for dbus-daemon.
-    let mut dbus_conn: Option<Connection> = None;
-    let mut dbus_cr: Option<Crossroads> = None;
+    // early boot waiting for dbus-daemon.  zbus dispatches messages
+    // automatically in a background thread — we just keep the connection alive.
+    let mut _dbus_conn: Option<Connection> = None;
     let mut dbus_attempted = false;
 
     // Main event loop.
@@ -674,10 +649,9 @@ fn main() {
         if !dbus_attempted {
             dbus_attempted = true;
             match setup_dbus(shared_state.clone()) {
-                Ok((conn, cr)) => {
+                Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
-                    dbus_conn = Some(conn);
-                    dbus_cr = Some(cr);
+                    _dbus_conn = Some(conn);
                     sd_notify(&format!("STATUS={} (D-Bus active)", mgr.overall_state()));
                 }
                 Err(e) => {
@@ -798,13 +772,7 @@ fn main() {
             }
         }
 
-        // Process D-Bus messages (non-blocking).
-        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
-            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
-            while let Some(msg) = conn.channel().pop_message() {
-                let _ = cr.handle_message(msg, conn);
-            }
-        }
+        // zbus dispatches D-Bus messages automatically in a background thread.
 
         // Watchdog keepalive.
         if let Some(interval) = watchdog
@@ -892,12 +860,10 @@ mod tests {
     // ── D-Bus interface tests ──────────────────────────────────────────
 
     #[test]
-    fn test_dbus_register_network1_iface() {
-        let mut cr = Crossroads::new();
-        let token = register_network1_iface(&mut cr);
+    fn test_dbus_network1_manager_struct() {
         let shared: SharedState = Arc::new(Mutex::new(NetworkdState::default()));
-        cr.insert(DBUS_PATH, &[token], shared);
-        // Registration succeeded without panic
+        let _mgr = Network1Manager { state: shared };
+        // Struct creation succeeded without panic
     }
 
     #[test]

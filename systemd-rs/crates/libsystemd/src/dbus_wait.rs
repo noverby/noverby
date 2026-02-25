@@ -1,6 +1,6 @@
-//! Systemd has the feature to wait on services that have type dbus. This means it waits until a speicifc name has been grabbed on the bus.
+//! Systemd has the feature to wait on services that have type dbus. This means it waits until a specific name has been grabbed on the bus.
 //!
-//! This is made optional here to not have a hard dependency on libdbus.
+//! This is made optional here to not have a hard dependency on dbus.
 
 #[cfg(feature = "dbus_support")]
 pub use dbus_support::*;
@@ -46,49 +46,18 @@ mod no_dbus_support {
 #[cfg(feature = "dbus_support")]
 mod dbus_support {
 
-    extern crate dbus;
     use super::WaitResult;
-    use crate::lock_ext::MutexExt;
-    use dbus::arg;
-    use dbus::blocking::Connection;
-    use dbus::blocking::Proxy;
     use std::sync::{Arc, Mutex};
-
-    #[derive(Debug)]
-    struct NameOwnerChangedHappened {
-        pub sender: Vec<String>,
-    }
-
-    impl arg::AppendAll for NameOwnerChangedHappened {
-        fn append(&self, i: &mut arg::IterAppend) {
-            arg::RefArg::append(&self.sender, i);
-        }
-    }
-
-    impl arg::ReadAll for NameOwnerChangedHappened {
-        fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-            let mut vec: Vec<String> = Vec::new();
-            loop {
-                match i.read() {
-                    Ok(s) => vec.push(s),
-                    Err(_) => break,
-                }
-            }
-            Ok(NameOwnerChangedHappened { sender: vec })
-        }
-    }
-
-    impl dbus::message::SignalArgs for NameOwnerChangedHappened {
-        const NAME: &'static str = "NameOwnerChanged";
-        const INTERFACE: &'static str = "org.freedesktop.DBus";
-    }
+    use zbus::blocking::Connection;
+    use zbus::blocking::fdo::DBusProxy;
+    use zbus::names::{BusName, OwnedBusName, WellKnownName};
 
     pub fn wait_for_name_system_bus(
         name: &str,
         timeout: Option<std::time::Duration>,
     ) -> Result<WaitResult, Box<dyn std::error::Error>> {
-        let conn = Connection::new_system()?;
-        wait_for_name(name, conn, timeout)
+        let conn = Connection::system()?;
+        wait_for_name(name, &conn, timeout)
     }
 
     // just used for testing
@@ -97,87 +66,86 @@ mod dbus_support {
         name: &str,
         timeout: Option<std::time::Duration>,
     ) -> Result<WaitResult, Box<dyn std::error::Error>> {
-        let conn = Connection::new_session()?;
-        wait_for_name(name, conn, timeout)
+        let conn = Connection::session()?;
+        wait_for_name(name, &conn, timeout)
     }
 
     fn wait_for_name(
         name: &str,
-        mut conn: Connection,
+        conn: &Connection,
         timeout: Option<std::time::Duration>,
     ) -> Result<WaitResult, Box<dyn std::error::Error>> {
-        let obj = conn.with_proxy(
-            "org.freedesktop.DBus",
-            "/org/freedesktop/DBus",
-            std::time::Duration::from_millis(5000),
-        );
+        let dbus_proxy = DBusProxy::new(conn)?;
 
         // shortcut if name already exists
-        if name_exists(name, &obj)? {
+        if name_exists(name, &dbus_proxy)? {
             return Ok(WaitResult::Ok);
         }
 
-        let stoparc = Arc::new(Mutex::new(false));
-        let stoparc_cb = stoparc.clone();
+        // Subscribe to NameOwnerChanged signals
+        let signals = dbus_proxy.receive_name_owner_changed()?;
 
-        let name = name.to_owned();
-        let _id = obj.match_signal(move |h: NameOwnerChangedHappened, _: &Connection| {
-            if h.sender[0] == name {
-                (*stoparc_cb.lock_poisoned()) = true;
+        let found = Arc::new(Mutex::new(false));
+        let found_clone = found.clone();
+        let target_name = name.to_owned();
+
+        // Spawn a thread to listen for NameOwnerChanged signals
+        let handle = std::thread::spawn(move || {
+            for signal in signals {
+                if let Ok(args) = signal.args() {
+                    if args.name.as_str() == target_name && args.new_owner.is_some() {
+                        *found_clone.lock().unwrap() = true;
+                        return;
+                    }
+                }
             }
-            true
         });
 
         let start = std::time::Instant::now();
-        loop {
+        let result = loop {
+            if *found.lock().unwrap() {
+                break WaitResult::Ok;
+            }
             if let Some(timeout) = timeout {
-                if *stoparc.lock_poisoned() || start.elapsed() >= timeout {
-                    break;
+                if start.elapsed() >= timeout {
+                    break WaitResult::Timedout;
                 }
             }
-            let max_wait = if let Some(timeout) = timeout {
-                timeout - start.elapsed()
-            } else {
-                std::time::Duration::from_millis(500)
-            };
-            // TODO PR to dbus-rs so it takes an Option<Duration>
-            conn.process(max_wait)?;
-        }
-        if let Some(timeout) = timeout {
-            if start.elapsed() >= timeout {
-                Ok(WaitResult::Timedout)
-            } else {
-                Ok(WaitResult::Ok)
-            }
-        } else {
-            Ok(WaitResult::Ok)
-        }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+
+        // We don't join the signal thread - it will be cleaned up when the iterator
+        // is dropped (which happens when the proxy/connection goes out of scope)
+        drop(handle);
+
+        Ok(result)
     }
 
-    fn name_exists(
-        name: &str,
-        obj: &Proxy<&Connection>,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        let (names,): (Vec<String>,) = obj.method_call("org.freedesktop.DBus", "ListNames", ())?;
-        Ok(names.contains(&name.to_owned()))
+    fn name_exists(name: &str, dbus_proxy: &DBusProxy) -> Result<bool, Box<dyn std::error::Error>> {
+        let names = dbus_proxy.list_names()?;
+        let target: OwnedBusName = BusName::from(WellKnownName::try_from(name)?).into();
+        Ok(names.contains(&target))
     }
 
     #[test]
     fn test_dbus_wait() {
-        let name = "This.Is.A.Test.Name".to_owned();
+        let name = "org.test.WaitName".to_owned();
         let name2 = name.clone();
 
         std::thread::spawn(move || {
             // wait so the other thread has time to start waiting for the signal
             std::thread::sleep(std::time::Duration::from_secs(3));
 
-            // request name
-            let conn = Connection::new_session().unwrap();
-            let _reply = conn.request_name(&name2, true, true, true).unwrap();
+            // request name on session bus
+            let conn = Connection::session().unwrap();
+            conn.request_name(WellKnownName::try_from(name2.as_str()).unwrap())
+                .unwrap();
         });
 
         // wait for the name to be requested
-        match wait_for_name_session_bus(&name, std::time::Duration::from_millis(10_000)).unwrap() {
+        match wait_for_name_session_bus(&name, Some(std::time::Duration::from_millis(10_000)))
+            .unwrap()
+        {
             WaitResult::Ok => {
                 println!("SUCCESS!!");
             }
@@ -187,7 +155,8 @@ mod dbus_support {
         }
 
         // release the name after we are done
-        let conn = Connection::new_session().unwrap();
-        let _reply = conn.release_name(&name).unwrap();
+        let conn = Connection::session().unwrap();
+        conn.release_name(WellKnownName::try_from(name.as_str()).unwrap())
+            .unwrap();
     }
 }

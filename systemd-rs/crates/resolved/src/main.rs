@@ -30,8 +30,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
+use zbus::blocking::Connection;
+use zbus::zvariant::OwnedObjectPath;
 
 use config::{
     RESOLV_CONF_PATH, ResolvedConfig, STATE_DIR, STUB_RESOLV_CONF_PATH, StubListenerMode,
@@ -64,7 +64,6 @@ const TCP_TIMEOUT: Duration = Duration::from_secs(10);
 // D-Bus constants
 const DBUS_NAME: &str = "org.freedesktop.resolve1";
 const DBUS_PATH: &str = "/org/freedesktop/resolve1";
-const DBUS_IFACE: &str = "org.freedesktop.resolve1.Manager";
 
 // ── Logging ────────────────────────────────────────────────────────────────
 
@@ -564,248 +563,207 @@ type SharedState = Arc<Mutex<ResolvedState>>;
 ///   SetLinkDNS(i ifindex, a(iay) servers) — set per-link DNS (stub)
 ///   RevertLink(i ifindex)   — revert per-link DNS (stub)
 ///   Describe() → s          — JSON description of the resolver state
-fn register_resolve1_iface(
-    cr: &mut Crossroads,
+/// D-Bus interface struct for org.freedesktop.resolve1.Manager.
+///
+/// Holds shared state and cache references so that zbus can serve
+/// properties and methods automatically from a background thread.
+struct Resolve1Manager {
+    state: SharedState,
     cache: SharedCache,
-) -> dbus_crossroads::IfaceToken<SharedState> {
-    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
-        // --- Properties ---
+}
 
-        // DNS — a(iay): array of (address_family, address_bytes)
-        b.property("DNS").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.dns.clone())
-        });
+#[zbus::interface(name = "org.freedesktop.resolve1.Manager")]
+impl Resolve1Manager {
+    // --- Properties ---
 
-        // FallbackDNS — a(iay)
-        b.property("FallbackDNS").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.fallback_dns.clone())
-        });
+    #[zbus(property, name = "DNS")]
+    fn dns(&self) -> Vec<(i32, Vec<u8>)> {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.dns.clone()
+    }
 
-        // Domains — a(isb)
-        b.property("Domains").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.domains.clone())
-        });
+    #[zbus(property, name = "FallbackDNS")]
+    fn fallback_dns(&self) -> Vec<(i32, Vec<u8>)> {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.fallback_dns.clone()
+    }
 
-        b.property("LLMNR").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.llmnr.clone())
-        });
+    #[zbus(property, name = "Domains")]
+    fn domains(&self) -> Vec<(i32, String, bool)> {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.domains.clone()
+    }
 
-        b.property("MulticastDNS").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.multicast_dns.clone())
-        });
+    #[zbus(property, name = "LLMNR")]
+    fn llmnr(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.llmnr.clone()
+    }
 
-        b.property("DNSSEC").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.dnssec.clone())
-        });
+    #[zbus(property, name = "MulticastDNS")]
+    fn multicast_dns(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.multicast_dns.clone()
+    }
 
-        b.property("DNSOverTLS").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.dns_over_tls.clone())
-        });
+    #[zbus(property, name = "DNSSEC")]
+    fn dnssec(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.dnssec.clone()
+    }
 
-        b.property("DNSStubListener").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.dns_stub_listener.clone())
-        });
+    #[zbus(property, name = "DNSOverTLS")]
+    fn dns_over_tls(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.dns_over_tls.clone()
+    }
 
-        b.property("Cache").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.cache.clone())
-        });
+    #[zbus(property, name = "DNSStubListener")]
+    fn dns_stub_listener(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.dns_stub_listener.clone()
+    }
 
-        b.property("DNSSECSupported")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.dnssec_supported)
-            });
+    #[zbus(property)]
+    fn cache(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.cache.clone()
+    }
 
-        // TransactionStatistics — (tt)
-        b.property("TransactionStatistics")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.transaction_stats)
-            });
+    #[zbus(property, name = "DNSSECSupported")]
+    fn dnssec_supported(&self) -> bool {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.dnssec_supported
+    }
 
-        // CacheStatistics — (ttt): (size, hits, misses)
-        let cache_for_stats = Arc::clone(&cache);
-        b.property("CacheStatistics")
-            .get(move |_, _state: &mut SharedState| {
-                let dns_cache = cache_for_stats.lock().unwrap_or_else(|e| e.into_inner());
-                Ok((
-                    dns_cache.len() as u64,
-                    dns_cache.stats.hits,
-                    dns_cache.stats.misses,
-                ))
-            });
+    #[zbus(property, name = "TransactionStatistics")]
+    fn transaction_statistics(&self) -> (u64, u64) {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.transaction_stats
+    }
 
-        // --- Methods ---
+    #[zbus(property, name = "CacheStatistics")]
+    fn cache_statistics(&self) -> (u64, u64, u64) {
+        let dns_cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        (
+            dns_cache.len() as u64,
+            dns_cache.stats.hits,
+            dns_cache.stats.misses,
+        )
+    }
 
-        // FlushCaches()
-        let cache_for_flush = Arc::clone(&cache);
-        b.method(
-            "FlushCaches",
-            (),
-            (),
-            move |_, _state: &mut SharedState, ()| {
-                log::info!("D-Bus FlushCaches() called");
-                if let Ok(mut dns_cache) = cache_for_flush.lock() {
-                    let count = dns_cache.len();
-                    dns_cache.flush();
-                    log::info!("Flushed {} cache entries via D-Bus", count);
-                }
-                Ok(())
-            },
+    // --- Methods ---
+
+    fn flush_caches(&self) {
+        log::info!("D-Bus FlushCaches() called");
+        if let Ok(mut dns_cache) = self.cache.lock() {
+            let count = dns_cache.len();
+            dns_cache.flush();
+            log::info!("Flushed {} cache entries via D-Bus", count);
+        }
+    }
+
+    fn reset_statistics(&self) {
+        log::info!("D-Bus ResetStatistics() called");
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.transaction_stats = (0, 0);
+        s.cache_stats = (0, 0, 0);
+    }
+
+    fn get_link(&self, ifindex: i32) -> zbus::fdo::Result<OwnedObjectPath> {
+        if ifindex <= 0 {
+            return Err(zbus::fdo::Error::InvalidArgs(
+                "Invalid interface index".into(),
+            ));
+        }
+        let path = resolve_link_object_path(ifindex as u32);
+        OwnedObjectPath::try_from(path)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("Invalid object path: {e}")))
+    }
+
+    #[zbus(name = "SetLinkDNS")]
+    fn set_link_dns(&self, ifindex: i32, _addresses: Vec<(i32, Vec<u8>)>) {
+        log::info!("D-Bus SetLinkDNS() called for ifindex={} (stub)", ifindex);
+    }
+
+    fn set_link_domains(&self, ifindex: i32, _domains: Vec<(String, bool)>) {
+        log::info!(
+            "D-Bus SetLinkDomains() called for ifindex={} (stub)",
+            ifindex
         );
+    }
 
-        // ResetStatistics()
-        b.method(
-            "ResetStatistics",
-            (),
-            (),
-            move |_, state: &mut SharedState, ()| {
-                log::info!("D-Bus ResetStatistics() called");
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.transaction_stats = (0, 0);
-                s.cache_stats = (0, 0, 0);
-                Ok(())
-            },
-        );
+    fn revert_link(&self, ifindex: i32) {
+        log::info!("D-Bus RevertLink() called for ifindex={} (stub)", ifindex);
+    }
 
-        // GetLink(i ifindex) → o
-        b.method(
-            "GetLink",
-            ("ifindex",),
-            ("path",),
-            move |_, _state: &mut SharedState, (ifindex,): (i32,)| {
-                if ifindex <= 0 {
-                    return Err(MethodErr::failed("Invalid interface index"));
-                }
-                let path = resolve_link_object_path(ifindex as u32);
-                Ok((dbus::Path::from(path),))
-            },
-        );
+    fn describe(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
 
-        // SetLinkDNS(i ifindex, a(iay) servers) — stub
-        b.method(
-            "SetLinkDNS",
-            ("ifindex", "addresses"),
-            (),
-            move |_,
-                  _state: &mut SharedState,
-                  (ifindex, _addresses): (i32, Vec<(i32, Vec<u8>)>)| {
-                log::info!("D-Bus SetLinkDNS() called for ifindex={} (stub)", ifindex);
-                Ok(())
-            },
-        );
+        let dns_json: Vec<String> = s
+            .dns
+            .iter()
+            .map(|(family, bytes)| {
+                let addr_str = addr_bytes_to_string(*family, bytes);
+                format!("\"{}\"", json_escape(&addr_str))
+            })
+            .collect();
 
-        // SetLinkDomains(i ifindex, a(sb) domains) — stub
-        b.method(
-            "SetLinkDomains",
-            ("ifindex", "domains"),
-            (),
-            move |_,
-                  _state: &mut SharedState,
-                  (ifindex, _domains): (i32, Vec<(String, bool)>)| {
-                log::info!(
-                    "D-Bus SetLinkDomains() called for ifindex={} (stub)",
-                    ifindex
-                );
-                Ok(())
-            },
-        );
+        let fallback_json: Vec<String> = s
+            .fallback_dns
+            .iter()
+            .map(|(family, bytes)| {
+                let addr_str = addr_bytes_to_string(*family, bytes);
+                format!("\"{}\"", json_escape(&addr_str))
+            })
+            .collect();
 
-        // RevertLink(i ifindex) — stub
-        b.method(
-            "RevertLink",
-            ("ifindex",),
-            (),
-            move |_, _state: &mut SharedState, (ifindex,): (i32,)| {
-                log::info!("D-Bus RevertLink() called for ifindex={} (stub)", ifindex);
-                Ok(())
-            },
-        );
+        let domains_json: Vec<String> = s
+            .domains
+            .iter()
+            .map(|(_, domain, routing)| {
+                format!(
+                    "{{\"Domain\":\"{}\",\"RoutingOnly\":{}}}",
+                    json_escape(domain),
+                    routing,
+                )
+            })
+            .collect();
 
-        // Describe() → s (JSON description)
-        b.method(
-            "Describe",
-            (),
-            ("json",),
-            move |_, state: &mut SharedState, ()| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-
-                let dns_json: Vec<String> = s
-                    .dns
-                    .iter()
-                    .map(|(family, bytes)| {
-                        let addr_str = addr_bytes_to_string(*family, bytes);
-                        format!("\"{}\"", json_escape(&addr_str))
-                    })
-                    .collect();
-
-                let fallback_json: Vec<String> = s
-                    .fallback_dns
-                    .iter()
-                    .map(|(family, bytes)| {
-                        let addr_str = addr_bytes_to_string(*family, bytes);
-                        format!("\"{}\"", json_escape(&addr_str))
-                    })
-                    .collect();
-
-                let domains_json: Vec<String> = s
-                    .domains
-                    .iter()
-                    .map(|(_, domain, routing)| {
-                        format!(
-                            "{{\"Domain\":\"{}\",\"RoutingOnly\":{}}}",
-                            json_escape(domain),
-                            routing,
-                        )
-                    })
-                    .collect();
-
-                let json = format!(
-                    concat!(
-                        "{{",
-                        "\"DNS\":[{}],",
-                        "\"FallbackDNS\":[{}],",
-                        "\"Domains\":[{}],",
-                        "\"LLMNR\":\"{}\",",
-                        "\"MulticastDNS\":\"{}\",",
-                        "\"DNSSEC\":\"{}\",",
-                        "\"DNSOverTLS\":\"{}\",",
-                        "\"DNSStubListener\":\"{}\",",
-                        "\"Cache\":\"{}\",",
-                        "\"DNSSECSupported\":{},",
-                        "\"TransactionStatistics\":{{\"CurrentTransactions\":{},\"TotalTransactions\":{}}},",
-                        "\"CacheStatistics\":{{\"Size\":{},\"Hits\":{},\"Misses\":{}}}",
-                        "}}"
-                    ),
-                    dns_json.join(","),
-                    fallback_json.join(","),
-                    domains_json.join(","),
-                    json_escape(&s.llmnr),
-                    json_escape(&s.multicast_dns),
-                    json_escape(&s.dnssec),
-                    json_escape(&s.dns_over_tls),
-                    json_escape(&s.dns_stub_listener),
-                    json_escape(&s.cache),
-                    s.dnssec_supported,
-                    s.transaction_stats.0,
-                    s.transaction_stats.1,
-                    s.cache_stats.0,
-                    s.cache_stats.1,
-                    s.cache_stats.2,
-                );
-                Ok((json,))
-            },
-        );
-    })
+        format!(
+            concat!(
+                "{{",
+                "\"DNS\":[{}],",
+                "\"FallbackDNS\":[{}],",
+                "\"Domains\":[{}],",
+                "\"LLMNR\":\"{}\",",
+                "\"MulticastDNS\":\"{}\",",
+                "\"DNSSEC\":\"{}\",",
+                "\"DNSOverTLS\":\"{}\",",
+                "\"DNSStubListener\":\"{}\",",
+                "\"Cache\":\"{}\",",
+                "\"DNSSECSupported\":{},",
+                "\"TransactionStatistics\":{{\"CurrentTransactions\":{},\"TotalTransactions\":{}}},",
+                "\"CacheStatistics\":{{\"Size\":{},\"Hits\":{},\"Misses\":{}}}",
+                "}}"
+            ),
+            dns_json.join(","),
+            fallback_json.join(","),
+            domains_json.join(","),
+            json_escape(&s.llmnr),
+            json_escape(&s.multicast_dns),
+            json_escape(&s.dnssec),
+            json_escape(&s.dns_over_tls),
+            json_escape(&s.dns_stub_listener),
+            json_escape(&s.cache),
+            s.dnssec_supported,
+            s.transaction_stats.0,
+            s.transaction_stats.1,
+            s.cache_stats.0,
+            s.cache_stats.1,
+            s.cache_stats.2,
+        )
+    }
 }
 
 /// Convert a link ifindex to a D-Bus object path for resolve1.
@@ -814,16 +772,24 @@ fn resolve_link_object_path(ifindex: u32) -> String {
 }
 
 /// Set up the D-Bus connection and register the resolve1 interface.
-fn setup_dbus(shared: SharedState, cache: SharedCache) -> Result<(Connection, Crossroads), String> {
-    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
-    conn.request_name(DBUS_NAME, false, true, false)
-        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
-
-    let mut cr = Crossroads::new();
-    let iface_token = register_resolve1_iface(&mut cr, cache.clone());
-    cr.insert(DBUS_PATH, &[iface_token], shared);
-
-    Ok((conn, cr))
+///
+/// Uses zbus's blocking connection which dispatches messages automatically
+/// in a background thread. The returned `Connection` must be kept alive
+/// for as long as we want to serve D-Bus requests.
+fn setup_dbus(shared: SharedState, cache: SharedCache) -> Result<Connection, String> {
+    let iface = Resolve1Manager {
+        state: shared,
+        cache,
+    };
+    let conn = zbus::blocking::connection::Builder::system()
+        .map_err(|e| format!("D-Bus builder failed: {}", e))?
+        .name(DBUS_NAME)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?
+        .serve_at(DBUS_PATH, iface)
+        .map_err(|e| format!("D-Bus serve_at failed: {}", e))?
+        .build()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    Ok(conn)
 }
 
 /// Escape a string for embedding in JSON.
@@ -1093,9 +1059,9 @@ fn main() {
     log::info!("systemd-resolved is ready");
 
     // D-Bus connection is deferred to after READY=1 so we don't block
-    // early boot waiting for dbus-daemon.
-    let mut dbus_conn: Option<Connection> = None;
-    let mut dbus_cr: Option<Crossroads> = None;
+    // early boot waiting for dbus-daemon.  zbus dispatches messages
+    // automatically in a background thread — we just keep the connection alive.
+    let mut _dbus_conn: Option<Connection> = None;
     let mut dbus_attempted = false;
 
     // Watchdog setup
@@ -1116,14 +1082,14 @@ fn main() {
             break;
         }
 
-        // Attempt D-Bus registration once (deferred from startup)
+        // Attempt D-Bus registration once (deferred from startup).
+        // zbus handles message dispatch in a background thread automatically.
         if !dbus_attempted {
             dbus_attempted = true;
             match setup_dbus(shared_dbus_state.clone(), Arc::clone(&dns_cache)) {
-                Ok((conn, cr)) => {
+                Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
-                    dbus_conn = Some(conn);
-                    dbus_cr = Some(cr);
+                    _dbus_conn = Some(conn);
                     sd_notify_status("Processing requests... (D-Bus active)");
                 }
                 Err(e) => {
@@ -1132,14 +1098,6 @@ fn main() {
                         e
                     );
                 }
-            }
-        }
-
-        // Process D-Bus messages (non-blocking)
-        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
-            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
-            while let Some(msg) = conn.channel().pop_message() {
-                let _ = cr.handle_message(msg, conn);
             }
         }
 
@@ -1403,13 +1361,14 @@ mod tests {
     // ── D-Bus interface tests ──────────────────────────────────────────────
 
     #[test]
-    fn test_dbus_register_resolve1_iface() {
-        let mut cr = Crossroads::new();
+    fn test_dbus_resolve1_manager_struct() {
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let token = register_resolve1_iface(&mut cr, cache);
         let shared: SharedState = Arc::new(Mutex::new(ResolvedState::default()));
-        cr.insert(DBUS_PATH, &[token], shared);
-        // Registration succeeded without panic
+        let _mgr = Resolve1Manager {
+            state: shared,
+            cache,
+        };
+        // Construction succeeded without panic
     }
 
     #[test]

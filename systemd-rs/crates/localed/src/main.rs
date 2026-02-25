@@ -21,8 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
+use zbus::blocking::Connection;
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -36,7 +35,6 @@ const CONTROL_SOCKET_PATH: &str = "/run/systemd/localed.sock";
 
 const DBUS_NAME: &str = "org.freedesktop.locale1";
 const DBUS_PATH: &str = "/org/freedesktop/locale1";
-const DBUS_IFACE: &str = "org.freedesktop.locale1";
 
 /// Known locale variables that systemd-localed manages.
 const LOCALE_VARIABLES: &[&str] = &[
@@ -532,7 +530,7 @@ type SharedState = Arc<Mutex<LocaleState>>;
 // D-Bus interface: org.freedesktop.locale1
 // ---------------------------------------------------------------------------
 
-/// Register the org.freedesktop.locale1 interface on a Crossroads instance.
+/// D-Bus interface struct for org.freedesktop.locale1.
 ///
 /// Properties (read-only):
 ///   Locale (as), X11Layout, X11Model, X11Variant, X11Options,
@@ -542,159 +540,147 @@ type SharedState = Arc<Mutex<LocaleState>>;
 ///   SetLocale(as locale, b interactive)
 ///   SetVConsoleKeyboard(s keymap, s keymap_toggle, b convert, b interactive)
 ///   SetX11Keyboard(s layout, s model, s variant, s options, b convert, b interactive)
-fn register_locale1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
-    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
-        // --- Properties (read-only) ---
+struct Locale1Manager {
+    state: SharedState,
+}
 
-        // Locale → array of strings like ["LANG=en_US.UTF-8", "LC_TIME=de_DE.UTF-8"]
-        b.property("Locale").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            let locale_strings: Vec<String> = s
-                .locale
-                .iter()
-                .map(|(k, v)| format!("{}={}", k, v))
-                .collect();
-            Ok(locale_strings)
-        });
+#[zbus::interface(name = "org.freedesktop.locale1")]
+impl Locale1Manager {
+    // --- Properties (read-only) ---
 
-        b.property("X11Layout").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.x11_layout.clone())
-        });
+    // Locale → array of strings like ["LANG=en_US.UTF-8", "LC_TIME=de_DE.UTF-8"]
+    #[zbus(property, name = "Locale")]
+    fn locale(&self) -> Vec<String> {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.locale
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect()
+    }
 
-        b.property("X11Model").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.x11_model.clone())
-        });
+    #[zbus(property, name = "X11Layout")]
+    fn x11_layout(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.x11_layout.clone()
+    }
 
-        b.property("X11Variant").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.x11_variant.clone())
-        });
+    #[zbus(property, name = "X11Model")]
+    fn x11_model(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.x11_model.clone()
+    }
 
-        b.property("X11Options").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.x11_options.clone())
-        });
+    #[zbus(property, name = "X11Variant")]
+    fn x11_variant(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.x11_variant.clone()
+    }
 
-        b.property("VConsoleKeymap")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.vconsole_keymap.clone())
-            });
+    #[zbus(property, name = "X11Options")]
+    fn x11_options(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.x11_options.clone()
+    }
 
-        b.property("VConsoleKeymapToggle")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.vconsole_keymap_toggle.clone())
-            });
+    #[zbus(property, name = "VConsoleKeymap")]
+    fn vconsole_keymap(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.vconsole_keymap.clone()
+    }
 
-        // --- Methods ---
+    #[zbus(property, name = "VConsoleKeymapToggle")]
+    fn vconsole_keymap_toggle(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.vconsole_keymap_toggle.clone()
+    }
 
-        // SetLocale(as locale, b interactive)
-        b.method(
-            "SetLocale",
-            ("locale", "interactive"),
-            (),
-            move |_, state: &mut SharedState, (locale, _interactive): (Vec<String>, bool)| {
-                let mut entries = BTreeMap::new();
-                for assignment in &locale {
-                    if let Some((key, value)) = assignment.split_once('=') {
-                        if LOCALE_VARIABLES.contains(&key) {
-                            entries.insert(key.to_string(), value.to_string());
-                        } else {
-                            return Err(MethodErr::failed(&format!(
-                                "Unknown locale variable '{}'",
-                                key
-                            )));
-                        }
-                    }
-                }
-                if let Err(e) = set_locale(&entries) {
-                    return Err(MethodErr::failed(&format!("Failed to set locale: {}", e)));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.locale = entries;
-                Ok(())
-            },
-        );
+    // --- Methods ---
 
-        // SetVConsoleKeyboard(s keymap, s keymap_toggle, b convert, b interactive)
-        b.method(
-            "SetVConsoleKeyboard",
-            ("keymap", "keymap_toggle", "convert", "interactive"),
-            (),
-            move |_,
-                  state: &mut SharedState,
-                  (keymap, keymap_toggle, _convert, _interactive): (
-                String,
-                String,
-                bool,
-                bool,
-            )| {
-                if let Err(e) = set_vconsole_keymap(&keymap, &keymap_toggle) {
-                    return Err(MethodErr::failed(&format!(
-                        "Failed to set vconsole keymap: {}",
-                        e
+    fn set_locale(&self, locale: Vec<String>, _interactive: bool) -> zbus::fdo::Result<()> {
+        let mut entries = BTreeMap::new();
+        for assignment in &locale {
+            if let Some((key, value)) = assignment.split_once('=') {
+                if LOCALE_VARIABLES.contains(&key) {
+                    entries.insert(key.to_string(), value.to_string());
+                } else {
+                    return Err(zbus::fdo::Error::Failed(format!(
+                        "Unknown locale variable '{}'",
+                        key
                     )));
                 }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.vconsole_keymap = keymap;
-                s.vconsole_keymap_toggle = keymap_toggle;
-                Ok(())
-            },
-        );
+            }
+        }
+        if let Err(e) = set_locale(&entries) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set locale: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.locale = entries;
+        Ok(())
+    }
 
-        // SetX11Keyboard(s layout, s model, s variant, s options, b convert, b interactive)
-        b.method(
-            "SetX11Keyboard",
-            (
-                "layout",
-                "model",
-                "variant",
-                "options",
-                "convert",
-                "interactive",
-            ),
-            (),
-            move |_,
-                  state: &mut SharedState,
-                  (layout, model, variant, options, _convert, _interactive): (
-                String,
-                String,
-                String,
-                String,
-                bool,
-                bool,
-            )| {
-                if let Err(e) = set_x11_keymap(&layout, &model, &variant, &options) {
-                    return Err(MethodErr::failed(&format!(
-                        "Failed to set X11 keymap: {}",
-                        e
-                    )));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.x11_layout = layout;
-                s.x11_model = model;
-                s.x11_variant = variant;
-                s.x11_options = options;
-                Ok(())
-            },
-        );
-    })
+    fn set_v_console_keyboard(
+        &self,
+        keymap: String,
+        keymap_toggle: String,
+        _convert: bool,
+        _interactive: bool,
+    ) -> zbus::fdo::Result<()> {
+        if let Err(e) = set_vconsole_keymap(&keymap, &keymap_toggle) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set vconsole keymap: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.vconsole_keymap = keymap;
+        s.vconsole_keymap_toggle = keymap_toggle;
+        Ok(())
+    }
+
+    #[zbus(name = "SetX11Keyboard")]
+    fn set_x11_keyboard(
+        &self,
+        layout: String,
+        model: String,
+        variant: String,
+        options: String,
+        _convert: bool,
+        _interactive: bool,
+    ) -> zbus::fdo::Result<()> {
+        if let Err(e) = set_x11_keymap(&layout, &model, &variant, &options) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set X11 keymap: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.x11_layout = layout;
+        s.x11_model = model;
+        s.x11_variant = variant;
+        s.x11_options = options;
+        Ok(())
+    }
 }
 
 /// Set up the D-Bus connection and register the locale1 interface.
-fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
-    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
-    conn.request_name(DBUS_NAME, false, true, false)
-        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
-
-    let mut cr = Crossroads::new();
-    let iface_token = register_locale1_iface(&mut cr);
-    cr.insert(DBUS_PATH, &[iface_token], shared);
-
-    Ok((conn, cr))
+///
+/// Uses zbus's blocking connection which dispatches messages automatically
+/// in a background thread. The returned `Connection` must be kept alive
+/// for as long as we want to serve D-Bus requests.
+fn setup_dbus(shared: SharedState) -> Result<Connection, String> {
+    let iface = Locale1Manager { state: shared };
+    let conn = zbus::blocking::connection::Builder::system()
+        .map_err(|e| format!("D-Bus builder failed: {}", e))?
+        .name(DBUS_NAME)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?
+        .serve_at(DBUS_PATH, iface)
+        .map_err(|e| format!("D-Bus serve_at failed: {}", e))?
+        .build()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    Ok(conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -947,10 +933,10 @@ fn main() {
     }
     let mut last_watchdog = Instant::now();
 
-    // D-Bus connection is deferred to after READY=1 so we don't block early
-    // boot waiting for dbus-daemon. These are populated in the main loop.
-    let mut dbus_conn: Option<Connection> = None;
-    let mut dbus_cr: Option<Crossroads> = None;
+    // D-Bus connection is deferred to after READY=1 so we don't block
+    // early boot waiting for dbus-daemon.  zbus dispatches messages
+    // automatically in a background thread — we just keep the connection alive.
+    let mut _dbus_conn: Option<Connection> = None;
     let mut dbus_attempted = false;
 
     // Ensure /run/systemd exists
@@ -1012,13 +998,13 @@ fn main() {
 
         // Attempt D-Bus registration once (deferred from startup so we don't
         // block early boot before dbus-daemon is running).
+        // zbus handles message dispatch in a background thread automatically.
         if !dbus_attempted {
             dbus_attempted = true;
             match setup_dbus(shared_state.clone()) {
-                Ok((conn, cr)) => {
+                Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
-                    dbus_conn = Some(conn);
-                    dbus_cr = Some(cr);
+                    _dbus_conn = Some(conn);
                     sd_notify(&format!(
                         "STATUS=LANG={} (D-Bus active)",
                         initial_state.lang()
@@ -1030,14 +1016,6 @@ fn main() {
                         e
                     );
                 }
-            }
-        }
-
-        // Process D-Bus messages (non-blocking)
-        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
-            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
-            while let Some(msg) = conn.channel().pop_message() {
-                let _ = cr.handle_message(msg, conn);
             }
         }
 
@@ -1075,7 +1053,6 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dbus_crossroads::Crossroads;
     use std::io::Write;
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -1717,12 +1694,10 @@ mod tests {
     // --- D-Bus interface tests ---
 
     #[test]
-    fn test_dbus_register_locale1_iface() {
-        // Verify the interface registration doesn't panic
-        let mut cr = Crossroads::new();
-        let token = register_locale1_iface(&mut cr);
+    fn test_dbus_locale1_manager_struct() {
+        // Verify the interface struct can be created without panic
         let shared: SharedState = Arc::new(Mutex::new(LocaleState::default()));
-        cr.insert(DBUS_PATH, &[token], shared);
+        let _mgr = Locale1Manager { state: shared };
     }
 
     #[test]

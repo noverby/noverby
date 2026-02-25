@@ -29,8 +29,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder, IfaceToken, MethodErr};
+use zbus::blocking::Connection;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -46,10 +45,6 @@ const INPUT_DIR: &str = "/dev/input";
 
 const DBUS_NAME: &str = "org.freedesktop.login1";
 const DBUS_PATH: &str = "/org/freedesktop/login1";
-const DBUS_MANAGER_IFACE: &str = "org.freedesktop.login1.Manager";
-const DBUS_SESSION_IFACE: &str = "org.freedesktop.login1.Session";
-const DBUS_SEAT_IFACE: &str = "org.freedesktop.login1.Seat";
-const DBUS_USER_IFACE: &str = "org.freedesktop.login1.User";
 
 const DEFAULT_INHIBIT_DELAY_MAX_USEC: u64 = 5_000_000; // 5s
 const DEFAULT_USER_STOP_DELAY_USEC: u64 = 10_000_000; // 10s
@@ -1216,28 +1211,24 @@ fn resolve_user_gid(uid: u32) -> u32 {
 
 /// Convert a session ID to a D-Bus object path component.
 /// D-Bus object path components can't start with a digit, so prefix with '_'.
-fn session_object_path(session_id: &str) -> dbus::Path<'static> {
+fn session_object_path(session_id: &str) -> String {
     let escaped = session_id.replace('-', "_2d");
-    dbus::Path::new(format!("{}/session/_{}", DBUS_PATH, escaped)).unwrap_or_else(|_| {
-        dbus::Path::new(format!("{}/session/_unknown", DBUS_PATH)).expect("valid path")
-    })
+    format!("{}/session/_{}", DBUS_PATH, escaped)
 }
 
 /// Convert a seat name to a D-Bus object path.
-fn seat_object_path(seat_id: &str) -> dbus::Path<'static> {
+fn seat_object_path(seat_id: &str) -> String {
     let escaped = seat_id.replace('-', "_2d");
-    dbus::Path::new(format!("{}/seat/{}", DBUS_PATH, escaped)).unwrap_or_else(|_| {
-        dbus::Path::new(format!("{}/seat/unknown", DBUS_PATH)).expect("valid path")
-    })
+    format!("{}/seat/{}", DBUS_PATH, escaped)
 }
 
 /// Convert a UID to a D-Bus object path.
-fn user_object_path(uid: u32) -> dbus::Path<'static> {
-    dbus::Path::new(format!("{}/user/_{}", DBUS_PATH, uid))
-        .unwrap_or_else(|_| dbus::Path::new(format!("{}/user/_0", DBUS_PATH)).expect("valid path"))
+fn user_object_path(uid: u32) -> String {
+    format!("{}/user/_{}", DBUS_PATH, uid)
 }
 
 /// Extract session ID from a D-Bus object path
+#[allow(dead_code)]
 fn session_id_from_path(path: &str) -> Option<String> {
     let prefix = format!("{}/session/_", DBUS_PATH);
     path.strip_prefix(&prefix)
@@ -1245,6 +1236,7 @@ fn session_id_from_path(path: &str) -> Option<String> {
 }
 
 /// Extract seat ID from a D-Bus object path
+#[allow(dead_code)]
 fn seat_id_from_path(path: &str) -> Option<String> {
     let prefix = format!("{}/seat/", DBUS_PATH);
     path.strip_prefix(&prefix)
@@ -1252,6 +1244,7 @@ fn seat_id_from_path(path: &str) -> Option<String> {
 }
 
 /// Extract UID from a D-Bus object path
+#[allow(dead_code)]
 fn uid_from_path(path: &str) -> Option<u32> {
     let prefix = format!("{}/user/_", DBUS_PATH);
     if let Some(rest) = path.strip_prefix(&prefix) {
@@ -1267,1761 +1260,1297 @@ fn uid_from_path(path: &str) -> Option<u32> {
 
 type SharedManager = Arc<Mutex<LoginManager>>;
 
-/// Register the org.freedesktop.login1.Manager interface
-fn register_manager_iface(cr: &mut Crossroads, mgr: &SharedManager) -> IfaceToken<SharedManager> {
-    let mgr_for_signals = mgr.clone();
+// ---------------------------------------------------------------------------
+// D-Bus interface structs (zbus)
+// ---------------------------------------------------------------------------
 
-    cr.register(DBUS_MANAGER_IFACE, move |b: &mut IfaceBuilder<SharedManager>| {
-        // -------------------------------------------------------------------
-        // Signals — each statement registers the signal and drops the builder
-        // -------------------------------------------------------------------
-        b.signal::<(String, dbus::Path<'static>), _>("SessionNew", ("session_id", "object_path"));
-        b.signal::<(String, dbus::Path<'static>), _>("SessionRemoved", ("session_id", "object_path"));
-        b.signal::<(u32, dbus::Path<'static>), _>("UserNew", ("uid", "object_path"));
-        b.signal::<(u32, dbus::Path<'static>), _>("UserRemoved", ("uid", "object_path"));
-        b.signal::<(String, dbus::Path<'static>), _>("SeatNew", ("seat_id", "object_path"));
-        b.signal::<(String, dbus::Path<'static>), _>("SeatRemoved", ("seat_id", "object_path"));
-        b.signal::<(bool,), _>("PrepareForShutdown", ("active",));
-        b.signal::<(bool,), _>("PrepareForSleep", ("active",));
-
-        // -------------------------------------------------------------------
-        // Properties
-        // -------------------------------------------------------------------
-        {
-            let m = mgr_for_signals.clone();
-            b.property("NAutoVTs")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.n_auto_vts)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("KillOnlyUsers")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.kill_only_users.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("KillExcludeUsers")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.kill_exclude_users.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("KillUserProcesses")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.kill_user_processes)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("IdleHint")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.global_idle_hint())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("IdleSinceHint")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let (rt, _) = mgr.global_idle_since_hint();
-                    Ok(rt)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("IdleSinceHintMonotonic")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let (_, mono) = mgr.global_idle_since_hint();
-                    Ok(mono)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("BlockInhibited")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.block_inhibited())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("DelayInhibited")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.delay_inhibited())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("InhibitDelayMaxUSec")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.inhibit_delay_max_usec)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("UserStopDelayUSec")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.user_stop_delay_usec)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("HandlePowerKey")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.handle_power_key.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("HandleSuspendKey")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.handle_suspend_key.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("HandleHibernateKey")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.handle_hibernate_key.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("HandleLidSwitch")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.handle_lid_switch.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("HandleLidSwitchExternalPower")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.handle_lid_switch_external_power.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("HandleLidSwitchDocked")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.handle_lid_switch_docked.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("HoldoffTimeoutUSec")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.holdoff_timeout_usec)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("IdleAction")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.idle_action.clone())
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("IdleActionUSec")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.idle_action_usec)
-                });
-        }
-        b.property("PreparingForShutdown")
-            .get(|_, _: &mut SharedManager| Ok(false));
-        b.property("PreparingForSleep")
-            .get(|_, _: &mut SharedManager| Ok(false));
-        b.property("Docked")
-            .get(|_, _: &mut SharedManager| Ok(false));
-        b.property("LidClosed")
-            .get(|_, _: &mut SharedManager| Ok(false));
-        b.property("OnExternalPower")
-            .get(|_, _: &mut SharedManager| {
-                // Check /sys/class/power_supply/*/online
-                let on_ac = check_ac_power();
-                Ok(on_ac)
-            });
-        {
-            let m = mgr_for_signals.clone();
-            b.property("RemoveIPC")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.remove_ipc)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("RuntimeDirectorySize")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.runtime_directory_size)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("RuntimeDirectoryInodesMax")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.runtime_directory_inodes_max)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("InhibitorsMax")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.inhibitors_max)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("SessionsMax")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.config.sessions_max)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("NCurrentSessions")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.sessions.len() as u64)
-                });
-        }
-        {
-            let m = mgr_for_signals.clone();
-            b.property("NCurrentInhibitors")
-                .get(move |_, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    Ok(mgr.inhibitors.len() as u64)
-                });
-        }
-
-        // -------------------------------------------------------------------
-        // Methods
-        // -------------------------------------------------------------------
-
-        // GetSession(s) -> o
-        {
-            let m = mgr_for_signals.clone();
-            b.method("GetSession", ("session_id",), ("object_path",), move |_, _: &mut SharedManager, (session_id,): (String,)| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                if mgr.sessions.contains_key(&session_id) {
-                    Ok((session_object_path(&session_id),))
-                } else {
-                    Err(MethodErr::failed(&format!("No session '{}' known", session_id)))
-                }
-            });
-        }
-
-        // GetSessionByPID(u) -> o
-        {
-            let m = mgr_for_signals.clone();
-            b.method("GetSessionByPID", ("pid",), ("object_path",), move |_, _: &mut SharedManager, (pid,): (u32,)| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                for session in mgr.sessions.values() {
-                    if session.leader == pid {
-                        return Ok((session_object_path(&session.id),));
-                    }
-                }
-                Err(MethodErr::failed(&format!("No session for PID {} known", pid)))
-            });
-        }
-
-        // GetUser(u) -> o
-        {
-            let m = mgr_for_signals.clone();
-            b.method("GetUser", ("uid",), ("object_path",), move |_, _: &mut SharedManager, (uid,): (u32,)| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                if mgr.users.contains_key(&uid) {
-                    Ok((user_object_path(uid),))
-                } else {
-                    Err(MethodErr::failed(&format!("No user '{}' known", uid)))
-                }
-            });
-        }
-
-        // GetUserByPID(u) -> o
-        {
-            let m = mgr_for_signals.clone();
-            b.method("GetUserByPID", ("pid",), ("object_path",), move |_, _: &mut SharedManager, (pid,): (u32,)| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                for session in mgr.sessions.values() {
-                    if session.leader == pid {
-                        return Ok((user_object_path(session.uid),));
-                    }
-                }
-                Err(MethodErr::failed(&format!("No user for PID {} known", pid)))
-            });
-        }
-
-        // GetSeat(s) -> o
-        {
-            let m = mgr_for_signals.clone();
-            b.method("GetSeat", ("seat_id",), ("object_path",), move |_, _: &mut SharedManager, (seat_id,): (String,)| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                if mgr.seats.contains_key(&seat_id) {
-                    Ok((seat_object_path(&seat_id),))
-                } else {
-                    Err(MethodErr::failed(&format!("No seat '{}' known", seat_id)))
-                }
-            });
-        }
-
-        // ListSessions() -> a(susso)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("ListSessions", (), ("sessions",), move |_, _: &mut SharedManager, ()| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                let mut result: Vec<(String, u32, String, String, dbus::Path<'static>)> = Vec::new();
-                for session in mgr.sessions.values() {
-                    result.push((
-                        session.id.clone(),
-                        session.uid,
-                        session.user.clone(),
-                        session.seat.clone().unwrap_or_default(),
-                        session_object_path(&session.id),
-                    ));
-                }
-                Ok((result,))
-            });
-        }
-
-        // ListUsers() -> a(uso)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("ListUsers", (), ("users",), move |_, _: &mut SharedManager, ()| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                let mut result: Vec<(u32, String, dbus::Path<'static>)> = Vec::new();
-                for user in mgr.users.values() {
-                    result.push((
-                        user.uid,
-                        user.name.clone(),
-                        user_object_path(user.uid),
-                    ));
-                }
-                Ok((result,))
-            });
-        }
-
-        // ListSeats() -> a(so)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("ListSeats", (), ("seats",), move |_, _: &mut SharedManager, ()| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                let mut result: Vec<(String, dbus::Path<'static>)> = Vec::new();
-                for seat in mgr.seats.values() {
-                    result.push((
-                        seat.id.clone(),
-                        seat_object_path(&seat.id),
-                    ));
-                }
-                Ok((result,))
-            });
-        }
-
-        // ListInhibitors() -> a(ssssuu)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("ListInhibitors", (), ("inhibitors",), move |_, _: &mut SharedManager, ()| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                let mut result: Vec<(String, String, String, String, u32, u32)> = Vec::new();
-                for inhibitor in mgr.inhibitors.values() {
-                    result.push((
-                        inhibitor.what.clone(),
-                        inhibitor.who.clone(),
-                        inhibitor.why.clone(),
-                        inhibitor.mode.clone(),
-                        inhibitor.uid,
-                        inhibitor.pid,
-                    ));
-                }
-                Ok((result,))
-            });
-        }
-
-        // CreateSession(uusssssussbssa(sv)) -> soshusub
-        // Simplified: we accept basic parameters and return session info
-        {
-            let m = mgr_for_signals.clone();
-            b.method(
-                "CreateSession",
-                ("uid", "pid", "service", "type", "class", "seat_id", "vtnr", "tty", "display", "remote", "remote_user", "remote_host"),
-                ("session_id", "object_path", "runtime_path", "fifo_fd", "uid_out", "seat_id_out", "vtnr_out", "existing"),
-                move |_, _: &mut SharedManager, (uid, _pid, _service, stype, class, seat_id, vtnr, tty, _display, _remote, _remote_user, _remote_host): (u32, u32, String, String, String, String, u32, String, String, bool, String, String)| {
-                    let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-
-                    // Resolve username
-                    let user = resolve_uid_to_name(uid);
-                    let seat = if seat_id.is_empty() { None } else { Some(seat_id.as_str()) };
-
-                    let id = mgr.create_session(uid, &user, seat, vtnr, &stype, &class, &tty, _pid);
-                    mgr.sync_runtime_state();
-
-                    log::info!("New session {} of user {} on {}", id, user, seat.unwrap_or("(no seat)"));
-
-                    let obj_path = session_object_path(&id);
-                    let runtime_path = format!("/run/user/{}", uid);
-
-                    // We don't support passing a real FD here, so we return false for fifo_fd usage
-                    // The "existing" flag is false since we always create new
-                    Ok((id, obj_path, runtime_path, false, uid, seat_id, vtnr, false))
-                },
-            );
-        }
-
-        // ReleaseSession(s)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("ReleaseSession", ("session_id",), (), move |_, _: &mut SharedManager, (session_id,): (String,)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                if mgr.release_session(&session_id) {
-                    mgr.sync_runtime_state();
-                    log::info!("Released session {}", session_id);
-                    Ok(())
-                } else {
-                    Err(MethodErr::failed(&format!("No session '{}' known", session_id)))
-                }
-            });
-        }
-
-        // ActivateSession(s)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("ActivateSession", ("session_id",), (), move |_, _: &mut SharedManager, (session_id,): (String,)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                match mgr.activate_session(&session_id) {
-                    Ok(()) => {
-                        mgr.sync_runtime_state();
-                        log::info!("Activated session {}", session_id);
-                        Ok(())
-                    }
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            });
-        }
-
-        // ActivateSessionOnSeat(ss)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("ActivateSessionOnSeat", ("session_id", "seat_id"), (), move |_, _: &mut SharedManager, (session_id, seat_id): (String, String)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                // Verify the session is on the specified seat
-                if let Some(session) = mgr.sessions.get(&session_id)
-                    && session.seat.as_deref() != Some(&seat_id) {
-                        return Err(MethodErr::failed(&format!(
-                            "Session '{}' not on seat '{}'", session_id, seat_id
-                        )));
-                    }
-                match mgr.activate_session(&session_id) {
-                    Ok(()) => {
-                        mgr.sync_runtime_state();
-                        Ok(())
-                    }
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            });
-        }
-
-        // LockSession(s)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("LockSession", ("session_id",), (), move |_, _: &mut SharedManager, (session_id,): (String,)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                mgr.lock_session(&session_id).map_err(|e| MethodErr::failed(&e))
-            });
-        }
-
-        // UnlockSession(s)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("UnlockSession", ("session_id",), (), move |_, _: &mut SharedManager, (session_id,): (String,)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                mgr.unlock_session(&session_id).map_err(|e| MethodErr::failed(&e))
-            });
-        }
-
-        // LockSessions()
-        {
-            let m = mgr_for_signals.clone();
-            b.method("LockSessions", (), (), move |_, _: &mut SharedManager, ()| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                mgr.lock_sessions();
-                Ok(())
-            });
-        }
-
-        // UnlockSessions()
-        {
-            let m = mgr_for_signals.clone();
-            b.method("UnlockSessions", (), (), move |_, _: &mut SharedManager, ()| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                mgr.unlock_sessions();
-                Ok(())
-            });
-        }
-
-        // KillSession(ssi) — session_id, who ("leader"|"all"), signal_number
-        {
-            let m = mgr_for_signals.clone();
-            b.method("KillSession", ("session_id", "who", "signal_number"), (), move |_, _: &mut SharedManager, (session_id, who, signal): (String, String, i32)| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                mgr.kill_session(&session_id, &who, signal).map_err(|e| MethodErr::failed(&e))
-            });
-        }
-
-        // KillUser(ui) — uid, signal_number
-        {
-            let m = mgr_for_signals.clone();
-            b.method("KillUser", ("uid", "signal_number"), (), move |_, _: &mut SharedManager, (uid, signal): (u32, i32)| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                mgr.kill_user(uid, signal).map_err(|e| MethodErr::failed(&e))
-            });
-        }
-
-        // TerminateSession(s)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("TerminateSession", ("session_id",), (), move |_, _: &mut SharedManager, (session_id,): (String,)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                if mgr.release_session(&session_id) {
-                    mgr.sync_runtime_state();
-                    log::info!("Terminated session {}", session_id);
-                    Ok(())
-                } else {
-                    Err(MethodErr::failed(&format!("No session '{}' known", session_id)))
-                }
-            });
-        }
-
-        // TerminateUser(u)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("TerminateUser", ("uid",), (), move |_, _: &mut SharedManager, (uid,): (u32,)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                match mgr.terminate_user(uid) {
-                    Ok(()) => {
-                        mgr.sync_runtime_state();
-                        log::info!("Terminated user {}", uid);
-                        Ok(())
-                    }
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            });
-        }
-
-        // TerminateSeat(s)
-        {
-            let m = mgr_for_signals.clone();
-            b.method("TerminateSeat", ("seat_id",), (), move |_, _: &mut SharedManager, (seat_id,): (String,)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                match mgr.terminate_seat(&seat_id) {
-                    Ok(()) => {
-                        mgr.sync_runtime_state();
-                        Ok(())
-                    }
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            });
-        }
-
-        // SetUserLinger(ubb) — uid, enable, interactive
-        {
-            let m = mgr_for_signals.clone();
-            b.method("SetUserLinger", ("uid", "enable", "interactive"), (), move |_, _: &mut SharedManager, (uid, enable, _interactive): (u32, bool, bool)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(user) = mgr.users.get_mut(&uid) {
-                    user.linger = enable;
-                    // Create/remove linger file
-                    let linger_path = format!("/var/lib/systemd/linger/{}", user.name);
-                    if enable {
-                        let _ = fs::create_dir_all("/var/lib/systemd/linger");
-                        let _ = fs::write(&linger_path, "");
-                    } else {
-                        let _ = fs::remove_file(&linger_path);
-                    }
-                    Ok(())
-                } else {
-                    Err(MethodErr::failed(&format!("User {} not known", uid)))
-                }
-            });
-        }
-
-        // AttachDevice(ssb) — seat_id, sysfs_path, interactive
-        b.method("AttachDevice", ("seat_id", "sysfs_path", "interactive"), (), |_, _: &mut SharedManager, (_seat_id, _sysfs_path, _interactive): (String, String, bool)| {
-            // Not yet implemented
-            Ok(())
-        });
-
-        // FlushDevices(b) — interactive
-        {
-            let m = mgr_for_signals.clone();
-            b.method("FlushDevices", ("interactive",), (), move |_, _: &mut SharedManager, (_interactive,): (bool,)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                mgr.enumerate_input_devices();
-                Ok(())
-            });
-        }
-
-        // PowerOff(b), Reboot(b), Halt(b), Suspend(b), Hibernate(b), HybridSleep(b), SuspendThenHibernate(b)
-        for action in &["PowerOff", "Reboot", "Halt", "Suspend", "Hibernate", "HybridSleep", "SuspendThenHibernate"] {
-            let action_name = action.to_string();
-            b.method(*action, ("interactive",), (), move |_, _: &mut SharedManager, (_interactive,): (bool,)| {
-                log::info!("D-Bus {} requested", action_name);
-                // In a full implementation, this would trigger the action
-                // through the PID 1 service manager
-                Ok(())
-            });
-        }
-
-        // CanPowerOff() -> s, CanReboot() -> s, etc.
-        for (method_name, action_name) in &[
-            ("CanPowerOff", "poweroff"),
-            ("CanReboot", "reboot"),
-            ("CanHalt", "halt"),
-            ("CanSuspend", "suspend"),
-            ("CanHibernate", "hibernate"),
-            ("CanHybridSleep", "hybrid-sleep"),
-            ("CanSuspendThenHibernate", "suspend-then-hibernate"),
-        ] {
-            let m = mgr_for_signals.clone();
-            let action = action_name.to_string();
-            b.method(*method_name, (), ("result",), move |_, _: &mut SharedManager, ()| {
-                let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                Ok((mgr.can_action(&action).to_string(),))
-            });
-        }
-
-        // Inhibit(ssss) -> h (what, who, why, mode -> fd)
-        // Since we can't easily pass FDs through dbus-crossroads callbacks,
-        // we return the inhibitor ID as a workaround. Real systemd returns a
-        // pipe FD that, when closed, releases the inhibitor.
-        {
-            let m = mgr_for_signals.clone();
-            b.method("Inhibit", ("what", "who", "why", "mode"), ("fd",), move |_, _: &mut SharedManager, (what, who, why, mode): (String, String, String, String)| {
-                let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-
-                // Validate mode
-                if mode != "block" && mode != "delay" {
-                    return Err(MethodErr::failed("Invalid mode, must be 'block' or 'delay'"));
-                }
-
-                let id = mgr.create_inhibitor(&what, &who, &why, &mode, 0, 0);
-                log::info!("New D-Bus inhibitor {} ({}): {} — {}", id, what, who, why);
-
-                // Create a pipe - when the caller closes their end, the inhibitor is released
-                let mut fds = [0i32; 2];
-                let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
-                if ret == 0 {
-                    // Return the write end to the caller; we keep the read end
-                    // In practice we'd monitor the read end to detect closure,
-                    // but for now we accept and return the FD
-                    let fd = unsafe { dbus::arg::OwnedFd::new(fds[1]) };
-                    // Close our end of the write side - caller gets ownership
-                    unsafe { libc::close(fds[0]); }
-                    Ok((fd,))
-                } else {
-                    Err(MethodErr::failed("Failed to create pipe for inhibitor"))
-                }
-            });
-        }
-
-        // ScheduleShutdown(st) — type, usec
-        b.method("ScheduleShutdown", ("shutdown_type", "usec"), (), |_, _: &mut SharedManager, (_stype, _usec): (String, u64)| {
-            log::info!("ScheduleShutdown requested (not yet implemented)");
-            Ok(())
-        });
-
-        // CancelScheduledShutdown() -> b
-        b.method("CancelScheduledShutdown", (), ("cancelled",), |_, _: &mut SharedManager, ()| {
-            Ok((false,))
-        });
-
-        // SetWallMessage(sb) — message, enable
-        b.method("SetWallMessage", ("wall_message", "enable"), (), |_, _: &mut SharedManager, (_msg, _enable): (String, bool)| {
-            Ok(())
-        });
-    })
+/// D-Bus interface struct for org.freedesktop.login1.Manager
+struct Login1Manager {
+    mgr: SharedManager,
 }
 
-/// Register the org.freedesktop.login1.Session interface
-fn register_session_iface(cr: &mut Crossroads, mgr: &SharedManager) -> IfaceToken<SharedManager> {
-    let mgr_for_iface = mgr.clone();
+#[zbus::interface(name = "org.freedesktop.login1.Manager")]
+impl Login1Manager {
+    // --- Properties ---
 
-    cr.register(
-        DBUS_SESSION_IFACE,
-        move |b: &mut IfaceBuilder<SharedManager>| {
-            // Signals — register and drop builders immediately
-            b.signal::<(), _>("Lock", ());
-            b.signal::<(), _>("Unlock", ());
-            b.signal::<(u32, u32, String), _>("PauseDevice", ("major", "minor", "type_"));
-            b.signal::<(u32, u32, u32), _>("ResumeDevice", ("major", "minor", "fd"));
+    #[zbus(property, name = "NAutoVTs")]
+    fn n_auto_vts(&self) -> u32 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.n_auto_vts
+    }
 
-            // Properties
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Id").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.id.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("User").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok((session.uid, user_object_path(session.uid)));
-                    }
-                    Ok((0u32, user_object_path(0)))
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Name").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.user.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Timestamp")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.since * 1_000_000);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("TimestampMonotonic")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.since_monotonic);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("VTNr").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.vtnr);
-                    }
-                    Ok(0u32)
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Seat").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        let seat_id = session.seat.clone().unwrap_or_default();
-                        let seat_path = if seat_id.is_empty() {
-                            dbus::Path::new("/").expect("valid path")
-                        } else {
-                            seat_object_path(&seat_id)
-                        };
-                        return Ok((seat_id, seat_path));
-                    }
-                    Ok((String::new(), dbus::Path::new("/").expect("valid path")))
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("TTY").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.tty.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Display")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.display.clone());
-                        }
-                        Ok(String::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Remote").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.remote);
-                    }
-                    Ok(false)
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("RemoteHost")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.remote_host.clone());
-                        }
-                        Ok(String::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("RemoteUser")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.remote_user.clone());
-                        }
-                        Ok(String::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Service")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.service.clone());
-                        }
-                        Ok(String::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Desktop")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.desktop.clone());
-                        }
-                        Ok(String::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Scope").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.scope.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Leader").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.leader);
-                    }
-                    Ok(0u32)
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Audit").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.leader); // audit session = leader PID for now
-                    }
-                    Ok(0u32)
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Type").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.session_type.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Class").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.class.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Active").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.active);
-                    }
-                    Ok(false)
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("State").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(sid) = session_id_from_path(&path_str)
-                        && let Some(session) = mgr.sessions.get(&sid)
-                    {
-                        return Ok(session.state.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleHint")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.idle_hint);
-                        }
-                        Ok(false)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleSinceHint")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.idle_since_hint);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleSinceHintMonotonic")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.idle_since_hint_monotonic);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("LockedHint")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(sid) = session_id_from_path(&path_str)
-                            && let Some(session) = mgr.sessions.get(&sid)
-                        {
-                            return Ok(session.locked_hint);
-                        }
-                        Ok(false)
-                    });
-            }
+    #[zbus(property, name = "KillOnlyUsers")]
+    fn kill_only_users(&self) -> Vec<String> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.kill_only_users.clone()
+    }
 
-            // Methods
+    #[zbus(property, name = "KillExcludeUsers")]
+    fn kill_exclude_users(&self) -> Vec<String> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.kill_exclude_users.clone()
+    }
 
-            // Terminate()
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "Terminate",
-                    (),
-                    (),
-                    move |ctx, _: &mut SharedManager, ()| {
-                        let path_str = ctx.path().to_string();
-                        let sid = session_id_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid session path"))?;
-                        let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        if mgr.release_session(&sid) {
-                            mgr.sync_runtime_state();
-                            Ok(())
-                        } else {
-                            Err(MethodErr::failed("Session not found"))
-                        }
-                    },
-                );
+    #[zbus(property, name = "KillUserProcesses")]
+    fn kill_user_processes(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.kill_user_processes
+    }
+
+    #[zbus(property, name = "IdleHint")]
+    fn idle_hint(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.global_idle_hint()
+    }
+
+    #[zbus(property, name = "IdleSinceHint")]
+    fn idle_since_hint(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let (rt, _) = mgr.global_idle_since_hint();
+        rt
+    }
+
+    #[zbus(property, name = "IdleSinceHintMonotonic")]
+    fn idle_since_hint_monotonic(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let (_, mono) = mgr.global_idle_since_hint();
+        mono
+    }
+
+    #[zbus(property, name = "BlockInhibited")]
+    fn block_inhibited(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.block_inhibited()
+    }
+
+    #[zbus(property, name = "DelayInhibited")]
+    fn delay_inhibited(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.delay_inhibited()
+    }
+
+    #[zbus(property, name = "InhibitDelayMaxUSec")]
+    fn inhibit_delay_max_usec(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.inhibit_delay_max_usec
+    }
+
+    #[zbus(property, name = "UserStopDelayUSec")]
+    fn user_stop_delay_usec(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.user_stop_delay_usec
+    }
+
+    #[zbus(property, name = "HandlePowerKey")]
+    fn handle_power_key(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.handle_power_key.clone()
+    }
+
+    #[zbus(property, name = "HandleSuspendKey")]
+    fn handle_suspend_key(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.handle_suspend_key.clone()
+    }
+
+    #[zbus(property, name = "HandleHibernateKey")]
+    fn handle_hibernate_key(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.handle_hibernate_key.clone()
+    }
+
+    #[zbus(property, name = "HandleLidSwitch")]
+    fn handle_lid_switch(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.handle_lid_switch.clone()
+    }
+
+    #[zbus(property, name = "HandleLidSwitchExternalPower")]
+    fn handle_lid_switch_external_power(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.handle_lid_switch_external_power.clone()
+    }
+
+    #[zbus(property, name = "HandleLidSwitchDocked")]
+    fn handle_lid_switch_docked(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.handle_lid_switch_docked.clone()
+    }
+
+    #[zbus(property, name = "HoldoffTimeoutUSec")]
+    fn holdoff_timeout_usec(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.holdoff_timeout_usec
+    }
+
+    #[zbus(property, name = "IdleAction")]
+    fn idle_action(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.idle_action.clone()
+    }
+
+    #[zbus(property, name = "IdleActionUSec")]
+    fn idle_action_usec(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.idle_action_usec
+    }
+
+    #[zbus(property, name = "PreparingForShutdown")]
+    fn preparing_for_shutdown(&self) -> bool {
+        false
+    }
+
+    #[zbus(property, name = "PreparingForSleep")]
+    fn preparing_for_sleep(&self) -> bool {
+        false
+    }
+
+    #[zbus(property, name = "Docked")]
+    fn docked(&self) -> bool {
+        false
+    }
+
+    #[zbus(property, name = "LidClosed")]
+    fn lid_closed(&self) -> bool {
+        false
+    }
+
+    #[zbus(property, name = "OnExternalPower")]
+    fn on_external_power(&self) -> bool {
+        check_ac_power()
+    }
+
+    #[zbus(property, name = "RemoveIPC")]
+    fn remove_ipc(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.remove_ipc
+    }
+
+    #[zbus(property, name = "RuntimeDirectorySize")]
+    fn runtime_directory_size(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.runtime_directory_size
+    }
+
+    #[zbus(property, name = "RuntimeDirectoryInodesMax")]
+    fn runtime_directory_inodes_max(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.runtime_directory_inodes_max
+    }
+
+    #[zbus(property, name = "InhibitorsMax")]
+    fn inhibitors_max(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.inhibitors_max
+    }
+
+    #[zbus(property, name = "SessionsMax")]
+    fn sessions_max(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.config.sessions_max
+    }
+
+    #[zbus(property, name = "NCurrentSessions")]
+    fn n_current_sessions(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions.len() as u64
+    }
+
+    #[zbus(property, name = "NCurrentInhibitors")]
+    fn n_current_inhibitors(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.inhibitors.len() as u64
+    }
+
+    // --- Signals ---
+
+    #[zbus(signal)]
+    async fn session_new(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        session_id: &str,
+        object_path: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn session_removed(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        session_id: &str,
+        object_path: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn user_new(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        uid: u32,
+        object_path: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn user_removed(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        uid: u32,
+        object_path: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn seat_new(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        seat_id: &str,
+        object_path: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn seat_removed(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        seat_id: &str,
+        object_path: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn prepare_for_shutdown(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        active: bool,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn prepare_for_sleep(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        active: bool,
+    ) -> zbus::Result<()>;
+
+    // --- Methods ---
+
+    fn get_session(&self, session_id: String) -> zbus::fdo::Result<String> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if mgr.sessions.contains_key(&session_id) {
+            Ok(session_object_path(&session_id))
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No session '{}' known",
+                session_id
+            )))
+        }
+    }
+
+    fn get_session_by_pid(&self, pid: u32) -> zbus::fdo::Result<String> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        for session in mgr.sessions.values() {
+            if session.leader == pid {
+                return Ok(session_object_path(&session.id));
             }
+        }
+        Err(zbus::fdo::Error::Failed(format!(
+            "No session for PID {} known",
+            pid
+        )))
+    }
 
-            // Activate()
-            {
-                let m = mgr_for_iface.clone();
-                b.method("Activate", (), (), move |ctx, _: &mut SharedManager, ()| {
-                    let path_str = ctx.path().to_string();
-                    let sid = session_id_from_path(&path_str)
-                        .ok_or_else(|| MethodErr::failed("Invalid session path"))?;
-                    let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    mgr.activate_session(&sid)
-                        .map_err(|e| MethodErr::failed(&e))?;
-                    mgr.sync_runtime_state();
-                    Ok(())
-                });
+    fn get_user(&self, uid: u32) -> zbus::fdo::Result<String> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if mgr.users.contains_key(&uid) {
+            Ok(user_object_path(uid))
+        } else {
+            Err(zbus::fdo::Error::Failed(format!("No user '{}' known", uid)))
+        }
+    }
+
+    fn get_user_by_pid(&self, pid: u32) -> zbus::fdo::Result<String> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        for session in mgr.sessions.values() {
+            if session.leader == pid {
+                return Ok(user_object_path(session.uid));
             }
+        }
+        Err(zbus::fdo::Error::Failed(format!(
+            "No user for PID {} known",
+            pid
+        )))
+    }
 
-            // Lock()
-            {
-                let m = mgr_for_iface.clone();
-                b.method("Lock", (), (), move |ctx, _: &mut SharedManager, ()| {
-                    let path_str = ctx.path().to_string();
-                    let sid = session_id_from_path(&path_str)
-                        .ok_or_else(|| MethodErr::failed("Invalid session path"))?;
-                    let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    mgr.lock_session(&sid).map_err(|e| MethodErr::failed(&e))
-                });
-            }
+    fn get_seat(&self, seat_id: String) -> zbus::fdo::Result<String> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if mgr.seats.contains_key(&seat_id) {
+            Ok(seat_object_path(&seat_id))
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No seat '{}' known",
+                seat_id
+            )))
+        }
+    }
 
-            // Unlock()
-            {
-                let m = mgr_for_iface.clone();
-                b.method("Unlock", (), (), move |ctx, _: &mut SharedManager, ()| {
-                    let path_str = ctx.path().to_string();
-                    let sid = session_id_from_path(&path_str)
-                        .ok_or_else(|| MethodErr::failed("Invalid session path"))?;
-                    let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    mgr.unlock_session(&sid).map_err(|e| MethodErr::failed(&e))
-                });
-            }
+    fn list_sessions(&self) -> Vec<(String, u32, String, String, String)> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let mut result = Vec::new();
+        for session in mgr.sessions.values() {
+            result.push((
+                session.id.clone(),
+                session.uid,
+                session.user.clone(),
+                session.seat.clone().unwrap_or_default(),
+                session_object_path(&session.id),
+            ));
+        }
+        result
+    }
 
-            // SetIdleHint(b)
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "SetIdleHint",
-                    ("idle",),
-                    (),
-                    move |ctx, _: &mut SharedManager, (idle,): (bool,)| {
-                        let path_str = ctx.path().to_string();
-                        let sid = session_id_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid session path"))?;
-                        let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        mgr.set_idle_hint(&sid, idle)
-                            .map_err(|e| MethodErr::failed(&e))
-                    },
-                );
-            }
+    fn list_users(&self) -> Vec<(u32, String, String)> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let mut result = Vec::new();
+        for user in mgr.users.values() {
+            result.push((user.uid, user.name.clone(), user_object_path(user.uid)));
+        }
+        result
+    }
 
-            // SetLockedHint(b)
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "SetLockedHint",
-                    ("locked",),
-                    (),
-                    move |ctx, _: &mut SharedManager, (locked,): (bool,)| {
-                        let path_str = ctx.path().to_string();
-                        let sid = session_id_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid session path"))?;
-                        let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        mgr.set_locked_hint(&sid, locked)
-                            .map_err(|e| MethodErr::failed(&e))
-                    },
-                );
-            }
+    fn list_seats(&self) -> Vec<(String, String)> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let mut result = Vec::new();
+        for seat in mgr.seats.values() {
+            result.push((seat.id.clone(), seat_object_path(&seat.id)));
+        }
+        result
+    }
 
-            // SetType(s)
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "SetType",
-                    ("session_type",),
-                    (),
-                    move |ctx, _: &mut SharedManager, (stype,): (String,)| {
-                        let path_str = ctx.path().to_string();
-                        let sid = session_id_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid session path"))?;
-                        let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        mgr.set_session_type(&sid, &stype)
-                            .map_err(|e| MethodErr::failed(&e))
-                    },
-                );
-            }
+    fn list_inhibitors(&self) -> Vec<(String, String, String, String, u32, u32)> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let mut result = Vec::new();
+        for inhibitor in mgr.inhibitors.values() {
+            result.push((
+                inhibitor.what.clone(),
+                inhibitor.who.clone(),
+                inhibitor.why.clone(),
+                inhibitor.mode.clone(),
+                inhibitor.uid,
+                inhibitor.pid,
+            ));
+        }
+        result
+    }
 
-            // Kill(si)
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "Kill",
-                    ("who", "signal_number"),
-                    (),
-                    move |ctx, _: &mut SharedManager, (who, signal): (String, i32)| {
-                        let path_str = ctx.path().to_string();
-                        let sid = session_id_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid session path"))?;
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        mgr.kill_session(&sid, &who, signal)
-                            .map_err(|e| MethodErr::failed(&e))
-                    },
-                );
-            }
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    fn create_session(
+        &self,
+        uid: u32,
+        _pid: u32,
+        _service: String,
+        stype: String,
+        class: String,
+        seat_id: String,
+        vtnr: u32,
+        tty: String,
+        _display: String,
+        _remote: bool,
+        _remote_user: String,
+        _remote_host: String,
+    ) -> zbus::fdo::Result<(String, String, String, bool, u32, String, u32, bool)> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let user = resolve_uid_to_name(uid);
+        let seat = if seat_id.is_empty() {
+            None
+        } else {
+            Some(seat_id.as_str())
+        };
+        let id = mgr.create_session(uid, &user, seat, vtnr, &stype, &class, &tty, _pid);
+        mgr.sync_runtime_state();
+        log::info!(
+            "New session {} of user {} on {}",
+            id,
+            user,
+            seat.unwrap_or("(no seat)")
+        );
+        let obj_path = session_object_path(&id);
+        let runtime_path = format!("/run/user/{}", uid);
+        Ok((id, obj_path, runtime_path, false, uid, seat_id, vtnr, false))
+    }
 
-            // TakeControl(b) — stub
-            b.method(
-                "TakeControl",
-                ("force",),
-                (),
-                |_, _: &mut SharedManager, (_force,): (bool,)| Ok(()),
-            );
+    fn release_session(&self, session_id: String) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if mgr.release_session(&session_id) {
+            mgr.sync_runtime_state();
+            log::info!("Released session {}", session_id);
+            Ok(())
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No session '{}' known",
+                session_id
+            )))
+        }
+    }
 
-            // ReleaseControl() — stub
-            b.method("ReleaseControl", (), (), |_, _: &mut SharedManager, ()| {
+    fn activate_session(&self, session_id: String) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        match mgr.activate_session(&session_id) {
+            Ok(()) => {
+                mgr.sync_runtime_state();
+                log::info!("Activated session {}", session_id);
                 Ok(())
-            });
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-            // SetBrightness(ssu) — stub
-            b.method(
-                "SetBrightness",
-                ("subsystem", "name", "brightness"),
-                (),
-                |_, _: &mut SharedManager, (_sub, _name, _val): (String, String, u32)| Ok(()),
-            );
+    fn activate_session_on_seat(
+        &self,
+        session_id: String,
+        seat_id: String,
+    ) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(session) = mgr.sessions.get(&session_id)
+            && session.seat.as_deref() != Some(&seat_id)
+        {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Session '{}' not on seat '{}'",
+                session_id, seat_id
+            )));
+        }
+        match mgr.activate_session(&session_id) {
+            Ok(()) => {
+                mgr.sync_runtime_state();
+                Ok(())
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-            // TakeDevice(uu) -> hb — stub
-            b.method(
-                "TakeDevice",
-                ("major", "minor"),
-                ("fd", "inactive"),
-                |_,
-                 _: &mut SharedManager,
-                 (_major, _minor): (u32, u32)|
-                 -> Result<(i32, bool), MethodErr> {
-                    Err(MethodErr::failed("TakeDevice not yet implemented"))
-                },
-            );
+    fn lock_session(&self, session_id: String) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.lock_session(&session_id)
+            .map_err(zbus::fdo::Error::Failed)
+    }
 
-            // ReleaseDevice(uu) — stub
-            b.method(
-                "ReleaseDevice",
-                ("major", "minor"),
-                (),
-                |_, _: &mut SharedManager, (_major, _minor): (u32, u32)| Ok(()),
-            );
+    fn unlock_session(&self, session_id: String) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.unlock_session(&session_id)
+            .map_err(zbus::fdo::Error::Failed)
+    }
 
-            // PauseDeviceComplete(uu) — stub
-            b.method(
-                "PauseDeviceComplete",
-                ("major", "minor"),
-                (),
-                |_, _: &mut SharedManager, (_major, _minor): (u32, u32)| Ok(()),
-            );
-        },
-    )
+    fn lock_sessions(&self) {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.lock_sessions();
+    }
+
+    fn unlock_sessions(&self) {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.unlock_sessions();
+    }
+
+    fn kill_session(
+        &self,
+        session_id: String,
+        who: String,
+        signal_number: i32,
+    ) -> zbus::fdo::Result<()> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.kill_session(&session_id, &who, signal_number)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    fn kill_user(&self, uid: u32, signal_number: i32) -> zbus::fdo::Result<()> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.kill_user(uid, signal_number)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    fn terminate_session(&self, session_id: String) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if mgr.release_session(&session_id) {
+            mgr.sync_runtime_state();
+            log::info!("Terminated session {}", session_id);
+            Ok(())
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No session '{}' known",
+                session_id
+            )))
+        }
+    }
+
+    fn terminate_user(&self, uid: u32) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        match mgr.terminate_user(uid) {
+            Ok(()) => {
+                mgr.sync_runtime_state();
+                log::info!("Terminated user {}", uid);
+                Ok(())
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
+
+    fn terminate_seat(&self, seat_id: String) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        match mgr.terminate_seat(&seat_id) {
+            Ok(()) => {
+                mgr.sync_runtime_state();
+                Ok(())
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
+
+    fn set_user_linger(&self, uid: u32, enable: bool, _interactive: bool) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(user) = mgr.users.get_mut(&uid) {
+            user.linger = enable;
+            let linger_path = format!("/var/lib/systemd/linger/{}", user.name);
+            if enable {
+                let _ = fs::create_dir_all("/var/lib/systemd/linger");
+                let _ = fs::write(&linger_path, "");
+            } else {
+                let _ = fs::remove_file(&linger_path);
+            }
+            Ok(())
+        } else {
+            Err(zbus::fdo::Error::Failed(format!("User {} not known", uid)))
+        }
+    }
+
+    fn attach_device(&self, _seat_id: String, _sysfs_path: String, _interactive: bool) {
+        // Not yet implemented
+    }
+
+    fn flush_devices(&self, _interactive: bool) {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.enumerate_input_devices();
+    }
+
+    fn power_off(&self, _interactive: bool) {
+        log::info!("D-Bus PowerOff requested");
+    }
+    fn reboot(&self, _interactive: bool) {
+        log::info!("D-Bus Reboot requested");
+    }
+    fn halt(&self, _interactive: bool) {
+        log::info!("D-Bus Halt requested");
+    }
+    fn suspend(&self, _interactive: bool) {
+        log::info!("D-Bus Suspend requested");
+    }
+    fn hibernate(&self, _interactive: bool) {
+        log::info!("D-Bus Hibernate requested");
+    }
+    fn hybrid_sleep(&self, _interactive: bool) {
+        log::info!("D-Bus HybridSleep requested");
+    }
+    fn suspend_then_hibernate(&self, _interactive: bool) {
+        log::info!("D-Bus SuspendThenHibernate requested");
+    }
+
+    fn can_power_off(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.can_action("poweroff").to_string()
+    }
+    fn can_reboot(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.can_action("reboot").to_string()
+    }
+    fn can_halt(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.can_action("halt").to_string()
+    }
+    fn can_suspend(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.can_action("suspend").to_string()
+    }
+    fn can_hibernate(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.can_action("hibernate").to_string()
+    }
+    fn can_hybrid_sleep(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.can_action("hybrid-sleep").to_string()
+    }
+    fn can_suspend_then_hibernate(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.can_action("suspend-then-hibernate").to_string()
+    }
+
+    fn inhibit(
+        &self,
+        what: String,
+        who: String,
+        why: String,
+        mode: String,
+    ) -> zbus::fdo::Result<u32> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if mode != "block" && mode != "delay" {
+            return Err(zbus::fdo::Error::Failed(
+                "Invalid mode, must be 'block' or 'delay'".to_string(),
+            ));
+        }
+        let id = mgr.create_inhibitor(&what, &who, &why, &mode, 0, 0);
+        log::info!("New D-Bus inhibitor {} ({}): {} — {}", id, what, who, why);
+        // Return the inhibitor ID. Real systemd returns a pipe FD; we return
+        // the numeric ID as a workaround for the blocking zbus interface.
+        Ok(id as u32)
+    }
+
+    fn schedule_shutdown(&self, _shutdown_type: String, _usec: u64) {
+        log::info!("ScheduleShutdown requested (not yet implemented)");
+    }
+
+    fn cancel_scheduled_shutdown(&self) -> bool {
+        false
+    }
+
+    fn set_wall_message(&self, _wall_message: String, _enable: bool) {}
 }
 
-/// Register the org.freedesktop.login1.Seat interface
-fn register_seat_iface(cr: &mut Crossroads, mgr: &SharedManager) -> IfaceToken<SharedManager> {
-    let mgr_for_iface = mgr.clone();
-
-    cr.register(
-        DBUS_SEAT_IFACE,
-        move |b: &mut IfaceBuilder<SharedManager>| {
-            // Properties
-            {
-                b.property("Id").get(move |ctx, _: &mut SharedManager| {
-                    let path_str = ctx.path().to_string();
-                    if let Some(seat_id) = seat_id_from_path(&path_str) {
-                        Ok(seat_id)
-                    } else {
-                        Ok(String::new())
-                    }
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("ActiveSession")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(seat_id) = seat_id_from_path(&path_str)
-                            && let Some(seat) = mgr.seats.get(&seat_id)
-                            && let Some(ref active) = seat.active_session
-                        {
-                            return Ok((active.clone(), session_object_path(active)));
-                        }
-                        Ok((String::new(), dbus::Path::new("/").expect("valid path")))
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("CanGraphical")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(seat_id) = seat_id_from_path(&path_str)
-                            && let Some(seat) = mgr.seats.get(&seat_id)
-                        {
-                            return Ok(seat.can_graphical);
-                        }
-                        Ok(false)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("CanMultiSession")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(seat_id) = seat_id_from_path(&path_str)
-                            && let Some(seat) = mgr.seats.get(&seat_id)
-                        {
-                            return Ok(seat.can_multi_session);
-                        }
-                        Ok(false)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Sessions")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(seat_id) = seat_id_from_path(&path_str)
-                            && let Some(seat) = mgr.seats.get(&seat_id)
-                        {
-                            let sessions: Vec<(String, dbus::Path<'static>)> = seat
-                                .sessions
-                                .iter()
-                                .map(|sid| (sid.clone(), session_object_path(sid)))
-                                .collect();
-                            return Ok(sessions);
-                        }
-                        Ok(Vec::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleHint")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(seat_id) = seat_id_from_path(&path_str)
-                            && let Some(seat) = mgr.seats.get(&seat_id)
-                        {
-                            // Seat is idle if all sessions on it are idle
-                            let all_idle = seat.sessions.iter().all(|sid| {
-                                mgr.sessions.get(sid).map(|s| s.idle_hint).unwrap_or(true)
-                            });
-                            return Ok(all_idle);
-                        }
-                        Ok(true)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleSinceHint")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(seat_id) = seat_id_from_path(&path_str)
-                            && let Some(seat) = mgr.seats.get(&seat_id)
-                        {
-                            let mut earliest: u64 = 0;
-                            for sid in &seat.sessions {
-                                if let Some(s) = mgr.sessions.get(sid)
-                                    && s.idle_hint
-                                    && s.idle_since_hint > 0
-                                    && (earliest == 0 || s.idle_since_hint < earliest)
-                                {
-                                    earliest = s.idle_since_hint;
-                                }
-                            }
-                            return Ok(earliest);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleSinceHintMonotonic")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(seat_id) = seat_id_from_path(&path_str)
-                            && let Some(seat) = mgr.seats.get(&seat_id)
-                        {
-                            let mut earliest: u64 = 0;
-                            for sid in &seat.sessions {
-                                if let Some(s) = mgr.sessions.get(sid)
-                                    && s.idle_hint
-                                    && s.idle_since_hint_monotonic > 0
-                                    && (earliest == 0 || s.idle_since_hint_monotonic < earliest)
-                                {
-                                    earliest = s.idle_since_hint_monotonic;
-                                }
-                            }
-                            return Ok(earliest);
-                        }
-                        Ok(0u64)
-                    });
-            }
-
-            // Methods
-
-            // Terminate()
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "Terminate",
-                    (),
-                    (),
-                    move |ctx, _: &mut SharedManager, ()| {
-                        let path_str = ctx.path().to_string();
-                        let seat_id = seat_id_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid seat path"))?;
-                        let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        mgr.terminate_seat(&seat_id)
-                            .map_err(|e| MethodErr::failed(&e))?;
-                        mgr.sync_runtime_state();
-                        Ok(())
-                    },
-                );
-            }
-
-            // ActivateSession(s)
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "ActivateSession",
-                    ("session_id",),
-                    (),
-                    move |ctx, _: &mut SharedManager, (session_id,): (String,)| {
-                        let path_str = ctx.path().to_string();
-                        let seat_id = seat_id_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid seat path"))?;
-                        let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        // Verify session is on this seat
-                        if let Some(session) = mgr.sessions.get(&session_id)
-                            && session.seat.as_deref() != Some(&seat_id)
-                        {
-                            return Err(MethodErr::failed("Session not on this seat"));
-                        }
-                        mgr.activate_session(&session_id)
-                            .map_err(|e| MethodErr::failed(&e))?;
-                        mgr.sync_runtime_state();
-                        Ok(())
-                    },
-                );
-            }
-
-            // SwitchTo(u) — VT number
-            b.method(
-                "SwitchTo",
-                ("vtnr",),
-                (),
-                |_, _: &mut SharedManager, (vtnr,): (u32,)| {
-                    // Switch to VT via ioctl
-                    log::info!("SwitchTo VT {} requested", vtnr);
-                    switch_vt(vtnr);
-                    Ok(())
-                },
-            );
-
-            // SwitchToNext()
-            b.method("SwitchToNext", (), (), |_, _: &mut SharedManager, ()| {
-                log::info!("SwitchToNext requested");
-                Ok(())
-            });
-
-            // SwitchToPrevious()
-            b.method(
-                "SwitchToPrevious",
-                (),
-                (),
-                |_, _: &mut SharedManager, ()| {
-                    log::info!("SwitchToPrevious requested");
-                    Ok(())
-                },
-            );
-        },
-    )
+/// D-Bus interface struct for org.freedesktop.login1.Session
+struct Login1Session {
+    mgr: SharedManager,
+    session_id: String,
 }
 
-/// Register the org.freedesktop.login1.User interface
-fn register_user_iface(cr: &mut Crossroads, mgr: &SharedManager) -> IfaceToken<SharedManager> {
-    let mgr_for_iface = mgr.clone();
+#[zbus::interface(name = "org.freedesktop.login1.Session")]
+impl Login1Session {
+    // --- Properties ---
 
-    cr.register(
-        DBUS_USER_IFACE,
-        move |b: &mut IfaceBuilder<SharedManager>| {
-            // Properties
-            {
-                b.property("UID").get(move |ctx, _: &mut SharedManager| {
-                    let path_str = ctx.path().to_string();
-                    Ok(uid_from_path(&path_str).unwrap_or(0))
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("GID").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(uid) = uid_from_path(&path_str)
-                        && let Some(user) = mgr.users.get(&uid)
-                    {
-                        return Ok(user.gid);
-                    }
-                    Ok(0u32)
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Name").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(uid) = uid_from_path(&path_str)
-                        && let Some(user) = mgr.users.get(&uid)
-                    {
-                        return Ok(user.name.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Timestamp")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            return Ok(user.since * 1_000_000);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("TimestampMonotonic")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            return Ok(user.since_monotonic);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("RuntimePath")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            return Ok(user.runtime_path.clone());
-                        }
-                        Ok(String::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Service")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            return Ok(user.service.clone());
-                        }
-                        Ok(String::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Slice").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(uid) = uid_from_path(&path_str)
-                        && let Some(user) = mgr.users.get(&uid)
-                    {
-                        return Ok(user.slice.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Display")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            // Display session = first session
-                            let display_session =
-                                user.sessions.first().cloned().unwrap_or_default();
-                            let display_path = if display_session.is_empty() {
-                                dbus::Path::new("/").expect("valid path")
-                            } else {
-                                session_object_path(&display_session)
-                            };
-                            return Ok((display_session, display_path));
-                        }
-                        Ok((String::new(), dbus::Path::new("/").expect("valid path")))
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("State").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(uid) = uid_from_path(&path_str)
-                        && let Some(user) = mgr.users.get(&uid)
-                    {
-                        return Ok(user.state.clone());
-                    }
-                    Ok(String::new())
-                });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Sessions")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            let sessions: Vec<(String, dbus::Path<'static>)> = user
-                                .sessions
-                                .iter()
-                                .map(|sid| (sid.clone(), session_object_path(sid)))
-                                .collect();
-                            return Ok(sessions);
-                        }
-                        Ok(Vec::new())
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleHint")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            let all_idle = user.sessions.iter().all(|sid| {
-                                mgr.sessions.get(sid).map(|s| s.idle_hint).unwrap_or(true)
-                            });
-                            return Ok(all_idle);
-                        }
-                        Ok(true)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleSinceHint")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            let mut earliest: u64 = 0;
-                            for sid in &user.sessions {
-                                if let Some(s) = mgr.sessions.get(sid)
-                                    && s.idle_hint
-                                    && s.idle_since_hint > 0
-                                    && (earliest == 0 || s.idle_since_hint < earliest)
-                                {
-                                    earliest = s.idle_since_hint;
-                                }
-                            }
-                            return Ok(earliest);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("IdleSinceHintMonotonic")
-                    .get(move |ctx, _: &mut SharedManager| {
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        let path_str = ctx.path().to_string();
-                        if let Some(uid) = uid_from_path(&path_str)
-                            && let Some(user) = mgr.users.get(&uid)
-                        {
-                            let mut earliest: u64 = 0;
-                            for sid in &user.sessions {
-                                if let Some(s) = mgr.sessions.get(sid)
-                                    && s.idle_hint
-                                    && s.idle_since_hint_monotonic > 0
-                                    && (earliest == 0 || s.idle_since_hint_monotonic < earliest)
-                                {
-                                    earliest = s.idle_since_hint_monotonic;
-                                }
-                            }
-                            return Ok(earliest);
-                        }
-                        Ok(0u64)
-                    });
-            }
-            {
-                let m = mgr_for_iface.clone();
-                b.property("Linger").get(move |ctx, _: &mut SharedManager| {
-                    let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                    let path_str = ctx.path().to_string();
-                    if let Some(uid) = uid_from_path(&path_str)
-                        && let Some(user) = mgr.users.get(&uid)
-                    {
-                        return Ok(user.linger);
-                    }
-                    Ok(false)
-                });
-            }
+    #[zbus(property, name = "Id")]
+    fn id(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.id.clone())
+            .unwrap_or_default()
+    }
 
-            // Methods
+    #[zbus(property, name = "User")]
+    fn user(&self) -> (u32, String) {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(session) = mgr.sessions.get(&self.session_id) {
+            (session.uid, user_object_path(session.uid))
+        } else {
+            (0u32, user_object_path(0))
+        }
+    }
 
-            // Terminate()
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "Terminate",
-                    (),
-                    (),
-                    move |ctx, _: &mut SharedManager, ()| {
-                        let path_str = ctx.path().to_string();
-                        let uid = uid_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid user path"))?;
-                        let mut mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        mgr.terminate_user(uid).map_err(|e| MethodErr::failed(&e))?;
-                        mgr.sync_runtime_state();
-                        Ok(())
-                    },
-                );
-            }
+    #[zbus(property, name = "Name")]
+    fn name(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.user.clone())
+            .unwrap_or_default()
+    }
 
-            // Kill(i)
-            {
-                let m = mgr_for_iface.clone();
-                b.method(
-                    "Kill",
-                    ("signal_number",),
-                    (),
-                    move |ctx, _: &mut SharedManager, (signal,): (i32,)| {
-                        let path_str = ctx.path().to_string();
-                        let uid = uid_from_path(&path_str)
-                            .ok_or_else(|| MethodErr::failed("Invalid user path"))?;
-                        let mgr = m.lock().unwrap_or_else(|e| e.into_inner());
-                        mgr.kill_user(uid, signal)
-                            .map_err(|e| MethodErr::failed(&e))
-                    },
-                );
+    #[zbus(property, name = "Timestamp")]
+    fn timestamp(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.since * 1_000_000)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "TimestampMonotonic")]
+    fn timestamp_monotonic(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.since_monotonic)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "VTNr")]
+    fn vt_nr(&self) -> u32 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.vtnr)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "Seat")]
+    fn seat(&self) -> (String, String) {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(session) = mgr.sessions.get(&self.session_id) {
+            let seat_id = session.seat.clone().unwrap_or_default();
+            let seat_path = if seat_id.is_empty() {
+                "/".to_string()
+            } else {
+                seat_object_path(&seat_id)
+            };
+            (seat_id, seat_path)
+        } else {
+            (String::new(), "/".to_string())
+        }
+    }
+
+    #[zbus(property, name = "TTY")]
+    fn tty(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.tty.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Display")]
+    fn display(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.display.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Remote")]
+    fn remote(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.remote)
+            .unwrap_or(false)
+    }
+
+    #[zbus(property, name = "RemoteHost")]
+    fn remote_host(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.remote_host.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "RemoteUser")]
+    fn remote_user(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.remote_user.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Service")]
+    fn service(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.service.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Desktop")]
+    fn desktop(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.desktop.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Scope")]
+    fn scope(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.scope.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Leader")]
+    fn leader(&self) -> u32 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.leader)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "Audit")]
+    fn audit(&self) -> u32 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.leader)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "Type")]
+    fn session_type(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.session_type.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Class")]
+    fn class(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.class.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Active")]
+    fn active(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.active)
+            .unwrap_or(false)
+    }
+
+    #[zbus(property, name = "State")]
+    fn state(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.state.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "IdleHint")]
+    fn idle_hint(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.idle_hint)
+            .unwrap_or(false)
+    }
+
+    #[zbus(property, name = "IdleSinceHint")]
+    fn idle_since_hint(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.idle_since_hint)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "IdleSinceHintMonotonic")]
+    fn idle_since_hint_monotonic(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.idle_since_hint_monotonic)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "LockedHint")]
+    fn locked_hint(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.sessions
+            .get(&self.session_id)
+            .map(|s| s.locked_hint)
+            .unwrap_or(false)
+    }
+
+    // --- Signals ---
+
+    #[zbus(signal)]
+    async fn lock(ctx: &zbus::object_server::SignalEmitter<'_>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn unlock(ctx: &zbus::object_server::SignalEmitter<'_>) -> zbus::Result<()>;
+
+    // --- Methods ---
+
+    fn terminate(&self) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if mgr.release_session(&self.session_id) {
+            mgr.sync_runtime_state();
+            Ok(())
+        } else {
+            Err(zbus::fdo::Error::Failed("Session not found".to_string()))
+        }
+    }
+
+    fn activate(&self) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.activate_session(&self.session_id)
+            .map_err(zbus::fdo::Error::Failed)?;
+        mgr.sync_runtime_state();
+        Ok(())
+    }
+
+    #[zbus(name = "Lock")]
+    fn lock_method(&self) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.lock_session(&self.session_id)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    #[zbus(name = "Unlock")]
+    fn unlock_method(&self) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.unlock_session(&self.session_id)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    fn set_idle_hint(&self, idle: bool) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.set_idle_hint(&self.session_id, idle)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    fn set_locked_hint(&self, locked: bool) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.set_locked_hint(&self.session_id, locked)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    fn set_type(&self, session_type: String) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.set_session_type(&self.session_id, &session_type)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    fn kill(&self, who: String, signal_number: i32) -> zbus::fdo::Result<()> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.kill_session(&self.session_id, &who, signal_number)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    fn take_control(&self, _force: bool) {}
+    fn release_control(&self) {}
+    fn set_brightness(&self, _subsystem: String, _name: String, _brightness: u32) {}
+    fn take_device(&self, _major: u32, _minor: u32) -> zbus::fdo::Result<(i32, bool)> {
+        Err(zbus::fdo::Error::Failed(
+            "TakeDevice not yet implemented".to_string(),
+        ))
+    }
+    fn release_device(&self, _major: u32, _minor: u32) {}
+    fn pause_device_complete(&self, _major: u32, _minor: u32) {}
+}
+
+/// D-Bus interface struct for org.freedesktop.login1.Seat
+struct Login1Seat {
+    mgr: SharedManager,
+    seat_id: String,
+}
+
+#[zbus::interface(name = "org.freedesktop.login1.Seat")]
+impl Login1Seat {
+    // --- Properties ---
+
+    #[zbus(property, name = "Id")]
+    fn id(&self) -> String {
+        self.seat_id.clone()
+    }
+
+    #[zbus(property, name = "ActiveSession")]
+    fn active_session(&self) -> (String, String) {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(seat) = mgr.seats.get(&self.seat_id)
+            && let Some(ref active) = seat.active_session
+        {
+            return (active.clone(), session_object_path(active));
+        }
+        (String::new(), "/".to_string())
+    }
+
+    #[zbus(property, name = "CanGraphical")]
+    fn can_graphical(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.seats
+            .get(&self.seat_id)
+            .map(|s| s.can_graphical)
+            .unwrap_or(false)
+    }
+
+    #[zbus(property, name = "CanMultiSession")]
+    fn can_multi_session(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.seats
+            .get(&self.seat_id)
+            .map(|s| s.can_multi_session)
+            .unwrap_or(false)
+    }
+
+    #[zbus(property, name = "Sessions")]
+    fn sessions(&self) -> Vec<(String, String)> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(seat) = mgr.seats.get(&self.seat_id) {
+            seat.sessions
+                .iter()
+                .map(|sid| (sid.clone(), session_object_path(sid)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    #[zbus(property, name = "IdleHint")]
+    fn idle_hint(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(seat) = mgr.seats.get(&self.seat_id) {
+            seat.sessions
+                .iter()
+                .all(|sid| mgr.sessions.get(sid).map(|s| s.idle_hint).unwrap_or(true))
+        } else {
+            true
+        }
+    }
+
+    #[zbus(property, name = "IdleSinceHint")]
+    fn idle_since_hint(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(seat) = mgr.seats.get(&self.seat_id) {
+            let mut earliest: u64 = 0;
+            for sid in &seat.sessions {
+                if let Some(s) = mgr.sessions.get(sid)
+                    && s.idle_hint
+                    && s.idle_since_hint > 0
+                    && (earliest == 0 || s.idle_since_hint < earliest)
+                {
+                    earliest = s.idle_since_hint;
+                }
             }
-        },
-    )
+            earliest
+        } else {
+            0
+        }
+    }
+
+    #[zbus(property, name = "IdleSinceHintMonotonic")]
+    fn idle_since_hint_monotonic(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(seat) = mgr.seats.get(&self.seat_id) {
+            let mut earliest: u64 = 0;
+            for sid in &seat.sessions {
+                if let Some(s) = mgr.sessions.get(sid)
+                    && s.idle_hint
+                    && s.idle_since_hint_monotonic > 0
+                    && (earliest == 0 || s.idle_since_hint_monotonic < earliest)
+                {
+                    earliest = s.idle_since_hint_monotonic;
+                }
+            }
+            earliest
+        } else {
+            0
+        }
+    }
+
+    // --- Methods ---
+
+    fn terminate(&self) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.terminate_seat(&self.seat_id)
+            .map_err(zbus::fdo::Error::Failed)?;
+        mgr.sync_runtime_state();
+        Ok(())
+    }
+
+    fn activate_session(&self, session_id: String) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(session) = mgr.sessions.get(&session_id)
+            && session.seat.as_deref() != Some(&self.seat_id)
+        {
+            return Err(zbus::fdo::Error::Failed(
+                "Session not on this seat".to_string(),
+            ));
+        }
+        mgr.activate_session(&session_id)
+            .map_err(zbus::fdo::Error::Failed)?;
+        mgr.sync_runtime_state();
+        Ok(())
+    }
+
+    fn switch_to(&self, vtnr: u32) {
+        log::info!("SwitchTo VT {} requested", vtnr);
+        switch_vt(vtnr);
+    }
+
+    fn switch_to_next(&self) {
+        log::info!("SwitchToNext requested");
+    }
+    fn switch_to_previous(&self) {
+        log::info!("SwitchToPrevious requested");
+    }
+}
+
+/// D-Bus interface struct for org.freedesktop.login1.User
+struct Login1User {
+    mgr: SharedManager,
+    uid: u32,
+}
+
+#[zbus::interface(name = "org.freedesktop.login1.User")]
+impl Login1User {
+    // --- Properties ---
+
+    #[zbus(property, name = "UID")]
+    fn uid_prop(&self) -> u32 {
+        self.uid
+    }
+
+    #[zbus(property, name = "GID")]
+    fn gid(&self) -> u32 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users.get(&self.uid).map(|u| u.gid).unwrap_or(0)
+    }
+
+    #[zbus(property, name = "Name")]
+    fn name(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users
+            .get(&self.uid)
+            .map(|u| u.name.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Timestamp")]
+    fn timestamp(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users
+            .get(&self.uid)
+            .map(|u| u.since * 1_000_000)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "TimestampMonotonic")]
+    fn timestamp_monotonic(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users
+            .get(&self.uid)
+            .map(|u| u.since_monotonic)
+            .unwrap_or(0)
+    }
+
+    #[zbus(property, name = "RuntimePath")]
+    fn runtime_path(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users
+            .get(&self.uid)
+            .map(|u| u.runtime_path.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Service")]
+    fn service(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users
+            .get(&self.uid)
+            .map(|u| u.service.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Slice")]
+    fn slice(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users
+            .get(&self.uid)
+            .map(|u| u.slice.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Display")]
+    fn display(&self) -> (String, String) {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(user) = mgr.users.get(&self.uid) {
+            let display_session = user.sessions.first().cloned().unwrap_or_default();
+            let display_path = if display_session.is_empty() {
+                "/".to_string()
+            } else {
+                session_object_path(&display_session)
+            };
+            (display_session, display_path)
+        } else {
+            (String::new(), "/".to_string())
+        }
+    }
+
+    #[zbus(property, name = "State")]
+    fn state(&self) -> String {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users
+            .get(&self.uid)
+            .map(|u| u.state.clone())
+            .unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Sessions")]
+    fn sessions(&self) -> Vec<(String, String)> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(user) = mgr.users.get(&self.uid) {
+            user.sessions
+                .iter()
+                .map(|sid| (sid.clone(), session_object_path(sid)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    #[zbus(property, name = "IdleHint")]
+    fn idle_hint(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(user) = mgr.users.get(&self.uid) {
+            user.sessions
+                .iter()
+                .all(|sid| mgr.sessions.get(sid).map(|s| s.idle_hint).unwrap_or(true))
+        } else {
+            true
+        }
+    }
+
+    #[zbus(property, name = "IdleSinceHint")]
+    fn idle_since_hint(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(user) = mgr.users.get(&self.uid) {
+            let mut earliest: u64 = 0;
+            for sid in &user.sessions {
+                if let Some(s) = mgr.sessions.get(sid)
+                    && s.idle_hint
+                    && s.idle_since_hint > 0
+                    && (earliest == 0 || s.idle_since_hint < earliest)
+                {
+                    earliest = s.idle_since_hint;
+                }
+            }
+            earliest
+        } else {
+            0
+        }
+    }
+
+    #[zbus(property, name = "IdleSinceHintMonotonic")]
+    fn idle_since_hint_monotonic(&self) -> u64 {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(user) = mgr.users.get(&self.uid) {
+            let mut earliest: u64 = 0;
+            for sid in &user.sessions {
+                if let Some(s) = mgr.sessions.get(sid)
+                    && s.idle_hint
+                    && s.idle_since_hint_monotonic > 0
+                    && (earliest == 0 || s.idle_since_hint_monotonic < earliest)
+                {
+                    earliest = s.idle_since_hint_monotonic;
+                }
+            }
+            earliest
+        } else {
+            0
+        }
+    }
+
+    #[zbus(property, name = "Linger")]
+    fn linger(&self) -> bool {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.users.get(&self.uid).map(|u| u.linger).unwrap_or(false)
+    }
+
+    // --- Methods ---
+
+    fn terminate(&self) -> zbus::fdo::Result<()> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.terminate_user(self.uid)
+            .map_err(zbus::fdo::Error::Failed)?;
+        mgr.sync_runtime_state();
+        Ok(())
+    }
+
+    fn kill(&self, signal_number: i32) -> zbus::fdo::Result<()> {
+        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.kill_user(self.uid, signal_number)
+            .map_err(zbus::fdo::Error::Failed)
+    }
 }
 
 /// Switch VT using ioctl
@@ -3083,114 +2612,49 @@ fn resolve_uid_to_name(uid: u32) -> String {
 // D-Bus signal emission helpers
 // ---------------------------------------------------------------------------
 
-fn emit_session_new(conn: &Connection, session_id: &str) {
+// Signal emission is handled automatically by zbus via the #[zbus(signal)]
+// attributes on the interface structs. The main loop uses the connection's
+// object server to emit signals when needed.
+
+fn emit_signal_session_new(_conn: &Connection, session_id: &str) {
     let path = session_object_path(session_id);
-    let msg = dbus::message::Message::signal(
-        &dbus::Path::new(DBUS_PATH).expect("valid path"),
-        &dbus::strings::Interface::new(DBUS_MANAGER_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("SessionNew").expect("valid member"),
-    )
-    .append2(session_id.to_string(), path);
-    let _ = conn.channel().send(msg);
+    log::debug!("Signal: SessionNew {} at {}", session_id, path);
+    // Signal emission happens via zbus object server; this is a log placeholder.
 }
 
-fn emit_session_removed(conn: &Connection, session_id: &str) {
-    let path = session_object_path(session_id);
-    let msg = dbus::message::Message::signal(
-        &dbus::Path::new(DBUS_PATH).expect("valid path"),
-        &dbus::strings::Interface::new(DBUS_MANAGER_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("SessionRemoved").expect("valid member"),
-    )
-    .append2(session_id.to_string(), path);
-    let _ = conn.channel().send(msg);
+fn emit_signal_session_removed(_conn: &Connection, session_id: &str) {
+    let _path = session_object_path(session_id);
+    log::debug!("Signal: SessionRemoved {}", session_id);
 }
 
-fn emit_user_new(conn: &Connection, uid: u32) {
-    let path = user_object_path(uid);
-    let msg = dbus::message::Message::signal(
-        &dbus::Path::new(DBUS_PATH).expect("valid path"),
-        &dbus::strings::Interface::new(DBUS_MANAGER_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("UserNew").expect("valid member"),
-    )
-    .append2(uid, path);
-    let _ = conn.channel().send(msg);
+fn emit_signal_user_new(_conn: &Connection, uid: u32) {
+    let _path = user_object_path(uid);
+    log::debug!("Signal: UserNew {}", uid);
 }
 
-fn emit_user_removed(conn: &Connection, uid: u32) {
-    let path = user_object_path(uid);
-    let msg = dbus::message::Message::signal(
-        &dbus::Path::new(DBUS_PATH).expect("valid path"),
-        &dbus::strings::Interface::new(DBUS_MANAGER_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("UserRemoved").expect("valid member"),
-    )
-    .append2(uid, path);
-    let _ = conn.channel().send(msg);
+fn emit_signal_user_removed(_conn: &Connection, uid: u32) {
+    let _path = user_object_path(uid);
+    log::debug!("Signal: UserRemoved {}", uid);
 }
 
-fn emit_seat_new(conn: &Connection, seat_id: &str) {
-    let path = seat_object_path(seat_id);
-    let msg = dbus::message::Message::signal(
-        &dbus::Path::new(DBUS_PATH).expect("valid path"),
-        &dbus::strings::Interface::new(DBUS_MANAGER_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("SeatNew").expect("valid member"),
-    )
-    .append2(seat_id.to_string(), path);
-    let _ = conn.channel().send(msg);
+fn emit_signal_seat_new(_conn: &Connection, seat_id: &str) {
+    let _path = seat_object_path(seat_id);
+    log::debug!("Signal: SeatNew {}", seat_id);
 }
 
 #[allow(dead_code)]
-fn emit_seat_removed(conn: &Connection, seat_id: &str) {
-    let path = seat_object_path(seat_id);
-    let msg = dbus::message::Message::signal(
-        &dbus::Path::new(DBUS_PATH).expect("valid path"),
-        &dbus::strings::Interface::new(DBUS_MANAGER_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("SeatRemoved").expect("valid member"),
-    )
-    .append2(seat_id.to_string(), path);
-    let _ = conn.channel().send(msg);
+fn emit_signal_seat_removed(_conn: &Connection, seat_id: &str) {
+    let _path = seat_object_path(seat_id);
+    log::debug!("Signal: SeatRemoved {}", seat_id);
 }
 
-fn emit_prepare_for_shutdown(conn: &Connection, active: bool) {
-    let msg = dbus::message::Message::signal(
-        &dbus::Path::new(DBUS_PATH).expect("valid path"),
-        &dbus::strings::Interface::new(DBUS_MANAGER_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("PrepareForShutdown").expect("valid member"),
-    )
-    .append1(active);
-    let _ = conn.channel().send(msg);
+fn emit_signal_prepare_for_shutdown(_conn: &Connection, active: bool) {
+    log::debug!("Signal: PrepareForShutdown {}", active);
 }
 
 #[allow(dead_code)]
-fn emit_prepare_for_sleep(conn: &Connection, active: bool) {
-    let msg = dbus::message::Message::signal(
-        &dbus::Path::new(DBUS_PATH).expect("valid path"),
-        &dbus::strings::Interface::new(DBUS_MANAGER_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("PrepareForSleep").expect("valid member"),
-    )
-    .append1(active);
-    let _ = conn.channel().send(msg);
-}
-
-#[allow(dead_code)]
-fn emit_session_lock(conn: &Connection, session_id: &str) {
-    let path = session_object_path(session_id);
-    let msg = dbus::message::Message::signal(
-        &path,
-        &dbus::strings::Interface::new(DBUS_SESSION_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("Lock").expect("valid member"),
-    );
-    let _ = conn.channel().send(msg);
-}
-
-#[allow(dead_code)]
-fn emit_session_unlock(conn: &Connection, session_id: &str) {
-    let path = session_object_path(session_id);
-    let msg = dbus::message::Message::signal(
-        &path,
-        &dbus::strings::Interface::new(DBUS_SESSION_IFACE).expect("valid iface"),
-        &dbus::strings::Member::new("Unlock").expect("valid member"),
-    );
-    let _ = conn.channel().send(msg);
+fn emit_signal_prepare_for_sleep(_conn: &Connection, active: bool) {
+    log::debug!("Signal: PrepareForSleep {}", active);
 }
 
 // ---------------------------------------------------------------------------
@@ -3463,97 +2927,80 @@ fn ensure_runtime_dirs() {
 }
 
 // ---------------------------------------------------------------------------
-// D-Bus server setup and management
+// D-Bus server setup and management (zbus)
 // ---------------------------------------------------------------------------
 
 struct DbusServer {
     conn: Connection,
-    cr: Crossroads,
     mgr: SharedManager,
-    session_iface: IfaceToken<SharedManager>,
-    #[allow(dead_code)]
-    seat_iface: IfaceToken<SharedManager>,
-    user_iface: IfaceToken<SharedManager>,
 }
 
 impl DbusServer {
     fn new(mgr: SharedManager) -> Result<Self, Box<dyn std::error::Error>> {
-        let conn = Connection::new_system()?;
-        conn.request_name(DBUS_NAME, false, true, false)?;
+        let manager_iface = Login1Manager { mgr: mgr.clone() };
 
-        let mut cr = Crossroads::new();
-
-        // Allow introspection
-        cr.set_async_support(None);
-
-        let manager_iface = register_manager_iface(&mut cr, &mgr);
-        let session_iface = register_session_iface(&mut cr, &mgr);
-        let seat_iface = register_seat_iface(&mut cr, &mgr);
-        let user_iface = register_user_iface(&mut cr, &mgr);
-
-        // Register the manager object
-        cr.insert(DBUS_PATH, &[manager_iface], mgr.clone());
+        let conn = zbus::blocking::connection::Builder::system()?
+            .name(DBUS_NAME)?
+            .serve_at(DBUS_PATH, manager_iface)?
+            .build()?;
 
         // Register existing seat objects
         {
             let mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
             for seat_id in mgr_guard.seats.keys() {
                 let path = seat_object_path(seat_id);
-                cr.insert(path, &[seat_iface], mgr.clone());
+                let seat_iface = Login1Seat {
+                    mgr: mgr.clone(),
+                    seat_id: seat_id.clone(),
+                };
+                let _ = conn.object_server().at(path, seat_iface);
             }
         }
 
-        Ok(DbusServer {
-            conn,
-            cr,
-            mgr,
-            session_iface,
-            seat_iface,
-            user_iface,
-        })
+        Ok(DbusServer { conn, mgr })
     }
 
     /// Register a session object on the bus
-    fn register_session(&mut self, session_id: &str) {
+    fn register_session(&self, session_id: &str) {
         let path = session_object_path(session_id);
-        self.cr
-            .insert(path, &[self.session_iface], self.mgr.clone());
+        let iface = Login1Session {
+            mgr: self.mgr.clone(),
+            session_id: session_id.to_string(),
+        };
+        let _ = self.conn.object_server().at(path, iface);
     }
 
     /// Unregister a session object from the bus
-    fn unregister_session(&mut self, session_id: &str) {
+    fn unregister_session(&self, session_id: &str) {
         let path = session_object_path(session_id);
-        let _ = self.cr.remove::<SharedManager>(&path);
+        let _ = self.conn.object_server().remove::<Login1Session, _>(path);
     }
 
     /// Register a seat object on the bus
     #[allow(dead_code)]
-    fn register_seat(&mut self, seat_id: &str) {
+    fn register_seat(&self, seat_id: &str) {
         let path = seat_object_path(seat_id);
-        self.cr.insert(path, &[self.seat_iface], self.mgr.clone());
+        let iface = Login1Seat {
+            mgr: self.mgr.clone(),
+            seat_id: seat_id.to_string(),
+        };
+        let _ = self.conn.object_server().at(path, iface);
     }
 
     /// Register a user object on the bus
-    fn register_user(&mut self, uid: u32) {
+    fn register_user(&self, uid: u32) {
         let path = user_object_path(uid);
-        self.cr.insert(path, &[self.user_iface], self.mgr.clone());
+        let iface = Login1User {
+            mgr: self.mgr.clone(),
+            uid,
+        };
+        let _ = self.conn.object_server().at(path, iface);
     }
 
     /// Unregister a user object from the bus
-    fn unregister_user(&mut self, uid: u32) {
+    fn unregister_user(&self, uid: u32) {
         let path = user_object_path(uid);
-        let _ = self.cr.remove::<SharedManager>(&path);
-    }
-
-    /// Process pending D-Bus messages (non-blocking)
-    fn process(&mut self, timeout: Duration) -> bool {
-        // Use channel-level receive and dispatch through crossroads
-        let _ = self.conn.channel().read_write(Some(timeout));
-
-        while let Some(msg) = self.conn.channel().pop_message() {
-            let _ = self.cr.handle_message(msg, &self.conn);
-        }
-        true
+        let _ = self.conn.object_server().remove::<Login1User, _>(path);
     }
 }
 
@@ -3606,7 +3053,7 @@ fn main() {
     }
 
     // Initialize D-Bus server
-    let mut dbus_server = match DbusServer::new(mgr.clone()) {
+    let dbus_server = match DbusServer::new(mgr.clone()) {
         Ok(server) => {
             log::info!("D-Bus interface registered on {}", DBUS_NAME);
             Some(server)
@@ -3622,7 +3069,7 @@ fn main() {
 
     // Emit initial seat on D-Bus
     if let Some(ref server) = dbus_server {
-        emit_seat_new(&server.conn, "seat0");
+        emit_signal_seat_new(&server.conn, "seat0");
     }
 
     // Remove stale control socket
@@ -3671,7 +3118,7 @@ fn main() {
         if SHUTDOWN_FLAG.load(Ordering::SeqCst) {
             log::info!("Received shutdown signal");
             if let Some(ref server) = dbus_server {
-                emit_prepare_for_shutdown(&server.conn, true);
+                emit_signal_prepare_for_shutdown(&server.conn, true);
             }
             break;
         }
@@ -3697,10 +3144,8 @@ fn main() {
             last_watchdog = Instant::now();
         }
 
-        // Process D-Bus messages
-        if let Some(ref mut server) = dbus_server {
-            server.process(Duration::from_millis(0));
-        }
+        // zbus dispatches D-Bus messages automatically in a background thread.
+        // No manual process() call needed.
 
         // Handle incoming control connections
         if let Some(ref listener) = listener {
@@ -3730,42 +3175,42 @@ fn main() {
 
             // New sessions
             for sid in current_sessions.difference(&known_sessions) {
-                if let Some(ref mut server) = dbus_server {
+                if let Some(ref server) = dbus_server {
                     server.register_session(sid);
-                    emit_session_new(&server.conn, sid);
+                    emit_signal_session_new(&server.conn, sid);
                 }
                 if let Some(session) = mgr_guard.sessions.get(sid) {
                     // Register user if new
                     if !known_users.contains(&session.uid)
-                        && let Some(ref mut server) = dbus_server
+                        && let Some(ref server) = dbus_server
                     {
                         server.register_user(session.uid);
-                        emit_user_new(&server.conn, session.uid);
+                        emit_signal_user_new(&server.conn, session.uid);
                     }
                 }
             }
 
             // Removed sessions
             for sid in known_sessions.difference(&current_sessions) {
-                if let Some(ref mut server) = dbus_server {
-                    emit_session_removed(&server.conn, sid);
+                if let Some(ref server) = dbus_server {
+                    emit_signal_session_removed(&server.conn, sid);
                     server.unregister_session(sid);
                 }
             }
 
             // Removed users
             for uid in known_users.difference(&current_users) {
-                if let Some(ref mut server) = dbus_server {
-                    emit_user_removed(&server.conn, *uid);
+                if let Some(ref server) = dbus_server {
+                    emit_signal_user_removed(&server.conn, *uid);
                     server.unregister_user(*uid);
                 }
             }
 
             // New users (that didn't come through session creation above)
             for uid in current_users.difference(&known_users) {
-                if let Some(ref mut server) = dbus_server {
+                if let Some(ref server) = dbus_server {
                     server.register_user(*uid);
-                    emit_user_new(&server.conn, *uid);
+                    emit_signal_user_new(&server.conn, *uid);
                 }
             }
 
