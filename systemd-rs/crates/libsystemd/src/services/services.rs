@@ -65,6 +65,30 @@ pub struct Service {
     /// Used with WatchdogSec= to detect unresponsive services.
     pub watchdog_last_ping: Option<std::time::Instant>,
 
+    /// ERRNO= from sd_notify — the last errno value reported by the service.
+    /// Services send this to indicate an error condition (e.g. `ERRNO=2` for ENOENT).
+    /// Displayed in `systemctl status` output.
+    pub notify_errno: Option<i32>,
+    /// BUSERROR= from sd_notify — the last D-Bus error name reported by the service
+    /// (e.g. `BUSERROR=org.freedesktop.DBus.Error.TimedOut`). Displayed in status.
+    pub notify_bus_error: Option<String>,
+    /// EXIT_STATUS= from sd_notify — the last exit status reported by the service.
+    /// Can be a numeric exit code or a signal name. Displayed in status.
+    pub notify_exit_status: Option<String>,
+    /// MONOTONIC_USEC= from sd_notify — the monotonic timestamp (in microseconds)
+    /// associated with the notification message. Used for ordering and timing.
+    pub notify_monotonic_usec: Option<u64>,
+    /// INVOCATION_ID= from sd_notify — the invocation ID for the current service
+    /// start. Set by the service manager and verified if the service sends it back.
+    pub invocation_id: Option<String>,
+    /// WATCHDOG_USEC= from sd_notify — dynamic watchdog timeout override.
+    /// When a service sends this, it requests a change to its watchdog interval.
+    /// Stored as microseconds; converted to a Duration for watchdog enforcement.
+    pub watchdog_usec_override: Option<u64>,
+    /// File descriptors received via FDSTORE=1 sd_notify messages with SCM_RIGHTS.
+    /// Stored as (fd_name, raw_fd) pairs, respecting FileDescriptorStoreMax=.
+    pub stored_fds: Vec<(String, RawFd)>,
+
     pub notifications: Option<UnixDatagram>,
     pub notifications_path: Option<std::path::PathBuf>,
 
