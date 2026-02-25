@@ -1187,7 +1187,7 @@ pub fn process_rules(rules: &RuleSet, event: &mut UEvent) -> RuleResult {
         for token in &rule.tokens {
             if is_match_op(token.op) {
                 has_match_keys = true;
-                if !match_token(token, event, &program_result) {
+                if !match_token(token, event, &mut program_result) {
                     matched = false;
                     break;
                 }
@@ -1251,7 +1251,7 @@ fn is_match_op(op: RuleOp) -> bool {
 }
 
 /// Check if a single match token matches the event.
-fn match_token(token: &RuleToken, event: &UEvent, program_result: &str) -> bool {
+fn match_token(token: &RuleToken, event: &UEvent, program_result: &mut String) -> bool {
     let value = match token.key.as_str() {
         "ACTION" => Some(event.action.clone()),
         "DEVPATH" => Some(event.devpath.clone()),
@@ -1286,7 +1286,7 @@ fn match_token(token: &RuleToken, event: &UEvent, program_result: &str) -> bool 
         }
         "TEST" => {
             // TEST checks if a file/path exists
-            let path = expand_substitutions(&token.value, event, program_result, "", &[]);
+            let path = expand_substitutions(&token.value, event, program_result.as_str(), "", &[]);
             let exists = Path::new(&path).exists();
             let matches = match token.op {
                 RuleOp::Match => exists,
@@ -1298,9 +1298,9 @@ fn match_token(token: &RuleToken, event: &UEvent, program_result: &str) -> bool 
         }
         "RESULT" => Some(program_result.to_string()),
         "PROGRAM" => {
-            // PROGRAM runs a command and checks the exit status
-            // The actual execution happens here; it's a match-by-exit-code
-            // This is handled separately
+            // PROGRAM runs a command, captures stdout, and checks exit status.
+            // On success the captured stdout is stored in program_result so
+            // subsequent rules can reference it via $result / %c / RESULT.
             return match_program(token, event, program_result);
         }
         // Parent device traversal keys
@@ -1332,8 +1332,8 @@ fn match_token(token: &RuleToken, event: &UEvent, program_result: &str) -> bool 
 }
 
 /// Match PROGRAM token: run the command and check exit status.
-fn match_program(token: &RuleToken, event: &UEvent, _program_result: &str) -> bool {
-    let cmd = expand_substitutions(&token.value, event, "", "", &[]);
+fn match_program(token: &RuleToken, event: &UEvent, program_result: &mut String) -> bool {
+    let cmd = expand_substitutions(&token.value, event, program_result.as_str(), "", &[]);
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {
         return false;
@@ -1341,22 +1341,33 @@ fn match_program(token: &RuleToken, event: &UEvent, _program_result: &str) -> bo
 
     log::debug!("PROGRAM: executing '{}'", cmd);
 
-    let result = Command::new(parts[0])
+    let mut child_cmd = Command::new(parts[0]);
+    child_cmd
         .args(&parts[1..])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .env("DEVPATH", &event.devpath)
         .env("ACTION", &event.action)
-        .env("SUBSYSTEM", &event.subsystem)
-        .output();
+        .env("SUBSYSTEM", &event.subsystem);
+
+    // Pass all event environment variables so the program has full context
+    for (k, v) in &event.env {
+        child_cmd.env(k, v);
+    }
+
+    let result = child_cmd.output();
 
     match result {
         Ok(output) => {
             let success = output.status.success();
             if success {
-                // Store stdout as program result (trimmed)
-                // Note: caller should capture this
+                // Capture stdout as the program result (trimmed of trailing
+                // whitespace/newlines), available to subsequent rules via
+                // $result / %c / RESULT== matching.
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                *program_result = stdout.trim_end().to_string();
+                log::debug!("PROGRAM '{}' result: '{}'", cmd, program_result);
             }
             match token.op {
                 RuleOp::Match => success,
@@ -2343,6 +2354,10 @@ struct EventQueue {
     queue: VecDeque<UEvent>,
     active_workers: usize,
     events_processed: u64,
+    /// Device paths currently being processed by worker threads.
+    /// Events for a device that is already in-flight are deferred
+    /// to preserve per-device ordering (matching real systemd behaviour).
+    busy_devpaths: HashSet<String>,
 }
 
 impl EventQueue {
@@ -2351,6 +2366,7 @@ impl EventQueue {
             queue: VecDeque::new(),
             active_workers: 0,
             events_processed: 0,
+            busy_devpaths: HashSet::new(),
         }
     }
 
@@ -2679,8 +2695,8 @@ pub fn run_daemon() {
     // Create runtime directories
     ensure_runtime_dirs();
 
-    // Load rules
-    let mut rules = RuleSet::load();
+    // Load rules (Arc for sharing with worker threads)
+    let mut rules = Arc::new(RuleSet::load());
 
     // Open netlink uevent socket
     let nl_fd = match open_uevent_socket() {
@@ -2729,6 +2745,10 @@ pub fn run_daemon() {
         l.set_nonblocking(true).expect("Failed to set non-blocking");
     }
 
+    let children_max = args.children_max;
+    let exec_delay = args.exec_delay;
+    let _event_timeout = args.event_timeout;
+
     sd_notify(&format!(
         "READY=1\nSTATUS=Processing events (rules={})",
         rules.rules.len()
@@ -2737,7 +2757,7 @@ pub fn run_daemon() {
     log::info!(
         "systemd-udevd ready ({} rules loaded, max_workers={})",
         rules.rules.len(),
-        args.children_max
+        children_max
     );
 
     let mut rules_reload_needed = false;
@@ -2755,7 +2775,7 @@ pub fn run_daemon() {
             RELOAD_FLAG.store(false, Ordering::SeqCst);
             rules_reload_needed = false;
             log::info!("Reloading rules...");
-            rules = RuleSet::load();
+            rules = Arc::new(RuleSet::load());
             log::info!("Reloaded {} rules", rules.rules.len());
             sd_notify(&format!(
                 "STATUS=Processing events (rules={})",
@@ -2800,24 +2820,77 @@ pub fn run_daemon() {
             }
         }
 
-        // Process queued events
+        // Dispatch queued events to worker threads.
+        //
+        // Events for the same devpath are serialized (only one worker
+        // at a time per device) to avoid races on the device database,
+        // symlinks, and sysfs attributes — matching real systemd behaviour.
         {
             let mut q = event_queue.lock().unwrap_or_else(|e| e.into_inner());
-            let max_process = args.children_max.saturating_sub(q.active_workers);
-            for _ in 0..max_process {
-                if let Some(mut event) = q.queue.pop_front() {
-                    // Process event inline (in the main thread for now)
-                    // A more advanced implementation would use a thread pool
-                    if args.exec_delay > 0 {
-                        thread::sleep(Duration::from_secs(args.exec_delay));
+            let max_new = children_max.saturating_sub(q.active_workers);
+            let mut dispatched = 0usize;
+            let mut idx = 0usize;
+
+            while dispatched < max_new && idx < q.queue.len() {
+                let devpath = q.queue[idx].devpath.clone();
+
+                // Skip events whose devpath is already being processed
+                if q.busy_devpaths.contains(&devpath) {
+                    idx += 1;
+                    continue;
+                }
+
+                // Clone the event before attempting to spawn so we can
+                // put it back on failure (the closure consumes the move).
+                let event_clone = q.queue[idx].clone();
+
+                q.busy_devpaths.insert(devpath.clone());
+                q.active_workers += 1;
+
+                let rules_ref = rules.clone();
+                let queue_ref = event_queue.clone();
+                let worker_exec_delay = exec_delay;
+                let devpath_for_worker = devpath.clone();
+
+                let spawn_result = thread::Builder::new()
+                    .name(format!("udev-worker:{}", &devpath))
+                    .spawn(move || {
+                        let mut event = event_clone;
+                        let devpath = devpath_for_worker;
+                        if worker_exec_delay > 0 {
+                            thread::sleep(Duration::from_secs(worker_exec_delay));
+                        }
+                        process_event(&rules_ref, &mut event);
+
+                        let mut q = queue_ref.lock().unwrap_or_else(|e| e.into_inner());
+                        q.active_workers -= 1;
+                        q.events_processed += 1;
+                        q.busy_devpaths.remove(&devpath);
+                        EVENTS_FINISHED.fetch_add(1, Ordering::SeqCst);
+                        update_queue_file(&q);
+                    });
+
+                match spawn_result {
+                    Ok(_handle) => {
+                        // Successfully spawned — remove the event from the queue
+                        q.queue.remove(idx);
+                        dispatched += 1;
+                        // Don't increment idx: removal shifted the next element
+                        // into the current position.
                     }
-                    process_event(&rules, &mut event);
-                    q.events_processed += 1;
-                    EVENTS_FINISHED.fetch_add(1, Ordering::SeqCst);
-                } else {
-                    break;
+                    Err(e) => {
+                        log::error!("Failed to spawn worker thread: {}", e);
+                        // Undo bookkeeping — the event is still in the queue
+                        q.active_workers -= 1;
+                        q.busy_devpaths.remove(&devpath);
+                        // Stop trying to spawn more workers this iteration
+                        break;
+                    }
                 }
             }
+
+            // Update queue file outside the dispatch loop (lock already held
+            // only for the non-worker path — workers update it themselves).
             update_queue_file(&q);
         }
 
@@ -3205,7 +3278,8 @@ mod tests {
             op: RuleOp::Match,
             value: "sd*".to_string(),
         };
-        assert!(match_token(&token, &event, ""));
+        let mut pr = String::new();
+        assert!(match_token(&token, &event, &mut pr));
     }
 
     #[test]
@@ -3217,39 +3291,42 @@ mod tests {
             op: RuleOp::Nomatch,
             value: "loop*".to_string(),
         };
-        assert!(match_token(&token, &event, ""));
+        let mut pr = String::new();
+        assert!(match_token(&token, &event, &mut pr));
     }
 
     #[test]
     fn test_match_token_subsystem() {
-        let event = make_test_event("add", "/devices/virtual/block/sda", "block");
         let token = RuleToken {
             key: "SUBSYSTEM".to_string(),
             attr: None,
             op: RuleOp::Match,
             value: "block".to_string(),
         };
-        assert!(match_token(&token, &event, ""));
+        let mut event = UEvent::new();
+        event.subsystem = "block".to_string();
+        let mut pr = String::new();
+        assert!(match_token(&token, &event, &mut pr));
     }
 
     #[test]
     fn test_match_token_action() {
-        let event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let token = RuleToken {
+        let token_add = RuleToken {
             key: "ACTION".to_string(),
             attr: None,
             op: RuleOp::Match,
             value: "add".to_string(),
         };
-        assert!(match_token(&token, &event, ""));
-
         let token_remove = RuleToken {
             key: "ACTION".to_string(),
             attr: None,
             op: RuleOp::Match,
             value: "remove".to_string(),
         };
-        assert!(!match_token(&token_remove, &event, ""));
+        let event = make_test_event("add", "/devices/test", "test");
+        let mut pr = String::new();
+        assert!(match_token(&token_add, &event, &mut pr));
+        assert!(!match_token(&token_remove, &event, &mut pr));
     }
 
     #[test]
@@ -3265,7 +3342,8 @@ mod tests {
             op: RuleOp::Match,
             value: "ext4".to_string(),
         };
-        assert!(match_token(&token, &event, ""));
+        let mut pr = String::new();
+        assert!(match_token(&token, &event, &mut pr));
 
         let token_wrong = RuleToken {
             key: "ENV".to_string(),
@@ -3273,20 +3351,132 @@ mod tests {
             op: RuleOp::Match,
             value: "xfs".to_string(),
         };
-        assert!(!match_token(&token_wrong, &event, ""));
+        assert!(!match_token(&token_wrong, &event, &mut pr));
     }
 
     #[test]
     fn test_match_token_result() {
-        let event = make_test_event("add", "/devices/virtual/block/sda", "block");
         let token = RuleToken {
             key: "RESULT".to_string(),
             attr: None,
             op: RuleOp::Match,
-            value: "hello*".to_string(),
+            value: "ok*".to_string(),
         };
-        assert!(match_token(&token, &event, "hello world"));
-        assert!(!match_token(&token, &event, "goodbye"));
+        let event = make_test_event("add", "/devices/test", "test");
+        let mut pr = "ok_value".to_string();
+        assert!(match_token(&token, &event, &mut pr));
+        let mut pr2 = "fail".to_string();
+        assert!(!match_token(&token, &event, &mut pr2));
+    }
+
+    #[test]
+    fn test_program_result_capture_propagation() {
+        // Verify that PROGRAM match captures stdout into program_result,
+        // and a subsequent RESULT== match can use it.
+        //
+        // Rule 1: PROGRAM=="echo hello_world" (captures "hello_world")
+        // Rule 2: RESULT=="hello*", SYMLINK+="matched"
+        //
+        // We can't easily run external programs in unit tests, so we test
+        // the propagation mechanism directly: process_rules passes
+        // program_result through match_token for RESULT keys.
+
+        let rules = RuleSet {
+            rules: vec![
+                // Rule that sets program_result via PROGRAM assignment
+                Rule {
+                    filename: "test".to_string(),
+                    line: 1,
+                    tokens: vec![
+                        RuleToken {
+                            key: "KERNEL".to_string(),
+                            attr: None,
+                            op: RuleOp::Match,
+                            value: "sda".to_string(),
+                        },
+                        // PROGRAM as assignment (not match) — runs and captures
+                        RuleToken {
+                            key: "PROGRAM".to_string(),
+                            attr: None,
+                            op: RuleOp::Assign,
+                            value: "echo capture_test_value".to_string(),
+                        },
+                    ],
+                    label: None,
+                    goto_target: None,
+                },
+                // Rule that matches on the captured RESULT
+                Rule {
+                    filename: "test".to_string(),
+                    line: 2,
+                    tokens: vec![
+                        RuleToken {
+                            key: "KERNEL".to_string(),
+                            attr: None,
+                            op: RuleOp::Match,
+                            value: "sda".to_string(),
+                        },
+                        RuleToken {
+                            key: "RESULT".to_string(),
+                            attr: None,
+                            op: RuleOp::Match,
+                            value: "capture_test*".to_string(),
+                        },
+                        RuleToken {
+                            key: "SYMLINK".to_string(),
+                            attr: None,
+                            op: RuleOp::AssignAdd,
+                            value: "result_matched".to_string(),
+                        },
+                    ],
+                    label: None,
+                    goto_target: None,
+                },
+                // Rule that should NOT match (wrong RESULT pattern)
+                Rule {
+                    filename: "test".to_string(),
+                    line: 3,
+                    tokens: vec![
+                        RuleToken {
+                            key: "KERNEL".to_string(),
+                            attr: None,
+                            op: RuleOp::Match,
+                            value: "sda".to_string(),
+                        },
+                        RuleToken {
+                            key: "RESULT".to_string(),
+                            attr: None,
+                            op: RuleOp::Match,
+                            value: "wrong_prefix*".to_string(),
+                        },
+                        RuleToken {
+                            key: "SYMLINK".to_string(),
+                            attr: None,
+                            op: RuleOp::AssignAdd,
+                            value: "should_not_appear".to_string(),
+                        },
+                    ],
+                    label: None,
+                    goto_target: None,
+                },
+            ],
+        };
+
+        let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
+        let result = process_rules(&rules, &mut event);
+
+        // The RESULT== "capture_test*" rule should have matched
+        assert!(
+            result.symlinks.contains(&"result_matched".to_string()),
+            "RESULT== should match captured PROGRAM output; symlinks = {:?}",
+            result.symlinks
+        );
+        // The wrong-prefix rule should NOT have matched
+        assert!(
+            !result.symlinks.contains(&"should_not_appear".to_string()),
+            "RESULT== with wrong pattern should not match; symlinks = {:?}",
+            result.symlinks
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -3994,6 +4184,7 @@ mod tests {
         let q = EventQueue::new();
         assert!(q.is_empty());
         assert_eq!(q.events_processed, 0);
+        assert!(q.busy_devpaths.is_empty());
     }
 
     #[test]
@@ -4008,6 +4199,115 @@ mod tests {
         let mut q = EventQueue::new();
         q.active_workers = 1;
         assert!(!q.is_empty());
+    }
+
+    #[test]
+    fn test_event_queue_busy_devpaths() {
+        let mut q = EventQueue::new();
+        assert!(!q.busy_devpaths.contains("/devices/pci0000:00/0000:00:1f.2"));
+        q.busy_devpaths
+            .insert("/devices/pci0000:00/0000:00:1f.2".to_string());
+        assert!(q.busy_devpaths.contains("/devices/pci0000:00/0000:00:1f.2"));
+        q.busy_devpaths.remove("/devices/pci0000:00/0000:00:1f.2");
+        assert!(!q.busy_devpaths.contains("/devices/pci0000:00/0000:00:1f.2"));
+    }
+
+    #[test]
+    fn test_event_queue_busy_devpath_serialization() {
+        // Verify that busy_devpaths tracking works for per-device serialization
+        let mut q = EventQueue::new();
+        q.queue
+            .push_back(make_test_event("add", "/devices/sda", "block"));
+        q.queue
+            .push_back(make_test_event("change", "/devices/sda", "block"));
+        q.queue
+            .push_back(make_test_event("add", "/devices/sdb", "block"));
+
+        // Mark sda as busy
+        q.busy_devpaths.insert("/devices/sda".to_string());
+        q.active_workers = 1;
+
+        // Simulate the dispatch logic: skip events for busy devpaths
+        let max_new = 8usize.saturating_sub(q.active_workers);
+        let mut dispatched = 0usize;
+        let mut idx = 0usize;
+        let mut dispatched_events = Vec::new();
+
+        while dispatched < max_new && idx < q.queue.len() {
+            let devpath = q.queue[idx].devpath.clone();
+            if q.busy_devpaths.contains(&devpath) {
+                idx += 1;
+                continue;
+            }
+            let event = q.queue.remove(idx).unwrap();
+            q.busy_devpaths.insert(devpath);
+            dispatched_events.push(event);
+            dispatched += 1;
+        }
+
+        // Only sdb should have been dispatched; both sda events remain queued
+        assert_eq!(dispatched_events.len(), 1);
+        assert_eq!(dispatched_events[0].devpath, "/devices/sdb");
+        assert_eq!(q.queue.len(), 2); // two sda events still queued
+        assert_eq!(q.queue[0].devpath, "/devices/sda");
+        assert_eq!(q.queue[0].action, "add");
+        assert_eq!(q.queue[1].devpath, "/devices/sda");
+        assert_eq!(q.queue[1].action, "change");
+    }
+
+    #[test]
+    fn test_worker_thread_pool_concurrent() {
+        // Test that events for different devices can be processed concurrently
+        use std::sync::atomic::AtomicUsize;
+
+        let event_queue = Arc::new(Mutex::new(EventQueue::new()));
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        // Enqueue events for 3 different devices
+        {
+            let mut q = event_queue.lock().unwrap();
+            q.queue
+                .push_back(make_test_event("add", "/devices/a", "test"));
+            q.queue
+                .push_back(make_test_event("add", "/devices/b", "test"));
+            q.queue
+                .push_back(make_test_event("add", "/devices/c", "test"));
+        }
+
+        let mut handles = Vec::new();
+
+        // Dispatch all 3 (different devpaths, so all can run concurrently)
+        {
+            let mut q = event_queue.lock().unwrap();
+            while let Some(event) = q.queue.pop_front() {
+                let devpath = event.devpath.clone();
+                q.busy_devpaths.insert(devpath.clone());
+                q.active_workers += 1;
+
+                let queue_ref = event_queue.clone();
+                let counter_ref = counter.clone();
+                handles.push(thread::spawn(move || {
+                    // Simulate some work
+                    counter_ref.fetch_add(1, Ordering::SeqCst);
+
+                    let mut q = queue_ref.lock().unwrap();
+                    q.active_workers -= 1;
+                    q.events_processed += 1;
+                    q.busy_devpaths.remove(&devpath);
+                }));
+            }
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        assert_eq!(counter.load(Ordering::SeqCst), 3);
+        let q = event_queue.lock().unwrap();
+        assert_eq!(q.events_processed, 3);
+        assert_eq!(q.active_workers, 0);
+        assert!(q.busy_devpaths.is_empty());
+        assert!(q.is_empty());
     }
 
     // -----------------------------------------------------------------------
