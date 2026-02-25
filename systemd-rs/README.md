@@ -253,6 +253,19 @@ This is an ambitious project and contributions are very welcome. Good starting p
 5. **Test coverage** — port systemd's integration test suite
 6. **Documentation** — document behavior differences and compatibility notes
 
+### Coding Conventions
+
+#### D-Bus: use `zbus` only
+
+All D-Bus functionality **must** use the pure Rust [`zbus`](https://docs.rs/zbus) crate. Do not add `dbus` or `dbus-crossroads` as dependencies — the project migrated away from those C-based crates to eliminate `libdbus` initialization failures in sandboxed environments.
+
+Key patterns:
+
+- Define D-Bus interfaces with `#[zbus::interface]` on impl blocks.
+- Use `zbus::blocking::Connection` for synchronous connections.
+- Use `zbus::object_server::SignalEmitter` (not the deprecated `SignalContext`) for signal parameters in `#[zbus(signal)]` methods.
+- Use `zbus::blocking::fdo::DBusProxy` for standard D-Bus operations (name ownership, signal subscription).
+
 ## License
 
 See [LICENSE](LICENSE).
