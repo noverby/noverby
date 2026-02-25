@@ -5,7 +5,7 @@ mod id;
 mod loading;
 mod status;
 mod unit;
-mod unit_parsing;
+pub(crate) mod unit_parsing;
 mod unitset_manipulation;
 
 pub use id::*;

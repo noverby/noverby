@@ -209,6 +209,19 @@ pub fn parse_unit_section(
     let condition_needs_update = section.remove("CONDITIONNEEDSUPDATE");
     let condition_path_is_mount_point = section.remove("CONDITIONPATHISMOUNTPOINT");
     let condition_security = section.remove("CONDITIONSECURITY");
+    let condition_ac_power = section.remove("CONDITIONACPOWER");
+    let condition_architecture = section.remove("CONDITIONARCHITECTURE");
+    let condition_environment = section.remove("CONDITIONENVIRONMENT");
+    let condition_firmware = section.remove("CONDITIONFIRMWARE");
+    let condition_host = section.remove("CONDITIONHOST");
+    let condition_memory = section.remove("CONDITIONMEMORY");
+    let condition_cpu_feature = section.remove("CONDITIONCPUFEATURE");
+    let condition_cpus = section.remove("CONDITIONCPUS");
+    let condition_os_release = section.remove("CONDITIONOSRELEASE");
+    let condition_path_is_encrypted = section.remove("CONDITIONPATHISENCRYPTED");
+    let condition_path_is_symbolic_link = section.remove("CONDITIONPATHISSYMBOLICLINK");
+    let condition_user = section.remove("CONDITIONUSER");
+    let condition_group = section.remove("CONDITIONGROUP");
 
     // Assert* directives — same semantics as Condition* but cause the unit
     // to FAIL (not silently skip) when the check is false.
@@ -227,6 +240,19 @@ pub fn parse_unit_section(
     let assert_needs_update = section.remove("ASSERTNEEDSUPDATE");
     let assert_path_is_mount_point = section.remove("ASSERTPATHISMOUNTPOINT");
     let assert_security = section.remove("ASSERTSECURITY");
+    let assert_ac_power = section.remove("ASSERTACPOWER");
+    let assert_architecture = section.remove("ASSERTARCHITECTURE");
+    let assert_environment = section.remove("ASSERTENVIRONMENT");
+    let assert_firmware = section.remove("ASSERTFIRMWARE");
+    let assert_host = section.remove("ASSERTHOST");
+    let assert_memory = section.remove("ASSERTMEMORY");
+    let assert_cpu_feature = section.remove("ASSERTCPUFEATURE");
+    let assert_cpus = section.remove("ASSERTCPUS");
+    let assert_os_release = section.remove("ASSERTOSRELEASE");
+    let assert_path_is_encrypted = section.remove("ASSERTPATHISENCRYPTED");
+    let assert_path_is_symbolic_link = section.remove("ASSERTPATHISSYMBOLICLINK");
+    let assert_user = section.remove("ASSERTUSER");
+    let assert_group = section.remove("ASSERTGROUP");
 
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
@@ -240,11 +266,30 @@ pub fn parse_unit_section(
     let job_timeout_action = section.remove("JOBTIMEOUTACTION");
     let refuse_manual_start = section.remove("REFUSEMANUALSTART");
     let refuse_manual_stop = section.remove("REFUSEMANUALSTOP");
+    let requisite = section.remove("REQUISITE");
+    let upholds = section.remove("UPHOLDS");
+    let on_success = section.remove("ONSUCCESS");
     let on_failure = section.remove("ONFAILURE");
     let on_failure_job_mode = section.remove("ONFAILUREJOBMODE");
+    let on_success_job_mode = section.remove("ONSUCCESSJOBMODE");
+    let propagates_reload_to = section.remove("PROPAGATESRELOADTO");
+    let reload_propagated_from = section.remove("RELOADPROPAGATEDFROM");
+    let propagates_stop_to = section.remove("PROPAGATESSTOPTO");
+    let stop_propagated_from = section.remove("STOPPROPAGATEDFROM");
+    // StopPropagatedFrom= is the reverse of PropagatesStopTo= — merge into propagates_stop_to
+    // for now since both express the same relationship from different perspectives.
+    let _ = stop_propagated_from; // consumed but not yet used for reverse dep injection
+    let joins_namespace_of = section.remove("JOINSNAMESPACEOF");
     let start_limit_interval_sec = section.remove("STARTLIMITINTERVALSEC");
     let start_limit_burst = section.remove("STARTLIMITBURST");
     let start_limit_action = section.remove("STARTLIMITACTION");
+    let success_action_exit_status = section.remove("SUCCESSACTIONEXITSTATUS");
+    let failure_action_exit_status = section.remove("FAILUREACTIONEXITSTATUS");
+    let job_running_timeout_sec = section.remove("JOBRUNNINGTIMEOUTSEC");
+    let job_timeout_reboot_argument = section.remove("JOBTIMEOUTREBOOTARGUMENT");
+    let collect_mode = section.remove("COLLECTMODE");
+    let source_path = section.remove("SOURCEPATH");
+    let reboot_argument = section.remove("REBOOTARGUMENT");
 
     for key in section.keys() {
         if key.starts_with("X-") {
@@ -295,7 +340,47 @@ pub fn parse_unit_section(
         .map(|x| string_to_bool(&x[0].1))
         .unwrap_or(false);
 
+    let requisite_list = map_tuples_to_second(split_list_values(requisite.unwrap_or_default()));
+    let upholds_list = map_tuples_to_second(split_list_values(upholds.unwrap_or_default()));
+    let on_success_list = map_tuples_to_second(split_list_values(on_success.unwrap_or_default()));
     let on_failure_list = map_tuples_to_second(split_list_values(on_failure.unwrap_or_default()));
+    let propagates_reload_to_list =
+        map_tuples_to_second(split_list_values(propagates_reload_to.unwrap_or_default()));
+    let reload_propagated_from_list = map_tuples_to_second(split_list_values(
+        reload_propagated_from.unwrap_or_default(),
+    ));
+    let propagates_stop_to_list =
+        map_tuples_to_second(split_list_values(propagates_stop_to.unwrap_or_default()));
+    let joins_namespace_of_list =
+        map_tuples_to_second(split_list_values(joins_namespace_of.unwrap_or_default()));
+
+    let on_success_job_mode = match on_success_job_mode {
+        Some(vec) => {
+            if vec.len() == 1 {
+                match vec[0].1.trim().to_lowercase().as_str() {
+                    "replace" | "" => super::OnFailureJobMode::Replace,
+                    "fail" => super::OnFailureJobMode::Fail,
+                    "replace-irreversibly" => super::OnFailureJobMode::ReplaceIrreversibly,
+                    "isolate" => super::OnFailureJobMode::Isolate,
+                    "flush" => super::OnFailureJobMode::Flush,
+                    "ignore-dependencies" => super::OnFailureJobMode::IgnoreDependencies,
+                    "ignore-requirements" => super::OnFailureJobMode::IgnoreRequirements,
+                    other => {
+                        return Err(ParsingErrorReason::UnknownSetting(
+                            "OnSuccessJobMode".to_owned(),
+                            other.to_owned(),
+                        ));
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "OnSuccessJobMode".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => super::OnFailureJobMode::default(),
+    };
 
     let on_failure_job_mode = match on_failure_job_mode {
         Some(vec) => {
@@ -341,6 +426,19 @@ pub fn parse_unit_section(
         condition_needs_update,
         condition_path_is_mount_point,
         condition_security,
+        condition_ac_power,
+        condition_architecture,
+        condition_environment,
+        condition_firmware,
+        condition_host,
+        condition_memory,
+        condition_cpu_feature,
+        condition_cpus,
+        condition_os_release,
+        condition_path_is_encrypted,
+        condition_path_is_symbolic_link,
+        condition_user,
+        condition_group,
     );
 
     let assertions = parse_condition_or_assert_entries(
@@ -359,6 +457,19 @@ pub fn parse_unit_section(
         assert_needs_update,
         assert_path_is_mount_point,
         assert_security,
+        assert_ac_power,
+        assert_architecture,
+        assert_environment,
+        assert_firmware,
+        assert_host,
+        assert_memory,
+        assert_cpu_feature,
+        assert_cpus,
+        assert_os_release,
+        assert_path_is_encrypted,
+        assert_path_is_symbolic_link,
+        assert_user,
+        assert_group,
     );
 
     let success_action = match success_action {
@@ -467,8 +578,101 @@ pub fn parse_unit_section(
         None => UnitAction::default(),
     };
 
+    let success_action_exit_status = match success_action_exit_status {
+        Some(vec) => {
+            if vec.len() == 1 {
+                match vec[0].1.trim().parse::<u8>() {
+                    Ok(val) => Some(val),
+                    Err(_) => {
+                        return Err(ParsingErrorReason::UnknownSetting(
+                            "SuccessActionExitStatus".to_owned(),
+                            vec[0].1.clone(),
+                        ));
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SuccessActionExitStatus".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let failure_action_exit_status = match failure_action_exit_status {
+        Some(vec) => {
+            if vec.len() == 1 {
+                match vec[0].1.trim().parse::<u8>() {
+                    Ok(val) => Some(val),
+                    Err(_) => {
+                        return Err(ParsingErrorReason::UnknownSetting(
+                            "FailureActionExitStatus".to_owned(),
+                            vec[0].1.clone(),
+                        ));
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "FailureActionExitStatus".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let job_running_timeout_sec = match job_running_timeout_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                Some(super::service_unit::parse_timeout(&vec[0].1))
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "JobRunningTimeoutSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let job_timeout_reboot_argument = job_timeout_reboot_argument.map(|x| x[0].1.clone());
+
+    let collect_mode = match collect_mode {
+        Some(vec) => {
+            if vec.len() == 1 {
+                match vec[0].1.trim().to_lowercase().as_str() {
+                    "inactive" | "" => super::CollectMode::Inactive,
+                    "inactive-or-failed" => super::CollectMode::InactiveOrFailed,
+                    other => {
+                        return Err(ParsingErrorReason::UnknownSetting(
+                            "CollectMode".to_owned(),
+                            other.to_owned(),
+                        ));
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "CollectMode".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => super::CollectMode::default(),
+    };
+
+    let source_path = source_path.map(|x| x[0].1.clone());
+    let reboot_argument = reboot_argument.map(|x| x[0].1.clone());
+
     // Merge explicit deps with implicit mount deps from RequiresMountsFor=
     let mut requires_list = map_tuples_to_second(split_list_values(requires.unwrap_or_default()));
+    // Add Requisite= deps to requires (they also need After= semantics at runtime,
+    // but for ordering purposes they go into the requires list here)
+    for name in &requisite_list {
+        if !requires_list.contains(name) {
+            requires_list.push(name.clone());
+        }
+    }
     for name in mount_unit_requires {
         if !requires_list.contains(&name) {
             requires_list.push(name);
@@ -487,6 +691,8 @@ pub fn parse_unit_section(
         documentation: map_tuples_to_second(split_list_values(documentation.unwrap_or_default())),
         wants: map_tuples_to_second(split_list_values(wants.unwrap_or_default())),
         requires: requires_list,
+        requisite: requisite_list,
+        upholds: upholds_list,
         conflicts: map_tuples_to_second(split_list_values(conflicts.unwrap_or_default())),
         after: after_list,
         before: map_tuples_to_second(split_list_values(before.unwrap_or_default())),
@@ -498,18 +704,31 @@ pub fn parse_unit_section(
         assertions,
         success_action,
         failure_action,
+        success_action_exit_status,
+        failure_action_exit_status,
         requires_mounts_for: requires_mounts_for_paths,
         stop_when_unneeded,
         allow_isolate,
         job_timeout_sec,
         job_timeout_action,
+        job_running_timeout_sec,
+        job_timeout_reboot_argument,
         refuse_manual_start,
         refuse_manual_stop,
+        on_success: on_success_list,
+        on_success_job_mode,
         on_failure: on_failure_list,
         on_failure_job_mode,
+        propagates_reload_to: propagates_reload_to_list,
+        reload_propagated_from: reload_propagated_from_list,
+        propagates_stop_to: propagates_stop_to_list,
+        joins_namespace_of: joins_namespace_of_list,
         start_limit_interval_sec,
         start_limit_burst,
         start_limit_action,
+        collect_mode,
+        source_path,
+        reboot_argument,
     })
 }
 
@@ -534,6 +753,19 @@ fn parse_condition_or_assert_entries(
     needs_update: Option<Vec<(u32, String)>>,
     path_is_mount_point: Option<Vec<(u32, String)>>,
     security: Option<Vec<(u32, String)>>,
+    ac_power: Option<Vec<(u32, String)>>,
+    architecture: Option<Vec<(u32, String)>>,
+    environment: Option<Vec<(u32, String)>>,
+    firmware: Option<Vec<(u32, String)>>,
+    host: Option<Vec<(u32, String)>>,
+    memory: Option<Vec<(u32, String)>>,
+    cpu_feature: Option<Vec<(u32, String)>>,
+    cpus: Option<Vec<(u32, String)>>,
+    os_release: Option<Vec<(u32, String)>>,
+    path_is_encrypted: Option<Vec<(u32, String)>>,
+    path_is_symbolic_link: Option<Vec<(u32, String)>>,
+    user: Option<Vec<(u32, String)>>,
+    group: Option<Vec<(u32, String)>>,
 ) -> Vec<super::UnitCondition> {
     let mut out = Vec::new();
 
@@ -675,6 +907,142 @@ fn parse_condition_or_assert_entries(
         };
         if !technology.is_empty() {
             out.push(super::UnitCondition::Security { technology, negate });
+        }
+    }
+    for (_, raw) in ac_power.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value_str, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim(), true)
+        } else {
+            (trimmed, false)
+        };
+        let value = string_to_bool(value_str);
+        out.push(super::UnitCondition::ACPower { value, negate });
+    }
+    for (_, raw) in architecture.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (arch, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_lowercase(), true)
+        } else {
+            (trimmed.to_lowercase(), false)
+        };
+        if !arch.is_empty() {
+            out.push(super::UnitCondition::Architecture { arch, negate });
+        }
+    }
+    for (_, raw) in environment.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (expression, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !expression.is_empty() {
+            out.push(super::UnitCondition::Environment { expression, negate });
+        }
+    }
+    for (_, raw) in firmware.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !value.is_empty() {
+            out.push(super::UnitCondition::Firmware { value, negate });
+        }
+    }
+    for (_, raw) in host.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !value.is_empty() {
+            out.push(super::UnitCondition::Host { value, negate });
+        }
+    }
+    for (_, raw) in memory.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !value.is_empty() {
+            out.push(super::UnitCondition::Memory { value, negate });
+        }
+    }
+    for (_, raw) in cpu_feature.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (feature, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !feature.is_empty() {
+            out.push(super::UnitCondition::CPUFeature { feature, negate });
+        }
+    }
+    for (_, raw) in cpus.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (expression, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !expression.is_empty() {
+            out.push(super::UnitCondition::CPUs { expression, negate });
+        }
+    }
+    for (_, raw) in os_release.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (expression, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !expression.is_empty() {
+            out.push(super::UnitCondition::OSRelease { expression, negate });
+        }
+    }
+    for (_, value) in path_is_encrypted.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::PathIsEncrypted { path, negate });
+    }
+    for (_, value) in path_is_symbolic_link.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::PathIsSymbolicLink { path, negate });
+    }
+    for (_, raw) in user.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !value.is_empty() {
+            out.push(super::UnitCondition::User { value, negate });
+        }
+    }
+    for (_, raw) in group.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !value.is_empty() {
+            out.push(super::UnitCondition::Group { value, negate });
         }
     }
 
