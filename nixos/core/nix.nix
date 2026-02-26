@@ -1,5 +1,10 @@
-{lib, ...}: {
+{
+  lib,
+  pkgs,
+  ...
+}: {
   nix = {
+    package = pkgs.pkgsUnstable.nixVersions.latest;
     settings = {
       max-jobs = 100;
       connect-timeout = 10;
