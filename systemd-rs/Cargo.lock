@@ -1851,7 +1851,9 @@ dependencies = [
  "clap",
  "libc",
  "log",
+ "nix",
  "systemd-udevd",
+ "tempfile",
 ]
 
 [[package]]

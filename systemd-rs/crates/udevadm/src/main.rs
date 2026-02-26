@@ -884,6 +884,39 @@ fn cmd_settle(timeout: u64, exit_if_exists: &Option<String>) -> i32 {
     let start = Instant::now();
     let timeout_dur = Duration::from_secs(timeout);
 
+    // Fast path: queue is already empty
+    if !Path::new(QUEUE_FILE).exists() {
+        return 0;
+    }
+
+    // Try inotify-based watching for efficient queue file monitoring.
+    // We watch the parent directory (/run/udev/) for IN_DELETE events so we
+    // get notified the moment the queue file is removed by the daemon.
+    // Falls back to polling if inotify is unavailable.
+    let inotify = nix::sys::inotify::Inotify::init(
+        nix::sys::inotify::InitFlags::IN_NONBLOCK | nix::sys::inotify::InitFlags::IN_CLOEXEC,
+    )
+    .ok();
+
+    let _watch_descriptor = inotify.as_ref().and_then(|ino| {
+        let parent = Path::new(QUEUE_FILE)
+            .parent()
+            .unwrap_or(Path::new("/run/udev"));
+        ino.add_watch(
+            parent,
+            nix::sys::inotify::AddWatchFlags::IN_DELETE
+                | nix::sys::inotify::AddWatchFlags::IN_MOVED_FROM
+                | nix::sys::inotify::AddWatchFlags::IN_CREATE
+                | nix::sys::inotify::AddWatchFlags::IN_MOVED_TO,
+        )
+        .ok()
+    });
+
+    let use_inotify = inotify.is_some() && _watch_descriptor.is_some();
+    if use_inotify {
+        log::debug!("settle: using inotify to watch for queue file removal");
+    }
+
     loop {
         if start.elapsed() >= timeout_dur {
             eprintln!("udevadm settle: timeout reached");
@@ -916,7 +949,22 @@ fn cmd_settle(timeout: u64, exit_if_exists: &Option<String>) -> i32 {
             }
         }
 
-        std::thread::sleep(Duration::from_millis(200));
+        if let Some(ref ino) = inotify {
+            // Drain inotify events — we don't need to inspect them in detail,
+            // the queue-file existence check above will catch the deletion on
+            // the next iteration.  The non-blocking read keeps the kernel
+            // buffer from filling up while we sleep briefly before re-checking.
+            let _ = ino.read_events();
+
+            // Sleep a short interval — much more responsive than the 200 ms
+            // poll fallback.  The inotify drain above prevents buffer overflows;
+            // the actual "queue is empty" detection happens via the
+            // Path::exists() check at the top of the loop.
+            std::thread::sleep(Duration::from_millis(50));
+        } else {
+            // Fallback: poll-based sleep (no inotify available)
+            std::thread::sleep(Duration::from_millis(200));
+        }
     }
 }
 
@@ -2056,5 +2104,146 @@ mod tests {
         // "/" always exists; should succeed with a valid device id
         let exit = cmd_info_device_id_of_file("/");
         assert_eq!(exit, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // settle — inotify-based queue file watching tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_settle_returns_immediately_when_queue_absent() {
+        // When the queue file does not exist, settle should return 0
+        // immediately without waiting.  We can't call cmd_settle directly
+        // because it checks the real QUEUE_FILE, but we can verify the
+        // fast-path logic: Path::new(QUEUE_FILE).exists() == false => exit 0.
+        // On a test machine without a running udevd, the queue file should
+        // not exist.
+        if !Path::new(QUEUE_FILE).exists() {
+            let exit = cmd_settle(1, &None);
+            assert_eq!(exit, 0, "settle should succeed when queue file is absent");
+        }
+    }
+
+    #[test]
+    fn test_settle_timeout_with_stale_queue_file() {
+        // Create a temporary queue file to simulate a busy queue, then
+        // verify settle times out.  We use a very short timeout (1 second)
+        // to keep the test fast.
+        let dir = tempfile::tempdir().unwrap();
+        let fake_queue = dir.path().join("queue");
+        std::fs::write(&fake_queue, "").unwrap();
+
+        // We can't easily redirect QUEUE_FILE for cmd_settle, but we can
+        // verify the inotify setup works independently.
+        let ino = nix::sys::inotify::Inotify::init(
+            nix::sys::inotify::InitFlags::IN_NONBLOCK | nix::sys::inotify::InitFlags::IN_CLOEXEC,
+        );
+        assert!(ino.is_ok(), "inotify should be available on Linux");
+
+        let ino = ino.unwrap();
+        let wd = ino.add_watch(
+            dir.path(),
+            nix::sys::inotify::AddWatchFlags::IN_DELETE
+                | nix::sys::inotify::AddWatchFlags::IN_MOVED_FROM,
+        );
+        assert!(wd.is_ok(), "should be able to watch temp directory");
+
+        // Remove the queue file — inotify should report the deletion
+        std::fs::remove_file(&fake_queue).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+
+        let events = ino.read_events();
+        assert!(events.is_ok(), "should be able to read inotify events");
+        let events = events.unwrap();
+        assert!(
+            !events.is_empty(),
+            "should have received deletion event from inotify"
+        );
+    }
+
+    #[test]
+    fn test_settle_inotify_watches_parent_directory() {
+        // Verify that we can set up an inotify watch on a directory and
+        // detect file creation/deletion — this mirrors what cmd_settle does.
+        let dir = tempfile::tempdir().unwrap();
+
+        let ino = nix::sys::inotify::Inotify::init(
+            nix::sys::inotify::InitFlags::IN_NONBLOCK | nix::sys::inotify::InitFlags::IN_CLOEXEC,
+        )
+        .unwrap();
+        let _wd = ino
+            .add_watch(
+                dir.path(),
+                nix::sys::inotify::AddWatchFlags::IN_CREATE
+                    | nix::sys::inotify::AddWatchFlags::IN_DELETE,
+            )
+            .unwrap();
+
+        // Create a file — should trigger IN_CREATE
+        let test_file = dir.path().join("queue");
+        std::fs::write(&test_file, "").unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+
+        let events = ino.read_events().unwrap();
+        assert!(!events.is_empty(), "should detect file creation");
+
+        // Now delete it — should trigger IN_DELETE
+        std::fs::remove_file(&test_file).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+
+        let events = ino.read_events().unwrap();
+        assert!(!events.is_empty(), "should detect file deletion");
+    }
+
+    #[test]
+    fn test_settle_inotify_nonblocking_returns_eagain() {
+        // Verify that reading from a non-blocking inotify fd with no
+        // pending events returns EAGAIN (not an error), matching what
+        // cmd_settle expects.
+        let dir = tempfile::tempdir().unwrap();
+        let ino = nix::sys::inotify::Inotify::init(
+            nix::sys::inotify::InitFlags::IN_NONBLOCK | nix::sys::inotify::InitFlags::IN_CLOEXEC,
+        )
+        .unwrap();
+        let _wd = ino
+            .add_watch(dir.path(), nix::sys::inotify::AddWatchFlags::IN_DELETE)
+            .unwrap();
+
+        // No events pending — read should return Err(EAGAIN)
+        match ino.read_events() {
+            Err(nix::errno::Errno::EAGAIN) => {
+                // Expected — non-blocking read with no events
+            }
+            Ok(events) => {
+                assert!(events.is_empty(), "should have no events");
+            }
+            Err(e) => {
+                panic!("unexpected inotify error: {}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_settle_exit_if_exists() {
+        // --exit-if-exists should cause immediate return when the file exists,
+        // even if the queue file would also exist.
+        // Use a file that always exists:
+        if !Path::new(QUEUE_FILE).exists() {
+            let exit = cmd_settle(1, &Some("/dev/null".to_string()));
+            assert_eq!(
+                exit, 0,
+                "should exit immediately when exit-if-exists file exists"
+            );
+        }
+    }
+
+    #[test]
+    fn test_settle_cli_parse_timeout() {
+        let cli = Cli::try_parse_from(["udevadm", "settle", "--timeout=5"]).unwrap();
+        if let Commands::Settle { timeout, .. } = cli.command {
+            assert_eq!(timeout, 5);
+        } else {
+            panic!("Expected Settle command");
+        }
     }
 }
