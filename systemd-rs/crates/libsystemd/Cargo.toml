@@ -17,6 +17,7 @@ nix = { version = "0.31", features = [
   "socket",
   "event",
   "hostname",
+  "inotify",
 ] }
 log = "0.4"
 fern = "0.7"
