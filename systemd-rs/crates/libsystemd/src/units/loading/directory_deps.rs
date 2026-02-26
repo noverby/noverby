@@ -984,81 +984,32 @@ pub fn parse_template_instance(unit_name: &str) -> Option<(String, String)> {
 /// `%n`, `%N`, `%p`, `%P`, etc.  These appear in template unit files as
 /// cross-references (e.g. `Requires=systemd-journald@%i.socket`) and must not be
 /// treated as literal instance names.
+///
+/// Delegates to [`crate::specifier::has_unresolved_specifiers`].
 fn has_unresolved_specifiers(s: &str) -> bool {
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '%'
-            && let Some(&next) = chars.peek()
-        {
-            // Known systemd specifiers: %i %I %n %N %p %P %u %U %h %s %m %b %H %v %t
-            // Also %% is an escaped percent — not a specifier.
-            if next != '%' && next.is_alphanumeric() {
-                return true;
-            }
-        }
-    }
-    false
+    crate::specifier::has_unresolved_specifiers(s)
+}
+
+/// Lazily-initialized system specifier context.
+///
+/// Created once on first use so that every `resolve_specifiers` call
+/// shares the same snapshot of hostname, machine-id, boot-id, etc.
+fn system_specifier_context() -> &'static crate::specifier::SpecifierContext {
+    use std::sync::OnceLock;
+    static CTX: OnceLock<crate::specifier::SpecifierContext> = OnceLock::new();
+    CTX.get_or_init(crate::specifier::SpecifierContext::for_system)
 }
 
 /// Resolve systemd specifiers in a unit file content string.
-/// Supports: %I, %i, %N, %n, %p, %P, %%
+///
+/// Supports the full set of systemd specifiers (`%i`, `%I`, `%n`, `%N`,
+/// `%p`, `%P`, `%u`, `%U`, `%h`, `%s`, `%m`, `%b`, `%H`, `%v`, `%t`,
+/// `%a`, `%o`, `%w`, `%q`, `%l`, `%f`, `%j`, `%J`, `%C`, `%E`, `%L`,
+/// `%S`, `%T`, `%V`, `%%`, and more).
+///
+/// Delegates to [`crate::specifier::resolve_specifiers`].
 pub fn resolve_specifiers(content: &str, unit_name: &str, instance: &str) -> String {
-    // %n = full unit name (e.g., "serial-getty@ttyS0.service")
-    // %N = same as %n but with unescaping (simplified: same as %n)
-    // %p = prefix (unit name without the suffix, e.g., "serial-getty@ttyS0")
-    // %P = same as %p but unescaped
-    // %i = instance name (e.g., "ttyS0")
-    // %I = same as %i but unescaped
-    let prefix = unit_name
-        .rfind('.')
-        .map(|pos| &unit_name[..pos])
-        .unwrap_or(unit_name);
-
-    let mut result = String::with_capacity(content.len());
-    let mut chars = content.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            match chars.peek() {
-                Some(&'I') => {
-                    chars.next();
-                    result.push_str(instance);
-                }
-                Some(&'i') => {
-                    chars.next();
-                    result.push_str(instance);
-                }
-                Some(&'N') => {
-                    chars.next();
-                    result.push_str(unit_name);
-                }
-                Some(&'n') => {
-                    chars.next();
-                    result.push_str(unit_name);
-                }
-                Some(&'p') => {
-                    chars.next();
-                    result.push_str(prefix);
-                }
-                Some(&'P') => {
-                    chars.next();
-                    result.push_str(prefix);
-                }
-                Some(&'%') => {
-                    chars.next();
-                    result.push('%');
-                }
-                _ => {
-                    // Unknown specifier — keep as-is
-                    result.push('%');
-                }
-            }
-        } else {
-            result.push(c);
-        }
-    }
-
-    result
+    crate::specifier::resolve_specifiers(content, unit_name, instance, system_specifier_context())
 }
 
 /// Load a template unit, instantiate it with the given instance name,
@@ -2013,10 +1964,10 @@ mod tests {
     #[test]
     fn test_resolve_specifiers_all() {
         let result = resolve_specifiers("%n %N %i %I %p %P %%", "foo@bar.service", "bar");
-        assert_eq!(
-            result,
-            "foo@bar.service foo@bar.service bar bar foo@bar foo@bar %"
-        );
+        // %N unescapes the unit name (no escaping in "foo@bar" so same),
+        // %I unescapes the instance ("bar" has nothing to unescape),
+        // %P unescapes the prefix ("foo" has nothing to unescape).
+        assert_eq!(result, "foo@bar.service foo@bar.service bar bar foo foo %");
     }
 
     #[test]
