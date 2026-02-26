@@ -18,11 +18,13 @@
 
 mod config;
 mod dhcp;
+mod ipv6_ra;
 mod link;
 mod manager;
 mod netdev;
 mod netdev_create;
 
+use std::collections::HashMap;
 use std::io;
 use std::net::Ipv4Addr;
 use std::os::unix::net::UnixDatagram;
@@ -584,7 +586,7 @@ fn main() {
     }
 
     // Open DHCP sockets for links that need DHCP.
-    let mut dhcp_sockets: std::collections::HashMap<u32, i32> = std::collections::HashMap::new();
+    let mut dhcp_sockets: HashMap<u32, i32> = HashMap::new();
     for ifindex in mgr.dhcp_active_links() {
         if let Some(managed) = mgr.links.get(&ifindex) {
             match open_dhcp_socket(&managed.link.name) {
@@ -622,6 +624,45 @@ fn main() {
             if let Err(e) = send_dhcp_broadcast(fd, &pkt) {
                 log::warn!("{}: failed to send DISCOVER: {}", client.config.ifname, e);
             }
+        }
+    }
+
+    // Open ICMPv6 sockets for links that need IPv6 RA.
+    let mut ra_sockets: HashMap<u32, i32> = HashMap::new();
+    for ifindex in mgr.ra_active_links() {
+        if let Some(managed) = mgr.links.get(&ifindex) {
+            match ipv6_ra::open_icmpv6_socket(&managed.link.name) {
+                Ok(fd) => {
+                    log::info!(
+                        "Opened ICMPv6 RA socket fd={} for {} (idx={})",
+                        fd,
+                        managed.link.name,
+                        ifindex
+                    );
+                    ra_sockets.insert(ifindex, fd);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to open ICMPv6 socket for {}: {}",
+                        managed.link.name,
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // Send initial Router Solicitations on RA-enabled links.
+    for (&ifindex, &fd) in &ra_sockets {
+        if let Some(managed) = mgr.links.get_mut(&ifindex)
+            && let Some(ref mut ra_state) = managed.ra_state
+            && ra_state.should_send_rs()
+        {
+            log::info!("{}: sending Router Solicitation", ra_state.ifname);
+            if let Err(e) = ipv6_ra::send_rs(fd, &ra_state.mac) {
+                log::warn!("{}: failed to send RS: {}", ra_state.ifname, e);
+            }
+            ra_state.mark_rs_sent();
         }
     }
 
@@ -780,6 +821,50 @@ fn main() {
             }
         }
 
+        // Process IPv6 RA: receive Router Advertisements, send RS retransmissions.
+        for (&ifindex, &fd) in &ra_sockets {
+            // Try to receive Router Advertisements.
+            while let Some((data, source)) = ipv6_ra::recv_ra(fd) {
+                if let Some(ra) = ipv6_ra::parse_ra(&data, source) {
+                    log::info!("idx={}: received {}", ifindex, ra);
+
+                    // Process the RA through the link's RaState.
+                    let actions = if let Some(managed) = mgr.links.get_mut(&ifindex) {
+                        if let Some(ref mut ra_state) = managed.ra_state {
+                            ra_state.process_ra(ra)
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    };
+
+                    // Apply the RA actions (add addresses, routes, DNS, etc.).
+                    if !actions.is_empty() && mgr.apply_ra_actions(ifindex, actions) {
+                        mgr.write_state_files();
+                        update_shared_state(&shared_state, &mgr);
+                        sd_notify(&format!("STATUS={}", mgr.overall_state()));
+                    }
+                }
+            }
+
+            // Check if we need to retransmit RS.
+            if let Some(managed) = mgr.links.get_mut(&ifindex)
+                && let Some(ref mut ra_state) = managed.ra_state
+                && ra_state.should_send_rs()
+            {
+                log::debug!(
+                    "{}: retransmitting RS (attempt {})",
+                    ra_state.ifname,
+                    ra_state.rs_count + 1
+                );
+                if let Err(e) = ipv6_ra::send_rs(fd, &ra_state.mac) {
+                    log::warn!("{}: failed to retransmit RS: {}", ra_state.ifname, e);
+                }
+                ra_state.mark_rs_sent();
+            }
+        }
+
         // zbus dispatches D-Bus messages automatically in a background thread.
 
         // Watchdog keepalive.
@@ -811,6 +896,11 @@ fn main() {
 
     // Close DHCP sockets.
     for (_, fd) in dhcp_sockets {
+        unsafe { libc::close(fd) };
+    }
+
+    // Close RA sockets.
+    for (_, fd) in ra_sockets {
         unsafe { libc::close(fd) };
     }
 

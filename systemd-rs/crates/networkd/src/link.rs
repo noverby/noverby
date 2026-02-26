@@ -266,7 +266,7 @@ impl fmt::Display for RouteInfo {
 pub struct NetlinkSocket {
     fd: i32,
     seq: u32,
-    pid: u32,
+    pub(crate) pid: u32,
 }
 
 impl NetlinkSocket {
@@ -336,7 +336,7 @@ impl NetlinkSocket {
     }
 
     /// Send a netlink message and collect all response messages.
-    fn request(&mut self, msg: &[u8]) -> io::Result<Vec<Vec<u8>>> {
+    pub(crate) fn request(&mut self, msg: &[u8]) -> io::Result<Vec<Vec<u8>>> {
         // Send.
         let sent =
             unsafe { libc::send(self.fd, msg.as_ptr() as *const libc::c_void, msg.len(), 0) };
@@ -422,7 +422,7 @@ impl NetlinkSocket {
         Ok(responses)
     }
 
-    fn next_seq(&mut self) -> u32 {
+    pub(crate) fn next_seq(&mut self) -> u32 {
         let s = self.seq;
         self.seq = self.seq.wrapping_add(1);
         s
