@@ -738,7 +738,10 @@ fn format_commandline(cmd: &crate::units::Commandline) -> String {
         match p {
             crate::units::CommandlinePrefix::Minus => s.push('-'),
             crate::units::CommandlinePrefix::AtSign => s.push('@'),
-            _ => {}
+            crate::units::CommandlinePrefix::Plus => s.push('+'),
+            crate::units::CommandlinePrefix::Colon => s.push(':'),
+            crate::units::CommandlinePrefix::Exclamation => s.push('!'),
+            crate::units::CommandlinePrefix::DoubleExclamation => s.push_str("!!"),
         }
     }
     s.push_str(&cmd.cmd);
