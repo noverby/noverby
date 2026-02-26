@@ -1573,6 +1573,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-repart"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-resolved"
 version = "0.1.0"
 dependencies = [

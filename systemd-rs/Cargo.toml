@@ -71,5 +71,6 @@ members = [
   "crates/cryptsetup",
   "crates/veritysetup",
   "crates/integritysetup",
+  "crates/repart",
 ]
 resolver = "2"
