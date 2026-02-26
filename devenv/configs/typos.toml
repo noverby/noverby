@@ -5,6 +5,8 @@
 clonable = "clonable"
 # GraphQL NOT IN operator
 nin = "nin"
+# Linux keycode ALS_TOGGLE (Ambient Light Sensor)
+als = "als"
 
 [default]
 extend-ignore-re = [
