@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::io::{self, BufRead};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A single journal entry.
@@ -385,6 +386,170 @@ impl Default for JournalEntry {
     }
 }
 
+// ------------------------------------------------------------------
+// Export format parser
+// ------------------------------------------------------------------
+
+/// Parse a single journal entry from the systemd journal export format.
+///
+/// The export format (documented in `systemd-journal-export(5)`) encodes
+/// entries as follows:
+///
+/// - Text fields: `KEY=VALUE\n`
+/// - Binary fields: `KEY\n<8-byte LE length><raw bytes>\n`
+/// - Address fields (`__CURSOR`, `__REALTIME_TIMESTAMP`,
+///   `__MONOTONIC_TIMESTAMP`) appear first.
+/// - Entries are separated by blank lines.
+///
+/// Returns `Ok(Some(entry))` on success, `Ok(None)` at EOF (no more
+/// entries), or an error if the format is invalid.
+pub fn from_export_format<R: BufRead>(reader: &mut R) -> io::Result<Option<JournalEntry>> {
+    let mut entry = JournalEntry::with_timestamp(0, 0);
+    let mut got_any_field = false;
+
+    loop {
+        let mut line_buf = Vec::new();
+        let n = reader.read_until(b'\n', &mut line_buf)?;
+        if n == 0 {
+            // EOF
+            return if got_any_field {
+                Ok(Some(entry))
+            } else {
+                Ok(None)
+            };
+        }
+
+        // Strip trailing newline
+        if line_buf.last() == Some(&b'\n') {
+            line_buf.pop();
+        }
+
+        // Blank line = end of entry
+        if line_buf.is_empty() {
+            return if got_any_field {
+                Ok(Some(entry))
+            } else {
+                // Skip consecutive blank lines and keep reading
+                continue;
+            };
+        }
+
+        // Try to find `=` for a text field
+        if let Some(eq_pos) = line_buf.iter().position(|&b| b == b'=') {
+            let key = String::from_utf8_lossy(&line_buf[..eq_pos]).into_owned();
+            let value = line_buf[eq_pos + 1..].to_vec();
+
+            // Handle address fields
+            match key.as_str() {
+                "__CURSOR" => {
+                    // Cursor is informational — we don't store it in fields
+                    // but callers can find it if needed.
+                    entry.fields.insert("__CURSOR".to_string(), value);
+                }
+                "__REALTIME_TIMESTAMP" => {
+                    if let Ok(s) = std::str::from_utf8(&value) {
+                        entry.realtime_usec = s.trim().parse().unwrap_or(0);
+                    }
+                }
+                "__MONOTONIC_TIMESTAMP" => {
+                    if let Ok(s) = std::str::from_utf8(&value) {
+                        entry.monotonic_usec = s.trim().parse().unwrap_or(0);
+                    }
+                }
+                _ => {
+                    entry.fields.insert(key, value);
+                }
+            }
+            got_any_field = true;
+        } else {
+            // No `=` found — this is a binary field.
+            // The line we just read is the KEY (without `=`).
+            // Next 8 bytes are a little-endian u64 length, then that many
+            // bytes of data, then a `\n`.
+            let key = String::from_utf8_lossy(&line_buf).into_owned();
+
+            let mut len_buf = [0u8; 8];
+            reader.read_exact(&mut len_buf)?;
+            let data_len = u64::from_le_bytes(len_buf) as usize;
+
+            // Sanity check — refuse absurdly large values (256 MiB).
+            if data_len > 256 * 1024 * 1024 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "binary field '{}' claims {} bytes — too large",
+                        key, data_len
+                    ),
+                ));
+            }
+
+            let mut data = vec![0u8; data_len];
+            reader.read_exact(&mut data)?;
+
+            // Read trailing newline
+            let mut nl = [0u8; 1];
+            let _ = reader.read_exact(&mut nl);
+
+            entry.fields.insert(key, data);
+            got_any_field = true;
+        }
+    }
+}
+
+/// Parse all journal entries from export format text.
+///
+/// Returns a `Vec` of entries in the order they appear.
+pub fn parse_export_entries<R: BufRead>(reader: &mut R) -> io::Result<Vec<JournalEntry>> {
+    let mut entries = Vec::new();
+    while let Some(entry) = from_export_format(reader)? {
+        entries.push(entry);
+    }
+    Ok(entries)
+}
+
+// ------------------------------------------------------------------
+// Field matching / filtering
+// ------------------------------------------------------------------
+
+/// A filter criterion for matching journal entries.
+///
+/// This is used by [`JournalReader`](super::storage::JournalReader) and
+/// journalctl to select entries without loading everything into memory.
+#[derive(Debug, Clone)]
+pub enum FieldMatch {
+    /// Exact match: the entry must have `field == value`.
+    Exact { field: String, value: Vec<u8> },
+    /// The entry's `PRIORITY` field must be ≤ `max_priority` (i.e.
+    /// severity at least as high — lower number = higher severity).
+    PriorityAtMost(u8),
+    /// The entry's `__REALTIME_TIMESTAMP` must be ≥ this value (µs).
+    SinceRealtime(u64),
+    /// The entry's `__REALTIME_TIMESTAMP` must be ≤ this value (µs).
+    UntilRealtime(u64),
+}
+
+impl JournalEntry {
+    /// Check whether this entry matches **all** of the given filters.
+    pub fn matches_all(&self, filters: &[FieldMatch]) -> bool {
+        filters.iter().all(|f| self.matches(f))
+    }
+
+    /// Check whether this entry matches a single filter.
+    pub fn matches(&self, filter: &FieldMatch) -> bool {
+        match filter {
+            FieldMatch::Exact { field, value } => {
+                self.fields.get(field).is_some_and(|v| v == value)
+            }
+            FieldMatch::PriorityAtMost(max_pri) => {
+                // If no PRIORITY field, assume it matches (info-level).
+                self.priority().is_none_or(|p| p <= *max_pri)
+            }
+            FieldMatch::SinceRealtime(since) => self.realtime_usec >= *since,
+            FieldMatch::UntilRealtime(until) => self.realtime_usec <= *until,
+        }
+    }
+}
+
 impl fmt::Display for JournalEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Short format similar to `journalctl --output=short`
@@ -527,6 +692,7 @@ pub fn priority_name(p: u8) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn test_new_entry_has_timestamps() {
@@ -714,5 +880,189 @@ mod tests {
         let entry = JournalEntry::default();
         assert!(entry.fields.is_empty());
         assert!(entry.realtime_usec > 0);
+    }
+
+    // --- export format parsing tests ---
+
+    #[test]
+    fn test_from_export_format_text_fields() {
+        let data = b"__CURSOR=s=abc;i=1\n\
+                      __REALTIME_TIMESTAMP=1700000000000000\n\
+                      __MONOTONIC_TIMESTAMP=100000\n\
+                      MESSAGE=hello world\n\
+                      PRIORITY=6\n\
+                      _PID=42\n\
+                      \n";
+        let mut reader = Cursor::new(&data[..]);
+        let entry = from_export_format(&mut reader).unwrap().unwrap();
+        assert_eq!(entry.realtime_usec, 1_700_000_000_000_000);
+        assert_eq!(entry.monotonic_usec, 100_000);
+        assert_eq!(entry.message(), Some("hello world".to_string()));
+        assert_eq!(entry.priority(), Some(6));
+        assert_eq!(entry.pid(), Some(42));
+    }
+
+    #[test]
+    fn test_from_export_format_binary_field() {
+        // Build a binary field: KEY\n<8-byte LE len><data>\n
+        let mut data = Vec::new();
+        data.extend_from_slice(b"__REALTIME_TIMESTAMP=1000000\n");
+        data.extend_from_slice(b"__MONOTONIC_TIMESTAMP=0\n");
+        data.extend_from_slice(b"MESSAGE=text\n");
+        // Binary field "BINARY" with 4 bytes of data
+        data.extend_from_slice(b"BINARY\n");
+        data.extend_from_slice(&4u64.to_le_bytes());
+        data.extend_from_slice(&[0x00, 0x01, 0x0a, 0xff]);
+        data.push(b'\n');
+        data.push(b'\n'); // entry separator
+
+        let mut reader = Cursor::new(&data[..]);
+        let entry = from_export_format(&mut reader).unwrap().unwrap();
+        assert_eq!(entry.message(), Some("text".to_string()));
+        assert_eq!(
+            entry.field_bytes("BINARY").unwrap(),
+            &[0x00, 0x01, 0x0a, 0xff]
+        );
+    }
+
+    #[test]
+    fn test_from_export_format_eof() {
+        let data = b"";
+        let mut reader = Cursor::new(&data[..]);
+        assert!(from_export_format(&mut reader).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_parse_export_entries_multiple() {
+        let data = b"__REALTIME_TIMESTAMP=1000000\nMESSAGE=first\n\n\
+                      __REALTIME_TIMESTAMP=2000000\nMESSAGE=second\n\n";
+        let mut reader = Cursor::new(&data[..]);
+        let entries = parse_export_entries(&mut reader).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].message(), Some("first".to_string()));
+        assert_eq!(entries[1].message(), Some("second".to_string()));
+        assert_eq!(entries[0].realtime_usec, 1_000_000);
+        assert_eq!(entries[1].realtime_usec, 2_000_000);
+    }
+
+    #[test]
+    fn test_export_roundtrip() {
+        let mut original = JournalEntry::with_timestamp(1_700_000_000_000_000, 100_000);
+        original.set_field("MESSAGE", "hello roundtrip");
+        original.set_field("PRIORITY", "4");
+        original.set_field("_PID", "999");
+
+        let exported = original.to_export_format("s=0;i=1;b=0;m=100000;t=1700000000000000;x=0");
+        let mut reader = Cursor::new(&exported[..]);
+        let parsed = from_export_format(&mut reader).unwrap().unwrap();
+
+        assert_eq!(parsed.realtime_usec, original.realtime_usec);
+        assert_eq!(parsed.monotonic_usec, original.monotonic_usec);
+        assert_eq!(parsed.message(), original.message());
+        assert_eq!(parsed.priority(), original.priority());
+        assert_eq!(parsed.pid(), original.pid());
+    }
+
+    #[test]
+    fn test_parse_export_skips_leading_blank_lines() {
+        let data = b"\n\n__REALTIME_TIMESTAMP=1000\nMESSAGE=ok\n\n";
+        let mut reader = Cursor::new(&data[..]);
+        let entries = parse_export_entries(&mut reader).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].message(), Some("ok".to_string()));
+    }
+
+    // --- field matching tests ---
+
+    #[test]
+    fn test_field_match_exact() {
+        let mut entry = JournalEntry::new();
+        entry.set_field("_SYSTEMD_UNIT", "foo.service");
+
+        let m = FieldMatch::Exact {
+            field: "_SYSTEMD_UNIT".to_string(),
+            value: b"foo.service".to_vec(),
+        };
+        assert!(entry.matches(&m));
+
+        let m2 = FieldMatch::Exact {
+            field: "_SYSTEMD_UNIT".to_string(),
+            value: b"bar.service".to_vec(),
+        };
+        assert!(!entry.matches(&m2));
+    }
+
+    #[test]
+    fn test_field_match_exact_missing_field() {
+        let entry = JournalEntry::new();
+        let m = FieldMatch::Exact {
+            field: "NONEXISTENT".to_string(),
+            value: b"value".to_vec(),
+        };
+        assert!(!entry.matches(&m));
+    }
+
+    #[test]
+    fn test_field_match_priority_at_most() {
+        let mut entry = JournalEntry::new();
+        entry.set_field("PRIORITY", "3"); // err
+
+        assert!(entry.matches(&FieldMatch::PriorityAtMost(3)));
+        assert!(entry.matches(&FieldMatch::PriorityAtMost(7)));
+        assert!(!entry.matches(&FieldMatch::PriorityAtMost(2)));
+    }
+
+    #[test]
+    fn test_field_match_priority_missing() {
+        let entry = JournalEntry::new();
+        // No PRIORITY field — should pass (treated as matching).
+        assert!(entry.matches(&FieldMatch::PriorityAtMost(3)));
+    }
+
+    #[test]
+    fn test_field_match_since_realtime() {
+        let entry = JournalEntry::with_timestamp(1_000_000, 0);
+        assert!(entry.matches(&FieldMatch::SinceRealtime(500_000)));
+        assert!(entry.matches(&FieldMatch::SinceRealtime(1_000_000)));
+        assert!(!entry.matches(&FieldMatch::SinceRealtime(2_000_000)));
+    }
+
+    #[test]
+    fn test_field_match_until_realtime() {
+        let entry = JournalEntry::with_timestamp(1_000_000, 0);
+        assert!(entry.matches(&FieldMatch::UntilRealtime(2_000_000)));
+        assert!(entry.matches(&FieldMatch::UntilRealtime(1_000_000)));
+        assert!(!entry.matches(&FieldMatch::UntilRealtime(500_000)));
+    }
+
+    #[test]
+    fn test_matches_all_combined() {
+        let mut entry = JournalEntry::with_timestamp(1_500_000, 0);
+        entry.set_field("PRIORITY", "3");
+        entry.set_field("_SYSTEMD_UNIT", "foo.service");
+
+        let filters = vec![
+            FieldMatch::SinceRealtime(1_000_000),
+            FieldMatch::UntilRealtime(2_000_000),
+            FieldMatch::PriorityAtMost(4),
+            FieldMatch::Exact {
+                field: "_SYSTEMD_UNIT".to_string(),
+                value: b"foo.service".to_vec(),
+            },
+        ];
+        assert!(entry.matches_all(&filters));
+
+        // One filter fails
+        let filters2 = vec![
+            FieldMatch::SinceRealtime(1_000_000),
+            FieldMatch::PriorityAtMost(2), // entry has priority 3
+        ];
+        assert!(!entry.matches_all(&filters2));
+    }
+
+    #[test]
+    fn test_matches_all_empty_filters() {
+        let entry = JournalEntry::new();
+        assert!(entry.matches_all(&[])); // no filters = matches all
     }
 }

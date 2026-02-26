@@ -32,8 +32,15 @@
 //! The header is written once when the file is created and updated
 //! (head/tail seqnum, entry count, file size) after each append via a
 //! single atomic `pwrite`.
+//!
+//! ## JournalReader
+//!
+//! The [`JournalReader`] struct provides an iterator-style interface for
+//! reading entries with optional field-based filtering and cursor/timestamp
+//! seeking.  It is the primary read interface used by `journalctl` and
+//! other consumers.
 
-use super::entry::JournalEntry;
+use super::entry::{FieldMatch, JournalEntry};
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
@@ -609,6 +616,58 @@ impl JournalStorage {
         self.config.directory.join(&self.machine_id)
     }
 
+    /// Create a [`JournalReader`] for reading entries from this storage
+    /// with optional filtering and seeking.
+    pub fn reader(&self) -> JournalReader {
+        JournalReader {
+            directory: self.directory(),
+            filters: Vec::new(),
+            seek: SeekPosition::Head,
+        }
+    }
+
+    /// Read entries matching the given filters.
+    ///
+    /// This is a convenience wrapper around [`JournalReader`].
+    pub fn read_filtered(&self, filters: &[FieldMatch]) -> io::Result<Vec<JournalEntry>> {
+        let mut reader = self.reader();
+        reader.filters = filters.to_vec();
+        reader.collect()
+    }
+
+    /// Read entries starting from (or after) the given cursor string.
+    ///
+    /// If `after` is `true`, the entry at the cursor itself is excluded.
+    pub fn read_from_cursor(&self, cursor: &str, after: bool) -> io::Result<Vec<JournalEntry>> {
+        let mut reader = self.reader();
+        reader.seek = if after {
+            SeekPosition::AfterCursor(cursor.to_string())
+        } else {
+            SeekPosition::Cursor(cursor.to_string())
+        };
+        reader.collect()
+    }
+
+    /// Read entries starting from the given realtime timestamp (µs since epoch).
+    pub fn read_from_realtime(&self, realtime_usec: u64) -> io::Result<Vec<JournalEntry>> {
+        let mut reader = self.reader();
+        reader.seek = SeekPosition::RealtimeTimestamp(realtime_usec);
+        reader.collect()
+    }
+
+    /// Write all entries to a writer in the journal export format.
+    pub fn export_all<W: Write>(&self, writer: &mut W) -> io::Result<u64> {
+        let entries = self.read_all()?;
+        let mut count = 0u64;
+        for entry in &entries {
+            let cursor = self.make_cursor(entry);
+            let data = entry.to_export_format(&cursor);
+            writer.write_all(&data)?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
     // ---------------------------------------------------------------
     // Internal helpers
     // ---------------------------------------------------------------
@@ -759,6 +818,263 @@ fn generate_random_u128() -> u128 {
 }
 
 // ---------------------------------------------------------------------------
+// JournalReader — filtered, seekable journal reading
+// ---------------------------------------------------------------------------
+
+/// Where to start reading entries.
+#[derive(Debug, Clone)]
+pub enum SeekPosition {
+    /// Start from the first (oldest) entry.
+    Head,
+    /// Start from the last (newest) entry.  When used with
+    /// [`JournalReader::collect`], returns entries in reverse
+    /// chronological order.
+    Tail,
+    /// Start from the entry identified by this cursor string (inclusive).
+    Cursor(String),
+    /// Start just after the entry identified by this cursor (exclusive).
+    AfterCursor(String),
+    /// Start from the first entry whose realtime timestamp ≥ this value.
+    RealtimeTimestamp(u64),
+    /// Start from the first entry whose sequence number ≥ this value.
+    SeqNum(u64),
+}
+
+/// A configurable reader for journal entries with filtering and seeking.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use libsystemd::journal::storage::{JournalStorage, StorageConfig, SeekPosition};
+/// use libsystemd::journal::entry::FieldMatch;
+///
+/// let storage = JournalStorage::new(StorageConfig::default()).unwrap();
+/// let mut reader = storage.reader();
+/// reader.add_match(FieldMatch::Exact {
+///     field: "_SYSTEMD_UNIT".into(),
+///     value: b"sshd.service".to_vec(),
+/// });
+/// reader.add_match(FieldMatch::PriorityAtMost(4));
+/// reader.seek = SeekPosition::RealtimeTimestamp(1_700_000_000_000_000);
+///
+/// let entries = reader.collect().unwrap();
+/// for entry in &entries {
+///     println!("{}", entry);
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct JournalReader {
+    /// Journal directory (e.g. `/var/log/journal/<machine-id>`).
+    directory: PathBuf,
+    /// Filters to apply to each entry.  Only entries matching **all**
+    /// filters are returned.
+    pub filters: Vec<FieldMatch>,
+    /// Where to start reading.
+    pub seek: SeekPosition,
+}
+
+impl JournalReader {
+    /// Create a reader directly from a directory path.
+    pub fn open(directory: PathBuf) -> Self {
+        JournalReader {
+            directory,
+            filters: Vec::new(),
+            seek: SeekPosition::Head,
+        }
+    }
+
+    /// Add a filter.  Entries must match **all** added filters.
+    pub fn add_match(&mut self, m: FieldMatch) {
+        self.filters.push(m);
+    }
+
+    /// Set the seek position.
+    pub fn set_seek(&mut self, pos: SeekPosition) {
+        self.seek = pos;
+    }
+
+    /// Convenience: add an exact field match.
+    pub fn match_field(&mut self, field: &str, value: &[u8]) {
+        self.filters.push(FieldMatch::Exact {
+            field: field.to_string(),
+            value: value.to_vec(),
+        });
+    }
+
+    /// Convenience: filter by systemd unit name.
+    pub fn match_unit(&mut self, unit: &str) {
+        self.match_field("_SYSTEMD_UNIT", unit.as_bytes());
+    }
+
+    /// Convenience: filter by syslog identifier.
+    pub fn match_identifier(&mut self, ident: &str) {
+        self.match_field("SYSLOG_IDENTIFIER", ident.as_bytes());
+    }
+
+    /// Convenience: filter by maximum priority level.
+    pub fn match_priority(&mut self, max_priority: u8) {
+        self.filters.push(FieldMatch::PriorityAtMost(max_priority));
+    }
+
+    /// Collect all matching entries into a `Vec`.
+    ///
+    /// Entries are returned in chronological order (oldest first) unless
+    /// [`SeekPosition::Tail`] is used, in which case they are reversed.
+    pub fn collect(&self) -> io::Result<Vec<JournalEntry>> {
+        // Read all entries from all files in chronological order.
+        let mut all_entries = read_all_from_directory(&self.directory)?;
+
+        // Apply seek position.
+        let reverse = matches!(self.seek, SeekPosition::Tail);
+        all_entries = self.apply_seek(all_entries);
+
+        // Apply filters.
+        if !self.filters.is_empty() {
+            all_entries.retain(|e| e.matches_all(&self.filters));
+        }
+
+        if reverse {
+            all_entries.reverse();
+        }
+
+        Ok(all_entries)
+    }
+
+    /// Collect at most `n` matching entries.
+    ///
+    /// For [`SeekPosition::Tail`], this returns the last `n` entries
+    /// (newest first).  For all other seek positions it returns the
+    /// first `n` matching entries (oldest first).
+    pub fn collect_n(&self, n: usize) -> io::Result<Vec<JournalEntry>> {
+        let mut entries = self.collect()?;
+        entries.truncate(n);
+        Ok(entries)
+    }
+
+    /// Count matching entries without collecting them into a `Vec`.
+    pub fn count(&self) -> io::Result<u64> {
+        Ok(self.collect()?.len() as u64)
+    }
+
+    /// Collect all unique values of the given field across matching entries.
+    pub fn unique_field_values(&self, field: &str) -> io::Result<Vec<String>> {
+        let entries = self.collect()?;
+        let mut seen = std::collections::BTreeSet::new();
+        for entry in &entries {
+            if let Some(val) = entry.field(field) {
+                seen.insert(val);
+            }
+        }
+        Ok(seen.into_iter().collect())
+    }
+
+    // ---------------------------------------------------------------
+    // Internal helpers
+    // ---------------------------------------------------------------
+
+    fn apply_seek(&self, mut entries: Vec<JournalEntry>) -> Vec<JournalEntry> {
+        match &self.seek {
+            SeekPosition::Head => entries,
+            SeekPosition::Tail => entries,
+            SeekPosition::Cursor(cursor) => {
+                if let Some(target_seqnum) = parse_cursor_seqnum(cursor) {
+                    entries.retain(|e| e.seqnum >= target_seqnum);
+                }
+                entries
+            }
+            SeekPosition::AfterCursor(cursor) => {
+                if let Some(target_seqnum) = parse_cursor_seqnum(cursor) {
+                    entries.retain(|e| e.seqnum > target_seqnum);
+                }
+                entries
+            }
+            SeekPosition::RealtimeTimestamp(ts) => {
+                entries.retain(|e| e.realtime_usec >= *ts);
+                entries
+            }
+            SeekPosition::SeqNum(seq) => {
+                entries.retain(|e| e.seqnum >= *seq);
+                entries
+            }
+        }
+    }
+}
+
+/// Read all entries from all journal files in a directory, sorted chronologically.
+fn read_all_from_directory(directory: &Path) -> io::Result<Vec<JournalEntry>> {
+    let mut all_entries = Vec::new();
+    let mut files = list_journal_files(directory)?;
+    files.sort();
+
+    for file_path in &files {
+        match JournalFile::open(file_path, false) {
+            Ok(jf) => match jf.read_all() {
+                Ok(entries) => all_entries.extend(entries),
+                Err(e) => {
+                    eprintln!(
+                        "journald: Warning: could not read {}: {}",
+                        file_path.display(),
+                        e
+                    );
+                }
+            },
+            Err(e) => {
+                eprintln!(
+                    "journald: Warning: could not open {}: {}",
+                    file_path.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    // Sort by realtime timestamp, then by sequence number for stability
+    all_entries.sort_by(|a, b| {
+        a.realtime_usec
+            .cmp(&b.realtime_usec)
+            .then_with(|| a.seqnum.cmp(&b.seqnum))
+    });
+
+    Ok(all_entries)
+}
+
+/// Parse the sequence number (`i=HEX`) from a cursor string.
+///
+/// Cursor format:
+/// `s=<file_id>;i=<seqnum>;b=<boot_id>;m=<monotonic>;t=<realtime>;x=<xor_hash>`
+fn parse_cursor_seqnum(cursor: &str) -> Option<u64> {
+    for part in cursor.split(';') {
+        if let Some(hex) = part.strip_prefix("i=") {
+            return u64::from_str_radix(hex.trim(), 16).ok();
+        }
+    }
+    None
+}
+
+/// Parse the realtime timestamp (`t=HEX`) from a cursor string.
+pub fn parse_cursor_realtime(cursor: &str) -> Option<u64> {
+    for part in cursor.split(';') {
+        if let Some(hex) = part.strip_prefix("t=") {
+            return u64::from_str_radix(hex.trim(), 16).ok();
+        }
+    }
+    None
+}
+
+/// Parse the boot ID (`b=HEX`) from a cursor string.
+pub fn parse_cursor_boot_id(cursor: &str) -> Option<String> {
+    for part in cursor.split(';') {
+        if let Some(id) = part.strip_prefix("b=") {
+            let trimmed = id.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -767,7 +1083,8 @@ mod tests {
     use super::*;
 
     fn make_test_entry(msg: &str, priority: u8, seqnum: u64) -> JournalEntry {
-        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000 + seqnum, seqnum * 1000);
+        let mut entry =
+            JournalEntry::with_timestamp(1_700_000_000_000_000 + seqnum * 1_000_000, seqnum * 1000);
         entry.seqnum = seqnum;
         entry.set_field("MESSAGE", msg);
         entry.set_field("PRIORITY", priority.to_string());
@@ -1217,5 +1534,388 @@ mod tests {
         let b = generate_random_u128();
         // They should almost certainly be different
         assert_ne!(a, b, "two random u128 values should differ");
+    }
+
+    // ---------------------------------------------------------------
+    // Cursor parsing tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_parse_cursor_seqnum() {
+        let cursor = "s=00000000000000000000000000000000;i=a;b=abc123;m=64;t=60b6a7c0e4240;x=0";
+        assert_eq!(parse_cursor_seqnum(cursor), Some(0xa));
+    }
+
+    #[test]
+    fn test_parse_cursor_seqnum_missing() {
+        assert_eq!(parse_cursor_seqnum("s=0;b=abc;m=0;t=0;x=0"), None);
+    }
+
+    #[test]
+    fn test_parse_cursor_realtime() {
+        let cursor = "s=0;i=1;b=abc;m=0;t=60b6a7c0e4240;x=0";
+        assert_eq!(parse_cursor_realtime(cursor), Some(0x60b6a7c0e4240));
+    }
+
+    #[test]
+    fn test_parse_cursor_boot_id() {
+        let cursor = "s=0;i=1;b=abc123def;m=0;t=0;x=0";
+        assert_eq!(parse_cursor_boot_id(cursor), Some("abc123def".to_string()));
+    }
+
+    #[test]
+    fn test_parse_cursor_boot_id_empty() {
+        let cursor = "s=0;i=1;b=;m=0;t=0;x=0";
+        assert_eq!(parse_cursor_boot_id(cursor), None);
+    }
+
+    // ---------------------------------------------------------------
+    // JournalReader tests
+    // ---------------------------------------------------------------
+
+    fn make_reader_storage(name: &str) -> (PathBuf, JournalStorage) {
+        let dir = temp_dir(name);
+        let config = StorageConfig {
+            directory: dir.clone(),
+            max_file_size: DEFAULT_MAX_FILE_SIZE,
+            max_disk_usage: DEFAULT_MAX_DISK_USAGE,
+            max_files: DEFAULT_MAX_FILES,
+            persistent: false,
+        };
+        let storage = JournalStorage::new(config).unwrap();
+        (dir, storage)
+    }
+
+    fn populate_storage(storage: &mut JournalStorage) {
+        // Write 10 entries with different priorities and units
+        for i in 1..=10 {
+            let mut entry =
+                JournalEntry::with_timestamp(1_700_000_000_000_000 + i * 1_000_000, i * 1000);
+            entry.set_field("MESSAGE", format!("message {}", i));
+            entry.set_field("PRIORITY", (i % 8).to_string());
+            if i <= 5 {
+                entry.set_field("_SYSTEMD_UNIT", "foo.service");
+            } else {
+                entry.set_field("_SYSTEMD_UNIT", "bar.service");
+            }
+            entry.set_field("SYSLOG_IDENTIFIER", format!("app{}", i % 3));
+            storage.append(&entry).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_reader_collect_all() {
+        let (dir, mut storage) = make_reader_storage("reader_all");
+        populate_storage(&mut storage);
+
+        let reader = storage.reader();
+        let entries = reader.collect().unwrap();
+        assert_eq!(entries.len(), 10);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_filter_by_unit() {
+        let (dir, mut storage) = make_reader_storage("reader_unit");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.match_unit("foo.service");
+        let entries = reader.collect().unwrap();
+        assert_eq!(entries.len(), 5);
+        for e in &entries {
+            assert_eq!(e.systemd_unit(), Some("foo.service".to_string()));
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_filter_by_priority() {
+        let (dir, mut storage) = make_reader_storage("reader_prio");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.match_priority(3); // emerg(0), alert(1), crit(2), err(3)
+        let entries = reader.collect().unwrap();
+        // Priorities 1..=10 mod 8 = 1,2,3,4,5,6,7,0,1,2
+        // ≤3: indices with priority 1,2,3,0 → entries 1,2,3,8,9,10
+        assert_eq!(entries.len(), 6);
+        for e in &entries {
+            assert!(e.priority().unwrap() <= 3);
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_filter_combined() {
+        let (dir, mut storage) = make_reader_storage("reader_combined");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.match_unit("foo.service");
+        reader.match_priority(3);
+        let entries = reader.collect().unwrap();
+        // foo.service = entries 1-5, priorities 1,2,3,4,5
+        // priority <= 3: entries 1,2,3
+        assert_eq!(entries.len(), 3);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_seek_realtime() {
+        let (dir, mut storage) = make_reader_storage("reader_seek_rt");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        // Seek to entry 6 (timestamp = base + 6_000_000)
+        reader.seek = SeekPosition::RealtimeTimestamp(1_700_000_000_000_000 + 6_000_000);
+        let entries = reader.collect().unwrap();
+        assert_eq!(entries.len(), 5); // entries 6..=10
+        assert_eq!(entries[0].message(), Some("message 6".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_seek_seqnum() {
+        let (dir, mut storage) = make_reader_storage("reader_seek_seq");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.seek = SeekPosition::SeqNum(8);
+        let entries = reader.collect().unwrap();
+        assert_eq!(entries.len(), 3); // entries 8,9,10
+        assert_eq!(entries[0].message(), Some("message 8".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_seek_tail() {
+        let (dir, mut storage) = make_reader_storage("reader_seek_tail");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.seek = SeekPosition::Tail;
+        let entries = reader.collect().unwrap();
+        assert_eq!(entries.len(), 10);
+        // Tail seek returns entries in reverse order
+        assert_eq!(entries[0].message(), Some("message 10".to_string()));
+        assert_eq!(entries[9].message(), Some("message 1".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_collect_n() {
+        let (dir, mut storage) = make_reader_storage("reader_collect_n");
+        populate_storage(&mut storage);
+
+        let reader = storage.reader();
+        let entries = reader.collect_n(3).unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].message(), Some("message 1".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_collect_n_tail() {
+        let (dir, mut storage) = make_reader_storage("reader_collect_n_tail");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.seek = SeekPosition::Tail;
+        let entries = reader.collect_n(3).unwrap();
+        assert_eq!(entries.len(), 3);
+        // Newest first
+        assert_eq!(entries[0].message(), Some("message 10".to_string()));
+        assert_eq!(entries[2].message(), Some("message 8".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_count() {
+        let (dir, mut storage) = make_reader_storage("reader_count");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.match_unit("bar.service");
+        assert_eq!(reader.count().unwrap(), 5);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_unique_field_values() {
+        let (dir, mut storage) = make_reader_storage("reader_unique");
+        populate_storage(&mut storage);
+
+        let reader = storage.reader();
+        let units = reader.unique_field_values("_SYSTEMD_UNIT").unwrap();
+        assert_eq!(units.len(), 2);
+        assert!(units.contains(&"foo.service".to_string()));
+        assert!(units.contains(&"bar.service".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_match_identifier() {
+        let (dir, mut storage) = make_reader_storage("reader_ident");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.match_identifier("app0");
+        let entries = reader.collect().unwrap();
+        // app0 for i%3==0: entries 3,6,9
+        assert_eq!(entries.len(), 3);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_empty_storage() {
+        let (dir, storage) = make_reader_storage("reader_empty");
+
+        let reader = storage.reader();
+        let entries = reader.collect().unwrap();
+        assert!(entries.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ---------------------------------------------------------------
+    // Storage convenience method tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_storage_read_filtered() {
+        let (dir, mut storage) = make_reader_storage("storage_filtered");
+        populate_storage(&mut storage);
+
+        let filters = vec![FieldMatch::Exact {
+            field: "_SYSTEMD_UNIT".to_string(),
+            value: b"bar.service".to_vec(),
+        }];
+        let entries = storage.read_filtered(&filters).unwrap();
+        assert_eq!(entries.len(), 5);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_storage_read_from_cursor() {
+        let (dir, mut storage) = make_reader_storage("storage_read_cursor");
+        populate_storage(&mut storage);
+
+        // Read all to get a cursor for entry 5
+        let all = storage.read_all().unwrap();
+        let cursor = storage.make_cursor(&all[4]); // entry 5 (0-indexed: 4)
+
+        let entries = storage.read_from_cursor(&cursor, false).unwrap();
+        // Should include entry 5 and everything after
+        assert!(entries.len() >= 6); // entries 5..=10
+
+        let entries_after = storage.read_from_cursor(&cursor, true).unwrap();
+        // Should exclude entry 5 itself
+        assert!(entries_after.len() < entries.len());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_storage_read_from_realtime() {
+        let (dir, mut storage) = make_reader_storage("storage_realtime");
+        populate_storage(&mut storage);
+
+        let entries = storage
+            .read_from_realtime(1_700_000_000_000_000 + 8_000_000)
+            .unwrap();
+        assert_eq!(entries.len(), 3); // entries 8,9,10
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_storage_export_all() {
+        let (dir, mut storage) = make_reader_storage("storage_export");
+        populate_storage(&mut storage);
+
+        let mut buf = Vec::new();
+        let count = storage.export_all(&mut buf).unwrap();
+        assert_eq!(count, 10);
+
+        let export_str = String::from_utf8_lossy(&buf);
+        assert!(export_str.contains("__REALTIME_TIMESTAMP="));
+        assert!(export_str.contains("MESSAGE=message 1"));
+        assert!(export_str.contains("MESSAGE=message 10"));
+
+        // Verify we can parse the export format back
+        let mut cursor = io::Cursor::new(&buf);
+        let parsed =
+            super::super::entry::parse_export_entries(&mut io::BufReader::new(&mut cursor))
+                .unwrap();
+        assert_eq!(parsed.len(), 10);
+        assert_eq!(parsed[0].message(), Some("message 1".to_string()));
+        assert_eq!(parsed[9].message(), Some("message 10".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ---------------------------------------------------------------
+    // JournalReader::open tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_reader_open_directly() {
+        let (dir, mut storage) = make_reader_storage("reader_open");
+        populate_storage(&mut storage);
+
+        let journal_dir = storage.directory();
+        let mut reader = JournalReader::open(journal_dir);
+        reader.match_priority(2); // emerg(0), alert(1), crit(2)
+        let entries = reader.collect().unwrap();
+        // Priorities: 1,2,3,4,5,6,7,0,1,2 → ≤2: entries with pri 1,2,0,1,2 → 5 entries
+        assert_eq!(entries.len(), 5);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_add_match() {
+        let (dir, mut storage) = make_reader_storage("reader_add_match");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.add_match(FieldMatch::Exact {
+            field: "_SYSTEMD_UNIT".to_string(),
+            value: b"foo.service".to_vec(),
+        });
+        reader.add_match(FieldMatch::SinceRealtime(1_700_000_000_000_000 + 3_000_000));
+        let entries = reader.collect().unwrap();
+        // foo.service = entries 1-5, since entry 3 → entries 3,4,5
+        assert_eq!(entries.len(), 3);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_reader_match_field_bytes() {
+        let (dir, mut storage) = make_reader_storage("reader_match_bytes");
+        populate_storage(&mut storage);
+
+        let mut reader = storage.reader();
+        reader.match_field("MESSAGE", b"message 7");
+        let entries = reader.collect().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].message(), Some("message 7".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
