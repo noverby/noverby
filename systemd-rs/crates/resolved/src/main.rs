@@ -20,6 +20,7 @@
 mod config;
 mod dns;
 mod hosts;
+mod routing;
 
 use std::fs;
 use std::io::{self, Read, Write};
@@ -41,6 +42,7 @@ use dns::{
     DnsCache, DnsMessage, HEADER_SIZE, MAX_EDNS_UDP_SIZE, MAX_TCP_SIZE, ResolverStats,
     build_formerr, build_servfail, forward_query,
 };
+use routing::{DnsRouter, extract_query_name};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -222,12 +224,16 @@ type SharedCache = Arc<Mutex<DnsCache>>;
 /// Shared `/etc/hosts` database (thread-safe, reloadable).
 type SharedHosts = Arc<Mutex<hosts::EtcHosts>>;
 
+/// Shared DNS router for split DNS (thread-safe, reloadable).
+type SharedRouter = Arc<std::sync::RwLock<DnsRouter>>;
+
 fn handle_query(
     query_data: &[u8],
     upstreams: &[SocketAddr],
     stats: &AtomicStats,
     cache: &SharedCache,
     etc_hosts: &SharedHosts,
+    router: &SharedRouter,
 ) -> Vec<u8> {
     stats.queries_received.fetch_add(1, Ordering::Relaxed);
 
@@ -267,7 +273,29 @@ fn handle_query(
         return cached_response;
     }
 
-    if upstreams.is_empty() {
+    // Determine the best upstream servers for this query using the DNS
+    // router (split DNS).  If the router has routing domains, resolve
+    // per-query; otherwise fall back to the flat upstream list.
+    let routed_servers: Vec<SocketAddr>;
+    let effective_upstreams: &[SocketAddr] = if let Ok(r) = router.read() {
+        if r.has_routing_domains() {
+            if let Some(qname) = extract_query_name(query_data) {
+                routed_servers = r.servers_for_name(&qname);
+                if !routed_servers.is_empty() {
+                    log::debug!("Routed {} to {} server(s)", qname, routed_servers.len());
+                }
+                &routed_servers
+            } else {
+                upstreams
+            }
+        } else {
+            upstreams
+        }
+    } else {
+        upstreams
+    };
+
+    if effective_upstreams.is_empty() {
         log::warn!("No upstream DNS servers configured");
         stats.responses_servfail.fetch_add(1, Ordering::Relaxed);
         return build_servfail(query_data).unwrap_or_default();
@@ -276,7 +304,7 @@ fn handle_query(
     // Forward to upstream
     stats.queries_forwarded.fetch_add(1, Ordering::Relaxed);
 
-    match forward_query(query_data, upstreams) {
+    match forward_query(query_data, effective_upstreams) {
         Ok(response) => {
             // Check response code for statistics
             if response.len() >= HEADER_SIZE {
@@ -320,6 +348,7 @@ fn handle_tcp_connection(
     stats: Arc<AtomicStats>,
     cache: SharedCache,
     etc_hosts: SharedHosts,
+    router: SharedRouter,
 ) {
     let _ = stream.set_read_timeout(Some(TCP_TIMEOUT));
     let _ = stream.set_write_timeout(Some(TCP_TIMEOUT));
@@ -342,7 +371,7 @@ fn handle_tcp_connection(
         return;
     }
 
-    let response = handle_query(&query, &upstreams, &stats, &cache, &etc_hosts);
+    let response = handle_query(&query, &upstreams, &stats, &cache, &etc_hosts, &router);
 
     // Write response with length prefix
     let resp_len = (response.len() as u16).to_be_bytes();
@@ -360,6 +389,7 @@ fn run_udp_listener(
     shutdown: Arc<AtomicBool>,
     cache: SharedCache,
     etc_hosts: SharedHosts,
+    router: SharedRouter,
 ) {
     let mut buf = vec![0u8; UDP_RECV_BUF];
 
@@ -384,7 +414,8 @@ fn run_udp_listener(
             Ok((len, src)) => {
                 let query = &buf[..len];
                 let upstream_list = upstreams.read().unwrap_or_else(|e| e.into_inner()).clone();
-                let response = handle_query(query, &upstream_list, &stats, &cache, &etc_hosts);
+                let response =
+                    handle_query(query, &upstream_list, &stats, &cache, &etc_hosts, &router);
 
                 if let Err(e) = socket.send_to(&response, src) {
                     log::debug!("Failed to send UDP response to {}: {}", src, e);
@@ -419,6 +450,7 @@ fn run_tcp_listener(
     shutdown: Arc<AtomicBool>,
     cache: SharedCache,
     etc_hosts: SharedHosts,
+    router: SharedRouter,
 ) {
     log::info!(
         "TCP stub listener ready on {}",
@@ -439,6 +471,7 @@ fn run_tcp_listener(
                 let stats_clone = Arc::clone(&stats);
                 let cache_clone = Arc::clone(&cache);
                 let hosts_clone = Arc::clone(&etc_hosts);
+                let router_clone = Arc::clone(&router);
 
                 thread::spawn(move || {
                     handle_tcp_connection(
@@ -447,6 +480,7 @@ fn run_tcp_listener(
                         stats_clone,
                         cache_clone,
                         hosts_clone,
+                        router_clone,
                     );
                 });
             }
@@ -929,6 +963,12 @@ fn main() {
     }
     let etc_hosts: SharedHosts = Arc::new(Mutex::new(etc_hosts_db));
 
+    // Build DNS router (split DNS).
+    // Rebuilt after every config reload / link refresh.
+    let dns_router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+        &ResolvedConfig::default(),
+    )));
+
     // Load configuration
     let mut config = ResolvedConfig::load();
     log::info!(
@@ -950,12 +990,23 @@ fn main() {
     // Write resolv.conf files
     write_resolv_conf_files(&config);
 
-    // Build upstream server list
+    // Build upstream server list and DNS router.
     let upstream_servers: Vec<SocketAddr> = config
         .effective_dns_servers()
         .iter()
         .map(|s| s.socket_addr())
         .collect();
+
+    // Rebuild the router from the loaded config.
+    if let Ok(mut r) = dns_router.write() {
+        *r = DnsRouter::from_config(&config);
+        if r.has_routing_domains() {
+            log::info!(
+                "DNS routing: {} routing domain(s) configured",
+                r.route_count()
+            );
+        }
+    }
 
     log::info!(
         "Upstream DNS servers: {}",
@@ -1008,6 +1059,7 @@ fn main() {
                         let shutdown_clone = Arc::clone(&shutdown);
                         let cache_clone = Arc::clone(&dns_cache);
                         let hosts_clone = Arc::clone(&etc_hosts);
+                        let router_clone = Arc::clone(&dns_router);
                         listener_threads.push(thread::spawn(move || {
                             run_udp_listener(
                                 socket,
@@ -1016,6 +1068,7 @@ fn main() {
                                 shutdown_clone,
                                 cache_clone,
                                 hosts_clone,
+                                router_clone,
                             );
                         }));
                     }
@@ -1038,6 +1091,7 @@ fn main() {
                         let shutdown_clone = Arc::clone(&shutdown);
                         let cache_clone = Arc::clone(&dns_cache);
                         let hosts_clone = Arc::clone(&etc_hosts);
+                        let router_clone = Arc::clone(&dns_router);
                         listener_threads.push(thread::spawn(move || {
                             run_tcp_listener(
                                 listener,
@@ -1046,6 +1100,7 @@ fn main() {
                                 shutdown_clone,
                                 cache_clone,
                                 hosts_clone,
+                                router_clone,
                             );
                         }));
                     }
@@ -1071,6 +1126,7 @@ fn main() {
                 let shutdown_clone = Arc::clone(&shutdown);
                 let cache_clone = Arc::clone(&dns_cache);
                 let hosts_clone = Arc::clone(&etc_hosts);
+                let router_clone = Arc::clone(&dns_router);
                 listener_threads.push(thread::spawn(move || {
                     run_udp_listener(
                         socket,
@@ -1079,6 +1135,7 @@ fn main() {
                         shutdown_clone,
                         cache_clone,
                         hosts_clone,
+                        router_clone,
                     );
                 }));
             }
@@ -1161,6 +1218,17 @@ fn main() {
                 *list = new_upstreams;
             }
 
+            // Rebuild the DNS router from the new config.
+            if let Ok(mut r) = dns_router.write() {
+                *r = DnsRouter::from_config(&new_config);
+                if r.has_routing_domains() {
+                    log::info!(
+                        "DNS routing: {} routing domain(s) after reload",
+                        r.route_count()
+                    );
+                }
+            }
+
             // Rewrite resolv.conf files
             write_resolv_conf_files(&new_config);
 
@@ -1230,6 +1298,11 @@ fn main() {
                 *list = new_upstreams;
                 write_resolv_conf_files(&refresh_config);
                 update_shared_state(&shared_dbus_state, &refresh_config, &stats);
+
+                // Rebuild DNS router on link change.
+                if let Ok(mut r) = dns_router.write() {
+                    *r = DnsRouter::from_config(&refresh_config);
+                }
             }
 
             last_link_refresh = Instant::now();
@@ -1332,13 +1405,16 @@ mod tests {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
         let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         // Build a minimal valid DNS query
         let mut query = vec![0u8; 12]; // minimal header
         query[2] = 0x01; // RD=1
         query[5] = 0; // QDCOUNT=0
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
 
         // Should get SERVFAIL
         assert!(response.len() >= HEADER_SIZE);
@@ -1354,14 +1430,17 @@ mod tests {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
         let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         // Too short to be a valid DNS message but has a header
         let query = vec![0u8; HEADER_SIZE];
-        // QDCOUNT=1 but no question data
+
         let mut query = query;
         query[5] = 1; // QDCOUNT=1
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
         // Should get FORMERR since the message can't be parsed (truncated question)
         assert!(response.len() >= HEADER_SIZE);
         let rcode = response[3] & 0x0F;
@@ -1375,13 +1454,16 @@ mod tests {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
         let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         // Send a response (QR=1) as if it were a query
         let mut data = vec![0u8; HEADER_SIZE];
         data[2] = 0x80; // QR=1 (response)
         data[5] = 0; // QDCOUNT=0
 
-        let response = handle_query(&data, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&data, &[], &stats, &cache, &etc_hosts, &router);
         let rcode = response[3] & 0x0F;
         assert_eq!(rcode, 1); // FORMERR
     }
@@ -1545,6 +1627,9 @@ mod tests {
     fn test_handle_query_etc_hosts_a_record() {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("192.168.1.10 myhost.local\n", None);
@@ -1553,7 +1638,7 @@ mod tests {
         // Build an A query for myhost.local
         let query = hosts::tests_support::build_test_query("myhost.local", dns::RecordType::A);
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
 
         // Should get a successful response from /etc/hosts (not SERVFAIL)
         assert!(response.len() >= HEADER_SIZE);
@@ -1574,6 +1659,9 @@ mod tests {
     fn test_handle_query_etc_hosts_aaaa_record() {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("::1 localhost\n", None);
@@ -1581,7 +1669,7 @@ mod tests {
 
         let query = hosts::tests_support::build_test_query("localhost", dns::RecordType::AAAA);
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
 
         assert!(response.len() >= HEADER_SIZE);
         assert_eq!(response[3] & 0x0F, 0); // NOERROR
@@ -1593,6 +1681,9 @@ mod tests {
     fn test_handle_query_etc_hosts_miss_falls_through() {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("127.0.0.1 localhost\n", None);
@@ -1601,7 +1692,7 @@ mod tests {
         // Query for a name NOT in /etc/hosts, with no upstreams
         let query = hosts::tests_support::build_test_query("unknown.host", dns::RecordType::A);
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
 
         // Should fall through to upstream (which is empty) and get SERVFAIL
         assert_eq!(response[3] & 0x0F, 2); // SERVFAIL
@@ -1612,6 +1703,9 @@ mod tests {
     fn test_handle_query_etc_hosts_priority_over_cache() {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("10.0.0.1 cached.host\n", None);
@@ -1630,7 +1724,7 @@ mod tests {
             c.insert(&query, &fake_resp);
         }
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
 
         // /etc/hosts should take priority — response should have AA=1
         // (our hosts responses set AA=1, cache responses don't)
@@ -1647,10 +1741,13 @@ mod tests {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
         let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         let query = hosts::tests_support::build_test_query("localhost", dns::RecordType::A);
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
 
         // Empty hosts DB, no upstreams → SERVFAIL
         assert_eq!(response[3] & 0x0F, 2);
@@ -1660,21 +1757,142 @@ mod tests {
     fn test_handle_query_etc_hosts_ptr_query() {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("192.168.1.10 myhost.example.com\n", None);
         let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
 
+        // Build a PTR query for 10.1.168.192.in-addr.arpa
         let query = hosts::tests_support::build_test_query(
             "10.1.168.192.in-addr.arpa",
             dns::RecordType::PTR,
         );
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
 
         assert!(response.len() >= HEADER_SIZE);
         assert_eq!(response[3] & 0x0F, 0); // NOERROR
         assert_eq!(u16::from_be_bytes([response[6], response[7]]), 1);
         assert_eq!(stats.queries_forwarded.load(Ordering::Relaxed), 0);
+    }
+
+    // ── Split DNS routing integration tests ───────────────────────────
+
+    #[test]
+    fn test_handle_query_routing_domain_selects_servers() {
+        // When a routing domain is configured, queries matching it should
+        // be routed to the link's DNS servers (even though the flat
+        // `upstreams` list is empty).  Since there are no real upstream
+        // servers to contact, the query will SERVFAIL — but the important
+        // thing is that the router's servers_for_name() is exercised.
+        let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
+
+        // Build a router with a routing domain.
+        let mut cfg = ResolvedConfig::default();
+        cfg.dns.clear();
+        cfg.fallback_dns.clear();
+        cfg.link_dns = vec![{
+            let mut link = config::LinkDns::new(2, "vpn0".to_string());
+            link.dns_servers = vec![config::DnsServer::new(std::net::IpAddr::V4(Ipv4Addr::new(
+                10, 0, 0, 1,
+            )))];
+            link.domains = vec!["~corp.local".to_string()];
+            link
+        }];
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(&cfg)));
+
+        // A query for a name that does NOT match the routing domain and
+        // there are no global/fallback servers → SERVFAIL.
+        let query = hosts::tests_support::build_test_query("www.google.com", dns::RecordType::A);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        assert_eq!(response[3] & 0x0F, 2); // SERVFAIL (no servers for this name)
+    }
+
+    #[test]
+    fn test_handle_query_no_routing_uses_flat_upstreams() {
+        // When the router has no routing domains, queries should use the
+        // flat upstream list as before (backward-compatible behaviour).
+        let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
+        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+            &ResolvedConfig::default(),
+        )));
+
+        // Empty flat upstreams, no routing domains, default fallback DNS cleared.
+        let mut cfg = ResolvedConfig::default();
+        cfg.dns.clear();
+        cfg.fallback_dns.clear();
+        if let Ok(mut r) = router.write() {
+            *r = DnsRouter::from_config(&cfg);
+        }
+
+        let query = hosts::tests_support::build_test_query("example.com", dns::RecordType::A);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        // No upstreams at all → SERVFAIL.
+        assert_eq!(response[3] & 0x0F, 2);
+    }
+
+    #[test]
+    fn test_router_from_config_has_routes() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.link_dns = vec![{
+            let mut link = config::LinkDns::new(2, "vpn0".to_string());
+            link.dns_servers = vec![config::DnsServer::new(std::net::IpAddr::V4(Ipv4Addr::new(
+                10, 0, 0, 1,
+            )))];
+            link.domains = vec!["~corp.local".to_string()];
+            link
+        }];
+
+        let router = DnsRouter::from_config(&cfg);
+        assert!(router.has_routing_domains());
+        assert_eq!(router.route_count(), 1);
+    }
+
+    #[test]
+    fn test_router_servers_for_matching_name() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.dns.clear();
+        cfg.fallback_dns.clear();
+        cfg.link_dns = vec![{
+            let mut link = config::LinkDns::new(2, "vpn0".to_string());
+            link.dns_servers = vec![config::DnsServer::new(std::net::IpAddr::V4(Ipv4Addr::new(
+                10, 0, 0, 1,
+            )))];
+            link.domains = vec!["~corp.local".to_string()];
+            link
+        }];
+
+        let router = DnsRouter::from_config(&cfg);
+
+        let servers = router.servers_for_name("host.corp.local");
+        assert_eq!(servers.len(), 1);
+        assert_eq!(
+            servers[0],
+            SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 53)
+        );
+
+        // Non-matching name → no servers (no global/fallback).
+        let servers = router.servers_for_name("www.example.com");
+        assert!(servers.is_empty());
+    }
+
+    #[test]
+    fn test_extract_query_name_from_real_query() {
+        let query =
+            hosts::tests_support::build_test_query("myhost.example.com", dns::RecordType::A);
+        let name = extract_query_name(&query);
+        assert_eq!(name, Some("myhost.example.com".to_string()));
+    }
+
+    #[test]
+    fn test_extract_query_name_too_short() {
+        assert_eq!(extract_query_name(&[0u8; 4]), None);
     }
 }
