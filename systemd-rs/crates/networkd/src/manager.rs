@@ -18,7 +18,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use crate::config::{self, DhcpMode, Ipv6AcceptRa, NetworkConfig};
 use crate::dhcp::{self, DhcpClient, DhcpClientConfig, DhcpLease, DhcpState};
 use crate::dhcpv6::{Dhcpv6Client, Dhcpv6ClientConfig, Dhcpv6Lease};
-use crate::ipv6_ra::{self, RaAction, RaState};
+use crate::ipv6_ra::{self, RaAction, RaState, read_machine_id_as_bytes};
 use crate::link::{self, LinkInfo};
 use crate::netdev::{self, NetDevConfig};
 use crate::netdev_create;
@@ -529,7 +529,51 @@ impl NetworkManager {
                 mac_arr.copy_from_slice(&mac[..6]);
             }
 
-            let ra_state = RaState::new(ifindex, link_name.clone(), mac_arr);
+            // Determine address generation mode:
+            // 1. Explicit IPv6LinkLocalAddressGenerationMode=stable-privacy
+            // 2. IPv6StableSecretAddress= is set
+            // 3. Default: EUI-64
+            let use_stable_privacy = config
+                .network_section
+                .ipv6_ll_addr_gen_mode
+                .as_deref()
+                .is_some_and(|m| m.eq_ignore_ascii_case("stable-privacy"))
+                || config.network_section.ipv6_stable_secret_address.is_some();
+
+            let ra_state = if use_stable_privacy {
+                // Resolve the secret key.
+                let secret_key = match config.network_section.ipv6_stable_secret_address.as_deref()
+                {
+                    Some("machine-id") | None => {
+                        // Derive from /etc/machine-id (default for stable-privacy mode).
+                        read_machine_id_as_bytes().unwrap_or_else(|| {
+                            log::warn!(
+                                "{link_name}: failed to read /etc/machine-id for stable privacy addresses, falling back to EUI-64"
+                            );
+                            Vec::new()
+                        })
+                    }
+                    Some(hex_secret) => {
+                        // Hex-encoded secret key.
+                        ipv6_ra::hex_to_bytes(hex_secret).unwrap_or_else(|| {
+                            log::warn!(
+                                "{link_name}: invalid IPv6StableSecretAddress hex value, falling back to EUI-64"
+                            );
+                            Vec::new()
+                        })
+                    }
+                };
+
+                if secret_key.is_empty() {
+                    // Fallback to EUI-64 if we couldn't get a valid secret.
+                    RaState::new(ifindex, link_name.clone(), mac_arr)
+                } else {
+                    log::info!("{link_name}: using RFC 7217 stable privacy SLAAC addresses");
+                    RaState::new_stable_privacy(ifindex, link_name.clone(), mac_arr, secret_key)
+                }
+            } else {
+                RaState::new(ifindex, link_name.clone(), mac_arr)
+            };
 
             // Add link-local address first (needed for RA to work).
             if let Some(ll_addr) = ra_state.link_local {
@@ -801,6 +845,33 @@ impl NetworkManager {
             .collect()
     }
 
+    /// Check all RA-enabled links for expired or deprecated SLAAC addresses.
+    ///
+    /// Returns `true` if any addresses were removed or deprecated.
+    pub fn check_ra_address_lifetimes(&mut self) -> bool {
+        let active: Vec<u32> = self.ra_active_links();
+        let mut changed = false;
+
+        for ifindex in active {
+            let actions = {
+                let managed = match self.links.get_mut(&ifindex) {
+                    Some(m) => m,
+                    None => continue,
+                };
+                match managed.ra_state.as_mut() {
+                    Some(s) => s.check_address_lifetimes(),
+                    None => continue,
+                }
+            };
+
+            if !actions.is_empty() {
+                changed |= self.apply_ra_actions(ifindex, actions);
+            }
+        }
+
+        changed
+    }
+
     /// Process a received Router Advertisement on a given interface.
     ///
     /// Applies the RA actions (add SLAAC addresses, default route, DNS, etc.)
@@ -829,6 +900,38 @@ impl NetworkManager {
                             );
                         }
                     }
+                    changed = true;
+                }
+                RaAction::RemoveAddress {
+                    address,
+                    prefix_len,
+                } => {
+                    log::info!(
+                        "{link_name}: removing expired SLAAC address {address}/{prefix_len}"
+                    );
+                    // Best-effort removal via netlink RTM_DELADDR.
+                    // If the address was already removed (e.g. by the kernel), this is a no-op.
+                    if let Err(e) = ipv6_ra::remove_ipv6_address(ifindex, address, prefix_len) {
+                        let is_noent = e.raw_os_error() == Some(libc::EADDRNOTAVAIL);
+                        if !is_noent {
+                            log::warn!(
+                                "{link_name}: failed to remove SLAAC address {address}/{prefix_len}: {e}"
+                            );
+                        }
+                    }
+                    changed = true;
+                }
+                RaAction::DeprecateAddress {
+                    address,
+                    prefix_len,
+                } => {
+                    log::info!(
+                        "{link_name}: SLAAC address {address}/{prefix_len} deprecated (preferred lifetime expired)"
+                    );
+                    // Deprecation is informational — the address remains usable for
+                    // existing connections but should not be used for new ones.
+                    // The kernel handles this via IFA_F_DEPRECATED flag, but setting
+                    // it requires RTM_NEWADDR with the flag; for now we just log it.
                     changed = true;
                 }
                 RaAction::AddDefaultRoute { gateway, .. } => {

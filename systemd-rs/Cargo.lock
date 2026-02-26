@@ -1499,6 +1499,7 @@ dependencies = [
  "libsystemd",
  "log",
  "nix",
+ "sha2",
  "signal-hook",
  "tempfile",
  "zbus",

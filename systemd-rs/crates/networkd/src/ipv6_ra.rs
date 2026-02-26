@@ -5,9 +5,13 @@
 //! - ICMPv6 Router Advertisement (RA) message parsing
 //! - RA option parsing (Prefix Information, RDNSS, Route Information, MTU)
 //! - SLAAC (Stateless Address Autoconfiguration) address generation via EUI-64
-//! - IPv6 link-local address generation from MAC
+//! - **RFC 7217 stable privacy SLAAC address generation** using SHA-256
+//! - IPv6 link-local address generation from MAC (EUI-64 and stable privacy)
+//! - **IPv6 address lifetime management** (valid/preferred lifetime tracking,
+//!   deprecation and removal of expired addresses)
 //! - State tracking for received RAs per link
 
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::net::Ipv6Addr;
 use std::time::{Duration, Instant};
@@ -53,6 +57,12 @@ const MAX_RS_RETRANSMISSIONS: u32 = 3;
 
 /// Route protocol for RA-learned routes
 const RTPROT_RA: u8 = 9;
+
+/// Default DAD counter for RFC 7217 address generation.
+const DEFAULT_DAD_COUNTER: u32 = 0;
+
+/// Infinity value for IPv6 address lifetimes (0xFFFFFFFF).
+const LIFETIME_INFINITY: u32 = 0xFFFF_FFFF;
 
 // ---------------------------------------------------------------------------
 // RA option types
@@ -165,6 +175,135 @@ impl fmt::Display for RouterAdvertisement {
 // RA state tracking per link
 // ---------------------------------------------------------------------------
 
+/// SLAAC address generation mode for an interface.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Ipv6AddressGenMode {
+    /// EUI-64 — traditional address generation from MAC address.
+    /// This leaks the hardware MAC address in the IPv6 address.
+    #[default]
+    Eui64,
+
+    /// RFC 7217 stable privacy addresses — uses a hash of
+    /// (prefix, interface name, network_id, DAD counter, secret_key)
+    /// to generate an interface identifier that is:
+    /// - Stable: same address every time for the same network
+    /// - Private: does not reveal the MAC address
+    /// - Unique: different address per prefix and per interface
+    StablePrivacy {
+        /// Secret key for the PRF. Typically derived from `/etc/machine-id`.
+        /// Must be at least 16 bytes for adequate security.
+        secret_key: Vec<u8>,
+    },
+}
+
+/// Tracked state for a single SLAAC-configured IPv6 address.
+#[derive(Debug, Clone)]
+pub struct SlaacAddress {
+    /// The IPv6 address.
+    pub address: Ipv6Addr,
+    /// Prefix length (typically 64).
+    pub prefix_len: u8,
+    /// The prefix this address was generated from.
+    pub prefix: Ipv6Addr,
+    /// Valid lifetime in seconds from the most recent RA (0xFFFFFFFF = infinity).
+    pub valid_lifetime: u32,
+    /// Preferred lifetime in seconds from the most recent RA (0xFFFFFFFF = infinity).
+    pub preferred_lifetime: u32,
+    /// When this address was first created.
+    pub created: Instant,
+    /// When the lifetime was last refreshed (from the most recent RA).
+    pub last_refreshed: Instant,
+    /// Whether this address is currently deprecated (preferred lifetime expired).
+    pub deprecated: bool,
+}
+
+impl SlaacAddress {
+    /// Create a new tracked SLAAC address.
+    pub fn new(
+        address: Ipv6Addr,
+        prefix_len: u8,
+        prefix: Ipv6Addr,
+        valid_lifetime: u32,
+        preferred_lifetime: u32,
+    ) -> Self {
+        let now = Instant::now();
+        Self {
+            address,
+            prefix_len,
+            prefix,
+            valid_lifetime,
+            preferred_lifetime,
+            created: now,
+            last_refreshed: now,
+            deprecated: false,
+        }
+    }
+
+    /// Check if the valid lifetime has expired (address should be removed).
+    pub fn is_expired(&self) -> bool {
+        if self.valid_lifetime == LIFETIME_INFINITY {
+            return false;
+        }
+        self.last_refreshed.elapsed() >= Duration::from_secs(self.valid_lifetime as u64)
+    }
+
+    /// Check if the preferred lifetime has expired (address should be deprecated).
+    pub fn is_deprecated(&self) -> bool {
+        if self.preferred_lifetime == LIFETIME_INFINITY {
+            return false;
+        }
+        self.last_refreshed.elapsed() >= Duration::from_secs(self.preferred_lifetime as u64)
+    }
+
+    /// Remaining valid lifetime in seconds (0 if expired).
+    pub fn remaining_valid(&self) -> u32 {
+        if self.valid_lifetime == LIFETIME_INFINITY {
+            return LIFETIME_INFINITY;
+        }
+        let elapsed = self.last_refreshed.elapsed().as_secs() as u32;
+        self.valid_lifetime.saturating_sub(elapsed)
+    }
+
+    /// Remaining preferred lifetime in seconds (0 if deprecated).
+    pub fn remaining_preferred(&self) -> u32 {
+        if self.preferred_lifetime == LIFETIME_INFINITY {
+            return LIFETIME_INFINITY;
+        }
+        let elapsed = self.last_refreshed.elapsed().as_secs() as u32;
+        self.preferred_lifetime.saturating_sub(elapsed)
+    }
+
+    /// Refresh lifetimes from a new RA for the same prefix.
+    ///
+    /// Follows RFC 4862 §5.5.3e lifetime update rules:
+    /// - If the received valid lifetime > 2 hours, update to the received value.
+    /// - If the remaining valid lifetime > 2 hours, keep it (don't reduce below 2h).
+    /// - Otherwise, update to min(received, 2 hours).
+    /// - Preferred lifetime is always updated.
+    pub fn refresh_lifetimes(&mut self, valid_lifetime: u32, preferred_lifetime: u32) {
+        const TWO_HOURS: u32 = 7200;
+
+        // Always update preferred lifetime.
+        self.preferred_lifetime = preferred_lifetime;
+
+        // RFC 4862 §5.5.3e: valid lifetime update rules.
+        if valid_lifetime > TWO_HOURS {
+            // New valid lifetime is greater than 2 hours — accept it.
+            self.valid_lifetime = valid_lifetime;
+        } else if self.remaining_valid() > TWO_HOURS {
+            // Current remaining is > 2 hours — don't reduce below 2h.
+            // Keep current lifetime unchanged.
+        } else {
+            // Current remaining ≤ 2 hours — accept min(received, 2 hours).
+            self.valid_lifetime = valid_lifetime.min(TWO_HOURS);
+        }
+
+        self.last_refreshed = Instant::now();
+        // Re-evaluate deprecated status.
+        self.deprecated = self.is_deprecated();
+    }
+}
+
 /// Per-link state for IPv6 Router Advertisement processing.
 #[derive(Debug)]
 pub struct RaState {
@@ -184,8 +323,10 @@ pub struct RaState {
     pub ra_received: bool,
     /// The most recently received RA.
     pub last_ra: Option<RouterAdvertisement>,
-    /// SLAAC addresses that we have configured.
+    /// SLAAC addresses that we have configured (legacy tuple format for compat).
     pub slaac_addresses: Vec<(Ipv6Addr, u8)>,
+    /// Tracked SLAAC addresses with lifetime information.
+    pub tracked_addresses: Vec<SlaacAddress>,
     /// Default router address (if any).
     pub default_router: Option<Ipv6Addr>,
     /// DNS servers learned from RDNSS.
@@ -194,10 +335,14 @@ pub struct RaState {
     pub search_domains: Vec<String>,
     /// Link-local address for this interface.
     pub link_local: Option<Ipv6Addr>,
+    /// Address generation mode (EUI-64 or stable privacy).
+    pub addr_gen_mode: Ipv6AddressGenMode,
+    /// DAD counter for RFC 7217 (incremented on Duplicate Address Detection failure).
+    pub dad_counter: u32,
 }
 
 impl RaState {
-    /// Create a new RA state for an interface.
+    /// Create a new RA state for an interface using the default EUI-64 mode.
     pub fn new(ifindex: u32, ifname: String, mac: [u8; 6]) -> Self {
         let link_local = mac_to_link_local(&mac);
         Self {
@@ -210,10 +355,45 @@ impl RaState {
             ra_received: false,
             last_ra: None,
             slaac_addresses: Vec::new(),
+            tracked_addresses: Vec::new(),
             default_router: None,
             dns_servers: Vec::new(),
             search_domains: Vec::new(),
             link_local: Some(link_local),
+            addr_gen_mode: Ipv6AddressGenMode::Eui64,
+            dad_counter: DEFAULT_DAD_COUNTER,
+        }
+    }
+
+    /// Create a new RA state with RFC 7217 stable privacy address generation.
+    ///
+    /// The secret key is used as input to the SHA-256 hash for generating
+    /// interface identifiers. It should be derived from `/etc/machine-id`
+    /// or configured via `IPv6StableSecretAddress=`.
+    pub fn new_stable_privacy(
+        ifindex: u32,
+        ifname: String,
+        mac: [u8; 6],
+        secret_key: Vec<u8>,
+    ) -> Self {
+        let link_local = stable_privacy_link_local(&ifname, &secret_key, DEFAULT_DAD_COUNTER);
+        Self {
+            ifindex,
+            ifname,
+            mac,
+            enabled: true,
+            rs_count: 0,
+            last_rs: None,
+            ra_received: false,
+            last_ra: None,
+            slaac_addresses: Vec::new(),
+            tracked_addresses: Vec::new(),
+            default_router: None,
+            dns_servers: Vec::new(),
+            search_domains: Vec::new(),
+            link_local: Some(link_local),
+            addr_gen_mode: Ipv6AddressGenMode::StablePrivacy { secret_key },
+            dad_counter: DEFAULT_DAD_COUNTER,
         }
     }
 
@@ -235,6 +415,49 @@ impl RaState {
     pub fn mark_rs_sent(&mut self) {
         self.rs_count += 1;
         self.last_rs = Some(Instant::now());
+    }
+
+    /// Generate a SLAAC address for the given prefix using the configured mode.
+    fn generate_slaac_address(&self, prefix: &Ipv6Addr) -> Option<Ipv6Addr> {
+        match &self.addr_gen_mode {
+            Ipv6AddressGenMode::Eui64 => slaac_eui64(prefix, &self.mac),
+            Ipv6AddressGenMode::StablePrivacy { secret_key } => {
+                slaac_stable_privacy(prefix, &self.ifname, secret_key, self.dad_counter)
+            }
+        }
+    }
+
+    /// Check tracked addresses for lifetime expiration and deprecation.
+    ///
+    /// Returns a list of `RaAction`s for addresses that have expired (should be
+    /// removed from the interface) or been deprecated.
+    pub fn check_address_lifetimes(&mut self) -> Vec<RaAction> {
+        let mut actions = Vec::new();
+        let mut expired_indices = Vec::new();
+
+        for (i, tracked) in self.tracked_addresses.iter_mut().enumerate() {
+            if tracked.is_expired() {
+                expired_indices.push(i);
+                actions.push(RaAction::RemoveAddress {
+                    address: tracked.address,
+                    prefix_len: tracked.prefix_len,
+                });
+            } else if tracked.is_deprecated() && !tracked.deprecated {
+                tracked.deprecated = true;
+                actions.push(RaAction::DeprecateAddress {
+                    address: tracked.address,
+                    prefix_len: tracked.prefix_len,
+                });
+            }
+        }
+
+        // Remove expired addresses in reverse order to preserve indices.
+        for i in expired_indices.into_iter().rev() {
+            let removed = self.tracked_addresses.remove(i);
+            self.slaac_addresses.retain(|(a, _)| *a != removed.address);
+        }
+
+        actions
     }
 
     /// Process a received Router Advertisement and update state.
@@ -260,21 +483,54 @@ impl RaState {
 
         // Prefix Information — SLAAC
         for prefix in &ra.prefixes {
-            if prefix.autonomous
-                && prefix.prefix_len == 64
-                && prefix.valid_lifetime > 0
-                && let Some(addr) = slaac_eui64(&prefix.prefix, &self.mac)
-            {
-                let already = self.slaac_addresses.iter().any(|(a, _)| *a == addr);
-                if !already {
-                    self.slaac_addresses.push((addr, prefix.prefix_len));
+            if prefix.autonomous && prefix.prefix_len == 64 {
+                if prefix.valid_lifetime > 0 {
+                    if let Some(addr) = self.generate_slaac_address(&prefix.prefix) {
+                        // Check if we already track this address.
+                        let existing = self
+                            .tracked_addresses
+                            .iter_mut()
+                            .find(|t| t.address == addr);
+
+                        if let Some(tracked) = existing {
+                            // Refresh lifetimes per RFC 4862 §5.5.3e.
+                            tracked.refresh_lifetimes(
+                                prefix.valid_lifetime,
+                                prefix.preferred_lifetime,
+                            );
+                        } else {
+                            // New address — track it.
+                            self.slaac_addresses.push((addr, prefix.prefix_len));
+                            self.tracked_addresses.push(SlaacAddress::new(
+                                addr,
+                                prefix.prefix_len,
+                                prefix.prefix,
+                                prefix.valid_lifetime,
+                                prefix.preferred_lifetime,
+                            ));
+                        }
+
+                        actions.push(RaAction::AddAddress {
+                            address: addr,
+                            prefix_len: prefix.prefix_len,
+                            valid_lifetime: prefix.valid_lifetime,
+                            preferred_lifetime: prefix.preferred_lifetime,
+                        });
+                    }
+                } else {
+                    // Valid lifetime == 0: remove the address for this prefix.
+                    if let Some(addr) = self.generate_slaac_address(&prefix.prefix) {
+                        let had_it = self.tracked_addresses.iter().any(|t| t.address == addr);
+                        if had_it {
+                            self.tracked_addresses.retain(|t| t.address != addr);
+                            self.slaac_addresses.retain(|(a, _)| *a != addr);
+                            actions.push(RaAction::RemoveAddress {
+                                address: addr,
+                                prefix_len: prefix.prefix_len,
+                            });
+                        }
+                    }
                 }
-                actions.push(RaAction::AddAddress {
-                    address: addr,
-                    prefix_len: prefix.prefix_len,
-                    valid_lifetime: prefix.valid_lifetime,
-                    preferred_lifetime: prefix.preferred_lifetime,
-                });
             }
 
             if prefix.on_link && prefix.valid_lifetime > 0 {
@@ -355,6 +611,10 @@ pub enum RaAction {
         valid_lifetime: u32,
         preferred_lifetime: u32,
     },
+    /// Remove a SLAAC address from the interface (valid lifetime expired or set to 0).
+    RemoveAddress { address: Ipv6Addr, prefix_len: u8 },
+    /// Mark a SLAAC address as deprecated (preferred lifetime expired).
+    DeprecateAddress { address: Ipv6Addr, prefix_len: u8 },
     /// Add a default route via the given gateway.
     AddDefaultRoute { gateway: Ipv6Addr, lifetime: u16 },
     /// Remove a default route via the given gateway.
@@ -805,6 +1065,151 @@ pub fn slaac_eui64(prefix: &Ipv6Addr, mac: &[u8; 6]) -> Option<Ipv6Addr> {
 }
 
 // ---------------------------------------------------------------------------
+// RFC 7217: Stable Privacy SLAAC Address Generation
+// ---------------------------------------------------------------------------
+
+/// Generate a stable privacy interface identifier per RFC 7217.
+///
+/// Uses SHA-256 as the pseudo-random function:
+///   IID = SHA-256(prefix || ifname || network_id || dad_counter || secret_key)
+///         truncated to 8 bytes (64 bits).
+///
+/// The resulting IID is combined with the given /64 prefix to form a full
+/// IPv6 address. The key properties are:
+/// - **Stable**: same inputs always produce the same address
+/// - **Private**: the MAC address is not revealed
+/// - **Unique**: different per prefix, interface, and network
+///
+/// # Arguments
+/// - `prefix` — the /64 network prefix from the Router Advertisement
+/// - `ifname` — the network interface name (e.g. "eth0")
+/// - `secret_key` — secret key, typically derived from `/etc/machine-id`
+/// - `dad_counter` — DAD conflict counter (starts at 0, incremented on conflict)
+///
+/// Returns `None` if the resulting address would be loopback, multicast,
+/// or the unspecified address.
+pub fn slaac_stable_privacy(
+    prefix: &Ipv6Addr,
+    ifname: &str,
+    secret_key: &[u8],
+    dad_counter: u32,
+) -> Option<Ipv6Addr> {
+    let iid = stable_privacy_iid(prefix, ifname, secret_key, dad_counter);
+
+    let prefix_bytes = prefix.octets();
+    let mut addr_bytes = [0u8; 16];
+    addr_bytes[..8].copy_from_slice(&prefix_bytes[..8]);
+    addr_bytes[8..].copy_from_slice(&iid);
+
+    let addr = Ipv6Addr::from(addr_bytes);
+
+    // Sanity check: don't generate loopback, multicast, or unspecified addresses.
+    if addr.is_loopback() || addr.is_multicast() || addr.is_unspecified() {
+        return None;
+    }
+
+    Some(addr)
+}
+
+/// Generate a stable privacy link-local address (fe80::/64 prefix) per RFC 7217.
+///
+/// Uses the same SHA-256-based IID generation as global SLAAC addresses,
+/// but with the fe80::/64 prefix. This provides a privacy-preserving
+/// link-local address that is stable across reboots.
+pub fn stable_privacy_link_local(ifname: &str, secret_key: &[u8], dad_counter: u32) -> Ipv6Addr {
+    let ll_prefix = Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0);
+    let iid = stable_privacy_iid(&ll_prefix, ifname, secret_key, dad_counter);
+
+    Ipv6Addr::new(
+        0xfe80,
+        0,
+        0,
+        0,
+        u16::from_be_bytes([iid[0], iid[1]]),
+        u16::from_be_bytes([iid[2], iid[3]]),
+        u16::from_be_bytes([iid[4], iid[5]]),
+        u16::from_be_bytes([iid[6], iid[7]]),
+    )
+}
+
+/// Compute the 8-byte interface identifier using SHA-256 per RFC 7217.
+///
+/// Hash input: prefix(16) || ifname(variable) || NUL || dad_counter(4) || secret_key(variable)
+fn stable_privacy_iid(
+    prefix: &Ipv6Addr,
+    ifname: &str,
+    secret_key: &[u8],
+    dad_counter: u32,
+) -> [u8; 8] {
+    let mut hasher = Sha256::new();
+
+    // RFC 7217 §5: F(Prefix, Net_Iface, Network_ID, DAD_Counter, secret_key)
+    // We use: prefix bytes, interface name (NUL terminated for unambiguous encoding),
+    // DAD counter as 4 bytes LE, and the secret key.
+    hasher.update(prefix.octets());
+    hasher.update(ifname.as_bytes());
+    hasher.update([0u8]); // NUL separator
+    hasher.update(dad_counter.to_le_bytes());
+    hasher.update(secret_key);
+
+    let hash = hasher.finalize();
+
+    // Take first 8 bytes as the interface identifier.
+    let mut iid = [0u8; 8];
+    iid.copy_from_slice(&hash[..8]);
+
+    // RFC 7217 §6: ensure the "u" bit (universal/local) is 0 for local scope,
+    // meaning this is not a globally assigned identifier.
+    // Bit 6 of byte 0 is the U/L bit: 0 = local, 1 = global.
+    // For privacy addresses we want local scope.
+    iid[0] &= !0x02;
+
+    iid
+}
+
+/// Read the machine ID from `/etc/machine-id` and return it as raw bytes.
+///
+/// The machine ID is a 32-character hex string representing 16 bytes.
+/// Returns `None` if the file cannot be read or the format is invalid.
+pub fn read_machine_id_as_bytes() -> Option<Vec<u8>> {
+    let content = std::fs::read_to_string("/etc/machine-id").ok()?;
+    let hex = content.trim();
+    if hex.len() < 32 {
+        return None;
+    }
+    hex_to_bytes(&hex[..32])
+}
+
+/// Convert a hex string to bytes. Returns `None` on invalid hex.
+pub fn hex_to_bytes(hex: &str) -> Option<Vec<u8>> {
+    if !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    for chunk in hex.as_bytes().chunks(2) {
+        let hi = hex_digit(chunk[0])?;
+        let lo = hex_digit(chunk[1])?;
+        bytes.push((hi << 4) | lo);
+    }
+    Some(bytes)
+}
+
+/// Convert a single ASCII hex digit to its value.
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Lifetime infinity constant for external use.
+pub fn lifetime_infinity() -> u32 {
+    LIFETIME_INFINITY
+}
+
+// ---------------------------------------------------------------------------
 // ICMPv6 socket operations
 // ---------------------------------------------------------------------------
 
@@ -1049,6 +1454,57 @@ pub fn add_ipv6_address(ifindex: u32, address: Ipv6Addr, prefix_len: u8) -> std:
     Ok(())
 }
 
+/// Remove an IPv6 address from an interface via netlink (RTM_DELADDR).
+///
+/// Used when a SLAAC address's valid lifetime expires or a Router Advertisement
+/// arrives with valid_lifetime=0 for the corresponding prefix.
+pub fn remove_ipv6_address(ifindex: u32, address: Ipv6Addr, prefix_len: u8) -> std::io::Result<()> {
+    use crate::link::NetlinkSocket;
+
+    const NLMSG_HDR_LEN: usize = 16;
+    const IFADDRMSG_LEN: usize = 8;
+    const AF_INET6: u8 = 10;
+    const IFA_ADDRESS: u16 = 1;
+    const NLM_F_REQUEST: u16 = 0x0001;
+    const NLM_F_ACK: u16 = 0x0004;
+    const RTM_DELADDR: u16 = 21;
+    const RT_SCOPE_UNIVERSE: u8 = 0;
+
+    let mut nl = NetlinkSocket::open()?;
+    let seq = nl.next_seq();
+
+    // IFA_ADDRESS with 16-byte IPv6 payload: 4 header + 16 payload = 20, aligned to 20
+    let addr_attr_len = (4 + 16 + 3) & !3;
+    let msg_len = NLMSG_HDR_LEN + IFADDRMSG_LEN + addr_attr_len;
+    let aligned_len = (msg_len + 3) & !3;
+    let mut msg = vec![0u8; aligned_len];
+
+    // nlmsghdr
+    msg[0..4].copy_from_slice(&(msg_len as u32).to_ne_bytes());
+    msg[4..6].copy_from_slice(&RTM_DELADDR.to_ne_bytes());
+    msg[6..8].copy_from_slice(&(NLM_F_REQUEST | NLM_F_ACK).to_ne_bytes());
+    msg[8..12].copy_from_slice(&seq.to_ne_bytes());
+    msg[12..16].copy_from_slice(&nl.pid.to_ne_bytes());
+
+    // ifaddrmsg
+    let ifa = NLMSG_HDR_LEN;
+    msg[ifa] = AF_INET6; // ifa_family
+    msg[ifa + 1] = prefix_len; // ifa_prefixlen
+    msg[ifa + 2] = 0; // ifa_flags
+    msg[ifa + 3] = RT_SCOPE_UNIVERSE; // ifa_scope
+    msg[ifa + 4..ifa + 8].copy_from_slice(&ifindex.to_ne_bytes()); // ifa_index
+
+    // IFA_ADDRESS attribute
+    let off = NLMSG_HDR_LEN + IFADDRMSG_LEN;
+    let rta_len: u16 = 4 + 16;
+    msg[off..off + 2].copy_from_slice(&rta_len.to_ne_bytes());
+    msg[off + 2..off + 4].copy_from_slice(&IFA_ADDRESS.to_ne_bytes());
+    msg[off + 4..off + 20].copy_from_slice(&address.octets());
+
+    nl.request(&msg)?;
+    Ok(())
+}
+
 /// Add an IPv6 route via netlink.
 pub fn add_ipv6_route(
     destination: Ipv6Addr,
@@ -1195,6 +1651,511 @@ pub fn max_rs_retransmissions() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -----------------------------------------------------------------------
+    // RFC 7217 stable privacy address generation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_stable_privacy_iid_deterministic() {
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let secret = b"test-secret-key-1234567890abcdef";
+        let iid1 = stable_privacy_iid(&prefix, "eth0", secret, 0);
+        let iid2 = stable_privacy_iid(&prefix, "eth0", secret, 0);
+        assert_eq!(iid1, iid2, "same inputs must produce same IID");
+    }
+
+    #[test]
+    fn test_stable_privacy_iid_different_prefix() {
+        let prefix1 = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let prefix2 = Ipv6Addr::new(0x2001, 0x0db8, 0, 2, 0, 0, 0, 0);
+        let secret = b"test-secret-key-1234567890abcdef";
+        let iid1 = stable_privacy_iid(&prefix1, "eth0", secret, 0);
+        let iid2 = stable_privacy_iid(&prefix2, "eth0", secret, 0);
+        assert_ne!(iid1, iid2, "different prefixes must produce different IIDs");
+    }
+
+    #[test]
+    fn test_stable_privacy_iid_different_ifname() {
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let secret = b"test-secret-key-1234567890abcdef";
+        let iid1 = stable_privacy_iid(&prefix, "eth0", secret, 0);
+        let iid2 = stable_privacy_iid(&prefix, "eth1", secret, 0);
+        assert_ne!(
+            iid1, iid2,
+            "different interfaces must produce different IIDs"
+        );
+    }
+
+    #[test]
+    fn test_stable_privacy_iid_different_secret() {
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let secret1 = b"secret-key-aaaaaaaaaaaaaaaa";
+        let secret2 = b"secret-key-bbbbbbbbbbbbbbbb";
+        let iid1 = stable_privacy_iid(&prefix, "eth0", secret1, 0);
+        let iid2 = stable_privacy_iid(&prefix, "eth0", secret2, 0);
+        assert_ne!(iid1, iid2, "different secrets must produce different IIDs");
+    }
+
+    #[test]
+    fn test_stable_privacy_iid_different_dad_counter() {
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let secret = b"test-secret-key-1234567890abcdef";
+        let iid1 = stable_privacy_iid(&prefix, "eth0", secret, 0);
+        let iid2 = stable_privacy_iid(&prefix, "eth0", secret, 1);
+        assert_ne!(
+            iid1, iid2,
+            "different DAD counters must produce different IIDs"
+        );
+    }
+
+    #[test]
+    fn test_stable_privacy_iid_ul_bit_cleared() {
+        // The U/L bit (bit 6 of byte 0) should be 0 for locally-scoped IIDs.
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let secret = b"test-secret-key-1234567890abcdef";
+        let iid = stable_privacy_iid(&prefix, "eth0", secret, 0);
+        assert_eq!(
+            iid[0] & 0x02,
+            0,
+            "U/L bit must be cleared for local-scope IID"
+        );
+    }
+
+    #[test]
+    fn test_slaac_stable_privacy_basic() {
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let secret = b"test-secret-key-1234567890abcdef";
+        let addr = slaac_stable_privacy(&prefix, "eth0", secret, 0);
+        assert!(addr.is_some());
+        let addr = addr.unwrap();
+        // Must use the prefix's first 8 bytes.
+        let octets = addr.octets();
+        let prefix_octets = prefix.octets();
+        assert_eq!(&octets[..8], &prefix_octets[..8]);
+    }
+
+    #[test]
+    fn test_slaac_stable_privacy_does_not_leak_mac() {
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let secret = b"test-secret-key-1234567890abcdef";
+
+        let eui64_addr = slaac_eui64(&prefix, &mac).unwrap();
+        let stable_addr = slaac_stable_privacy(&prefix, "eth0", secret, 0).unwrap();
+
+        // The stable privacy address must be different from the EUI-64 address.
+        assert_ne!(
+            eui64_addr, stable_addr,
+            "stable privacy address must differ from EUI-64 address"
+        );
+
+        // Verify the EUI-64 address contains MAC bytes (ff:fe insertion).
+        let eui_octets = eui64_addr.octets();
+        assert_eq!(eui_octets[11], 0xff);
+        assert_eq!(eui_octets[12], 0xfe);
+
+        // The stable privacy address should NOT contain ff:fe pattern
+        // (astronomically unlikely with SHA-256).
+        let stable_octets = stable_addr.octets();
+        // This is a probabilistic check; the specific hash output won't have ff:fe.
+        // We just verify the addresses are different.
+        assert_ne!(&eui_octets[8..], &stable_octets[8..]);
+    }
+
+    #[test]
+    fn test_slaac_stable_privacy_different_prefixes_different_addrs() {
+        let prefix1 = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let prefix2 = Ipv6Addr::new(0x2001, 0x0db8, 0, 2, 0, 0, 0, 0);
+        let secret = b"test-secret-key-1234567890abcdef";
+
+        let addr1 = slaac_stable_privacy(&prefix1, "eth0", secret, 0).unwrap();
+        let addr2 = slaac_stable_privacy(&prefix2, "eth0", secret, 0).unwrap();
+        assert_ne!(addr1, addr2);
+    }
+
+    #[test]
+    fn test_slaac_stable_privacy_dad_increment() {
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let secret = b"test-secret-key-1234567890abcdef";
+
+        let addr0 = slaac_stable_privacy(&prefix, "eth0", secret, 0).unwrap();
+        let addr1 = slaac_stable_privacy(&prefix, "eth0", secret, 1).unwrap();
+        let addr2 = slaac_stable_privacy(&prefix, "eth0", secret, 2).unwrap();
+        assert_ne!(addr0, addr1);
+        assert_ne!(addr1, addr2);
+        assert_ne!(addr0, addr2);
+    }
+
+    #[test]
+    fn test_stable_privacy_link_local_is_link_local() {
+        let secret = b"test-secret-key-1234567890abcdef";
+        let ll = stable_privacy_link_local("eth0", secret, 0);
+        let octets = ll.octets();
+        assert_eq!(octets[0], 0xfe);
+        assert_eq!(octets[1], 0x80);
+        for i in 2..8 {
+            assert_eq!(octets[i], 0);
+        }
+    }
+
+    #[test]
+    fn test_stable_privacy_link_local_deterministic() {
+        let secret = b"test-secret-key-1234567890abcdef";
+        let ll1 = stable_privacy_link_local("eth0", secret, 0);
+        let ll2 = stable_privacy_link_local("eth0", secret, 0);
+        assert_eq!(ll1, ll2);
+    }
+
+    #[test]
+    fn test_stable_privacy_link_local_different_ifname() {
+        let secret = b"test-secret-key-1234567890abcdef";
+        let ll1 = stable_privacy_link_local("eth0", secret, 0);
+        let ll2 = stable_privacy_link_local("eth1", secret, 0);
+        assert_ne!(ll1, ll2);
+    }
+
+    #[test]
+    fn test_stable_privacy_link_local_differs_from_eui64() {
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let secret = b"test-secret-key-1234567890abcdef";
+        let eui64_ll = mac_to_link_local(&mac);
+        let stable_ll = stable_privacy_link_local("eth0", secret, 0);
+        assert_ne!(eui64_ll, stable_ll);
+    }
+
+    // -----------------------------------------------------------------------
+    // RaState with stable privacy mode
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_ra_state_new_stable_privacy() {
+        let secret = b"test-secret-key-1234567890abcdef".to_vec();
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let state = RaState::new_stable_privacy(2, "eth0".to_string(), mac, secret.clone());
+
+        assert!(matches!(
+            state.addr_gen_mode,
+            Ipv6AddressGenMode::StablePrivacy { .. }
+        ));
+        assert_eq!(state.dad_counter, 0);
+        assert!(state.link_local.is_some());
+
+        // Link-local should be the stable privacy version, not EUI-64.
+        let eui64_ll = mac_to_link_local(&mac);
+        assert_ne!(state.link_local.unwrap(), eui64_ll);
+    }
+
+    #[test]
+    fn test_ra_state_stable_privacy_slaac() {
+        let secret = b"test-secret-key-1234567890abcdef".to_vec();
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let mut state = RaState::new_stable_privacy(2, "eth0".to_string(), mac, secret.clone());
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+
+        let expected = slaac_stable_privacy(&prefix, "eth0", &secret, 0).unwrap();
+
+        let ra = RouterAdvertisement {
+            cur_hop_limit: 64,
+            managed: false,
+            other: false,
+            router_lifetime: 1800,
+            reachable_time: 0,
+            retrans_timer: 0,
+            source: Ipv6Addr::new(0xfe80, 0, 0, 0, 1, 2, 3, 4),
+            prefixes: vec![PrefixInfo {
+                prefix_len: 64,
+                on_link: true,
+                autonomous: true,
+                valid_lifetime: 86400,
+                preferred_lifetime: 3600,
+                prefix,
+            }],
+            rdnss: vec![],
+            dnssl: vec![],
+            routes: vec![],
+            mtu: None,
+            source_ll_addr: None,
+        };
+
+        let actions = state.process_ra(ra);
+        assert_eq!(state.slaac_addresses.len(), 1);
+        assert_eq!(state.slaac_addresses[0], (expected, 64));
+
+        // Must NOT be the EUI-64 address.
+        let eui64 = slaac_eui64(&prefix, &mac).unwrap();
+        assert_ne!(state.slaac_addresses[0].0, eui64);
+
+        assert!(actions.iter().any(|a| matches!(
+            a,
+            RaAction::AddAddress { address, .. } if *address == expected
+        )));
+    }
+
+    // -----------------------------------------------------------------------
+    // hex_to_bytes helper
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_hex_to_bytes_valid() {
+        assert_eq!(
+            hex_to_bytes("0123456789abcdef").unwrap(),
+            vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]
+        );
+    }
+
+    #[test]
+    fn test_hex_to_bytes_uppercase() {
+        assert_eq!(
+            hex_to_bytes("AABBCCDD").unwrap(),
+            vec![0xaa, 0xbb, 0xcc, 0xdd]
+        );
+    }
+
+    #[test]
+    fn test_hex_to_bytes_empty() {
+        assert_eq!(hex_to_bytes("").unwrap(), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn test_hex_to_bytes_odd_length() {
+        assert!(hex_to_bytes("abc").is_none());
+    }
+
+    #[test]
+    fn test_hex_to_bytes_invalid_char() {
+        assert!(hex_to_bytes("xyz0").is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // SlaacAddress lifetime tracking
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_slaac_address_new() {
+        let addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 1);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let tracked = SlaacAddress::new(addr, 64, prefix, 86400, 3600);
+        assert_eq!(tracked.address, addr);
+        assert_eq!(tracked.prefix_len, 64);
+        assert_eq!(tracked.prefix, prefix);
+        assert_eq!(tracked.valid_lifetime, 86400);
+        assert_eq!(tracked.preferred_lifetime, 3600);
+        assert!(!tracked.deprecated);
+        assert!(!tracked.is_expired());
+        assert!(!tracked.is_deprecated());
+    }
+
+    #[test]
+    fn test_slaac_address_infinity_never_expires() {
+        let addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 1);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let tracked = SlaacAddress::new(addr, 64, prefix, LIFETIME_INFINITY, LIFETIME_INFINITY);
+        assert!(!tracked.is_expired());
+        assert!(!tracked.is_deprecated());
+        assert_eq!(tracked.remaining_valid(), LIFETIME_INFINITY);
+        assert_eq!(tracked.remaining_preferred(), LIFETIME_INFINITY);
+    }
+
+    #[test]
+    fn test_slaac_address_remaining_valid() {
+        let addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 1);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let tracked = SlaacAddress::new(addr, 64, prefix, 86400, 3600);
+        // Just created, so remaining should be close to the original.
+        let remaining = tracked.remaining_valid();
+        assert!(remaining > 86390);
+        assert!(remaining <= 86400);
+    }
+
+    #[test]
+    fn test_slaac_address_remaining_preferred() {
+        let addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 1);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let tracked = SlaacAddress::new(addr, 64, prefix, 86400, 3600);
+        let remaining = tracked.remaining_preferred();
+        assert!(remaining > 3590);
+        assert!(remaining <= 3600);
+    }
+
+    #[test]
+    fn test_slaac_address_refresh_lifetimes_increases() {
+        let addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 1);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let mut tracked = SlaacAddress::new(addr, 64, prefix, 86400, 3600);
+        tracked.refresh_lifetimes(172800, 7200);
+        assert_eq!(tracked.valid_lifetime, 172800);
+        assert_eq!(tracked.preferred_lifetime, 7200);
+    }
+
+    #[test]
+    fn test_slaac_address_refresh_rfc4862_two_hour_rule() {
+        // RFC 4862 §5.5.3e: if received valid lifetime ≤ 2h and
+        // remaining > 2h, keep remaining unchanged.
+        let addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 1);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        let mut tracked = SlaacAddress::new(addr, 64, prefix, 86400, 3600);
+        // Remaining is ~86400 (> 2h), new valid is 3600 (≤ 2h but remaining > 2h).
+        let old_valid = tracked.valid_lifetime;
+        tracked.refresh_lifetimes(3600, 1800);
+        // Should keep the old valid lifetime since remaining > 2h.
+        assert_eq!(tracked.valid_lifetime, old_valid);
+        // Preferred always updates.
+        assert_eq!(tracked.preferred_lifetime, 1800);
+    }
+
+    #[test]
+    fn test_slaac_address_refresh_small_remaining_caps_at_two_hours() {
+        let addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 1);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        // Start with a short valid lifetime (1 hour = 3600s).
+        let mut tracked = SlaacAddress::new(addr, 64, prefix, 3600, 1800);
+        // Now receive a much larger lifetime (10 hours > 2h).
+        tracked.refresh_lifetimes(36000, 18000);
+        // Since new > 2h, it should be accepted.
+        assert_eq!(tracked.valid_lifetime, 36000);
+        assert_eq!(tracked.preferred_lifetime, 18000);
+    }
+
+    // -----------------------------------------------------------------------
+    // Address lifetime checking
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_address_lifetimes_no_addresses() {
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let mut state = RaState::new(2, "eth0".to_string(), mac);
+        let actions = state.check_address_lifetimes();
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_address_lifetimes_fresh_addresses() {
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let mut state = RaState::new(2, "eth0".to_string(), mac);
+        let addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 1);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+        state
+            .tracked_addresses
+            .push(SlaacAddress::new(addr, 64, prefix, 86400, 3600));
+        state.slaac_addresses.push((addr, 64));
+
+        let actions = state.check_address_lifetimes();
+        assert!(actions.is_empty(), "fresh addresses should not expire");
+        assert_eq!(state.tracked_addresses.len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // process_ra with lifetime refresh
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_process_ra_refreshes_existing_address_lifetime() {
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let mut state = RaState::new(2, "eth0".to_string(), mac);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+
+        let make_ra = |valid: u32, preferred: u32| RouterAdvertisement {
+            cur_hop_limit: 64,
+            managed: false,
+            other: false,
+            router_lifetime: 1800,
+            reachable_time: 0,
+            retrans_timer: 0,
+            source: Ipv6Addr::new(0xfe80, 0, 0, 0, 1, 2, 3, 4),
+            prefixes: vec![PrefixInfo {
+                prefix_len: 64,
+                on_link: true,
+                autonomous: true,
+                valid_lifetime: valid,
+                preferred_lifetime: preferred,
+                prefix,
+            }],
+            rdnss: vec![],
+            dnssl: vec![],
+            routes: vec![],
+            mtu: None,
+            source_ll_addr: None,
+        };
+
+        // First RA.
+        state.process_ra(make_ra(86400, 3600));
+        assert_eq!(state.slaac_addresses.len(), 1);
+        assert_eq!(state.tracked_addresses.len(), 1);
+
+        // Second RA refreshes lifetime.
+        state.process_ra(make_ra(172800, 7200));
+        // Should still be 1 address, not duplicated.
+        assert_eq!(state.slaac_addresses.len(), 1);
+        assert_eq!(state.tracked_addresses.len(), 1);
+        // Preferred should be updated.
+        assert_eq!(state.tracked_addresses[0].preferred_lifetime, 7200);
+        // Valid should be updated (new value > 2h).
+        assert_eq!(state.tracked_addresses[0].valid_lifetime, 172800);
+    }
+
+    #[test]
+    fn test_process_ra_zero_valid_removes_address() {
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let mut state = RaState::new(2, "eth0".to_string(), mac);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+
+        let make_ra = |valid: u32| RouterAdvertisement {
+            cur_hop_limit: 64,
+            managed: false,
+            other: false,
+            router_lifetime: 1800,
+            reachable_time: 0,
+            retrans_timer: 0,
+            source: Ipv6Addr::new(0xfe80, 0, 0, 0, 1, 2, 3, 4),
+            prefixes: vec![PrefixInfo {
+                prefix_len: 64,
+                on_link: false,
+                autonomous: true,
+                valid_lifetime: valid,
+                preferred_lifetime: 0,
+                prefix,
+            }],
+            rdnss: vec![],
+            dnssl: vec![],
+            routes: vec![],
+            mtu: None,
+            source_ll_addr: None,
+        };
+
+        // Add the address.
+        state.process_ra(make_ra(86400));
+        assert_eq!(state.slaac_addresses.len(), 1);
+        assert_eq!(state.tracked_addresses.len(), 1);
+
+        // RA with valid_lifetime=0 removes the address.
+        let actions = state.process_ra(make_ra(0));
+        assert_eq!(state.slaac_addresses.len(), 0);
+        assert_eq!(state.tracked_addresses.len(), 0);
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, RaAction::RemoveAddress { .. }))
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Ipv6AddressGenMode
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_addr_gen_mode_default_is_eui64() {
+        let mode = Ipv6AddressGenMode::default();
+        assert_eq!(mode, Ipv6AddressGenMode::Eui64);
+    }
+
+    #[test]
+    fn test_addr_gen_mode_stable_privacy() {
+        let mode = Ipv6AddressGenMode::StablePrivacy {
+            secret_key: vec![1, 2, 3],
+        };
+        assert!(matches!(mode, Ipv6AddressGenMode::StablePrivacy { .. }));
+    }
 
     // -----------------------------------------------------------------------
     // EUI-64 and link-local generation
@@ -1911,16 +2872,19 @@ mod tests {
         let state = RaState::new(2, "eth0".to_string(), mac);
         assert_eq!(state.ifindex, 2);
         assert_eq!(state.ifname, "eth0");
+        assert_eq!(state.mac, mac);
         assert!(state.enabled);
         assert_eq!(state.rs_count, 0);
         assert!(state.last_rs.is_none());
         assert!(!state.ra_received);
         assert!(state.last_ra.is_none());
         assert!(state.slaac_addresses.is_empty());
+        assert!(state.tracked_addresses.is_empty());
         assert!(state.default_router.is_none());
         assert!(state.dns_servers.is_empty());
         assert!(state.search_domains.is_empty());
-        assert!(state.link_local.is_some());
+        assert_eq!(state.addr_gen_mode, Ipv6AddressGenMode::Eui64);
+        assert_eq!(state.dad_counter, 0);
     }
 
     #[test]
@@ -2062,6 +3026,11 @@ mod tests {
         let actions = state.process_ra(ra);
         assert_eq!(state.slaac_addresses.len(), 1);
         assert_eq!(state.slaac_addresses[0], (expected_addr, 64));
+        // Also verify tracked_addresses.
+        assert_eq!(state.tracked_addresses.len(), 1);
+        assert_eq!(state.tracked_addresses[0].address, expected_addr);
+        assert_eq!(state.tracked_addresses[0].valid_lifetime, 86400);
+        assert_eq!(state.tracked_addresses[0].preferred_lifetime, 3600);
         assert!(actions.iter().any(|a| matches!(
             a,
             RaAction::AddAddress { address, prefix_len, .. } if *address == expected_addr && *prefix_len == 64
@@ -2101,6 +3070,8 @@ mod tests {
         state.process_ra(make_ra());
         // Address should only appear once in slaac_addresses
         assert_eq!(state.slaac_addresses.len(), 1);
+        // And once in tracked_addresses.
+        assert_eq!(state.tracked_addresses.len(), 1);
     }
 
     #[test]
@@ -2551,6 +3522,72 @@ mod tests {
         assert_ne!(addr1, addr2);
         // Interface ID should be the same
         assert_eq!(addr1.octets()[8..], addr2.octets()[8..]);
+    }
+
+    #[test]
+    fn test_process_ra_valid_lifetime_zero_removes_tracked() {
+        // When a prefix arrives with valid_lifetime=0, the address should be removed.
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+        let mut state = RaState::new(2, "eth0".to_string(), mac);
+        let prefix = Ipv6Addr::new(0x2001, 0x0db8, 0, 1, 0, 0, 0, 0);
+
+        // First RA adds the address.
+        let ra1 = RouterAdvertisement {
+            cur_hop_limit: 64,
+            managed: false,
+            other: false,
+            router_lifetime: 1800,
+            reachable_time: 0,
+            retrans_timer: 0,
+            source: Ipv6Addr::new(0xfe80, 0, 0, 0, 1, 2, 3, 4),
+            prefixes: vec![PrefixInfo {
+                prefix_len: 64,
+                on_link: true,
+                autonomous: true,
+                valid_lifetime: 86400,
+                preferred_lifetime: 3600,
+                prefix,
+            }],
+            rdnss: vec![],
+            dnssl: vec![],
+            routes: vec![],
+            mtu: None,
+            source_ll_addr: None,
+        };
+        state.process_ra(ra1);
+        assert_eq!(state.tracked_addresses.len(), 1);
+
+        // Second RA with valid_lifetime=0 removes the address.
+        let ra2 = RouterAdvertisement {
+            cur_hop_limit: 64,
+            managed: false,
+            other: false,
+            router_lifetime: 1800,
+            reachable_time: 0,
+            retrans_timer: 0,
+            source: Ipv6Addr::new(0xfe80, 0, 0, 0, 1, 2, 3, 4),
+            prefixes: vec![PrefixInfo {
+                prefix_len: 64,
+                on_link: true,
+                autonomous: true,
+                valid_lifetime: 0,
+                preferred_lifetime: 0,
+                prefix,
+            }],
+            rdnss: vec![],
+            dnssl: vec![],
+            routes: vec![],
+            mtu: None,
+            source_ll_addr: None,
+        };
+        let actions = state.process_ra(ra2);
+        assert_eq!(state.tracked_addresses.len(), 0);
+        assert_eq!(state.slaac_addresses.len(), 0);
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, RaAction::RemoveAddress { .. }))
+        );
     }
 
     #[test]
