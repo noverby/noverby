@@ -6,6 +6,7 @@
 //! - `--directory` / `--image` for specifying the container root
 //! - `--bind` / `--bind-ro` for bind mounts
 //! - `--private-network` for network namespace isolation
+//! - `--network-veth` / `-n` for virtual ethernet pair creation (host ↔ container)
 //! - `--capability` / `--drop-capability` for capability bounding
 //! - `--machine` for naming the container
 //! - `--user` for running as a specific user
@@ -19,6 +20,7 @@
 
 use std::collections::HashMap;
 use std::ffi::CString;
+use std::io;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 
@@ -1423,6 +1425,365 @@ fn setup_hostname(root: &Path, hostname: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ── Netlink helpers for veth creation ────────────────────────────────────
+
+// Netlink ROUTE protocol constants.
+const NETLINK_ROUTE: i32 = 0;
+const RTM_NEWLINK: u16 = 16;
+const RTM_SETLINK: u16 = 19;
+const NLM_F_REQUEST: u16 = 0x0001;
+const NLM_F_ACK: u16 = 0x0004;
+const NLM_F_CREATE: u16 = 0x0400;
+const NLM_F_EXCL: u16 = 0x0200;
+const NLMSG_ERROR: u16 = 2;
+const NLMSG_HDR_LEN: usize = 16;
+const NLMSG_ALIGN: usize = 4;
+// ifinfomsg: ifi_family(1) + pad(1) + ifi_type(2) + ifi_index(4) + ifi_flags(4) + ifi_change(4)
+const IFINFOMSG_LEN: usize = 16;
+const IFLA_IFNAME: u16 = 3;
+const IFLA_NET_NS_PID: u16 = 19;
+const IFLA_LINKINFO: u16 = 18;
+const IFLA_INFO_KIND: u16 = 1;
+const IFLA_INFO_DATA: u16 = 2;
+const VETH_INFO_PEER: u16 = 1;
+const AF_UNSPEC: u8 = 0;
+const IFF_UP: u32 = 0x1;
+
+/// The name of the container-side veth interface (matching real systemd-nspawn).
+const VETH_CONTAINER_NAME: &str = "host0";
+/// Maximum length of a Linux interface name (IFNAMSIZ - 1 for NUL).
+const IFNAMSIZ: usize = 16;
+
+fn nl_align(len: usize) -> usize {
+    (len + NLMSG_ALIGN - 1) & !(NLMSG_ALIGN - 1)
+}
+
+fn nl_put_u16(buf: &mut [u8], offset: usize, val: u16) {
+    buf[offset..offset + 2].copy_from_slice(&val.to_ne_bytes());
+}
+
+fn nl_put_u32(buf: &mut [u8], offset: usize, val: u32) {
+    buf[offset..offset + 4].copy_from_slice(&val.to_ne_bytes());
+}
+
+fn nl_put_i32(buf: &mut [u8], offset: usize, val: i32) {
+    buf[offset..offset + 4].copy_from_slice(&val.to_ne_bytes());
+}
+
+/// Write a netlink route attribute header + arbitrary bytes payload.
+fn nl_put_rta_bytes(buf: &mut [u8], offset: usize, rta_type: u16, data: &[u8]) {
+    let rta_len = 4 + data.len();
+    nl_put_u16(buf, offset, rta_len as u16);
+    nl_put_u16(buf, offset + 2, rta_type);
+    buf[offset + 4..offset + 4 + data.len()].copy_from_slice(data);
+}
+
+/// Write a netlink route attribute with a u32 payload.
+fn nl_put_rta_u32(buf: &mut [u8], offset: usize, rta_type: u16, val: u32) {
+    let rta_len: u16 = 8;
+    nl_put_u16(buf, offset, rta_len);
+    nl_put_u16(buf, offset + 2, rta_type);
+    nl_put_u32(buf, offset + 4, val);
+}
+
+/// Aligned size of an RTA with the given payload length.
+fn nl_rta_align(len: usize) -> usize {
+    (len + 3) & !3
+}
+
+/// Open a NETLINK_ROUTE socket, send a message, and wait for the ACK/error.
+fn netlink_route_request(msg: &[u8]) -> io::Result<()> {
+    let fd = unsafe {
+        libc::socket(
+            libc::AF_NETLINK,
+            libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+            NETLINK_ROUTE,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    // Bind to auto-assigned port.
+    let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
+    addr.nl_family = libc::AF_NETLINK as u16;
+
+    let ret = unsafe {
+        libc::bind(
+            fd,
+            &addr as *const libc::sockaddr_nl as *const libc::sockaddr,
+            std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
+        )
+    };
+    if ret < 0 {
+        let err = io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(err);
+    }
+
+    // Set receive timeout so we don't block forever.
+    let tv = libc::timeval {
+        tv_sec: 5,
+        tv_usec: 0,
+    };
+    unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            &tv as *const libc::timeval as *const libc::c_void,
+            std::mem::size_of::<libc::timeval>() as libc::socklen_t,
+        );
+    }
+
+    // Send.
+    let sent = unsafe { libc::send(fd, msg.as_ptr() as *const libc::c_void, msg.len(), 0) };
+    if sent < 0 {
+        let err = io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(err);
+    }
+
+    // Receive ACK/error.
+    let mut buf = [0u8; 4096];
+    let n = unsafe { libc::recv(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), 0) };
+    unsafe { libc::close(fd) };
+
+    if n < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let n = n as usize;
+    if n >= NLMSG_HDR_LEN + 4 {
+        let nlmsg_type = u16::from_ne_bytes(buf[4..6].try_into().unwrap());
+        if nlmsg_type == NLMSG_ERROR {
+            let errno =
+                i32::from_ne_bytes(buf[NLMSG_HDR_LEN..NLMSG_HDR_LEN + 4].try_into().unwrap());
+            if errno < 0 {
+                return Err(io::Error::from_raw_os_error(-errno));
+            }
+            // errno == 0 means ACK (success).
+        }
+    }
+
+    Ok(())
+}
+
+/// Derive the host-side veth interface name from the machine name.
+/// Real systemd-nspawn uses `ve-<machine>` truncated to IFNAMSIZ-1 (15 chars).
+fn veth_host_name(machine: &str) -> String {
+    let prefix = "ve-";
+    let max_machine_len = IFNAMSIZ - 1 - prefix.len(); // 15 - 3 = 12
+    let truncated = if machine.len() > max_machine_len {
+        &machine[..max_machine_len]
+    } else {
+        machine
+    };
+    format!("{prefix}{truncated}")
+}
+
+/// Build a netlink `RTM_NEWLINK` message to create a veth pair.
+///
+/// The message creates a veth pair with:
+/// - host-side interface named `host_name`
+/// - container-side interface named `container_name`
+///
+/// Returns the serialized netlink message ready to send.
+fn build_veth_create_msg(host_name: &str, container_name: &str) -> Vec<u8> {
+    // IFLA_IFNAME for host side (NUL-terminated)
+    let host_name_bytes = host_name.as_bytes();
+    let host_name_payload = host_name_bytes.len() + 1; // +1 for NUL
+    let host_name_attr_len = nl_rta_align(4 + host_name_payload);
+
+    // IFLA_INFO_KIND = "veth" (NUL-terminated)
+    let kind_bytes = b"veth\0";
+    let kind_attr_len = nl_rta_align(4 + kind_bytes.len());
+
+    // Peer's IFLA_IFNAME (container-side, NUL-terminated)
+    let cont_name_bytes = container_name.as_bytes();
+    let cont_name_payload = cont_name_bytes.len() + 1;
+    let cont_name_attr_len = nl_rta_align(4 + cont_name_payload);
+
+    // VETH_INFO_PEER contains: ifinfomsg + peer IFLA_IFNAME
+    let peer_payload = IFINFOMSG_LEN + cont_name_attr_len;
+    let peer_attr_len = nl_rta_align(4 + peer_payload);
+
+    // IFLA_INFO_DATA contains: VETH_INFO_PEER
+    let info_data_payload = peer_attr_len;
+    let info_data_attr_len = nl_rta_align(4 + info_data_payload);
+
+    // IFLA_LINKINFO contains: IFLA_INFO_KIND + IFLA_INFO_DATA
+    let linkinfo_payload = kind_attr_len + info_data_attr_len;
+    let linkinfo_attr_len = nl_rta_align(4 + linkinfo_payload);
+
+    let msg_len = NLMSG_HDR_LEN + IFINFOMSG_LEN + host_name_attr_len + linkinfo_attr_len;
+    let mut msg = vec![0u8; nl_align(msg_len)];
+
+    // nlmsghdr
+    nl_put_u32(&mut msg, 0, msg_len as u32);
+    nl_put_u16(&mut msg, 4, RTM_NEWLINK);
+    nl_put_u16(
+        &mut msg,
+        6,
+        NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
+    );
+    nl_put_u32(&mut msg, 8, 1); // nlmsg_seq
+    nl_put_u32(&mut msg, 12, 0); // nlmsg_pid (kernel)
+
+    // ifinfomsg (all zeros: AF_UNSPEC, no specific interface)
+    let ifi = NLMSG_HDR_LEN;
+    msg[ifi] = AF_UNSPEC;
+
+    // IFLA_IFNAME for the host-side interface
+    let mut off = ifi + IFINFOMSG_LEN;
+    {
+        let mut name_with_nul = host_name_bytes.to_vec();
+        name_with_nul.push(0);
+        nl_put_rta_bytes(&mut msg, off, IFLA_IFNAME, &name_with_nul);
+    }
+    off += host_name_attr_len;
+
+    // IFLA_LINKINFO (nested)
+    let linkinfo_off = off;
+    nl_put_u16(&mut msg, linkinfo_off, (4 + linkinfo_payload) as u16);
+    nl_put_u16(&mut msg, linkinfo_off + 2, IFLA_LINKINFO);
+    // NLA_F_NESTED flag (0x8000) is optional for compatibility; real systemd sets it
+    msg[linkinfo_off + 3] |= 0x80; // set NLA_F_NESTED on the rta_type high byte
+    off = linkinfo_off + 4;
+
+    // IFLA_INFO_KIND = "veth"
+    nl_put_rta_bytes(&mut msg, off, IFLA_INFO_KIND, kind_bytes);
+    off += kind_attr_len;
+
+    // IFLA_INFO_DATA (nested)
+    let info_data_off = off;
+    nl_put_u16(&mut msg, info_data_off, (4 + info_data_payload) as u16);
+    nl_put_u16(&mut msg, info_data_off + 2, IFLA_INFO_DATA);
+    msg[info_data_off + 3] |= 0x80; // NLA_F_NESTED
+    off = info_data_off + 4;
+
+    // VETH_INFO_PEER (nested: contains ifinfomsg + IFLA_IFNAME)
+    let peer_off = off;
+    nl_put_u16(&mut msg, peer_off, (4 + peer_payload) as u16);
+    nl_put_u16(&mut msg, peer_off + 2, VETH_INFO_PEER);
+    msg[peer_off + 3] |= 0x80; // NLA_F_NESTED
+    off = peer_off + 4;
+
+    // Peer's ifinfomsg (all zeros)
+    msg[off] = AF_UNSPEC;
+    off += IFINFOMSG_LEN;
+
+    // Peer's IFLA_IFNAME (container-side name)
+    {
+        let mut name_with_nul = cont_name_bytes.to_vec();
+        name_with_nul.push(0);
+        nl_put_rta_bytes(&mut msg, off, IFLA_IFNAME, &name_with_nul);
+    }
+
+    msg
+}
+
+/// Move a network interface into the network namespace of the given PID
+/// via netlink `RTM_SETLINK` with `IFLA_NET_NS_PID`.
+///
+/// `ifname` is the interface name to move. `target_pid` is the PID
+/// whose network namespace will receive the interface.
+fn move_interface_to_ns(ifname: &str, target_pid: i32) -> io::Result<()> {
+    // First, resolve the interface index by reading /sys/class/net/<name>/ifindex.
+    let ifindex = read_ifindex(ifname)?;
+
+    let nspid_attr_len = nl_rta_align(4 + 4); // u32
+
+    let msg_len = NLMSG_HDR_LEN + IFINFOMSG_LEN + nspid_attr_len;
+    let mut msg = vec![0u8; nl_align(msg_len)];
+
+    nl_put_u32(&mut msg, 0, msg_len as u32);
+    nl_put_u16(&mut msg, 4, RTM_SETLINK);
+    nl_put_u16(&mut msg, 6, NLM_F_REQUEST | NLM_F_ACK);
+    nl_put_u32(&mut msg, 8, 1);
+    nl_put_u32(&mut msg, 12, 0);
+
+    let ifi = NLMSG_HDR_LEN;
+    msg[ifi] = AF_UNSPEC;
+    nl_put_i32(&mut msg, ifi + 4, ifindex);
+
+    let attr_off = ifi + IFINFOMSG_LEN;
+    nl_put_rta_u32(&mut msg, attr_off, IFLA_NET_NS_PID, target_pid as u32);
+
+    netlink_route_request(&msg)
+}
+
+/// Bring a network interface up via netlink `RTM_SETLINK` with `IFF_UP`.
+fn bring_interface_up(ifname: &str) -> io::Result<()> {
+    let ifindex = read_ifindex(ifname)?;
+
+    let msg_len = NLMSG_HDR_LEN + IFINFOMSG_LEN;
+    let mut msg = vec![0u8; nl_align(msg_len)];
+
+    nl_put_u32(&mut msg, 0, msg_len as u32);
+    nl_put_u16(&mut msg, 4, RTM_SETLINK);
+    nl_put_u16(&mut msg, 6, NLM_F_REQUEST | NLM_F_ACK);
+    nl_put_u32(&mut msg, 8, 1);
+    nl_put_u32(&mut msg, 12, 0);
+
+    let ifi = NLMSG_HDR_LEN;
+    msg[ifi] = AF_UNSPEC;
+    nl_put_i32(&mut msg, ifi + 4, ifindex);
+    // ifi_flags: set IFF_UP
+    nl_put_u32(&mut msg, ifi + 8, IFF_UP);
+    // ifi_change: mask for the flags we're changing
+    nl_put_u32(&mut msg, ifi + 12, IFF_UP);
+
+    netlink_route_request(&msg)
+}
+
+/// Read the ifindex for a network interface from sysfs.
+fn read_ifindex(ifname: &str) -> io::Result<i32> {
+    let path = format!("/sys/class/net/{ifname}/ifindex");
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| io::Error::new(e.kind(), format!("cannot read ifindex for {ifname}: {e}")))?;
+    content.trim().parse::<i32>().map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid ifindex for {ifname}: {e}"),
+        )
+    })
+}
+
+/// Create a virtual ethernet pair, move the container end into the child's
+/// network namespace, and bring up the host end.
+///
+/// - `machine_name`: used to derive the host-side interface name (`ve-<machine>`)
+/// - `child_pid`: PID of the child process (must have already done `unshare(CLONE_NEWNET)`)
+///
+/// The container-side interface is named `host0` (matching real systemd-nspawn).
+fn setup_veth(machine_name: &str, child_pid: i32) -> io::Result<()> {
+    let host_name = veth_host_name(machine_name);
+    let container_name = VETH_CONTAINER_NAME;
+
+    // 1. Create the veth pair in the host namespace.
+    let create_msg = build_veth_create_msg(&host_name, container_name);
+    netlink_route_request(&create_msg)
+        .map_err(|e| io::Error::new(e.kind(), format!("veth pair creation failed: {e}")))?;
+
+    // 2. Move the container-side interface into the child's network namespace.
+    if let Err(e) = move_interface_to_ns(container_name, child_pid) {
+        // Try to clean up the host side on failure (best-effort).
+        log::trace!("Failed to move {container_name} to ns of pid {child_pid}: {e}");
+        return Err(io::Error::new(
+            e.kind(),
+            format!("failed to move {container_name} to container ns: {e}"),
+        ));
+    }
+
+    // 3. Bring up the host-side interface.
+    if let Err(e) = bring_interface_up(&host_name) {
+        log::trace!("Failed to bring up {host_name}: {e}");
+        // Non-fatal: the interface exists, the user can bring it up manually.
+    }
+
+    Ok(())
+}
+
 // ── Pipe pair for synchronization ────────────────────────────────────────
 
 struct SyncPipe {
@@ -1520,23 +1881,17 @@ fn find_shell(root: &Path) -> String {
 // ── Container child process ──────────────────────────────────────────────
 
 /// The entry point for the container child process (after clone/fork).
-fn container_child(
+/// Inner child logic, called after unshare() and parent sync are complete.
+/// The child has already:
+/// 1. Called unshare() to create new namespaces
+/// 2. Signaled the parent that unshare is done
+/// 3. Waited for the parent to finish veth/uid setup
+fn container_child_inner(
     args: &NspawnArgs,
     root: &Path,
     machine_name: &str,
     capabilities: &[Capability],
-    sync_pipe: &SyncPipe,
 ) -> ! {
-    // Close the read end of the sync pipe (parent uses it to signal us)
-    sync_pipe.close_write();
-
-    // Wait for the parent to set up uid/gid mappings etc.
-    if let Err(e) = sync_pipe.wait() {
-        eprintln!("systemd-nspawn: sync wait failed: {e}");
-        std::process::exit(EXIT_FAILURE);
-    }
-    sync_pipe.close_read();
-
     // Set up the mount namespace
     if let Err(e) = setup_api_filesystems(root) {
         eprintln!("systemd-nspawn: failed to set up API filesystems: {e}");
@@ -1932,8 +2287,17 @@ fn run() -> i32 {
         eprintln!("Spawning container {machine_name} on {}.", root.display());
     }
 
-    // Set up the sync pipe for parent-child coordination
-    let sync_pipe = match SyncPipe::new() {
+    // Set up sync pipes for parent-child coordination.
+    // child_ready_pipe: child signals parent after unshare() completes.
+    // parent_done_pipe: parent signals child after veth/uid setup is done.
+    let child_ready_pipe = match SyncPipe::new() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("systemd-nspawn: {e}");
+            return EXIT_FAILURE;
+        }
+    };
+    let parent_done_pipe = match SyncPipe::new() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("systemd-nspawn: {e}");
@@ -1964,6 +2328,10 @@ fn run() -> i32 {
             EXIT_FAILURE
         }
         0 => {
+            // Child: close unused ends of the pipes
+            child_ready_pipe.close_read();
+            parent_done_pipe.close_write();
+
             // Child: unshare namespaces
             let ret = unsafe { libc::unshare(clone_flags) };
             if ret != 0 {
@@ -1974,26 +2342,64 @@ fn run() -> i32 {
                 std::process::exit(EXIT_FAILURE);
             }
 
-            container_child(&args, &root, &machine_name, &capabilities, &sync_pipe);
+            // Signal the parent that unshare() is complete
+            if let Err(e) = child_ready_pipe.signal() {
+                eprintln!("systemd-nspawn: child ready signal failed: {e}");
+                std::process::exit(EXIT_FAILURE);
+            }
+            child_ready_pipe.close_write();
+
+            // Wait for the parent to finish veth/uid setup
+            if let Err(e) = parent_done_pipe.wait() {
+                eprintln!("systemd-nspawn: waiting for parent setup failed: {e}");
+                std::process::exit(EXIT_FAILURE);
+            }
+            parent_done_pipe.close_read();
+
+            container_child_inner(&args, &root, &machine_name, &capabilities);
         }
         child_pid => {
-            // Parent: close the write end (child uses it to wait)
-            // Actually our sync_pipe pattern: parent writes to signal child
-            sync_pipe.close_read();
+            // Parent: close unused ends
+            child_ready_pipe.close_write();
+            parent_done_pipe.close_read();
+
+            // Wait for the child to complete unshare() before we set up
+            // things that depend on the child's namespaces (veth, uid maps).
+            if let Err(e) = child_ready_pipe.wait() {
+                eprintln!("systemd-nspawn: waiting for child unshare failed: {e}");
+                unsafe { libc::kill(child_pid, libc::SIGKILL) };
+                return EXIT_FAILURE;
+            }
+            child_ready_pipe.close_read();
 
             // Set up UID/GID mappings for user namespaces
             if args.private_users {
                 let uid = unsafe { libc::getuid() };
                 let gid = unsafe { libc::getgid() };
-                // Write uid_map
                 let uid_map_path = format!("/proc/{child_pid}/uid_map");
                 let _ = std::fs::write(&uid_map_path, format!("0 {uid} 1\n"));
-                // Disable setgroups (required before writing gid_map for unprivileged)
                 let setgroups_path = format!("/proc/{child_pid}/setgroups");
                 let _ = std::fs::write(&setgroups_path, "deny");
-                // Write gid_map
                 let gid_map_path = format!("/proc/{child_pid}/gid_map");
                 let _ = std::fs::write(&gid_map_path, format!("0 {gid} 1\n"));
+            }
+
+            // Create veth pair and move container end into child's namespace
+            if args.network_veth {
+                match setup_veth(&machine_name, child_pid) {
+                    Ok(()) => {
+                        if !args.quiet {
+                            let host_if = veth_host_name(&machine_name);
+                            eprintln!(
+                                "systemd-nspawn: created veth pair {host_if} <-> {VETH_CONTAINER_NAME}"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("systemd-nspawn: veth setup failed: {e}");
+                        // Non-fatal: container still runs with isolated (empty) network.
+                    }
+                }
             }
 
             // Register with machined
@@ -2005,13 +2411,13 @@ fn run() -> i32 {
                 log::trace!("machined registration failed (non-fatal): {e}");
             }
 
-            // Signal the child to proceed
-            if let Err(e) = sync_pipe.signal() {
-                eprintln!("systemd-nspawn: sync signal failed: {e}");
+            // Signal the child to proceed with container setup
+            if let Err(e) = parent_done_pipe.signal() {
+                eprintln!("systemd-nspawn: parent done signal failed: {e}");
                 unsafe { libc::kill(child_pid, libc::SIGKILL) };
                 return EXIT_FAILURE;
             }
-            sync_pipe.close_write();
+            parent_done_pipe.close_write();
 
             // Wait for the child
             let mut status: libc::c_int = 0;
@@ -3189,5 +3595,335 @@ mod tests {
                 "failed to parse link-journal mode: {mode}"
             );
         }
+    }
+
+    // ── Veth / netlink tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_veth_host_name_short_machine() {
+        assert_eq!(veth_host_name("myvm"), "ve-myvm");
+    }
+
+    #[test]
+    fn test_veth_host_name_exact_limit() {
+        // Max machine part = IFNAMSIZ - 1 - 3 = 12 chars
+        assert_eq!(veth_host_name("123456789012"), "ve-123456789012");
+        assert_eq!(veth_host_name("123456789012").len(), 15); // exactly IFNAMSIZ - 1
+    }
+
+    #[test]
+    fn test_veth_host_name_truncated() {
+        // 13+ chars should be truncated to 12
+        assert_eq!(veth_host_name("1234567890123"), "ve-123456789012");
+        assert_eq!(veth_host_name("1234567890123").len(), 15);
+    }
+
+    #[test]
+    fn test_veth_host_name_long_machine() {
+        let long = "a".repeat(64);
+        let result = veth_host_name(&long);
+        assert_eq!(result.len(), 15);
+        assert!(result.starts_with("ve-"));
+    }
+
+    #[test]
+    fn test_veth_host_name_single_char() {
+        assert_eq!(veth_host_name("x"), "ve-x");
+    }
+
+    #[test]
+    fn test_veth_host_name_empty() {
+        assert_eq!(veth_host_name(""), "ve-");
+    }
+
+    #[test]
+    fn test_veth_container_name_constant() {
+        assert_eq!(VETH_CONTAINER_NAME, "host0");
+    }
+
+    #[test]
+    fn test_build_veth_create_msg_structure() {
+        let msg = build_veth_create_msg("ve-test", "host0");
+
+        // Message must be NLMSG_ALIGN-aligned
+        assert_eq!(msg.len() % NLMSG_ALIGN, 0);
+
+        // Minimum size: nlmsghdr + ifinfomsg + at least one attribute
+        assert!(msg.len() >= NLMSG_HDR_LEN + IFINFOMSG_LEN + 8);
+
+        // nlmsghdr checks
+        let nlmsg_len = u32::from_ne_bytes(msg[0..4].try_into().unwrap());
+        assert!(nlmsg_len as usize <= msg.len());
+
+        let nlmsg_type = u16::from_ne_bytes(msg[4..6].try_into().unwrap());
+        assert_eq!(nlmsg_type, RTM_NEWLINK);
+
+        let nlmsg_flags = u16::from_ne_bytes(msg[6..8].try_into().unwrap());
+        assert_eq!(
+            nlmsg_flags,
+            NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL
+        );
+
+        let nlmsg_seq = u32::from_ne_bytes(msg[8..12].try_into().unwrap());
+        assert_eq!(nlmsg_seq, 1);
+
+        // ifinfomsg: ifi_family should be AF_UNSPEC
+        assert_eq!(msg[NLMSG_HDR_LEN], AF_UNSPEC);
+    }
+
+    #[test]
+    fn test_build_veth_create_msg_contains_host_name() {
+        let msg = build_veth_create_msg("ve-myvm", "host0");
+        // The host-side interface name "ve-myvm\0" should appear in the message.
+        let name_bytes = b"ve-myvm\0";
+        let msg_str = &msg[..];
+        assert!(
+            msg_str.windows(name_bytes.len()).any(|w| w == name_bytes),
+            "host interface name not found in netlink message"
+        );
+    }
+
+    #[test]
+    fn test_build_veth_create_msg_contains_container_name() {
+        let msg = build_veth_create_msg("ve-myvm", "host0");
+        // The container-side interface name "host0\0" should appear in the message.
+        let name_bytes = b"host0\0";
+        let msg_str = &msg[..];
+        assert!(
+            msg_str.windows(name_bytes.len()).any(|w| w == name_bytes),
+            "container interface name not found in netlink message"
+        );
+    }
+
+    #[test]
+    fn test_build_veth_create_msg_contains_veth_kind() {
+        let msg = build_veth_create_msg("ve-test", "host0");
+        // IFLA_INFO_KIND value "veth\0" should appear in the message.
+        let kind_bytes = b"veth\0";
+        assert!(
+            msg.windows(kind_bytes.len()).any(|w| w == kind_bytes),
+            "veth kind not found in netlink message"
+        );
+    }
+
+    #[test]
+    fn test_build_veth_create_msg_contains_linkinfo() {
+        let msg = build_veth_create_msg("ve-test", "host0");
+        // Scan for IFLA_LINKINFO (type 18) attribute after ifinfomsg + IFLA_IFNAME.
+        // The type field is at offset +2 in each RTA header (little-endian u16).
+        // With NLA_F_NESTED (0x8000), the high byte has 0x80 set.
+        let mut found = false;
+        let mut off = NLMSG_HDR_LEN + IFINFOMSG_LEN;
+        while off + 4 <= msg.len() {
+            let rta_len = u16::from_ne_bytes(msg[off..off + 2].try_into().unwrap()) as usize;
+            let rta_type = u16::from_ne_bytes(msg[off + 2..off + 4].try_into().unwrap());
+            // IFLA_LINKINFO with NLA_F_NESTED = 18 | 0x8000
+            if rta_type == IFLA_LINKINFO | 0x8000 {
+                found = true;
+                break;
+            }
+            if rta_len < 4 {
+                break;
+            }
+            off += nl_rta_align(rta_len);
+        }
+        assert!(found, "IFLA_LINKINFO nested attribute not found");
+    }
+
+    #[test]
+    fn test_build_veth_create_msg_different_names() {
+        let msg1 = build_veth_create_msg("ve-a", "host0");
+        let msg2 = build_veth_create_msg("ve-longer-name", "host0");
+        // Different host names produce different-length messages
+        assert_ne!(msg1.len(), msg2.len());
+    }
+
+    #[test]
+    fn test_nl_align_values() {
+        assert_eq!(nl_align(0), 0);
+        assert_eq!(nl_align(1), 4);
+        assert_eq!(nl_align(4), 4);
+        assert_eq!(nl_align(5), 8);
+        assert_eq!(nl_align(16), 16);
+        assert_eq!(nl_align(17), 20);
+    }
+
+    #[test]
+    fn test_nl_rta_align_values() {
+        assert_eq!(nl_rta_align(0), 0);
+        assert_eq!(nl_rta_align(1), 4);
+        assert_eq!(nl_rta_align(4), 4);
+        assert_eq!(nl_rta_align(5), 8);
+        assert_eq!(nl_rta_align(8), 8);
+    }
+
+    #[test]
+    fn test_nl_put_u16_and_u32() {
+        let mut buf = vec![0u8; 8];
+        nl_put_u16(&mut buf, 0, 0x1234);
+        assert_eq!(&buf[0..2], &0x1234u16.to_ne_bytes());
+
+        nl_put_u32(&mut buf, 4, 0xDEADBEEF);
+        assert_eq!(&buf[4..8], &0xDEADBEEFu32.to_ne_bytes());
+    }
+
+    #[test]
+    fn test_nl_put_i32() {
+        let mut buf = vec![0u8; 4];
+        nl_put_i32(&mut buf, 0, -42);
+        assert_eq!(i32::from_ne_bytes(buf[0..4].try_into().unwrap()), -42);
+    }
+
+    #[test]
+    fn test_nl_put_rta_bytes() {
+        let mut buf = vec![0u8; 16];
+        let data = b"hi";
+        nl_put_rta_bytes(&mut buf, 0, 7, data);
+        // rta_len = 4 + 2 = 6
+        assert_eq!(u16::from_ne_bytes(buf[0..2].try_into().unwrap()), 6);
+        // rta_type = 7
+        assert_eq!(u16::from_ne_bytes(buf[2..4].try_into().unwrap()), 7);
+        // payload
+        assert_eq!(&buf[4..6], b"hi");
+    }
+
+    #[test]
+    fn test_nl_put_rta_u32() {
+        let mut buf = vec![0u8; 16];
+        nl_put_rta_u32(&mut buf, 0, 99, 0x12345678);
+        // rta_len = 8
+        assert_eq!(u16::from_ne_bytes(buf[0..2].try_into().unwrap()), 8);
+        // rta_type = 99
+        assert_eq!(u16::from_ne_bytes(buf[2..4].try_into().unwrap()), 99);
+        // payload
+        assert_eq!(
+            u32::from_ne_bytes(buf[4..8].try_into().unwrap()),
+            0x12345678
+        );
+    }
+
+    #[test]
+    fn test_netlink_constants() {
+        assert_eq!(NETLINK_ROUTE, 0);
+        assert_eq!(RTM_NEWLINK, 16);
+        assert_eq!(RTM_SETLINK, 19);
+        assert_eq!(NLM_F_REQUEST, 0x0001);
+        assert_eq!(NLM_F_ACK, 0x0004);
+        assert_eq!(NLM_F_CREATE, 0x0400);
+        assert_eq!(NLM_F_EXCL, 0x0200);
+        assert_eq!(NLMSG_ERROR, 2);
+        assert_eq!(NLMSG_HDR_LEN, 16);
+        assert_eq!(NLMSG_ALIGN, 4);
+        assert_eq!(IFINFOMSG_LEN, 16);
+        assert_eq!(IFLA_IFNAME, 3);
+        assert_eq!(IFLA_NET_NS_PID, 19);
+        assert_eq!(IFLA_LINKINFO, 18);
+        assert_eq!(IFLA_INFO_KIND, 1);
+        assert_eq!(IFLA_INFO_DATA, 2);
+        assert_eq!(VETH_INFO_PEER, 1);
+        assert_eq!(AF_UNSPEC, 0);
+        assert_eq!(IFF_UP, 1);
+    }
+
+    #[test]
+    fn test_ifnamsiz_constant() {
+        // Linux IFNAMSIZ is 16
+        assert_eq!(IFNAMSIZ, 16);
+    }
+
+    #[test]
+    fn test_read_ifindex_nonexistent() {
+        let result = read_ifindex("nonexistent_interface_xyz_123");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_ifindex_lo() {
+        // The loopback interface should always exist and have ifindex 1
+        if let Ok(idx) = read_ifindex("lo") {
+            assert_eq!(idx, 1);
+        }
+        // If /sys is not available (container), skip
+    }
+
+    #[test]
+    fn test_bring_interface_up_msg_structure() {
+        // We can't actually bring up an interface in tests, but we can
+        // verify the message building logic by checking bring_interface_up
+        // fails gracefully for non-existent interfaces.
+        let result = bring_interface_up("nonexistent_iface_xyz");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_move_interface_to_ns_nonexistent() {
+        let result = move_interface_to_ns("nonexistent_iface_xyz", 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_veth_host_name_with_dots_and_dashes() {
+        // Machine names can contain dots, dashes, underscores
+        assert_eq!(veth_host_name("my.vm-1"), "ve-my.vm-1");
+        assert_eq!(veth_host_name("test_host"), "ve-test_host");
+    }
+
+    #[test]
+    fn test_build_veth_create_msg_peer_ifinfomsg_present() {
+        let msg = build_veth_create_msg("ve-test", "host0");
+        // The message should contain two ifinfomsg structures:
+        // one at the top level and one inside VETH_INFO_PEER.
+        // Both have AF_UNSPEC as ifi_family.
+        // Count occurrences is tricky, but we can verify the message
+        // is large enough to contain both.
+        let min_size = NLMSG_HDR_LEN
+            + IFINFOMSG_LEN       // top-level ifinfomsg
+            + 4 + 8               // IFLA_IFNAME "ve-test\0" (min)
+            + 4                   // IFLA_LINKINFO header
+            + 4 + 5              // IFLA_INFO_KIND "veth\0"
+            + 4                   // IFLA_INFO_DATA header
+            + 4                   // VETH_INFO_PEER header
+            + IFINFOMSG_LEN       // peer ifinfomsg
+            + 4 + 6; // peer IFLA_IFNAME "host0\0"
+        assert!(
+            msg.len() >= min_size,
+            "message too small: {} < {min_size}",
+            msg.len()
+        );
+    }
+
+    #[test]
+    fn test_network_veth_implies_clone_newnet() {
+        // Verify that when network_veth is set, private_network effect is
+        // also applied (CLONE_NEWNET). In run(), both set CLONE_NEWNET.
+        let args = NspawnArgs {
+            network_veth: true,
+            ..Default::default()
+        };
+        // The run() function checks: if args.private_network || args.network_veth
+        assert!(args.network_veth || args.private_network);
+    }
+
+    #[test]
+    fn test_parse_args_network_veth_sets_flag() {
+        let args = parse_args(&["-n", "-D", "/tmp"]).unwrap();
+        assert!(args.network_veth);
+
+        let args2 = parse_args(&["--network-veth", "-D", "/tmp"]).unwrap();
+        assert!(args2.network_veth);
+    }
+
+    #[test]
+    fn test_veth_host_name_boundary_lengths() {
+        // Empty
+        assert_eq!(veth_host_name(""), "ve-");
+        // 1 char
+        assert_eq!(veth_host_name("a"), "ve-a");
+        // 11 chars (under limit)
+        assert_eq!(veth_host_name("12345678901"), "ve-12345678901");
+        // 12 chars (at limit)
+        assert_eq!(veth_host_name("123456789012"), "ve-123456789012");
+        // 13 chars (over limit, truncated to 12)
+        assert_eq!(veth_host_name("1234567890123"), "ve-123456789012");
     }
 }

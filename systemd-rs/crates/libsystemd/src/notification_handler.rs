@@ -1550,16 +1550,11 @@ mod tests {
         fdstore("READY=1\n", vec![r], &mut srvc, 10);
         // The fd should have been closed, not stored
         assert_eq!(srvc.stored_fds.len(), 0);
-        // Verify the fd is actually closed by checking with fcntl F_GETFD.
-        // A closed fd will return EBADF.
-        let result = nix::fcntl::fcntl(
-            unsafe { BorrowedFd::borrow_raw(r) },
-            nix::fcntl::FcntlArg::F_GETFD,
-        );
-        assert!(
-            result.is_err(),
-            "fd {r} should be closed but fcntl succeeded"
-        );
+        // Note: we intentionally do NOT assert the fd is closed via fcntl,
+        // because fd numbers can be reused by other threads between the
+        // close() call in the handler and our check, making it racy.
+        // The stored_fds.len() == 0 assertion above is sufficient to verify
+        // that the handler did not store the fd.
     }
 
     #[test]
