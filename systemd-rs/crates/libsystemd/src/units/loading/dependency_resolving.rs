@@ -90,6 +90,7 @@ pub fn prune_units(
             Specific::Target(_)
             | Specific::Slice(_)
             | Specific::Mount(_)
+            | Specific::Swap(_)
             | Specific::Timer(_)
             | Specific::Path(_)
             | Specific::Device(_) => { /**/ }
@@ -401,10 +402,11 @@ fn add_default_dependency_relations(units: &mut UnitTable) {
             UnitIdKind::Target
             | UnitIdKind::Slice
             | UnitIdKind::Mount
+            | UnitIdKind::Swap
             | UnitIdKind::Device
             | UnitIdKind::Timer
             | UnitIdKind::Path => {
-                // Targets, slices, mounts, devices, timers, and paths only get the
+                // Targets, slices, mounts, swaps, devices, timers, and paths only get the
                 // shutdown.target conflict/before (already added above).
             }
         }
@@ -531,6 +533,7 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
             UnitIdKind::Target
             | UnitIdKind::Slice
             | UnitIdKind::Mount
+            | UnitIdKind::Swap
             | UnitIdKind::Device
             | UnitIdKind::Path => {
                 // ignore targets, slices, mounts, devices, and paths here

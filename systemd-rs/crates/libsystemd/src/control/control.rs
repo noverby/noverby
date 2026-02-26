@@ -962,6 +962,7 @@ pub fn execute_command(
                 "target" => ".target",
                 "socket" => ".socket",
                 "mount" => ".mount",
+                "swap" => ".swap",
                 "timer" => ".timer",
                 "path" => ".path",
                 "slice" => ".slice",
@@ -991,6 +992,7 @@ pub fn execute_command(
                         || name.ends_with(".target")
                         || name.ends_with(".socket")
                         || name.ends_with(".mount")
+                        || name.ends_with(".swap")
                         || name.ends_with(".timer")
                         || name.ends_with(".path")
                         || name.ends_with(".slice")
@@ -1367,6 +1369,7 @@ pub fn execute_command(
                             Specific::Target(_)
                             | Specific::Slice(_)
                             | Specific::Mount(_)
+                            | Specific::Swap(_)
                             | Specific::Timer(_)
                             | Specific::Path(_)
                             | Specific::Device(_) => format_target(unit, status),

@@ -4,6 +4,7 @@ mod path_unit;
 mod service_unit;
 mod slice_unit;
 mod socket_unit;
+mod swap_unit;
 mod target_unit;
 mod timer_unit;
 mod unit_parser;
@@ -14,6 +15,7 @@ pub use path_unit::*;
 pub use service_unit::*;
 pub use slice_unit::*;
 pub use socket_unit::*;
+pub use swap_unit::*;
 pub use target_unit::*;
 pub use timer_unit::*;
 pub use unit_parser::*;
@@ -52,6 +54,11 @@ pub struct ParsedTimerConfig {
 pub struct ParsedPathConfig {
     pub common: ParsedCommonConfig,
     pub path: ParsedPathSection,
+}
+
+pub struct ParsedSwapConfig {
+    pub common: ParsedCommonConfig,
+    pub swap: ParsedSwapSection,
 }
 
 /// Parsed configuration for a `.device` unit file.

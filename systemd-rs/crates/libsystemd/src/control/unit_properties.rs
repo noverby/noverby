@@ -8,7 +8,8 @@
 use crate::lock_ext::RwLockExt;
 use crate::units::{
     Commandline, ExecConfig, KillMode, MountConfig, NotifyKind, ServiceConfig, ServiceRestart,
-    ServiceType, SliceConfig, SocketConfig, Specific, Timeout, Unit, UnitConfig, UnitStatus,
+    ServiceType, SliceConfig, SocketConfig, Specific, SwapConfig, Timeout, Unit, UnitConfig,
+    UnitStatus,
 };
 
 use std::collections::BTreeMap;
@@ -115,6 +116,9 @@ pub fn collect_properties(unit: &Unit) -> BTreeMap<String, String> {
         }
         Specific::Mount(mnt) => {
             insert_mount_config(&mut props, &mnt.conf);
+        }
+        Specific::Swap(swp) => {
+            insert_swap_config(&mut props, &swp.conf);
         }
         Specific::Timer(tmr) => {
             // Timer-specific properties
@@ -1000,6 +1004,19 @@ fn insert_slice_config(props: &mut BTreeMap<String, String>, conf: &SliceConfig)
         "MemoryPressureThresholdUSec",
         &conf.memory_pressure_threshold_sec,
     );
+}
+
+fn insert_swap_config(props: &mut BTreeMap<String, String>, conf: &SwapConfig) {
+    insert(props, "What", &conf.what);
+    match conf.priority {
+        Some(p) => insert(props, "Priority", &p.to_string()),
+        None => insert(props, "Priority", "-1"),
+    }
+    insert_optional(props, "Options", &conf.options);
+    match conf.timeout_sec {
+        Some(secs) => insert(props, "TimeoutUSec", &format!("{}us", secs * 1_000_000)),
+        None => insert(props, "TimeoutUSec", "infinity"),
+    }
 }
 
 fn insert_mount_config(props: &mut BTreeMap<String, String>, conf: &MountConfig) {
