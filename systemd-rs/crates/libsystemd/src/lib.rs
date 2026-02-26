@@ -24,6 +24,7 @@ pub mod fd_store;
 pub mod generators;
 pub mod journal;
 pub mod kmsg_log;
+pub mod link_config;
 pub mod lock_ext;
 pub mod logging;
 pub mod notification_handler;
