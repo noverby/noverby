@@ -18,6 +18,7 @@
 
 mod config;
 mod dhcp;
+mod dhcpv6;
 mod ipv6_ra;
 mod link;
 mod manager;
@@ -666,6 +667,55 @@ fn main() {
         }
     }
 
+    // Open DHCPv6 sockets for links that need DHCPv6.
+    let mut dhcpv6_sockets: HashMap<u32, i32> = HashMap::new();
+    for ifindex in mgr.dhcpv6_active_links() {
+        if let Some(managed) = mgr.links.get(&ifindex) {
+            match dhcpv6::open_dhcpv6_socket(&managed.link.name) {
+                Ok(fd) => {
+                    log::info!(
+                        "Opened DHCPv6 socket fd={} for {} (idx={})",
+                        fd,
+                        managed.link.name,
+                        ifindex
+                    );
+                    dhcpv6_sockets.insert(ifindex, fd);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to open DHCPv6 socket for {}: {}",
+                        managed.link.name,
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // Send initial DHCPv6 Solicits / Information-Requests.
+    for (&ifindex, &fd) in &dhcpv6_sockets {
+        if let Some(managed) = mgr.links.get_mut(&ifindex)
+            && let Some(ref mut client) = managed.dhcpv6_client
+            && let Some(pkt) = client.next_packet()
+        {
+            log::info!(
+                "{}: sending DHCPv6 {} (tid={:02x}{:02x}{:02x})",
+                client.config.ifname,
+                if client.config.request_addresses {
+                    "SOLICIT"
+                } else {
+                    "INFORMATION-REQUEST"
+                },
+                client.transaction_id[0],
+                client.transaction_id[1],
+                client.transaction_id[2]
+            );
+            if let Err(e) = dhcpv6::send_dhcpv6(fd, ifindex, &pkt) {
+                log::warn!("{}: failed to send DHCPv6: {}", client.config.ifname, e);
+            }
+        }
+    }
+
     // Write initial state files.
     mgr.write_state_files();
 
@@ -828,6 +878,10 @@ fn main() {
                 if let Some(ra) = ipv6_ra::parse_ra(&data, source) {
                     log::info!("idx={}: received {}", ifindex, ra);
 
+                    // Check M/O flags to trigger DHCPv6.
+                    let managed_flag = ra.managed;
+                    let other_flag = ra.other;
+
                     // Process the RA through the link's RaState.
                     let actions = if let Some(managed) = mgr.links.get_mut(&ifindex) {
                         if let Some(ref mut ra_state) = managed.ra_state {
@@ -844,6 +898,58 @@ fn main() {
                         mgr.write_state_files();
                         update_shared_state(&shared_state, &mgr);
                         sd_notify(&format!("STATUS={}", mgr.overall_state()));
+                    }
+
+                    // Start DHCPv6 client if RA M/O flags indicate it.
+                    if (managed_flag || other_flag)
+                        && mgr.start_dhcpv6_from_ra(ifindex, managed_flag, other_flag)
+                    {
+                        // Open a DHCPv6 socket for the newly started client.
+                        if let std::collections::hash_map::Entry::Vacant(entry) =
+                            dhcpv6_sockets.entry(ifindex)
+                            && let Some(managed) = mgr.links.get(&ifindex)
+                        {
+                            match dhcpv6::open_dhcpv6_socket(&managed.link.name) {
+                                Ok(new_fd) => {
+                                    log::info!(
+                                        "Opened DHCPv6 socket fd={} for {} (RA-triggered)",
+                                        new_fd,
+                                        managed.link.name
+                                    );
+                                    entry.insert(new_fd);
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "Failed to open DHCPv6 socket for {}: {}",
+                                        managed.link.name,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                        // Send the initial DHCPv6 packet.
+                        if let Some(&new_fd) = dhcpv6_sockets.get(&ifindex)
+                            && let Some(managed) = mgr.links.get_mut(&ifindex)
+                            && let Some(ref mut client) = managed.dhcpv6_client
+                            && let Some(pkt) = client.next_packet()
+                        {
+                            log::info!(
+                                "{}: sending DHCPv6 {} (RA-triggered)",
+                                client.config.ifname,
+                                if client.config.request_addresses {
+                                    "SOLICIT"
+                                } else {
+                                    "INFORMATION-REQUEST"
+                                }
+                            );
+                            if let Err(e) = dhcpv6::send_dhcpv6(new_fd, ifindex, &pkt) {
+                                log::warn!(
+                                    "{}: failed to send DHCPv6: {}",
+                                    client.config.ifname,
+                                    e
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -862,6 +968,103 @@ fn main() {
                     log::warn!("{}: failed to retransmit RS: {}", ra_state.ifname, e);
                 }
                 ra_state.mark_rs_sent();
+            }
+        }
+
+        // Process DHCPv6: receive replies, handle timeouts, send retransmits.
+        for (&ifindex, &fd) in &dhcpv6_sockets {
+            // Try to receive a DHCPv6 reply.
+            while let Some(reply_data) = dhcpv6::recv_dhcpv6(fd) {
+                if let Some(managed) = mgr.links.get_mut(&ifindex)
+                    && let Some(ref mut client) = managed.dhcpv6_client
+                {
+                    if let Some(lease) = client.process_reply(&reply_data) {
+                        // Lease obtained or renewed — apply it.
+                        let _ = client; // Release borrow.
+                        if let Err(e) = mgr.apply_dhcpv6_lease(ifindex, &lease) {
+                            log::warn!("Failed to apply DHCPv6 lease on idx={}: {}", ifindex, e);
+                        }
+                        mgr.write_state_files();
+                        update_shared_state(&shared_state, &mgr);
+                        sd_notify(&format!("STATUS={}", mgr.overall_state()));
+                        break;
+                    }
+
+                    // If the client moved to Requesting after an Advertise,
+                    // immediately send the Request.
+                    if client.state == dhcpv6::Dhcpv6State::Requesting
+                        && let Some(request_pkt) = client.next_packet()
+                    {
+                        log::info!("{}: sending DHCPv6 REQUEST", client.config.ifname);
+                        if let Err(e) = dhcpv6::send_dhcpv6(fd, ifindex, &request_pkt) {
+                            log::warn!(
+                                "{}: failed to send DHCPv6 REQUEST: {}",
+                                client.config.ifname,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Check for retransmission timeouts.
+            if let Some(managed) = mgr.links.get_mut(&ifindex)
+                && let Some(ref mut client) = managed.dhcpv6_client
+            {
+                let should_retransmit = match client.last_send {
+                    Some(last) => last.elapsed() >= client.retransmit_timeout(),
+                    None => true,
+                };
+
+                if should_retransmit
+                    && !client.max_attempts_reached()
+                    && !matches!(
+                        client.state,
+                        dhcpv6::Dhcpv6State::Bound | dhcpv6::Dhcpv6State::InformationReceived
+                    )
+                    && let Some(pkt) = client.next_packet()
+                {
+                    log::debug!(
+                        "{}: retransmitting DHCPv6 (attempt {}, state={})",
+                        client.config.ifname,
+                        client.attempts,
+                        client.state
+                    );
+                    if let Err(e) = dhcpv6::send_dhcpv6(fd, ifindex, &pkt) {
+                        log::warn!(
+                            "{}: failed to retransmit DHCPv6: {}",
+                            client.config.ifname,
+                            e
+                        );
+                    }
+                }
+
+                // Check for lease renewal / rebinding.
+                if client.state == dhcpv6::Dhcpv6State::Bound
+                    && let Some(ref lease) = client.lease
+                {
+                    if lease.is_expired() {
+                        log::warn!("{}: DHCPv6 lease expired", client.config.ifname);
+                        let ifname = client.config.ifname.clone();
+                        client.state = dhcpv6::Dhcpv6State::Init;
+                        client.lease = None;
+                        let _ = client;
+                        if let Err(e) = mgr.remove_dhcpv6_lease(ifindex) {
+                            log::warn!("{}: failed to remove expired DHCPv6 lease: {}", ifname, e);
+                        }
+                        mgr.write_state_files();
+                        update_shared_state(&shared_state, &mgr);
+                    } else if lease.needs_renewal() {
+                        // Transition to renewing and send a Renew.
+                        if let Some(pkt) = client.next_packet() {
+                            log::info!(
+                                "{}: DHCPv6 lease renewal (T1 reached)",
+                                client.config.ifname
+                            );
+                            let _ = dhcpv6::send_dhcpv6(fd, ifindex, &pkt);
+                        }
+                    }
+                }
             }
         }
 
@@ -894,8 +1097,24 @@ fn main() {
         }
     }
 
+    // Release all DHCPv6 leases.
+    for (&ifindex, &fd) in &dhcpv6_sockets {
+        if let Some(managed) = mgr.links.get(&ifindex)
+            && let Some(ref client) = managed.dhcpv6_client
+            && let Some(release_pkt) = client.build_release()
+        {
+            log::info!("{}: sending DHCPv6 RELEASE", managed.link.name);
+            let _ = dhcpv6::send_dhcpv6(fd, ifindex, &release_pkt);
+        }
+    }
+
     // Close DHCP sockets.
     for (_, fd) in dhcp_sockets {
+        unsafe { libc::close(fd) };
+    }
+
+    // Close DHCPv6 sockets.
+    for (_, fd) in dhcpv6_sockets {
         unsafe { libc::close(fd) };
     }
 

@@ -1101,7 +1101,11 @@ pub fn flush_routes(ifindex: u32) -> io::Result<()> {
 ///
 /// We detect resolved by checking for `/run/systemd/resolve/stub-resolv.conf`
 /// which resolved creates on startup.
-pub fn write_resolv_conf(dns_servers: &[Ipv4Addr], search_domains: &[String]) -> io::Result<()> {
+pub fn write_resolv_conf(
+    dns_servers: &[Ipv4Addr],
+    dns6_servers: &[std::net::Ipv6Addr],
+    search_domains: &[String],
+) -> io::Result<()> {
     // If systemd-resolved is running it manages resolv.conf itself.
     // It picks up per-link DNS from /run/systemd/netif/links/ state files
     // that networkd already writes, so we can safely skip.
@@ -1132,7 +1136,10 @@ pub fn write_resolv_conf(dns_servers: &[Ipv4Addr], search_domains: &[String]) ->
     for dns in dns_servers {
         content.push_str(&format!("nameserver {dns}\n"));
     }
-    if dns_servers.is_empty() {
+    for dns in dns6_servers {
+        content.push_str(&format!("nameserver {dns}\n"));
+    }
+    if dns_servers.is_empty() && dns6_servers.is_empty() {
         // Fallback to localhost stub if no DNS configured.
         content.push_str("nameserver 127.0.0.53\n");
     }

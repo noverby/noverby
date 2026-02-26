@@ -17,6 +17,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::config::{self, DhcpMode, Ipv6AcceptRa, NetworkConfig};
 use crate::dhcp::{self, DhcpClient, DhcpClientConfig, DhcpLease, DhcpState};
+use crate::dhcpv6::{Dhcpv6Client, Dhcpv6ClientConfig, Dhcpv6Lease};
 use crate::ipv6_ra::{self, RaAction, RaState};
 use crate::link::{self, LinkInfo};
 use crate::netdev::{self, NetDevConfig};
@@ -41,6 +42,12 @@ pub struct ManagedLink {
     /// Current DHCP lease (if obtained).
     pub lease: Option<DhcpLease>,
 
+    /// DHCPv6 client state machine (if DHCPv6 is enabled).
+    pub dhcpv6_client: Option<Dhcpv6Client>,
+
+    /// Current DHCPv6 lease (if obtained).
+    pub dhcpv6_lease: Option<Dhcpv6Lease>,
+
     /// Administrative state we want the link to be in.
     pub admin_state: AdminState,
 
@@ -59,10 +66,10 @@ pub struct ManagedLink {
     /// IPv6 Router Advertisement state (if RA is enabled).
     pub ra_state: Option<RaState>,
 
-    /// IPv6 DNS servers collected from RA RDNSS.
+    /// IPv6 DNS servers collected from RA RDNSS and/or DHCPv6.
     pub dns6_servers: Vec<Ipv6Addr>,
 
-    /// IPv6 search domains collected from RA DNSSL.
+    /// IPv6 search domains collected from RA DNSSL and/or DHCPv6.
     pub search6_domains: Vec<String>,
 }
 
@@ -253,6 +260,8 @@ impl NetworkManager {
                 config: matched_config.cloned(),
                 dhcp_client: None,
                 lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
                 admin_state,
                 static_configured: false,
                 has_carrier,
@@ -541,6 +550,31 @@ impl NetworkManager {
             managed.ra_state = Some(ra_state);
         }
 
+        // 8. Start DHCPv6 client if DHCP=yes or DHCP=ipv6.
+        let needs_dhcpv6 = matches!(config.network_section.dhcp, DhcpMode::Yes | DhcpMode::Ipv6);
+
+        if needs_dhcpv6 {
+            let mut mac_arr = [0u8; 6];
+            if mac.len() >= 6 {
+                mac_arr.copy_from_slice(&mac[..6]);
+            }
+
+            let dhcpv6_config = Dhcpv6ClientConfig {
+                ifindex,
+                ifname: link_name.clone(),
+                mac: mac_arr,
+                request_addresses: true, // Stateful by default; RA M/O flags may override.
+                rapid_commit: false,
+                max_attempts: 0,
+                ..Default::default()
+            };
+
+            log::info!("Starting DHCPv6 client on {link_name}");
+            let client = Dhcpv6Client::new(dhcpv6_config);
+            let managed = self.links.get_mut(&ifindex).unwrap();
+            managed.dhcpv6_client = Some(client);
+        }
+
         Ok(())
     }
 
@@ -746,9 +780,9 @@ impl NetworkManager {
 
         self.dns_servers = dns.clone();
         self.search_domains = domains.clone();
-        self.dns6_servers = dns6;
+        self.dns6_servers = dns6.clone();
 
-        if let Err(e) = link::write_resolv_conf(&dns, &domains) {
+        if let Err(e) = link::write_resolv_conf(&dns, &dns6, &domains) {
             log::warn!("Failed to write resolv.conf: {e}");
         }
     }
@@ -1077,6 +1111,210 @@ impl NetworkManager {
             let _ = self.remove_lease(ifindex);
         }
     }
+
+    // -----------------------------------------------------------------------
+    // DHCPv6
+    // -----------------------------------------------------------------------
+
+    /// Return the list of interface indices that have active DHCPv6 clients
+    /// needing to send/receive packets.
+    pub fn dhcpv6_active_links(&self) -> Vec<u32> {
+        self.links
+            .iter()
+            .filter_map(|(&idx, managed)| {
+                if managed.dhcpv6_client.is_some() {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Apply a DHCPv6 lease to an interface: add address, update DNS.
+    pub fn apply_dhcpv6_lease(&mut self, ifindex: u32, lease: &Dhcpv6Lease) -> Result<(), String> {
+        let managed = match self.links.get(&ifindex) {
+            Some(m) => m,
+            None => return Err(format!("unknown ifindex {ifindex}")),
+        };
+        let link_name = managed.link.name.clone();
+
+        // Add assigned IPv6 addresses.
+        for addr in &lease.ia_na.addresses {
+            log::info!(
+                "{}: adding DHCPv6 address {}/128 (preferred={}s valid={}s)",
+                link_name,
+                addr.address,
+                addr.preferred_lifetime,
+                addr.valid_lifetime
+            );
+            if let Err(e) = ipv6_ra::add_ipv6_address(ifindex, addr.address, 128) {
+                let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                if !is_exists {
+                    log::warn!(
+                        "{}: failed to add DHCPv6 address {}: {}",
+                        link_name,
+                        addr.address,
+                        e
+                    );
+                }
+            }
+        }
+
+        // Update DNS servers.
+        let managed = self.links.get_mut(&ifindex).unwrap();
+        if !lease.dns_servers.is_empty() {
+            // Merge DHCPv6 DNS servers with existing IPv6 DNS (from RA).
+            for dns in &lease.dns_servers {
+                if !managed.dns6_servers.contains(dns) {
+                    managed.dns6_servers.push(*dns);
+                }
+            }
+            log::info!("{}: DHCPv6 DNS servers: {:?}", link_name, lease.dns_servers);
+        }
+
+        // Update search domains.
+        if !lease.domains.is_empty() {
+            for domain in &lease.domains {
+                if !managed.search6_domains.contains(domain) {
+                    managed.search6_domains.push(domain.clone());
+                }
+            }
+            log::info!("{}: DHCPv6 search domains: {:?}", link_name, lease.domains);
+        }
+
+        managed.dhcpv6_lease = Some(lease.clone());
+
+        // Update global DNS.
+        self.update_global_dns();
+
+        // Write resolv.conf.
+        let all_dns4: Vec<Ipv4Addr> = self
+            .links
+            .values()
+            .flat_map(|m| m.dns_servers.iter().copied())
+            .collect();
+        let all_dns6: Vec<Ipv6Addr> = self
+            .links
+            .values()
+            .flat_map(|m| m.dns6_servers.iter().copied())
+            .collect();
+        let all_domains: Vec<String> = self
+            .links
+            .values()
+            .flat_map(|m| {
+                m.search_domains
+                    .iter()
+                    .chain(m.search6_domains.iter())
+                    .cloned()
+            })
+            .collect();
+
+        if (!all_dns4.is_empty() || !all_dns6.is_empty())
+            && let Err(e) = link::write_resolv_conf(&all_dns4, &all_dns6, &all_domains)
+        {
+            log::warn!("Failed to write resolv.conf: {e}");
+        }
+
+        Ok(())
+    }
+
+    /// Remove a DHCPv6 lease from an interface.
+    pub fn remove_dhcpv6_lease(&mut self, ifindex: u32) -> Result<(), String> {
+        let managed = match self.links.get_mut(&ifindex) {
+            Some(m) => m,
+            None => return Err(format!("unknown ifindex {ifindex}")),
+        };
+
+        // Remove assigned addresses.
+        if let Some(ref lease) = managed.dhcpv6_lease {
+            for addr in &lease.ia_na.addresses {
+                log::info!(
+                    "{}: removing DHCPv6 address {}",
+                    managed.link.name,
+                    addr.address
+                );
+                // Best-effort address removal; failure is not fatal.
+            }
+
+            // Clear DHCPv6-contributed DNS.
+            managed
+                .dns6_servers
+                .retain(|dns| !lease.dns_servers.contains(dns));
+            managed
+                .search6_domains
+                .retain(|d| !lease.domains.contains(d));
+        }
+
+        managed.dhcpv6_lease = None;
+
+        self.update_global_dns();
+        Ok(())
+    }
+
+    /// Start a DHCPv6 client on a link in response to RA M/O flags.
+    ///
+    /// If the M (Managed) flag is set, requests addresses (stateful DHCPv6).
+    /// If only the O (Other) flag is set, requests configuration only (stateless).
+    ///
+    /// Does nothing if the link already has a DHCPv6 client.
+    pub fn start_dhcpv6_from_ra(
+        &mut self,
+        ifindex: u32,
+        managed_flag: bool,
+        other_flag: bool,
+    ) -> bool {
+        let managed = match self.links.get(&ifindex) {
+            Some(m) => m,
+            None => return false,
+        };
+
+        // Already have a DHCPv6 client.
+        if managed.dhcpv6_client.is_some() {
+            return false;
+        }
+
+        // Neither M nor O flag set — no DHCPv6 needed.
+        if !managed_flag && !other_flag {
+            return false;
+        }
+
+        let link_name = managed.link.name.clone();
+        let mac = managed.link.mac_bytes.clone();
+        let mut mac_arr = [0u8; 6];
+        if mac.len() >= 6 {
+            mac_arr.copy_from_slice(&mac[..6]);
+        }
+
+        let request_addresses = managed_flag; // M flag = stateful, O only = stateless.
+
+        let dhcpv6_config = Dhcpv6ClientConfig {
+            ifindex,
+            ifname: link_name.clone(),
+            mac: mac_arr,
+            request_addresses,
+            rapid_commit: false,
+            max_attempts: 0,
+            ..Default::default()
+        };
+
+        log::info!(
+            "{}: starting DHCPv6 client from RA (M={} O={}, mode={})",
+            link_name,
+            managed_flag,
+            other_flag,
+            if request_addresses {
+                "stateful"
+            } else {
+                "stateless"
+            }
+        );
+
+        let client = Dhcpv6Client::new(dhcpv6_config);
+        let managed = self.links.get_mut(&ifindex).unwrap();
+        managed.dhcpv6_client = Some(client);
+        true
+    }
 }
 
 /// Summary status of a managed link (for display by `networkctl`).
@@ -1165,6 +1403,8 @@ mod tests {
             config: None,
             dhcp_client: None,
             lease: None,
+            dhcpv6_client: None,
+            dhcpv6_lease: None,
             admin_state: AdminState::Up,
             static_configured: false,
             has_carrier: true,
@@ -1184,6 +1424,8 @@ mod tests {
             config: Some(make_test_config("eth*", DhcpMode::Yes)),
             dhcp_client: None,
             lease: None,
+            dhcpv6_client: None,
+            dhcpv6_lease: None,
             admin_state: AdminState::Up,
             static_configured: true,
             has_carrier: true,
@@ -1203,6 +1445,8 @@ mod tests {
             config: Some(make_test_config("eth*", DhcpMode::No)),
             dhcp_client: None,
             lease: None,
+            dhcpv6_client: None,
+            dhcpv6_lease: None,
             admin_state: AdminState::Up,
             static_configured: true,
             has_carrier: true,
@@ -1224,6 +1468,8 @@ mod tests {
             config: Some(make_test_config("eth*", DhcpMode::No)),
             dhcp_client: None,
             lease: None,
+            dhcpv6_client: None,
+            dhcpv6_lease: None,
             admin_state: AdminState::Up,
             static_configured: true,
             has_carrier: false,
@@ -1243,6 +1489,8 @@ mod tests {
             config: Some(make_test_config("eth*", DhcpMode::No)),
             dhcp_client: None,
             lease: None,
+            dhcpv6_client: None,
+            dhcpv6_lease: None,
             admin_state: AdminState::Up,
             static_configured: false,
             has_carrier: true,
@@ -1296,6 +1544,8 @@ mod tests {
                 config: Some(make_test_config("eth*", DhcpMode::No)),
                 dhcp_client: None,
                 lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
                 admin_state: AdminState::Up,
                 static_configured: true,
                 has_carrier: true,
@@ -1326,6 +1576,8 @@ mod tests {
                 config: Some(make_test_config("ens*", DhcpMode::Yes)),
                 dhcp_client: None,
                 lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
                 admin_state: AdminState::Up,
                 static_configured: true,
                 has_carrier: true,
@@ -1379,6 +1631,8 @@ mod tests {
                 config: None,
                 dhcp_client: None,
                 lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
                 admin_state: AdminState::Unmanaged,
                 static_configured: false,
                 has_carrier: true,
@@ -1404,6 +1658,8 @@ mod tests {
                 config: Some(make_test_config("eth*", DhcpMode::Yes)),
                 dhcp_client: Some(DhcpClient::new(dhcp_config)),
                 lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
                 admin_state: AdminState::Up,
                 static_configured: true,
                 has_carrier: true,
@@ -1442,6 +1698,8 @@ mod tests {
                 config: Some(make_test_config("eth*", DhcpMode::Yes)),
                 dhcp_client: Some(DhcpClient::new(dhcp_config)),
                 lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
                 admin_state: AdminState::Up,
                 static_configured: true,
                 has_carrier: true,
