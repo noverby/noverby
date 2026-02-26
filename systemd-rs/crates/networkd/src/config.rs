@@ -49,6 +49,9 @@ pub struct NetworkConfig {
     /// `[DHCPv4]` section — DHCPv4 client tunables.
     pub dhcpv4: DhcpV4Section,
 
+    /// `[DHCPv6]` section — DHCPv6 client tunables.
+    pub dhcpv6: DhcpV6Section,
+
     /// `[Link]` section — link-layer tunables.
     pub link: LinkSection,
 }
@@ -492,6 +495,48 @@ impl fmt::Display for UidRange {
 // [DHCPv4]
 // ---------------------------------------------------------------------------
 
+/// Parsed `[DHCPv6]` section of a `.network` file.
+///
+/// Controls DHCPv6 client behaviour including prefix delegation.
+#[derive(Debug, Clone)]
+pub struct DhcpV6Section {
+    /// Whether to use DNS servers received via DHCPv6.
+    pub use_dns: bool,
+    /// Whether to use NTP servers received via DHCPv6.
+    pub use_ntp: bool,
+    /// Whether to use domains received via DHCPv6.
+    pub use_domains: bool,
+    /// Whether to use the address received via DHCPv6.
+    pub use_address: bool,
+    /// Whether to request prefix delegation (IA_PD).
+    pub prefix_delegation_hint: Option<String>,
+    /// Whether to use the delegated prefix.
+    pub use_delegated_prefix: bool,
+    /// Rapid Commit option (two-message exchange).
+    pub rapid_commit: bool,
+    /// Without RA — start DHCPv6 without waiting for Router Advertisement.
+    pub without_ra: bool,
+}
+
+impl Default for DhcpV6Section {
+    fn default() -> Self {
+        Self {
+            use_dns: true,
+            use_ntp: true,
+            use_domains: false,
+            use_address: true,
+            prefix_delegation_hint: None,
+            use_delegated_prefix: true,
+            rapid_commit: false,
+            without_ra: false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// [DHCPv4]
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone)]
 pub struct DhcpV4Section {
     /// `UseDNS=`
@@ -707,6 +752,7 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
         routes: Vec::new(),
         routing_policy_rules: Vec::new(),
         dhcpv4: DhcpV4Section::default(),
+        dhcpv6: DhcpV6Section::default(),
         link: LinkSection::default(),
     };
 
@@ -796,6 +842,7 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
                 }
             }
             "DHCPv4" | "DHCP" => parse_dhcpv4_entry(key, value, &mut cfg.dhcpv4),
+            "DHCPv6" => parse_dhcpv6_entry(key, value, &mut cfg.dhcpv6),
             "Link" => parse_link_entry(key, value, &mut cfg.link),
             section => {
                 // Silently skip unknown sections (vendor extensions, etc.)
@@ -1024,8 +1071,33 @@ fn parse_link_entry(key: &str, value: &str, section: &mut LinkSection) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn parse_dhcp_mode(value: &str) -> DhcpMode {
-    match value.to_lowercase().as_str() {
+fn parse_dhcpv6_entry(key: &str, value: &str, section: &mut DhcpV6Section) {
+    match key {
+        "UseDNS" => section.use_dns = parse_bool(value),
+        "UseNTP" => section.use_ntp = parse_bool(value),
+        "UseDomains" => section.use_domains = parse_bool(value),
+        "UseAddress" => section.use_address = parse_bool(value),
+        "PrefixDelegationHint" => {
+            if value.is_empty() {
+                section.prefix_delegation_hint = None;
+            } else {
+                section.prefix_delegation_hint = Some(value.to_string());
+            }
+        }
+        "UseDelegatedPrefix" => section.use_delegated_prefix = parse_bool(value),
+        "RapidCommit" => section.rapid_commit = parse_bool(value),
+        "WithoutRA" => {
+            let lower = value.to_lowercase();
+            section.without_ra = lower == "solicit" || parse_bool(value);
+        }
+        _ => {
+            log::trace!("Ignoring unknown [DHCPv6] key: {key}={value}");
+        }
+    }
+}
+
+fn parse_dhcp_mode(s: &str) -> DhcpMode {
+    match s.to_lowercase().as_str() {
         "yes" | "true" | "1" | "both" => DhcpMode::Yes,
         "ipv4" | "v4" => DhcpMode::Ipv4,
         "ipv6" | "v6" => DhcpMode::Ipv6,
