@@ -21,7 +21,9 @@
     done
   '';
 in {
-  systemd.package = pkgs.systemd-rs-systemd;
+  systemd.package = pkgs.systemd-rs-systemd.override {
+    systemd-rs = pkgs.systemd-rs-drowse;
+  };
 
   services.udev.packages = [udevRulesOverride];
 }
