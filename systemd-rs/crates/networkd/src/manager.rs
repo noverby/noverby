@@ -15,11 +15,11 @@ use std::collections::HashMap;
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::config::{self, DhcpMode, Ipv6AcceptRa, NetworkConfig};
+use crate::config::{self, DhcpMode, Ipv6AcceptRa, NetworkConfig, RuleFamily};
 use crate::dhcp::{self, DhcpClient, DhcpClientConfig, DhcpLease, DhcpState};
 use crate::dhcpv6::{Dhcpv6Client, Dhcpv6ClientConfig, Dhcpv6Lease};
 use crate::ipv6_ra::{self, RaAction, RaState, read_machine_id_as_bytes};
-use crate::link::{self, LinkInfo};
+use crate::link::{self, LinkInfo, RuleConfig};
 use crate::netdev::{self, NetDevConfig};
 use crate::netdev_create;
 
@@ -455,6 +455,25 @@ impl NetworkManager {
                 let is_exists = e.raw_os_error() == Some(libc::EEXIST);
                 if !is_exists {
                     log::warn!("Failed to add route to {link_name}: {e}");
+                }
+            }
+        }
+
+        // 4.5. Apply routing policy rules.
+        for rule_cfg in &config.routing_policy_rules {
+            if let Some(rule) = build_rule_config(rule_cfg, &link_name) {
+                log::info!(
+                    "Adding routing policy rule on {link_name}: from={:?} to={:?} table={} prio={:?}",
+                    rule.from,
+                    rule.to,
+                    rule.table,
+                    rule.priority,
+                );
+                if let Err(e) = link::add_rule(&rule) {
+                    let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                    if !is_exists {
+                        log::warn!("Failed to add routing policy rule on {link_name}: {e}");
+                    }
                 }
             }
         }
@@ -1452,6 +1471,86 @@ impl fmt::Display for LinkStatus {
     }
 }
 
+/// Build a [`RuleConfig`] from a parsed [`RoutingPolicyRuleSection`].
+///
+/// Determines the address family from the `From=`/`To=` addresses or the
+/// explicit `Family=` setting. Resolves table names, IP protocol names,
+/// and rule type names to their numeric equivalents.
+fn build_rule_config(
+    section: &config::RoutingPolicyRuleSection,
+    link_name: &str,
+) -> Option<RuleConfig> {
+    // Determine address family.
+    let family_from_addr = section
+        .from
+        .as_ref()
+        .and_then(|s| link::family_from_cidr(s))
+        .or_else(|| section.to.as_ref().and_then(|s| link::family_from_cidr(s)));
+
+    let family = match section.family {
+        Some(RuleFamily::Ipv4) => link::af_inet(),
+        Some(RuleFamily::Ipv6) => link::af_inet6(),
+        Some(RuleFamily::Both) => family_from_addr.unwrap_or(link::af_inet()),
+        None => family_from_addr.unwrap_or(link::af_inet()),
+    };
+
+    // Parse source prefix.
+    let from = section.from.as_ref().and_then(|s| {
+        config::parse_cidr(s).or_else(|| {
+            log::warn!("{link_name}: invalid From= address: {s}");
+            None
+        })
+    });
+
+    // Parse destination prefix.
+    let to = section.to.as_ref().and_then(|s| {
+        config::parse_cidr(s).or_else(|| {
+            log::warn!("{link_name}: invalid To= address: {s}");
+            None
+        })
+    });
+
+    // Resolve routing table.
+    let table = section
+        .table
+        .as_ref()
+        .and_then(|t| config::resolve_route_table(t))
+        .unwrap_or(254); // default: main
+
+    // Resolve IP protocol.
+    let ip_proto = section
+        .ip_protocol
+        .as_ref()
+        .and_then(|p| config::resolve_ip_protocol(p));
+
+    // Resolve rule action type.
+    let action = section
+        .rule_type
+        .as_ref()
+        .and_then(|t| config::resolve_rule_type(t))
+        .unwrap_or(link::fr_act_to_tbl());
+
+    Some(RuleConfig {
+        family,
+        from,
+        to,
+        tos: section.type_of_service.unwrap_or(0),
+        table,
+        priority: section.priority,
+        fwmark: section.firewall_mark,
+        fwmask: section.firewall_mask,
+        iifname: section.incoming_interface.clone(),
+        oifname: section.outgoing_interface.clone(),
+        sport_range: section.source_port.map(|pr| (pr.start, pr.end)),
+        dport_range: section.destination_port.map(|pr| (pr.start, pr.end)),
+        ip_proto,
+        invert: section.invert_rule,
+        uid_range: section.user.map(|ur| (ur.start, ur.end)),
+        suppress_prefix_length: section.suppress_prefix_length,
+        action,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1474,7 +1573,8 @@ mod tests {
             },
             addresses: Vec::new(),
             routes: Vec::new(),
-            dhcpv4: DhcpV4Section::default(),
+            routing_policy_rules: Vec::new(),
+            dhcpv4: config::DhcpV4Section::default(),
             link: LinkSection::default(),
         }
     }
@@ -1825,7 +1925,294 @@ mod tests {
         assert!(mgr.configs.is_empty());
     }
 
+    // -----------------------------------------------------------------------
+    // Routing policy rule integration tests
+    // -----------------------------------------------------------------------
     #[test]
+    fn test_build_rule_config_basic_ipv4() {
+        let section = RoutingPolicyRuleSection {
+            from: Some("192.168.1.0/24".to_string()),
+            table: Some("100".to_string()),
+            priority: Some(32765),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.family, link::af_inet());
+        assert_eq!(rule.table, 100);
+        assert_eq!(rule.priority, Some(32765));
+        assert!(rule.from.is_some());
+        let (addr, prefix) = rule.from.unwrap();
+        assert_eq!(prefix, 24);
+        assert!(matches!(addr, std::net::IpAddr::V4(_)));
+    }
+
+    #[test]
+    fn test_build_rule_config_ipv6() {
+        let section = RoutingPolicyRuleSection {
+            from: Some("2001:db8::/32".to_string()),
+            to: Some("fd00::/8".to_string()),
+            table: Some("200".to_string()),
+            family: Some(RuleFamily::Ipv6),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.family, link::af_inet6());
+        assert_eq!(rule.table, 200);
+        assert!(rule.from.is_some());
+        assert!(rule.to.is_some());
+    }
+
+    #[test]
+    fn test_build_rule_config_table_names() {
+        let section = RoutingPolicyRuleSection {
+            table: Some("main".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.table, 254);
+
+        let section2 = RoutingPolicyRuleSection {
+            table: Some("local".to_string()),
+            ..Default::default()
+        };
+        let rule2 = build_rule_config(&section2, "eth0").unwrap();
+        assert_eq!(rule2.table, 255);
+    }
+
+    #[test]
+    fn test_build_rule_config_firewall_mark() {
+        let section = RoutingPolicyRuleSection {
+            firewall_mark: Some(0xCAFE),
+            firewall_mask: Some(0xFFFF),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.fwmark, Some(0xCAFE));
+        assert_eq!(rule.fwmask, Some(0xFFFF));
+    }
+
+    #[test]
+    fn test_build_rule_config_with_interfaces() {
+        let section = RoutingPolicyRuleSection {
+            incoming_interface: Some("eth0".to_string()),
+            outgoing_interface: Some("eth1".to_string()),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.iifname.as_deref(), Some("eth0"));
+        assert_eq!(rule.oifname.as_deref(), Some("eth1"));
+    }
+
+    #[test]
+    fn test_build_rule_config_port_ranges() {
+        let section = RoutingPolicyRuleSection {
+            source_port: Some(PortRange {
+                start: 1024,
+                end: 65535,
+            }),
+            destination_port: Some(PortRange { start: 80, end: 80 }),
+            ip_protocol: Some("tcp".to_string()),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.sport_range, Some((1024, 65535)));
+        assert_eq!(rule.dport_range, Some((80, 80)));
+        assert_eq!(rule.ip_proto, Some(6)); // TCP
+    }
+
+    #[test]
+    fn test_build_rule_config_uid_range() {
+        let section = RoutingPolicyRuleSection {
+            user: Some(UidRange {
+                start: 1000,
+                end: 2000,
+            }),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.uid_range, Some((1000, 2000)));
+    }
+
+    #[test]
+    fn test_build_rule_config_invert() {
+        let section = RoutingPolicyRuleSection {
+            from: Some("10.0.0.0/8".to_string()),
+            invert_rule: true,
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert!(rule.invert);
+    }
+
+    #[test]
+    fn test_build_rule_config_suppress_prefix() {
+        let section = RoutingPolicyRuleSection {
+            suppress_prefix_length: Some(0),
+            table: Some("main".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.suppress_prefix_length, Some(0));
+        assert_eq!(rule.table, 254);
+    }
+
+    #[test]
+    fn test_build_rule_config_action_types() {
+        for (type_str, expected) in &[
+            ("blackhole", link::fr_act_blackhole()),
+            ("unreachable", link::fr_act_unreachable()),
+            ("prohibit", link::fr_act_prohibit()),
+            ("table", link::fr_act_to_tbl()),
+        ] {
+            let section = RoutingPolicyRuleSection {
+                rule_type: Some(type_str.to_string()),
+                table: Some("100".to_string()),
+                ..Default::default()
+            };
+            let rule = build_rule_config(&section, "eth0").unwrap();
+            assert_eq!(
+                rule.action, *expected,
+                "Type={} should map to action {}",
+                type_str, expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_rule_config_family_auto_detect_from_from() {
+        // Auto-detect IPv6 from the From= address.
+        let section = RoutingPolicyRuleSection {
+            from: Some("2001:db8::/32".to_string()),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.family, link::af_inet6());
+    }
+
+    #[test]
+    fn test_build_rule_config_family_auto_detect_from_to() {
+        // Auto-detect IPv6 from the To= address when From= is absent.
+        let section = RoutingPolicyRuleSection {
+            to: Some("fd00::/8".to_string()),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.family, link::af_inet6());
+    }
+
+    #[test]
+    fn test_build_rule_config_family_defaults_to_ipv4() {
+        // When no addresses and no family, default to IPv4.
+        let section = RoutingPolicyRuleSection {
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.family, link::af_inet());
+    }
+
+    #[test]
+    fn test_build_rule_config_family_explicit_overrides() {
+        // Explicit Family=ipv4 overrides auto-detected IPv6.
+        let section = RoutingPolicyRuleSection {
+            from: Some("192.168.1.0/24".to_string()),
+            family: Some(RuleFamily::Ipv4),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.family, link::af_inet());
+    }
+
+    #[test]
+    fn test_build_rule_config_tos() {
+        let section = RoutingPolicyRuleSection {
+            type_of_service: Some(16),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.tos, 16);
+    }
+
+    #[test]
+    fn test_build_rule_config_no_table_defaults_main() {
+        let section = RoutingPolicyRuleSection {
+            from: Some("10.0.0.0/8".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.table, 254); // main
+    }
+
+    #[test]
+    fn test_build_rule_config_all_fields() {
+        let section = RoutingPolicyRuleSection {
+            type_of_service: Some(8),
+            from: Some("10.0.0.0/8".to_string()),
+            to: Some("172.16.0.0/12".to_string()),
+            firewall_mark: Some(0x42),
+            firewall_mask: Some(0xFF),
+            table: Some("100".to_string()),
+            priority: Some(999),
+            incoming_interface: Some("wlan0".to_string()),
+            outgoing_interface: Some("eth0".to_string()),
+            source_port: Some(PortRange {
+                start: 5000,
+                end: 6000,
+            }),
+            destination_port: Some(PortRange {
+                start: 443,
+                end: 443,
+            }),
+            ip_protocol: Some("udp".to_string()),
+            invert_rule: true,
+            family: Some(RuleFamily::Ipv4),
+            user: Some(UidRange {
+                start: 0,
+                end: 65534,
+            }),
+            suppress_prefix_length: Some(0),
+            rule_type: Some("table".to_string()),
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        assert_eq!(rule.tos, 8);
+        assert!(rule.from.is_some());
+        assert!(rule.to.is_some());
+        assert_eq!(rule.fwmark, Some(0x42));
+        assert_eq!(rule.fwmask, Some(0xFF));
+        assert_eq!(rule.table, 100);
+        assert_eq!(rule.priority, Some(999));
+        assert_eq!(rule.iifname.as_deref(), Some("wlan0"));
+        assert_eq!(rule.oifname.as_deref(), Some("eth0"));
+        assert_eq!(rule.sport_range, Some((5000, 6000)));
+        assert_eq!(rule.dport_range, Some((443, 443)));
+        assert_eq!(rule.ip_proto, Some(17)); // UDP
+        assert!(rule.invert);
+        assert_eq!(rule.uid_range, Some((0, 65534)));
+        assert_eq!(rule.suppress_prefix_length, Some(0));
+        assert_eq!(rule.action, link::fr_act_to_tbl());
+    }
+
+    #[test]
+    fn test_build_rule_config_invalid_from_returns_none_from() {
+        let section = RoutingPolicyRuleSection {
+            from: Some("not-an-address".to_string()),
+            table: Some("100".to_string()),
+            ..Default::default()
+        };
+        let rule = build_rule_config(&section, "eth0").unwrap();
+        // Invalid address is silently dropped (with warning log).
+        assert!(rule.from.is_none());
+    }
+
     fn test_load_configs_from_with_files() {
         let mut mgr = NetworkManager::new();
         let dir = tempfile::tempdir().unwrap();

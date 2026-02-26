@@ -43,6 +43,9 @@ pub struct NetworkConfig {
     /// `[Route]` sections — static routes (there may be several).
     pub routes: Vec<RouteSection>,
 
+    /// `[RoutingPolicyRule]` sections — routing policy rules (there may be several).
+    pub routing_policy_rules: Vec<RoutingPolicyRuleSection>,
+
     /// `[DHCPv4]` section — DHCPv4 client tunables.
     pub dhcpv4: DhcpV4Section,
 
@@ -302,6 +305,190 @@ pub struct RouteSection {
 }
 
 // ---------------------------------------------------------------------------
+// [RoutingPolicyRule]
+// ---------------------------------------------------------------------------
+
+/// A parsed `[RoutingPolicyRule]` section from a `.network` file.
+///
+/// Routing policy rules (also known as "ip rules") control which routing table
+/// is consulted for a given packet based on source/destination address, TOS,
+/// firewall mark, incoming/outgoing interface, ports, and IP protocol.
+///
+/// Reference: systemd.network(5), ip-rule(8)
+#[derive(Debug, Clone, Default)]
+pub struct RoutingPolicyRuleSection {
+    /// `TypeOfService=` — match packets with the given TOS value (0–255).
+    pub type_of_service: Option<u8>,
+
+    /// `From=` — match source address prefix (CIDR notation, e.g. `192.168.1.0/24`).
+    pub from: Option<String>,
+
+    /// `To=` — match destination address prefix (CIDR notation).
+    pub to: Option<String>,
+
+    /// `FirewallMark=` — match packets with the given firewall mark value.
+    pub firewall_mark: Option<u32>,
+
+    /// `FirewallMask=` — mask to apply before comparing with `FirewallMark=`.
+    /// Defaults to 0xFFFFFFFF (exact match).
+    pub firewall_mask: Option<u32>,
+
+    /// `Table=` — routing table to look up if the rule matches.
+    /// May be a number (0–4294967295) or a name (`main`, `default`, `local`).
+    pub table: Option<String>,
+
+    /// `Priority=` — rule priority (lower = evaluated first). If unset, the
+    /// kernel assigns a priority automatically.
+    pub priority: Option<u32>,
+
+    /// `IncomingInterface=` — match packets arriving on this interface.
+    pub incoming_interface: Option<String>,
+
+    /// `OutgoingInterface=` — match packets departing via this interface.
+    pub outgoing_interface: Option<String>,
+
+    /// `SourcePort=` — match source port or port range (`1024` or `1024-65535`).
+    pub source_port: Option<PortRange>,
+
+    /// `DestinationPort=` — match destination port or port range.
+    pub destination_port: Option<PortRange>,
+
+    /// `IPProtocol=` — match IP protocol (number or name like `tcp`, `udp`, `icmp`).
+    pub ip_protocol: Option<String>,
+
+    /// `InvertRule=` — if true, invert the rule match (FRA_INVERT / `not` flag).
+    pub invert_rule: bool,
+
+    /// `Family=` — address family restriction (`ipv4`, `ipv6`, or `both`).
+    pub family: Option<RuleFamily>,
+
+    /// `User=` — match packets from the given UID or UID range (`1000` or `1000-2000`).
+    pub user: Option<UidRange>,
+
+    /// `SuppressPrefixLength=` — suppress routing table lookup if the matching
+    /// route has a prefix length less than or equal to this value. Commonly
+    /// used with `SuppressPrefixLength=0` to ignore default routes.
+    pub suppress_prefix_length: Option<i32>,
+
+    /// `Type=` — rule action type: `blackhole`, `unreachable`, `prohibit`, or
+    /// `goto` (with table as target priority). Default is `table` (normal lookup).
+    pub rule_type: Option<String>,
+}
+
+/// A port range for routing policy rules (single port or start-end).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PortRange {
+    /// Start of the port range (inclusive).
+    pub start: u16,
+    /// End of the port range (inclusive). Equal to `start` for a single port.
+    pub end: u16,
+}
+
+impl PortRange {
+    /// Parse a port or port range string (`"80"` or `"1024-65535"`).
+    pub fn parse(s: &str) -> Option<PortRange> {
+        let s = s.trim();
+        if let Some((a, b)) = s.split_once('-') {
+            let start: u16 = a.trim().parse().ok()?;
+            let end: u16 = b.trim().parse().ok()?;
+            if start > end {
+                return None;
+            }
+            Some(PortRange { start, end })
+        } else {
+            let port: u16 = s.parse().ok()?;
+            Some(PortRange {
+                start: port,
+                end: port,
+            })
+        }
+    }
+}
+
+impl fmt::Display for PortRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.start == self.end {
+            write!(f, "{}", self.start)
+        } else {
+            write!(f, "{}-{}", self.start, self.end)
+        }
+    }
+}
+
+/// Address family for routing policy rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleFamily {
+    /// IPv4 only.
+    Ipv4,
+    /// IPv6 only.
+    Ipv6,
+    /// Both IPv4 and IPv6.
+    Both,
+}
+
+impl RuleFamily {
+    /// Parse a family string (`"ipv4"`, `"ipv6"`, `"both"`).
+    pub fn parse(s: &str) -> Option<RuleFamily> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "ipv4" => Some(RuleFamily::Ipv4),
+            "ipv6" => Some(RuleFamily::Ipv6),
+            "both" => Some(RuleFamily::Both),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for RuleFamily {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RuleFamily::Ipv4 => write!(f, "ipv4"),
+            RuleFamily::Ipv6 => write!(f, "ipv6"),
+            RuleFamily::Both => write!(f, "both"),
+        }
+    }
+}
+
+/// A UID range for routing policy rules (single UID or start-end).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UidRange {
+    /// Start of the UID range (inclusive).
+    pub start: u32,
+    /// End of the UID range (inclusive). Equal to `start` for a single UID.
+    pub end: u32,
+}
+
+impl UidRange {
+    /// Parse a UID or UID range string (`"1000"` or `"1000-2000"`).
+    pub fn parse(s: &str) -> Option<UidRange> {
+        let s = s.trim();
+        if let Some((a, b)) = s.split_once('-') {
+            let start: u32 = a.trim().parse().ok()?;
+            let end: u32 = b.trim().parse().ok()?;
+            if start > end {
+                return None;
+            }
+            Some(UidRange { start, end })
+        } else {
+            let uid: u32 = s.parse().ok()?;
+            Some(UidRange {
+                start: uid,
+                end: uid,
+            })
+        }
+    }
+}
+
+impl fmt::Display for UidRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.start == self.end {
+            write!(f, "{}", self.start)
+        } else {
+            write!(f, "{}-{}", self.start, self.end)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // [DHCPv4]
 // ---------------------------------------------------------------------------
 
@@ -518,14 +705,16 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
         network_section: NetworkSection::default(),
         addresses: Vec::new(),
         routes: Vec::new(),
+        routing_policy_rules: Vec::new(),
         dhcpv4: DhcpV4Section::default(),
         link: LinkSection::default(),
     };
 
     let mut current_section = String::new();
-    // Track whether we're accumulating into a new Address/Route section.
+    // Track whether we're accumulating into a new Address/Route/Rule section.
     let mut current_address: Option<AddressSection> = None;
     let mut current_route: Option<RouteSection> = None;
+    let mut current_rule: Option<RoutingPolicyRuleSection> = None;
 
     for line in content.lines() {
         let line = line.trim();
@@ -537,12 +726,15 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
 
         // Section header.
         if line.starts_with('[') && line.ends_with(']') {
-            // Flush any pending address/route.
+            // Flush any pending address/route/rule.
             if let Some(addr) = current_address.take() {
                 cfg.addresses.push(addr);
             }
             if let Some(route) = current_route.take() {
                 cfg.routes.push(route);
+            }
+            if let Some(rule) = current_rule.take() {
+                cfg.routing_policy_rules.push(rule);
             }
 
             current_section = line[1..line.len() - 1].to_string();
@@ -570,6 +762,9 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
                         route_type: None,
                     });
                 }
+                "RoutingPolicyRule" => {
+                    current_rule = Some(RoutingPolicyRuleSection::default());
+                }
                 _ => {}
             }
 
@@ -595,6 +790,11 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
                     parse_route_entry(key, value, route);
                 }
             }
+            "RoutingPolicyRule" => {
+                if let Some(ref mut rule) = current_rule {
+                    parse_routing_policy_rule_entry(key, value, rule);
+                }
+            }
             "DHCPv4" | "DHCP" => parse_dhcpv4_entry(key, value, &mut cfg.dhcpv4),
             "Link" => parse_link_entry(key, value, &mut cfg.link),
             section => {
@@ -615,6 +815,9 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
     }
     if let Some(route) = current_route {
         cfg.routes.push(route);
+    }
+    if let Some(rule) = current_rule {
+        cfg.routing_policy_rules.push(rule);
     }
 
     Ok(cfg)
@@ -701,6 +904,83 @@ fn parse_route_entry(key: &str, value: &str, section: &mut RouteSection) {
         "Scope" => section.scope = Some(value.to_string()),
         "Table" => section.table = Some(value.to_string()),
         "Type" => section.route_type = Some(value.to_string()),
+        _ => {}
+    }
+}
+
+fn parse_routing_policy_rule_entry(key: &str, value: &str, section: &mut RoutingPolicyRuleSection) {
+    match key {
+        "TypeOfService" => section.type_of_service = value.parse().ok(),
+        "From" => {
+            section.from = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
+        "To" => {
+            section.to = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
+        "FirewallMark" => {
+            section.firewall_mark = if value.starts_with("0x") || value.starts_with("0X") {
+                u32::from_str_radix(&value[2..], 16).ok()
+            } else {
+                value.parse().ok()
+            }
+        }
+        "FirewallMask" => {
+            section.firewall_mask = if value.starts_with("0x") || value.starts_with("0X") {
+                u32::from_str_radix(&value[2..], 16).ok()
+            } else {
+                value.parse().ok()
+            }
+        }
+        "Table" => {
+            section.table = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
+        "Priority" => section.priority = value.parse().ok(),
+        "IncomingInterface" => {
+            section.incoming_interface = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
+        "OutgoingInterface" => {
+            section.outgoing_interface = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
+        "SourcePort" => section.source_port = PortRange::parse(value),
+        "DestinationPort" => section.destination_port = PortRange::parse(value),
+        "IPProtocol" => {
+            section.ip_protocol = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
+        "InvertRule" => section.invert_rule = parse_bool(value),
+        "Family" => section.family = RuleFamily::parse(value),
+        "User" => section.user = UidRange::parse(value),
+        "SuppressPrefixLength" => section.suppress_prefix_length = value.parse().ok(),
+        "Type" => {
+            section.rule_type = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
         _ => {}
     }
 }
@@ -879,9 +1159,615 @@ pub use libsystemd::link_config::{
 // Tests
 // ---------------------------------------------------------------------------
 
+/// Resolve a routing table name to a numeric ID.
+///
+/// Accepts numeric values directly, or the well-known names:
+/// - `default` → 253
+/// - `main` → 254
+/// - `local` → 255
+/// - `unspec` → 0
+pub fn resolve_route_table(table: &str) -> Option<u32> {
+    match table.trim().to_ascii_lowercase().as_str() {
+        "default" => Some(253),
+        "main" => Some(254),
+        "local" => Some(255),
+        "unspec" => Some(0),
+        _ => table.trim().parse().ok(),
+    }
+}
+
+/// Resolve an IP protocol name to a number.
+///
+/// Accepts numeric values directly, or common protocol names:
+/// - `tcp` → 6, `udp` → 17, `icmp` → 1, `icmpv6` → 58, `gre` → 47,
+///   `esp` → 50, `ah` → 51, `sctp` → 132, `ospf` → 89, `vrrp` → 112
+pub fn resolve_ip_protocol(proto: &str) -> Option<u8> {
+    match proto.trim().to_ascii_lowercase().as_str() {
+        "tcp" => Some(6),
+        "udp" => Some(17),
+        "icmp" => Some(1),
+        "icmpv6" | "ipv6-icmp" => Some(58),
+        "gre" => Some(47),
+        "esp" => Some(50),
+        "ah" => Some(51),
+        "sctp" => Some(132),
+        "ospf" | "ospfigp" => Some(89),
+        "vrrp" => Some(112),
+        "igmp" => Some(2),
+        "ipip" | "ipencap" => Some(4),
+        "ipv6" | "ipv6-route" => Some(43),
+        "ipv6-frag" => Some(44),
+        "ipv6-nonxt" | "ipv6-no-next-header" => Some(59),
+        "ipv6-opts" => Some(60),
+        "l2tp" => Some(115),
+        "dccp" => Some(33),
+        "udplite" => Some(136),
+        _ => proto.trim().parse().ok(),
+    }
+}
+
+/// Resolve a routing policy rule type name to the kernel constant.
+///
+/// - `blackhole` → 6 (RTN_BLACKHOLE)
+/// - `unreachable` → 7 (RTN_UNREACHABLE)
+/// - `prohibit` → 8 (RTN_PROHIBIT)
+/// - `table` → 1 (RTN_UNICAST, normal lookup — the default)
+pub fn resolve_rule_type(rule_type: &str) -> Option<u8> {
+    match rule_type.trim().to_ascii_lowercase().as_str() {
+        "blackhole" => Some(6),
+        "unreachable" => Some(7),
+        "prohibit" => Some(8),
+        "table" => Some(1),
+        _ => rule_type.trim().parse().ok(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -----------------------------------------------------------------------
+    // RoutingPolicyRule parsing tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_parse_routing_policy_rule_basic() {
+        let content = "\
+[Match]
+Name=eth0
+
+[RoutingPolicyRule]
+From=192.168.1.0/24
+Table=100
+Priority=32765
+";
+        let cfg = parse_network_content(content, Path::new("/test/basic.network")).unwrap();
+        assert_eq!(cfg.routing_policy_rules.len(), 1);
+        let rule = &cfg.routing_policy_rules[0];
+        assert_eq!(rule.from.as_deref(), Some("192.168.1.0/24"));
+        assert_eq!(rule.table.as_deref(), Some("100"));
+        assert_eq!(rule.priority, Some(32765));
+        assert!(rule.to.is_none());
+        assert!(rule.firewall_mark.is_none());
+        assert!(!rule.invert_rule);
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_all_fields() {
+        let content = "\
+[RoutingPolicyRule]
+TypeOfService=16
+From=10.0.0.0/8
+To=172.16.0.0/12
+FirewallMark=0xff
+FirewallMask=0xffff
+Table=main
+Priority=100
+IncomingInterface=eth0
+OutgoingInterface=eth1
+SourcePort=1024-65535
+DestinationPort=80
+IPProtocol=tcp
+InvertRule=yes
+Family=ipv4
+User=1000-2000
+SuppressPrefixLength=0
+Type=blackhole
+";
+        let cfg = parse_network_content(content, Path::new("/test/all.network")).unwrap();
+        assert_eq!(cfg.routing_policy_rules.len(), 1);
+        let rule = &cfg.routing_policy_rules[0];
+        assert_eq!(rule.type_of_service, Some(16));
+        assert_eq!(rule.from.as_deref(), Some("10.0.0.0/8"));
+        assert_eq!(rule.to.as_deref(), Some("172.16.0.0/12"));
+        assert_eq!(rule.firewall_mark, Some(0xff));
+        assert_eq!(rule.firewall_mask, Some(0xffff));
+        assert_eq!(rule.table.as_deref(), Some("main"));
+        assert_eq!(rule.priority, Some(100));
+        assert_eq!(rule.incoming_interface.as_deref(), Some("eth0"));
+        assert_eq!(rule.outgoing_interface.as_deref(), Some("eth1"));
+        assert_eq!(
+            rule.source_port,
+            Some(PortRange {
+                start: 1024,
+                end: 65535
+            })
+        );
+        assert_eq!(
+            rule.destination_port,
+            Some(PortRange { start: 80, end: 80 })
+        );
+        assert_eq!(rule.ip_protocol.as_deref(), Some("tcp"));
+        assert!(rule.invert_rule);
+        assert_eq!(rule.family, Some(RuleFamily::Ipv4));
+        assert_eq!(
+            rule.user,
+            Some(UidRange {
+                start: 1000,
+                end: 2000
+            })
+        );
+        assert_eq!(rule.suppress_prefix_length, Some(0));
+        assert_eq!(rule.rule_type.as_deref(), Some("blackhole"));
+    }
+
+    #[test]
+    fn test_parse_multiple_routing_policy_rules() {
+        let content = "\
+[RoutingPolicyRule]
+From=10.0.0.0/8
+Table=100
+
+[RoutingPolicyRule]
+From=172.16.0.0/12
+Table=200
+
+[RoutingPolicyRule]
+To=192.168.0.0/16
+Table=300
+Priority=1000
+";
+        let cfg = parse_network_content(content, Path::new("/test/multi.network")).unwrap();
+        assert_eq!(cfg.routing_policy_rules.len(), 3);
+        assert_eq!(
+            cfg.routing_policy_rules[0].from.as_deref(),
+            Some("10.0.0.0/8")
+        );
+        assert_eq!(cfg.routing_policy_rules[0].table.as_deref(), Some("100"));
+        assert_eq!(
+            cfg.routing_policy_rules[1].from.as_deref(),
+            Some("172.16.0.0/12")
+        );
+        assert_eq!(cfg.routing_policy_rules[1].table.as_deref(), Some("200"));
+        assert_eq!(
+            cfg.routing_policy_rules[2].to.as_deref(),
+            Some("192.168.0.0/16")
+        );
+        assert_eq!(cfg.routing_policy_rules[2].table.as_deref(), Some("300"));
+        assert_eq!(cfg.routing_policy_rules[2].priority, Some(1000));
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_with_routes_and_addresses() {
+        let content = "\
+[Address]
+Address=10.0.0.1/24
+
+[Route]
+Gateway=10.0.0.254
+
+[RoutingPolicyRule]
+From=10.0.0.0/24
+Table=100
+";
+        let cfg = parse_network_content(content, Path::new("/test/mixed.network")).unwrap();
+        assert_eq!(cfg.addresses.len(), 1);
+        assert_eq!(cfg.routes.len(), 1);
+        assert_eq!(cfg.routing_policy_rules.len(), 1);
+        assert_eq!(
+            cfg.routing_policy_rules[0].from.as_deref(),
+            Some("10.0.0.0/24")
+        );
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_empty_section() {
+        let content = "\
+[RoutingPolicyRule]
+";
+        let cfg = parse_network_content(content, Path::new("/test/empty.network")).unwrap();
+        assert_eq!(cfg.routing_policy_rules.len(), 1);
+        let rule = &cfg.routing_policy_rules[0];
+        assert!(rule.from.is_none());
+        assert!(rule.to.is_none());
+        assert!(rule.table.is_none());
+        assert!(rule.priority.is_none());
+        assert!(!rule.invert_rule);
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_firewall_mark_decimal() {
+        let content = "\
+[RoutingPolicyRule]
+FirewallMark=42
+FirewallMask=255
+Table=100
+";
+        let cfg = parse_network_content(content, Path::new("/test/fwmark.network")).unwrap();
+        let rule = &cfg.routing_policy_rules[0];
+        assert_eq!(rule.firewall_mark, Some(42));
+        assert_eq!(rule.firewall_mask, Some(255));
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_firewall_mark_hex() {
+        let content = "\
+[RoutingPolicyRule]
+FirewallMark=0xCAFE
+FirewallMask=0xFFFF
+Table=200
+";
+        let cfg = parse_network_content(content, Path::new("/test/fwmark_hex.network")).unwrap();
+        let rule = &cfg.routing_policy_rules[0];
+        assert_eq!(rule.firewall_mark, Some(0xCAFE));
+        assert_eq!(rule.firewall_mask, Some(0xFFFF));
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_ipv6_from_to() {
+        let content = "\
+[RoutingPolicyRule]
+From=2001:db8::/32
+To=fd00::/8
+Table=100
+Family=ipv6
+";
+        let cfg = parse_network_content(content, Path::new("/test/ipv6.network")).unwrap();
+        let rule = &cfg.routing_policy_rules[0];
+        assert_eq!(rule.from.as_deref(), Some("2001:db8::/32"));
+        assert_eq!(rule.to.as_deref(), Some("fd00::/8"));
+        assert_eq!(rule.family, Some(RuleFamily::Ipv6));
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_unknown_keys_ignored() {
+        let content = "\
+[RoutingPolicyRule]
+From=10.0.0.0/8
+Table=100
+UnknownKey=value
+AnotherUnknown=42
+";
+        let cfg = parse_network_content(content, Path::new("/test/unknown.network")).unwrap();
+        assert_eq!(cfg.routing_policy_rules.len(), 1);
+        assert_eq!(
+            cfg.routing_policy_rules[0].from.as_deref(),
+            Some("10.0.0.0/8")
+        );
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_type_of_service_range() {
+        let content = "\
+[RoutingPolicyRule]
+TypeOfService=0
+Table=100
+";
+        let cfg = parse_network_content(content, Path::new("/test/tos0.network")).unwrap();
+        assert_eq!(cfg.routing_policy_rules[0].type_of_service, Some(0));
+
+        let content2 = "\
+[RoutingPolicyRule]
+TypeOfService=255
+Table=200
+";
+        let cfg2 = parse_network_content(content2, Path::new("/test/tos255.network")).unwrap();
+        assert_eq!(cfg2.routing_policy_rules[0].type_of_service, Some(255));
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_suppress_prefix_length() {
+        let content = "\
+[RoutingPolicyRule]
+SuppressPrefixLength=0
+Table=main
+";
+        let cfg = parse_network_content(content, Path::new("/test/suppress.network")).unwrap();
+        assert_eq!(cfg.routing_policy_rules[0].suppress_prefix_length, Some(0));
+
+        let content2 = "\
+[RoutingPolicyRule]
+SuppressPrefixLength=-1
+Table=main
+";
+        let cfg2 =
+            parse_network_content(content2, Path::new("/test/suppress_neg.network")).unwrap();
+        assert_eq!(
+            cfg2.routing_policy_rules[0].suppress_prefix_length,
+            Some(-1)
+        );
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_empty_resets() {
+        let content = "\
+[RoutingPolicyRule]
+From=10.0.0.0/8
+To=172.16.0.0/12
+Table=100
+";
+        let cfg = parse_network_content(content, Path::new("/test/reset.network")).unwrap();
+        // Verify the fields parse correctly.
+        assert!(cfg.routing_policy_rules[0].from.is_some());
+
+        // An empty value should clear the field.
+        let content2 = "\
+[RoutingPolicyRule]
+From=
+To=
+Table=
+";
+        let cfg2 = parse_network_content(content2, Path::new("/test/reset2.network")).unwrap();
+        assert!(cfg2.routing_policy_rules[0].from.is_none());
+        assert!(cfg2.routing_policy_rules[0].to.is_none());
+        assert!(cfg2.routing_policy_rules[0].table.is_none());
+    }
+
+    #[test]
+    fn test_parse_routing_policy_rule_invert_bool_variants() {
+        for (val, expected) in &[
+            ("yes", true),
+            ("no", false),
+            ("true", true),
+            ("false", false),
+            ("1", true),
+            ("0", false),
+            ("on", true),
+            ("off", false),
+        ] {
+            let content = format!("[RoutingPolicyRule]\nInvertRule={}\nTable=100\n", val);
+            let cfg = parse_network_content(&content, Path::new("/test/invert.network")).unwrap();
+            assert_eq!(
+                cfg.routing_policy_rules[0].invert_rule, *expected,
+                "InvertRule={} should be {}",
+                val, expected
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // PortRange tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_port_range_parse_single() {
+        let pr = PortRange::parse("80").unwrap();
+        assert_eq!(pr.start, 80);
+        assert_eq!(pr.end, 80);
+    }
+
+    #[test]
+    fn test_port_range_parse_range() {
+        let pr = PortRange::parse("1024-65535").unwrap();
+        assert_eq!(pr.start, 1024);
+        assert_eq!(pr.end, 65535);
+    }
+
+    #[test]
+    fn test_port_range_parse_with_spaces() {
+        let pr = PortRange::parse(" 80 - 443 ").unwrap();
+        assert_eq!(pr.start, 80);
+        assert_eq!(pr.end, 443);
+    }
+
+    #[test]
+    fn test_port_range_parse_invalid_reversed() {
+        assert!(PortRange::parse("443-80").is_none());
+    }
+
+    #[test]
+    fn test_port_range_parse_invalid_text() {
+        assert!(PortRange::parse("abc").is_none());
+    }
+
+    #[test]
+    fn test_port_range_parse_empty() {
+        assert!(PortRange::parse("").is_none());
+    }
+
+    #[test]
+    fn test_port_range_display_single() {
+        let pr = PortRange { start: 80, end: 80 };
+        assert_eq!(format!("{}", pr), "80");
+    }
+
+    #[test]
+    fn test_port_range_display_range() {
+        let pr = PortRange {
+            start: 1024,
+            end: 65535,
+        };
+        assert_eq!(format!("{}", pr), "1024-65535");
+    }
+
+    // -----------------------------------------------------------------------
+    // RuleFamily tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_rule_family_parse() {
+        assert_eq!(RuleFamily::parse("ipv4"), Some(RuleFamily::Ipv4));
+        assert_eq!(RuleFamily::parse("ipv6"), Some(RuleFamily::Ipv6));
+        assert_eq!(RuleFamily::parse("both"), Some(RuleFamily::Both));
+    }
+
+    #[test]
+    fn test_rule_family_parse_case_insensitive() {
+        assert_eq!(RuleFamily::parse("IPV4"), Some(RuleFamily::Ipv4));
+        assert_eq!(RuleFamily::parse("IPv6"), Some(RuleFamily::Ipv6));
+        assert_eq!(RuleFamily::parse("Both"), Some(RuleFamily::Both));
+    }
+
+    #[test]
+    fn test_rule_family_parse_invalid() {
+        assert!(RuleFamily::parse("inet").is_none());
+        assert!(RuleFamily::parse("").is_none());
+    }
+
+    #[test]
+    fn test_rule_family_display() {
+        assert_eq!(format!("{}", RuleFamily::Ipv4), "ipv4");
+        assert_eq!(format!("{}", RuleFamily::Ipv6), "ipv6");
+        assert_eq!(format!("{}", RuleFamily::Both), "both");
+    }
+
+    // -----------------------------------------------------------------------
+    // UidRange tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_uid_range_parse_single() {
+        let ur = UidRange::parse("1000").unwrap();
+        assert_eq!(ur.start, 1000);
+        assert_eq!(ur.end, 1000);
+    }
+
+    #[test]
+    fn test_uid_range_parse_range() {
+        let ur = UidRange::parse("1000-2000").unwrap();
+        assert_eq!(ur.start, 1000);
+        assert_eq!(ur.end, 2000);
+    }
+
+    #[test]
+    fn test_uid_range_parse_reversed_invalid() {
+        assert!(UidRange::parse("2000-1000").is_none());
+    }
+
+    #[test]
+    fn test_uid_range_parse_invalid() {
+        assert!(UidRange::parse("abc").is_none());
+    }
+
+    #[test]
+    fn test_uid_range_display_single() {
+        let ur = UidRange {
+            start: 1000,
+            end: 1000,
+        };
+        assert_eq!(format!("{}", ur), "1000");
+    }
+
+    #[test]
+    fn test_uid_range_display_range() {
+        let ur = UidRange {
+            start: 1000,
+            end: 2000,
+        };
+        assert_eq!(format!("{}", ur), "1000-2000");
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_route_table tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_route_table_names() {
+        assert_eq!(resolve_route_table("main"), Some(254));
+        assert_eq!(resolve_route_table("default"), Some(253));
+        assert_eq!(resolve_route_table("local"), Some(255));
+        assert_eq!(resolve_route_table("unspec"), Some(0));
+    }
+
+    #[test]
+    fn test_resolve_route_table_case_insensitive() {
+        assert_eq!(resolve_route_table("Main"), Some(254));
+        assert_eq!(resolve_route_table("DEFAULT"), Some(253));
+        assert_eq!(resolve_route_table("LOCAL"), Some(255));
+    }
+
+    #[test]
+    fn test_resolve_route_table_numeric() {
+        assert_eq!(resolve_route_table("100"), Some(100));
+        assert_eq!(resolve_route_table("0"), Some(0));
+        assert_eq!(resolve_route_table("4294967295"), Some(4294967295));
+    }
+
+    #[test]
+    fn test_resolve_route_table_invalid() {
+        assert!(resolve_route_table("foobar").is_none());
+        assert!(resolve_route_table("").is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_ip_protocol tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_ip_protocol_names() {
+        assert_eq!(resolve_ip_protocol("tcp"), Some(6));
+        assert_eq!(resolve_ip_protocol("udp"), Some(17));
+        assert_eq!(resolve_ip_protocol("icmp"), Some(1));
+        assert_eq!(resolve_ip_protocol("icmpv6"), Some(58));
+        assert_eq!(resolve_ip_protocol("gre"), Some(47));
+        assert_eq!(resolve_ip_protocol("esp"), Some(50));
+        assert_eq!(resolve_ip_protocol("ah"), Some(51));
+        assert_eq!(resolve_ip_protocol("sctp"), Some(132));
+        assert_eq!(resolve_ip_protocol("ospf"), Some(89));
+        assert_eq!(resolve_ip_protocol("vrrp"), Some(112));
+    }
+
+    #[test]
+    fn test_resolve_ip_protocol_case_insensitive() {
+        assert_eq!(resolve_ip_protocol("TCP"), Some(6));
+        assert_eq!(resolve_ip_protocol("Udp"), Some(17));
+        assert_eq!(resolve_ip_protocol("ICMP"), Some(1));
+    }
+
+    #[test]
+    fn test_resolve_ip_protocol_numeric() {
+        assert_eq!(resolve_ip_protocol("6"), Some(6));
+        assert_eq!(resolve_ip_protocol("17"), Some(17));
+        assert_eq!(resolve_ip_protocol("47"), Some(47));
+    }
+
+    #[test]
+    fn test_resolve_ip_protocol_invalid() {
+        assert!(resolve_ip_protocol("foobar").is_none());
+        assert!(resolve_ip_protocol("").is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_rule_type tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_rule_type() {
+        assert_eq!(resolve_rule_type("blackhole"), Some(6));
+        assert_eq!(resolve_rule_type("unreachable"), Some(7));
+        assert_eq!(resolve_rule_type("prohibit"), Some(8));
+        assert_eq!(resolve_rule_type("table"), Some(1));
+    }
+
+    #[test]
+    fn test_resolve_rule_type_case_insensitive() {
+        assert_eq!(resolve_rule_type("Blackhole"), Some(6));
+        assert_eq!(resolve_rule_type("UNREACHABLE"), Some(7));
+    }
+
+    #[test]
+    fn test_resolve_rule_type_numeric() {
+        assert_eq!(resolve_rule_type("6"), Some(6));
+        assert_eq!(resolve_rule_type("7"), Some(7));
+    }
+
+    #[test]
+    fn test_resolve_rule_type_invalid() {
+        assert!(resolve_rule_type("foobar").is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Existing tests
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_parse_minimal_network() {
