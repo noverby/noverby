@@ -3838,6 +3838,16 @@ pub struct EnvVars {
 
 impl std::fmt::Display for Commandline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for p in &self.prefixes {
+            match p {
+                CommandlinePrefix::Minus => write!(f, "-")?,
+                CommandlinePrefix::AtSign => write!(f, "@")?,
+                CommandlinePrefix::Plus => write!(f, "+")?,
+                CommandlinePrefix::Colon => write!(f, ":")?,
+                CommandlinePrefix::Exclamation => write!(f, "!")?,
+                CommandlinePrefix::DoubleExclamation => write!(f, "!!")?,
+            }
+        }
         write!(f, "{}", self.cmd)?;
         for arg in &self.args {
             write!(f, " {arg}")?;

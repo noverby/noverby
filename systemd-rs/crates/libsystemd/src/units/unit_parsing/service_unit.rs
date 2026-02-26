@@ -379,39 +379,26 @@ fn parse_cmdline(raw_line: &str) -> Result<Commandline, ParsingErrorReason> {
                 CommandlinePrefix::Minus
             }
             "+" => {
-                return Err(ParsingErrorReason::UnsupportedSetting(
-                    "The prefix '+' for cmdlines is currently not supported".into(),
-                ));
-                //cmd = cmd[1..].to_owned();
-                //CommandlinePrefix::Plus
+                cmd = cmd[1..].to_owned();
+                CommandlinePrefix::Plus
             }
             "@" => {
                 cmd = cmd[1..].to_owned();
                 CommandlinePrefix::AtSign
             }
             ":" => {
-                return Err(ParsingErrorReason::UnsupportedSetting(
-                    "The prefix ':' for cmdlines is currently not supported".into(),
-                ));
-                //cmd = cmd[1..].to_owned();
-                //CommandlinePrefix::Colon
+                cmd = cmd[1..].to_owned();
+                CommandlinePrefix::Colon
             }
-            "!" => match &cmd[1..2] {
-                "!" => {
-                    return Err(ParsingErrorReason::UnsupportedSetting(
-                        "The prefix '!!' for cmdlines is currently not supported".into(),
-                    ));
-                    //cmd = cmd[2..].to_owned();
-                    //CommandlinePrefix::DoubleExclamation
+            "!" => {
+                if cmd.len() > 1 && &cmd[1..2] == "!" {
+                    cmd = cmd[2..].to_owned();
+                    CommandlinePrefix::DoubleExclamation
+                } else {
+                    cmd = cmd[1..].to_owned();
+                    CommandlinePrefix::Exclamation
                 }
-                _ => {
-                    return Err(ParsingErrorReason::UnsupportedSetting(
-                        "The prefix '!' for cmdlines is currently not supported".into(),
-                    ));
-                    //cmd = cmd[1..].to_owned();
-                    //CommandlinePrefix::Exclamation
-                }
-            },
+            }
             _ => break,
         };
         prefixes.push(prefix);
@@ -3524,5 +3511,290 @@ MemoryMax=2G
             config.srvc.memory_zswap_max,
             Some(super::super::MemoryLimit::Bytes(1024 * 1024 * 1024))
         );
+    }
+
+    // ── Command line prefix tests ─────────────────────────────────────
+
+    #[test]
+    fn test_plus_prefix_execstart() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = +/usr/bin/foo arg1 arg2
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert_eq!(exec.args, vec!["arg1", "arg2"]);
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Plus)
+        );
+    }
+
+    #[test]
+    fn test_colon_prefix_execstart() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = :/usr/bin/foo arg1
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Colon)
+        );
+    }
+
+    #[test]
+    fn test_exclamation_prefix_execstart() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = !/usr/bin/foo arg1
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Exclamation)
+        );
+    }
+
+    #[test]
+    fn test_double_exclamation_prefix_execstart() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = !!/usr/bin/foo arg1
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::DoubleExclamation)
+        );
+    }
+
+    #[test]
+    fn test_plus_prefix_combined_with_minus() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = -+/usr/bin/foo arg1
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Minus)
+        );
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Plus)
+        );
+    }
+
+    #[test]
+    fn test_plus_prefix_combined_with_at() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = +@/usr/bin/foo bar arg1
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Plus)
+        );
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::AtSign)
+        );
+    }
+
+    #[test]
+    fn test_colon_prefix_combined_with_minus() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = -:/usr/bin/foo
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Minus)
+        );
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Colon)
+        );
+    }
+
+    #[test]
+    fn test_exclamation_prefix_combined_with_minus_and_at() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = -!@/usr/bin/foo bar arg1
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Minus)
+        );
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Exclamation)
+        );
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::AtSign)
+        );
+    }
+
+    #[test]
+    fn test_plus_prefix_execstartpre() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStartPre = +/usr/bin/setup --init
+            ExecStart = /usr/bin/main
+            "#,
+        )
+        .unwrap();
+        let pre = &config.srvc.startpre;
+        assert_eq!(pre.len(), 1);
+        assert_eq!(pre[0].cmd, "/usr/bin/setup");
+        assert!(
+            pre[0]
+                .prefixes
+                .contains(&super::super::CommandlinePrefix::Plus)
+        );
+    }
+
+    #[test]
+    fn test_plus_prefix_execstop() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = /usr/bin/main
+            ExecStop = +/usr/bin/cleanup --force
+            "#,
+        )
+        .unwrap();
+        let stop = &config.srvc.stop;
+        assert_eq!(stop.len(), 1);
+        assert_eq!(stop[0].cmd, "/usr/bin/cleanup");
+        assert!(
+            stop[0]
+                .prefixes
+                .contains(&super::super::CommandlinePrefix::Plus)
+        );
+    }
+
+    #[test]
+    fn test_plus_prefix_execstoppost() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = /usr/bin/main
+            ExecStopPost = +/usr/bin/teardown
+            "#,
+        )
+        .unwrap();
+        let stop_post = &config.srvc.stoppost;
+        assert_eq!(stop_post.len(), 1);
+        assert_eq!(stop_post[0].cmd, "/usr/bin/teardown");
+        assert!(
+            stop_post[0]
+                .prefixes
+                .contains(&super::super::CommandlinePrefix::Plus)
+        );
+    }
+
+    #[test]
+    fn test_all_prefixes_combined() {
+        // Test that minus, plus, colon can coexist (even if unusual).
+        // systemd allows any combination of prefixes on a single command.
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = -+:/usr/bin/foo
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.cmd, "/usr/bin/foo");
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Minus)
+        );
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Plus)
+        );
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::Colon)
+        );
+    }
+
+    #[test]
+    fn test_double_exclamation_not_confused_with_single() {
+        // Ensure "!!" is parsed as DoubleExclamation, not two Exclamation prefixes
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = !!/usr/bin/foo
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.prefixes.len(), 1);
+        assert!(
+            exec.prefixes
+                .contains(&super::super::CommandlinePrefix::DoubleExclamation)
+        );
+        assert!(
+            !exec
+                .prefixes
+                .contains(&super::super::CommandlinePrefix::Exclamation)
+        );
+    }
+
+    #[test]
+    fn test_prefix_count_preserved() {
+        let config = parse_service_from_str(
+            r#"
+            [Service]
+            ExecStart = -+@/usr/bin/foo bar
+            "#,
+        )
+        .unwrap();
+        let exec = config.srvc.exec.as_ref().unwrap();
+        assert_eq!(exec.prefixes.len(), 3);
+        assert_eq!(exec.prefixes[0], super::super::CommandlinePrefix::Minus);
+        assert_eq!(exec.prefixes[1], super::super::CommandlinePrefix::Plus);
+        assert_eq!(exec.prefixes[2], super::super::CommandlinePrefix::AtSign);
     }
 }

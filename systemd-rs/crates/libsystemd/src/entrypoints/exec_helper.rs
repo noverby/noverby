@@ -102,6 +102,21 @@ pub struct ExecHelperConfig {
     #[serde(default)]
     pub use_first_arg_as_argv0: bool,
 
+    /// When true, the command has the '+' prefix: run with full privileges,
+    /// skipping all namespace/sandbox/security restrictions and privilege
+    /// drop. The '!' and '!!' prefixes also set this (they affect
+    /// NoNewPrivileges handling for SUID/file-capability binaries; we treat
+    /// them as equivalent to '+' for now).
+    #[serde(default)]
+    pub privileged_prefix: bool,
+
+    /// When true, the command has the ':' prefix: use a clean environment
+    /// with only the minimal set of variables (PATH, NOTIFY_SOCKET,
+    /// LISTEN_FDS/LISTEN_FDNAMES/LISTEN_PID if applicable) instead of the
+    /// service's configured Environment=/EnvironmentFile=/PassEnvironment=.
+    #[serde(default)]
+    pub clean_environment: bool,
+
     pub env: Vec<(String, String)>,
 
     pub group: libc::gid_t,
@@ -1246,23 +1261,27 @@ pub fn run_exec_helper() {
     // ── Namespace-based isolation (must happen before privilege drop) ──
     // Determine if we need a mount namespace. Any of the Protect*/Private*
     // directives that manipulate the filesystem require one.
-    let needs_mount_ns = config.private_tmp
-        || config.private_devices
-        || config.private_mounts
-        || config.protect_kernel_tunables
-        || config.protect_kernel_modules
-        || config.protect_kernel_logs
-        || config.protect_control_groups
-        || config.protect_clock
-        || config.protect_hostname
-        || !config.read_write_paths.is_empty()
-        || !config.read_only_paths.is_empty()
-        || !config.inaccessible_paths.is_empty()
-        || !config.bind_paths.is_empty()
-        || !config.bind_read_only_paths.is_empty()
-        || !config.temporary_file_system.is_empty()
-        || matches!(config.protect_system.as_str(), "yes" | "full" | "strict")
-        || matches!(config.protect_home.as_str(), "yes" | "read-only" | "tmpfs");
+    // When the '+' prefix is used, skip all namespace/sandbox restrictions.
+    // The command runs with full root privileges in the host namespaces.
+    // The '!' and '!!' prefixes are treated equivalently for now.
+    let needs_mount_ns = !config.privileged_prefix
+        && (config.private_tmp
+            || config.private_devices
+            || config.private_mounts
+            || config.protect_kernel_tunables
+            || config.protect_kernel_modules
+            || config.protect_kernel_logs
+            || config.protect_control_groups
+            || config.protect_clock
+            || config.protect_hostname
+            || !config.read_write_paths.is_empty()
+            || !config.read_only_paths.is_empty()
+            || !config.inaccessible_paths.is_empty()
+            || !config.bind_paths.is_empty()
+            || !config.bind_read_only_paths.is_empty()
+            || !config.temporary_file_system.is_empty()
+            || matches!(config.protect_system.as_str(), "yes" | "full" | "strict")
+            || matches!(config.protect_home.as_str(), "yes" | "read-only" | "tmpfs"));
 
     if needs_mount_ns {
         log::trace!(
@@ -1280,7 +1299,7 @@ pub fn run_exec_helper() {
     }
 
     // ── ProtectHostname= — UTS namespace ──────────────────────────────
-    if config.protect_hostname {
+    if config.protect_hostname && !config.privileged_prefix {
         let ret = unsafe { libc::unshare(libc::CLONE_NEWUTS) };
         if ret != 0 {
             log::warn!(
@@ -1292,7 +1311,7 @@ pub fn run_exec_helper() {
     }
 
     // ── PrivateNetwork= — network namespace ───────────────────────────
-    if config.private_network {
+    if config.private_network && !config.privileged_prefix {
         let ret = unsafe { libc::unshare(libc::CLONE_NEWNET) };
         if ret != 0 {
             log::warn!(
@@ -1306,7 +1325,7 @@ pub fn run_exec_helper() {
     }
 
     // ── CapabilityBoundingSet= — drop capabilities from bounding set ──
-    if !config.capability_bounding_set.is_empty() {
+    if !config.capability_bounding_set.is_empty() && !config.privileged_prefix {
         apply_capability_bounding_set(&config);
     }
 
@@ -1355,11 +1374,12 @@ pub fn run_exec_helper() {
     }
 
     log::trace!(
-        "pre-privilege-drop (uid={}, gid={}, target_uid={}, target_gid={})",
+        "pre-privilege-drop (uid={}, gid={}, target_uid={}, target_gid={}, privileged={})",
         nix::unistd::getuid(),
         nix::unistd::getgid(),
         config.user,
-        config.group
+        config.group,
+        config.privileged_prefix,
     );
 
     // Resolve ambient capabilities BEFORE dropping privileges so we can
@@ -1368,7 +1388,9 @@ pub fn run_exec_helper() {
 
     log::trace!("about to drop privileges...");
 
-    if nix::unistd::getuid().is_root() {
+    // When the '+' prefix is used, skip privilege drop entirely — the
+    // command runs as root (or whatever user PID 1 runs as).
+    if nix::unistd::getuid().is_root() && !config.privileged_prefix {
         // If ambient capabilities are requested, tell the kernel to keep
         // permitted capabilities across the setuid() call.  Without this
         // the capability sets are cleared when changing UID from root to
@@ -1509,9 +1531,36 @@ pub fn run_exec_helper() {
     }
 
     // setup environment vars
-    for (k, v) in &config.env {
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var(k, v) };
+    // When the ':' prefix is used, start with a clean environment — only
+    // the minimal internal variables (PATH, NOTIFY_SOCKET, LISTEN_*) are
+    // kept. All other configured Environment=/EnvironmentFile=/PassEnvironment=
+    // variables are discarded.
+    if config.clean_environment {
+        // Clear all inherited environment variables first
+        for (key, _) in std::env::vars() {
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { std::env::remove_var(&key) };
+        }
+        // Only set the essential internal variables from the config
+        for (k, v) in &config.env {
+            // Keep only PATH, NOTIFY_SOCKET, LISTEN_FDS, LISTEN_FDNAMES,
+            // CREDENTIALS_DIRECTORY, STATE_DIRECTORY, RUNTIME_DIRECTORY,
+            // LOGS_DIRECTORY, CACHE_DIRECTORY, CONFIGURATION_DIRECTORY,
+            // and any *_DIRECTORY vars we set above.
+            match k.as_str() {
+                "PATH" | "NOTIFY_SOCKET" | "LISTEN_FDS" | "LISTEN_FDNAMES" => {
+                    unsafe { std::env::set_var(k, v) };
+                }
+                _ => {
+                    log::trace!("':' prefix: skipping env var {k}");
+                }
+            }
+        }
+    } else {
+        for (k, v) in &config.env {
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { std::env::set_var(k, v) };
+        }
     }
 
     // Only set LISTEN_PID when LISTEN_FDS is present in the environment.
@@ -1541,7 +1590,7 @@ pub fn run_exec_helper() {
     }
 
     // ── LockPersonality= — lock the execution domain ──────────────────
-    if config.lock_personality {
+    if config.lock_personality && !config.privileged_prefix {
         // Set personality to PER_LINUX (0x0000) to ensure we're in the
         // default execution domain, then enforcement is via NoNewPrivileges
         // preventing personality() changes after exec.
@@ -1564,7 +1613,10 @@ pub fn run_exec_helper() {
     // This is a one-way flag: once set, it cannot be unset, and it prevents
     // execve() from granting new privileges (setuid bits, file capabilities).
     // It must be set after all other privilege operations are complete.
-    if config.no_new_privileges {
+    // Skipped when the '+' prefix is used (full privileges mode).
+    // Also skipped when '!' or '!!' prefix is used, since those are
+    // specifically meant to allow SUID/file-capability privilege elevation.
+    if config.no_new_privileges && !config.privileged_prefix {
         let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         if ret != 0 {
             log::error!(

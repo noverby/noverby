@@ -188,6 +188,12 @@ fn start_service_with_filedescriptors(
         cmd,
         args: exec.args.clone(),
         use_first_arg_as_argv0: exec.prefixes.contains(&CommandlinePrefix::AtSign),
+        privileged_prefix: exec.prefixes.contains(&CommandlinePrefix::Plus)
+            || exec.prefixes.contains(&CommandlinePrefix::Exclamation)
+            || exec
+                .prefixes
+                .contains(&CommandlinePrefix::DoubleExclamation),
+        clean_environment: exec.prefixes.contains(&CommandlinePrefix::Colon),
         env: {
             let default_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
             let mut env = vec![
