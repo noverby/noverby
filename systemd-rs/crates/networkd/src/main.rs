@@ -21,6 +21,7 @@ mod dhcp;
 mod link;
 mod manager;
 mod netdev;
+mod netdev_create;
 
 use std::io;
 use std::net::Ipv4Addr;
@@ -558,12 +559,17 @@ fn main() {
     // Create the network manager.
     let mut mgr = NetworkManager::new();
 
-    // Load .network configuration files.
+    // Load .network and .netdev configuration files.
     mgr.load_configs();
 
     if mgr.configs.is_empty() {
         log::info!("No .network configuration files found");
     }
+
+    // Create virtual network devices from .netdev configs.
+    // This must happen before discover_links() so the newly created
+    // interfaces are visible during enumeration.
+    mgr.create_netdevs();
 
     // Discover and match network interfaces.
     if let Err(e) = mgr.discover_links() {
@@ -668,6 +674,7 @@ fn main() {
         if reload.swap(false, Ordering::Relaxed) {
             log::info!("Reloading configuration (SIGHUP)");
             mgr.load_configs();
+            mgr.create_netdevs();
             if let Err(e) = mgr.discover_links() {
                 log::warn!("Failed to rediscover links on reload: {}", e);
             }
