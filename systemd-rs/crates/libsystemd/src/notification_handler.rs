@@ -568,6 +568,12 @@ pub fn handle_notification_message(msg: &str, srvc: &mut Service, name: &str) {
         }
         "READY" => {
             srvc.signaled_ready = true;
+            // Initialize the watchdog reference timestamp so that the
+            // watchdog enforcement thread starts counting from the moment
+            // the service signals readiness (matching real systemd).
+            if srvc.watchdog_last_ping.is_none() {
+                srvc.watchdog_last_ping = Some(std::time::Instant::now());
+            }
             // READY=1 after RELOADING=1 means reload is complete
             if srvc.reloading {
                 srvc.reloading = false;
@@ -783,6 +789,7 @@ mod tests {
             notifications_buffer: String::new(),
             stdout_buffer: Vec::new(),
             stderr_buffer: Vec::new(),
+            watchdog_timeout_fired: false,
         }
     }
 

@@ -2508,8 +2508,10 @@ pub struct ServiceConfig {
     /// WatchdogSec= — configures the watchdog timeout for the service. The
     /// service must send a "WATCHDOG=1" notification via sd_notify() at least
     /// once within this interval, or it will be considered failed. A value of
-    /// 0 or empty disables the watchdog. Parsed and stored; no runtime
-    /// enforcement yet. See systemd.service(5).
+    /// 0 or empty disables the watchdog. Enforced at runtime by the
+    /// background watchdog thread (`libsystemd::watchdog`), which
+    /// periodically checks running services and sends `WatchdogSignal=`
+    /// (default SIGABRT) to unresponsive ones. See systemd.service(5).
     pub watchdog_sec: Option<Timeout>,
 
     /// IPAddressAllow= — a list of IP address prefixes (CIDR notation) or

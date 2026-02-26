@@ -97,6 +97,11 @@ pub struct Service {
     pub notifications_buffer: String,
     pub stdout_buffer: Vec<u8>,
     pub stderr_buffer: Vec<u8>,
+    /// Set to `true` by the watchdog enforcement thread when this service's
+    /// watchdog timeout fires.  The exit handler checks this flag so that
+    /// `Restart=on-watchdog` triggers a restart.  Cleared on service
+    /// (re)start.
+    pub watchdog_timeout_fired: bool,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -225,6 +230,13 @@ impl Service {
         // called with ActivationSource::SocketActivation anyway.
         trace!("Start service {name}");
 
+        // Clear watchdog state from any previous run so that the watchdog
+        // enforcement thread doesn't immediately kill the freshly started
+        // service based on stale state.
+        self.watchdog_timeout_fired = false;
+        self.watchdog_last_ping = None;
+        self.watchdog_usec_override = None;
+
         super::prepare_service::prepare_service(
             self,
             conf,
@@ -274,6 +286,14 @@ impl Service {
             // Exec-less oneshot service (e.g. systemd-reboot.service).
             // No main process to fork — the service succeeds immediately.
             trace!("Service {name} has no ExecStart, treating as immediately successful oneshot");
+        }
+
+        // For non-notify services, initialize the watchdog reference
+        // timestamp now (the process has been forked and is running).
+        // For Type=notify services this will be overwritten when READY=1
+        // arrives via the notification handler.
+        if conf.watchdog_sec.is_some() && self.watchdog_last_ping.is_none() {
+            self.watchdog_last_ping = Some(std::time::Instant::now());
         }
 
         self.run_poststart(conf, id.clone(), name, run_info)
