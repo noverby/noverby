@@ -1,4 +1,4 @@
-use log::{error, trace, warn};
+use log::{error, info, trace, warn};
 use signal_hook::iterator::Signals;
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -25,6 +25,26 @@ pub fn run_service_manager() {
     let (log_conf, mut conf) = config::load_config();
 
     logging::setup_logging(&log_conf).unwrap();
+
+    // Log the selected boot target — especially useful when emergency/rescue
+    // mode was requested via kernel command line.
+    let target = &conf.target_unit;
+    if target == "emergency.target" {
+        eprintln!(
+            "systemd-rs: EMERGENCY MODE — booting to emergency.target (requested via kernel command line)"
+        );
+        info!("Emergency mode requested — booting to emergency.target");
+    } else if target == "rescue.target" {
+        eprintln!(
+            "systemd-rs: RESCUE MODE — booting to rescue.target (requested via kernel command line)"
+        );
+        info!("Rescue mode requested — booting to rescue.target");
+    } else if target != "default.target" {
+        eprintln!("systemd-rs: boot target overridden to {target} (via kernel command line)");
+        info!("Boot target overridden to {target} via kernel command line");
+    } else {
+        info!("Booting to default target: {target}");
+    }
 
     // Augment PATH with binary directories derived from the unit search
     // paths.  Many upstream systemd unit files use bare command names in

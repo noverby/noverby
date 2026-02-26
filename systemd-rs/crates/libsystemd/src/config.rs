@@ -11,7 +11,7 @@
 //! compile-time `rootlibdir` setting (e.g. on NixOS the systemd package
 //! searches its own store path for shipped unit files).
 
-use log::trace;
+use log::{info, trace};
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -151,6 +151,71 @@ pub fn augment_path_from_unit_dirs(unit_dirs: &[PathBuf]) {
     unsafe { std::env::set_var("PATH", &new_path) };
 }
 
+/// Parse the kernel command line from `/proc/cmdline` and return a target
+/// unit override if one is specified.
+///
+/// Supports the following mechanisms (in priority order):
+///
+/// 1. `systemd.unit=<target>` — explicit target override (highest priority)
+/// 2. `emergency` — equivalent to `systemd.unit=emergency.target`
+/// 3. `rescue`, `single`, `s`, `S` — equivalent to `systemd.unit=rescue.target`
+/// 4. `1` — SysV runlevel 1 (rescue mode)
+/// 5. `2`, `3`, `4`, `5` — SysV runlevels mapped to `multi-user.target` (3)
+///    or `graphical.target` (5); 2 and 4 map to `multi-user.target`
+///
+/// See `systemd(1)` and `kernel-command-line(7)` for details.
+///
+/// This function reads from `/proc/cmdline`.  If the file cannot be read
+/// (e.g. in a test environment), `None` is returned.
+pub fn target_unit_from_kernel_cmdline() -> Option<String> {
+    target_unit_from_cmdline_str(&std::fs::read_to_string("/proc/cmdline").ok()?)
+}
+
+/// Inner implementation that works on an already-read command line string.
+/// Separated for testability.
+fn target_unit_from_cmdline_str(cmdline: &str) -> Option<String> {
+    // `systemd.unit=` takes highest priority — use the last occurrence
+    // (matching systemd behaviour where later parameters override earlier).
+    let mut explicit_target: Option<String> = None;
+    // SysV compat keywords are only used when no explicit `systemd.unit=`
+    // is present.
+    let mut sysv_target: Option<&str> = None;
+
+    for param in cmdline.split_whitespace() {
+        if let Some(unit) = param.strip_prefix("systemd.unit=") {
+            if !unit.is_empty() {
+                explicit_target = Some(unit.to_owned());
+            }
+        } else if let Some(unit) = param.strip_prefix("rd.systemd.unit=") {
+            // rd.systemd.unit= is for initrd only — ignore in the real root,
+            // but we still parse it so we don't fall through to SysV compat.
+            let _ = unit;
+        } else {
+            // SysV compatibility keywords
+            match param {
+                "emergency" => sysv_target = Some("emergency.target"),
+                "rescue" | "single" | "s" | "S" => sysv_target = Some("rescue.target"),
+                "-s" | "-S" => sysv_target = Some("rescue.target"),
+                "1" => sysv_target = Some("rescue.target"),
+                "2" | "3" | "4" => sysv_target = Some("multi-user.target"),
+                "5" => sysv_target = Some("graphical.target"),
+                _ => {}
+            }
+        }
+    }
+
+    // Explicit systemd.unit= always wins over SysV keywords.
+    if let Some(target) = explicit_target {
+        info!("Kernel command line: systemd.unit={target}");
+        Some(target)
+    } else if let Some(target) = sysv_target {
+        info!("Kernel command line: SysV compat keyword → {target}");
+        Some(target.to_owned())
+    } else {
+        None
+    }
+}
+
 pub fn load_config() -> (LoggingConfig, Config) {
     // Collect unit directories: standard system paths + package-local dir.
     // Only include directories that actually exist on this system.
@@ -168,9 +233,15 @@ pub fn load_config() -> (LoggingConfig, Config) {
 
     let self_path = std::env::current_exe().expect("Could not determine own executable path");
 
+    // Determine the boot target:
+    //   1. Kernel command line override (systemd.unit=, emergency, rescue, single, …)
+    //   2. default.target (the standard systemd default)
+    let target_unit =
+        target_unit_from_kernel_cmdline().unwrap_or_else(|| "default.target".to_owned());
+
     let config = Config {
         unit_dirs,
-        target_unit: "default.target".to_owned(),
+        target_unit,
         notification_sockets_dir: PathBuf::from("/run/systemd/systemd-rs-notify"),
         self_path,
     };
@@ -182,4 +253,215 @@ pub fn load_config() -> (LoggingConfig, Config) {
     };
 
     (logging_config, config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── target_unit_from_cmdline_str tests ───────────────────────────────
+
+    #[test]
+    fn test_no_override_returns_none() {
+        assert_eq!(target_unit_from_cmdline_str("quiet splash"), None);
+    }
+
+    #[test]
+    fn test_empty_cmdline_returns_none() {
+        assert_eq!(target_unit_from_cmdline_str(""), None);
+    }
+
+    #[test]
+    fn test_systemd_unit_explicit() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet systemd.unit=emergency.target"),
+            Some("emergency.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_systemd_unit_last_wins() {
+        assert_eq!(
+            target_unit_from_cmdline_str(
+                "systemd.unit=rescue.target quiet systemd.unit=multi-user.target"
+            ),
+            Some("multi-user.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_systemd_unit_empty_value_ignored() {
+        // systemd.unit= with no value should not override — fall through
+        assert_eq!(target_unit_from_cmdline_str("systemd.unit="), None);
+    }
+
+    #[test]
+    fn test_emergency_keyword() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet emergency"),
+            Some("emergency.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_rescue_keyword() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet rescue"),
+            Some("rescue.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_single_keyword() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet single"),
+            Some("rescue.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_lowercase_s() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet s"),
+            Some("rescue.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_uppercase_s() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet S"),
+            Some("rescue.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_dash_s() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet -s"),
+            Some("rescue.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_runlevel_1() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet 1"),
+            Some("rescue.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_runlevel_3() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet 3"),
+            Some("multi-user.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_runlevel_5() {
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet 5"),
+            Some("graphical.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_explicit_overrides_sysv() {
+        // When both systemd.unit= and a SysV keyword are present,
+        // the explicit parameter wins.
+        assert_eq!(
+            target_unit_from_cmdline_str("emergency systemd.unit=multi-user.target"),
+            Some("multi-user.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_sysv_last_keyword_wins() {
+        // Multiple SysV keywords — the last one wins (left-to-right parse).
+        assert_eq!(
+            target_unit_from_cmdline_str("single emergency"),
+            Some("emergency.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_rd_systemd_unit_ignored_in_real_root() {
+        // rd.systemd.unit= is for initrd only and should not set the target
+        // in the real root filesystem.
+        assert_eq!(
+            target_unit_from_cmdline_str("rd.systemd.unit=initrd.target"),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_rd_systemd_unit_does_not_block_sysv() {
+        // rd.systemd.unit= should not prevent SysV keywords from working
+        assert_eq!(
+            target_unit_from_cmdline_str("rd.systemd.unit=initrd.target rescue"),
+            Some("rescue.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_typical_nixos_cmdline() {
+        // A realistic NixOS kernel command line — no target override expected
+        let cmdline = "init=/nix/store/abc-systemd-rs/lib/systemd/systemd \
+                        loglevel=4 console=ttyS0";
+        assert_eq!(target_unit_from_cmdline_str(cmdline), None);
+    }
+
+    #[test]
+    fn test_typical_emergency_cmdline() {
+        let cmdline = "init=/nix/store/abc-systemd-rs/lib/systemd/systemd \
+                        loglevel=4 console=ttyS0 systemd.unit=emergency.target";
+        assert_eq!(
+            target_unit_from_cmdline_str(cmdline),
+            Some("emergency.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_custom_target() {
+        assert_eq!(
+            target_unit_from_cmdline_str("systemd.unit=my-custom.target"),
+            Some("my-custom.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_runlevel_2() {
+        assert_eq!(
+            target_unit_from_cmdline_str("2"),
+            Some("multi-user.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_runlevel_4() {
+        assert_eq!(
+            target_unit_from_cmdline_str("4"),
+            Some("multi-user.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_whitespace_variations() {
+        // Tabs and multiple spaces should be handled correctly
+        assert_eq!(
+            target_unit_from_cmdline_str("  quiet\t\tsingle  "),
+            Some("rescue.target".to_owned()),
+        );
+    }
+
+    #[test]
+    fn test_newline_at_end() {
+        // /proc/cmdline typically has a trailing newline
+        assert_eq!(
+            target_unit_from_cmdline_str("quiet emergency\n"),
+            Some("emergency.target".to_owned()),
+        );
+    }
 }
