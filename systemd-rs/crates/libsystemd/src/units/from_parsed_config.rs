@@ -5,11 +5,12 @@ use crate::units::{
     MountConfig, MountSpecific, MountState, ParsedCommonConfig, ParsedDeviceConfig,
     ParsedExecSection, ParsedInstallSection, ParsedMountConfig, ParsedPathConfig,
     ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig,
-    ParsedTargetConfig, ParsedTimerConfig, ParsedUnitSection, PathCondition, PathConfig,
-    PathSpecific, PathState, PlatformSpecificServiceFields, ServiceConfig, ServiceSpecific,
-    ServiceState, SingleSocketConfig, SliceConfig, SliceSpecific, SliceState, SocketConfig,
-    SocketSpecific, SocketState, Specific, TargetSpecific, TargetState, TimerConfig, TimerSpecific,
-    TimerState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
+    ParsedSwapConfig, ParsedTargetConfig, ParsedTimerConfig, ParsedUnitSection, PathCondition,
+    PathConfig, PathSpecific, PathState, PlatformSpecificServiceFields, ServiceConfig,
+    ServiceSpecific, ServiceState, SingleSocketConfig, SliceConfig, SliceSpecific, SliceState,
+    SocketConfig, SocketSpecific, SocketState, Specific, SwapConfig, SwapSpecific, SwapState,
+    TargetSpecific, TargetState, TimerConfig, TimerSpecific, TimerState, Unit, UnitConfig, UnitId,
+    UnitIdKind, UnitStatus,
 };
 
 use log::trace;
@@ -326,6 +327,23 @@ pub fn unit_from_parsed_mount(conf: ParsedMountConfig) -> Result<Unit, String> {
         specific: Specific::Mount(MountSpecific {
             conf: MountConfig::from(conf.mount),
             state: RwLock::new(MountState {
+                common: CommonState::default(),
+            }),
+        }),
+    })
+}
+
+pub fn unit_from_parsed_swap(conf: ParsedSwapConfig) -> Result<Unit, String> {
+    let fragment_path = conf.common.fragment_path.clone();
+    Ok(Unit {
+        id: UnitId {
+            kind: UnitIdKind::Swap,
+            name: conf.common.name,
+        },
+        common: make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?,
+        specific: Specific::Swap(SwapSpecific {
+            conf: SwapConfig::from(conf.swap),
+            state: RwLock::new(SwapState {
                 common: CommonState::default(),
             }),
         }),
@@ -726,7 +744,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
 }
 
 /// Convert a list of unit name strings into UnitIds, skipping any with
-/// unsupported suffixes (e.g. .path, .timer, .swap, .scope).
+/// unsupported suffixes (e.g. .scope, .automount).
 /// This matches systemd's behavior of silently ignoring unit types it
 /// doesn't manage in dependency lists, rather than rejecting the
 /// entire unit file.
@@ -860,6 +878,11 @@ impl std::convert::TryInto<UnitId> for &str {
                 name: self.to_owned(),
                 kind: UnitIdKind::Path,
             })
+        } else if self.ends_with(".swap") {
+            Ok(UnitId {
+                name: self.to_owned(),
+                kind: UnitIdKind::Swap,
+            })
         } else {
             Err(format!(
                 "{self} is not a valid unit name. The suffix is not supported."
@@ -896,6 +919,12 @@ impl std::convert::TryFrom<ParsedMountConfig> for Unit {
     type Error = String;
     fn try_from(conf: ParsedMountConfig) -> Result<Self, String> {
         unit_from_parsed_mount(conf)
+    }
+}
+impl std::convert::TryFrom<ParsedSwapConfig> for Unit {
+    type Error = String;
+    fn try_from(conf: ParsedSwapConfig) -> Result<Self, String> {
+        unit_from_parsed_swap(conf)
     }
 }
 impl std::convert::TryFrom<ParsedTimerConfig> for Unit {

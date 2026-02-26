@@ -8,11 +8,12 @@ use crate::units::{
     ActivationSource, BindIPv6Only, Commandline, CpuQuota, CpuWeight, DeferTrigger, Delegate,
     DevicePolicy, EnvVars, ExitType, FileDescriptorStorePreserve, IOSchedulingClass, IoDeviceLimit,
     IoWeight, KeyringMode, KillMode, MemoryLimit, MemoryPressureWatch, NotifyKind, OOMPolicy,
-    OnFailureJobMode, ParsedMountSection, ParsedSliceSection, ProcSubset, ProtectHome, ProtectProc,
-    ProtectSystem, ResourceLimit, RestartMode, RestrictNamespaces, RuntimeDirectoryPreserve,
-    ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption,
-    TasksMax, Timeout, TimeoutFailureMode, Timestamping, UnitAction, UnitCondition, UnitId,
-    UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode, acquire_locks,
+    OnFailureJobMode, ParsedMountSection, ParsedSliceSection, ParsedSwapSection, ProcSubset,
+    ProtectHome, ProtectProc, ProtectSystem, ResourceLimit, RestartMode, RestrictNamespaces,
+    RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput, StatusStarted,
+    StatusStopped, StdIoOption, TasksMax, Timeout, TimeoutFailureMode, Timestamping, UnitAction,
+    UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
+    UtmpMode, acquire_locks,
 };
 
 use std::path::PathBuf;
@@ -40,6 +41,7 @@ pub enum Specific {
     Target(TargetSpecific),
     Slice(SliceSpecific),
     Mount(MountSpecific),
+    Swap(SwapSpecific),
     Timer(TimerSpecific),
     Path(PathSpecific),
     Device(DeviceSpecific),
@@ -528,6 +530,11 @@ pub struct DeviceSpecific {
     pub state: RwLock<DeviceState>,
 }
 
+pub struct SwapSpecific {
+    pub conf: SwapConfig,
+    pub state: RwLock<SwapState>,
+}
+
 /// Configuration for a `.device` unit. Device units are dynamically created
 /// from udev events and represent kernel devices. They have no `[Device]`
 /// section directives of their own — they only use `[Unit]` and `[Install]`.
@@ -563,6 +570,10 @@ pub struct SliceState {
 }
 
 pub struct MountState {
+    pub common: CommonState,
+}
+
+pub struct SwapState {
     pub common: CommonState,
 }
 
@@ -666,6 +677,35 @@ pub struct PathConfig {
 
 /// Configuration for a `.mount` unit, derived from the parsed `[Mount]` section.
 #[derive(Debug, Clone)]
+/// The immutable configuration of a swap unit, parsed from the `[Swap]` section.
+///
+/// See systemd.swap(5) for documentation.
+pub struct SwapConfig {
+    /// What= — the absolute path of a device node or file to use as swap.
+    pub what: String,
+
+    /// Priority= — the swap priority passed to swapon(2).
+    /// Range: -1 to 32767. None means use kernel default.
+    pub priority: Option<i32>,
+
+    /// Options= — mount-style options string for swapon (e.g. "discard").
+    pub options: Option<String>,
+
+    /// TimeoutSec= — timeout for swapon/swapoff operations.
+    pub timeout_sec: Option<u64>,
+}
+
+impl From<ParsedSwapSection> for SwapConfig {
+    fn from(s: ParsedSwapSection) -> Self {
+        Self {
+            what: s.what,
+            priority: s.priority,
+            options: s.options,
+            timeout_sec: s.timeout_sec,
+        }
+    }
+}
+
 pub struct MountConfig {
     /// What= — the device, file, or resource to mount.
     pub what: String,
@@ -720,6 +760,7 @@ enum LockedState<'a> {
     Target(std::sync::RwLockWriteGuard<'a, TargetState>),
     Slice(std::sync::RwLockWriteGuard<'a, SliceState>),
     Mount(std::sync::RwLockWriteGuard<'a, MountState>, &'a MountConfig),
+    Swap(std::sync::RwLockWriteGuard<'a, SwapState>, &'a SwapConfig),
     Timer(std::sync::RwLockWriteGuard<'a, TimerState>, &'a TimerConfig),
     Path(std::sync::RwLockWriteGuard<'a, PathState>, &'a PathConfig),
     Device(std::sync::RwLockWriteGuard<'a, DeviceState>),
@@ -740,6 +781,9 @@ impl Unit {
     }
     pub const fn is_mount(&self) -> bool {
         matches!(self.id.kind, UnitIdKind::Mount)
+    }
+    pub const fn is_swap(&self) -> bool {
+        matches!(self.id.kind, UnitIdKind::Swap)
     }
     pub const fn is_device(&self) -> bool {
         matches!(self.id.kind, UnitIdKind::Device)
@@ -903,6 +947,9 @@ impl Unit {
             Specific::Mount(specific) => {
                 LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
             }
+            Specific::Swap(specific) => {
+                LockedState::Swap(specific.state.write_poisoned(), &specific.conf)
+            }
             Specific::Timer(specific) => {
                 LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
             }
@@ -981,6 +1028,7 @@ impl Unit {
                 state.activate(&self.id, conf, &self.common.status, run_info, source)
             }
             LockedState::Mount(_, conf) => activate_mount(&self.id, conf, &self.common.status),
+            LockedState::Swap(_, conf) => activate_swap(&self.id, conf, &self.common.status),
             LockedState::Timer(_, _) => {
                 // Timer units are "started" by marking them as running.
                 // The actual scheduling is handled by the timer thread.
@@ -1043,6 +1091,9 @@ impl Unit {
             Specific::Mount(specific) => {
                 LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
             }
+            Specific::Swap(specific) => {
+                LockedState::Swap(specific.state.write_poisoned(), &specific.conf)
+            }
             Specific::Timer(specific) => {
                 LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
             }
@@ -1089,6 +1140,7 @@ impl Unit {
                 state.deactivate(&self.id, conf, &self.common.status, run_info)
             }
             LockedState::Mount(_, conf) => deactivate_mount(&self.id, conf, &self.common.status),
+            LockedState::Swap(_, conf) => deactivate_swap(&self.id, conf, &self.common.status),
             LockedState::Timer(_, _) | LockedState::Path(_, _) => {
                 let mut status = self.common.status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
@@ -1119,6 +1171,9 @@ impl Unit {
             Specific::Slice(specific) => LockedState::Slice(specific.state.write_poisoned()),
             Specific::Mount(specific) => {
                 LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
+            }
+            Specific::Swap(specific) => {
+                LockedState::Swap(specific.state.write_poisoned(), &specific.conf)
             }
             Specific::Timer(specific) => {
                 LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
@@ -1161,6 +1216,10 @@ impl Unit {
                     deactivate_mount(&self.id, conf, &self.common.status).ok();
                     activate_mount(&self.id, conf, &self.common.status).map(|_| ())
                 }
+                LockedState::Swap(_, conf) => {
+                    deactivate_swap(&self.id, conf, &self.common.status).ok();
+                    activate_swap(&self.id, conf, &self.common.status).map(|_| ())
+                }
                 LockedState::Timer(_, _) | LockedState::Path(_, _) => {
                     let mut status = self.common.status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
@@ -1188,6 +1247,9 @@ impl Unit {
                 }
                 LockedState::Mount(_, conf) => {
                     activate_mount(&self.id, conf, &self.common.status).map(|_| ())
+                }
+                LockedState::Swap(_, conf) => {
+                    activate_swap(&self.id, conf, &self.common.status).map(|_| ())
                 }
                 LockedState::Timer(_, _) | LockedState::Path(_, _) => {
                     let mut status = self.common.status.write_poisoned();
@@ -1476,6 +1538,224 @@ fn is_already_mounted(path: &str) -> bool {
         }
         Err(_) => false,
     }
+}
+
+/// Check whether a device/file is already active as swap by reading /proc/swaps.
+#[cfg(target_os = "linux")]
+fn is_already_swapped(what: &str) -> bool {
+    match std::fs::read_to_string("/proc/swaps") {
+        Ok(contents) => {
+            for line in contents.lines().skip(1) {
+                // /proc/swaps format: Filename Type Size Used Priority
+                if let Some(filename) = line.split_whitespace().next()
+                    && filename == what
+                {
+                    return true;
+                }
+            }
+            false
+        }
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_already_swapped(_what: &str) -> bool {
+    false
+}
+
+/// Activate a swap unit by calling swapon(2).
+///
+/// If the swap device is already active, the unit is simply marked as running.
+/// The `Priority=` setting is passed via the `SWAP_FLAG_PREFER` flag and the
+/// priority value encoded in the flags argument to swapon(2).
+#[cfg(target_os = "linux")]
+fn activate_swap(
+    id: &UnitId,
+    conf: &SwapConfig,
+    status: &RwLock<UnitStatus>,
+) -> Result<UnitStatus, UnitOperationError> {
+    // Check if already active
+    if is_already_swapped(&conf.what) {
+        info!(
+            "Swap device {} is already active, marking as started",
+            conf.what
+        );
+        let mut status = status.write_poisoned();
+        *status = UnitStatus::Started(StatusStarted::Running);
+        return Ok(UnitStatus::Started(StatusStarted::Running));
+    }
+
+    // Build swapon flags
+    // SWAP_FLAG_PREFER = 0x8000, priority is in the low 15 bits (0–32767)
+    const SWAP_FLAG_PREFER: libc::c_int = 0x8000;
+    const SWAP_FLAG_DISCARD: libc::c_int = 0x10000;
+
+    let mut flags: libc::c_int = 0;
+
+    if let Some(pri) = conf.priority
+        && pri >= 0
+    {
+        flags |= SWAP_FLAG_PREFER | (pri & 0x7FFF) as libc::c_int;
+    }
+    // Negative priorities are handled by the kernel default when
+    // SWAP_FLAG_PREFER is not set.
+
+    // Check options for "discard"
+    if let Some(ref options) = conf.options {
+        for opt in options.split(',') {
+            let opt = opt.trim();
+            match opt {
+                "discard" => flags |= SWAP_FLAG_DISCARD,
+                _ if opt.starts_with("pri=") => {
+                    // pri=N in options overrides Priority= directive
+                    if let Ok(p) = opt[4..].parse::<i32>()
+                        && p >= 0
+                    {
+                        flags = (flags & !0x7FFF) | SWAP_FLAG_PREFER | (p & 0x7FFF) as libc::c_int;
+                    }
+                }
+                _ => {
+                    // Other options are logged but not actionable via swapon(2)
+                    trace!("Swap option ignored for swapon(2): {}", opt);
+                }
+            }
+        }
+    }
+
+    let what_cstr = match std::ffi::CString::new(conf.what.as_str()) {
+        Ok(c) => c,
+        Err(e) => {
+            let reason = UnitOperationErrorReason::GenericStartError(format!(
+                "Invalid swap path {}: {}",
+                conf.what, e
+            ));
+            let mut status = status.write_poisoned();
+            *status = UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![reason.clone()]);
+            return Err(UnitOperationError {
+                reason,
+                unit_name: id.name.clone(),
+                unit_id: id.clone(),
+            });
+        }
+    };
+
+    info!("Activating swap {} (flags=0x{:x})", conf.what, flags);
+
+    // SAFETY: swapon(2) is a standard Linux syscall. The path is a valid
+    // NUL-terminated C string and flags is a simple integer bitmask.
+    let ret = unsafe { libc::swapon(what_cstr.as_ptr(), flags) };
+
+    if ret == 0 {
+        info!("Successfully activated swap {}", conf.what);
+        let mut status = status.write_poisoned();
+        *status = UnitStatus::Started(StatusStarted::Running);
+        Ok(UnitStatus::Started(StatusStarted::Running))
+    } else {
+        let errno = std::io::Error::last_os_error();
+        error!("Failed to activate swap {}: {}", conf.what, errno);
+        let reason = UnitOperationErrorReason::GenericStartError(format!(
+            "swapon({}): {}",
+            conf.what, errno
+        ));
+        let mut status = status.write_poisoned();
+        *status = UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![reason.clone()]);
+        Err(UnitOperationError {
+            reason,
+            unit_name: id.name.clone(),
+            unit_id: id.clone(),
+        })
+    }
+}
+
+/// Non-Linux stub for swap activation — always succeeds and marks the unit
+/// as started.
+#[cfg(not(target_os = "linux"))]
+fn activate_swap(
+    id: &UnitId,
+    _conf: &SwapConfig,
+    status: &RwLock<UnitStatus>,
+) -> Result<UnitStatus, UnitOperationError> {
+    trace!("Swap activation is a no-op on non-Linux ({})", id.name);
+    let mut status = status.write_poisoned();
+    *status = UnitStatus::Started(StatusStarted::Running);
+    Ok(UnitStatus::Started(StatusStarted::Running))
+}
+
+/// Deactivate a swap unit by calling swapoff(2).
+#[cfg(target_os = "linux")]
+fn deactivate_swap(
+    id: &UnitId,
+    conf: &SwapConfig,
+    status: &RwLock<UnitStatus>,
+) -> Result<(), UnitOperationError> {
+    // If not currently active, just mark as stopped
+    if !is_already_swapped(&conf.what) {
+        trace!(
+            "Swap device {} is not active, nothing to deactivate",
+            conf.what
+        );
+        let mut status = status.write_poisoned();
+        *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
+        return Ok(());
+    }
+
+    let what_cstr = match std::ffi::CString::new(conf.what.as_str()) {
+        Ok(c) => c,
+        Err(e) => {
+            let reason = UnitOperationErrorReason::GenericStopError(format!(
+                "Invalid swap path {}: {}",
+                conf.what, e
+            ));
+            let mut status = status.write_poisoned();
+            *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![reason.clone()]);
+            return Err(UnitOperationError {
+                reason,
+                unit_name: id.name.clone(),
+                unit_id: id.clone(),
+            });
+        }
+    };
+
+    info!("Deactivating swap {}", conf.what);
+
+    // SAFETY: swapoff(2) is a standard Linux syscall. The path is a valid
+    // NUL-terminated C string.
+    let ret = unsafe { libc::swapoff(what_cstr.as_ptr()) };
+
+    if ret == 0 {
+        info!("Successfully deactivated swap {}", conf.what);
+        let mut status = status.write_poisoned();
+        *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
+        Ok(())
+    } else {
+        let errno = std::io::Error::last_os_error();
+        error!("Failed to deactivate swap {}: {}", conf.what, errno);
+        let reason = UnitOperationErrorReason::GenericStopError(format!(
+            "swapoff({}): {}",
+            conf.what, errno
+        ));
+        let mut status = status.write_poisoned();
+        *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![reason.clone()]);
+        Err(UnitOperationError {
+            reason,
+            unit_name: id.name.clone(),
+            unit_id: id.clone(),
+        })
+    }
+}
+
+/// Non-Linux stub for swap deactivation.
+#[cfg(not(target_os = "linux"))]
+fn deactivate_swap(
+    id: &UnitId,
+    _conf: &SwapConfig,
+    status: &RwLock<UnitStatus>,
+) -> Result<(), UnitOperationError> {
+    trace!("Swap deactivation is a no-op on non-Linux ({})", id.name);
+    let mut status = status.write_poisoned();
+    *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

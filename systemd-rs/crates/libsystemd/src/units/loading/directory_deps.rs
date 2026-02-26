@@ -9,9 +9,10 @@ use std::path::{Path, PathBuf};
 
 use crate::units::{
     Common, CommonState, Dependencies, MountConfig, MountSpecific, MountState, ParsedFile,
-    ParsingErrorReason, Specific, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus, parse_device,
-    parse_file, parse_mount, parse_path, parse_service, parse_slice, parse_socket, parse_target,
-    path_to_mount_unit_name,
+    ParsingErrorReason, Specific, SwapConfig, SwapSpecific, SwapState, Unit, UnitConfig, UnitId,
+    UnitIdKind, UnitStatus, parse_device, parse_file, parse_mount, parse_path, parse_service,
+    parse_slice, parse_socket, parse_swap, parse_target, path_to_mount_unit_name,
+    path_to_swap_unit_name,
 };
 use std::sync::RwLock;
 
@@ -52,6 +53,7 @@ pub fn is_unit_file(filename: &str) -> bool {
         || filename.ends_with(".target")
         || filename.ends_with(".slice")
         || filename.ends_with(".mount")
+        || filename.ends_with(".swap")
         || filename.ends_with(".timer")
         || filename.ends_with(".path")
         || filename.ends_with(".device")
@@ -702,6 +704,20 @@ pub fn insert_parsed_unit(
             }
             Err(e) => {
                 warn!("Skipping mount {:?}: {:?}", path, e);
+            }
+        }
+    } else if path_str.ends_with(".swap") {
+        trace!("Swap found: {:?}", path);
+        match parse_swap(parsed_file, path).and_then(|parsed| {
+            TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
+        }) {
+            Ok(unit) => {
+                // Swap units are stored in the slices table (which serves as
+                // the catch-all for non-service/socket/target unit types)
+                slices.insert(unit.id.clone(), unit);
+            }
+            Err(e) => {
+                warn!("Skipping swap {:?}: {:?}", path, e);
             }
         }
     } else if path_str.ends_with(".timer") {
@@ -1390,8 +1406,131 @@ pub fn generate_fstab_mount_units(unit_table: &mut HashMap<UnitId, Unit>) {
         };
         // fields[4] = dump, fields[5] = pass (ignored)
 
-        // Skip swap entries
-        if fstype == "swap" || mountpoint == "none" {
+        // Handle swap entries — generate .swap units instead of .mount units
+        if fstype == "swap" || mountpoint == "none" || mountpoint == "swap" {
+            let unit_name = path_to_swap_unit_name(device);
+            let unit_id = UnitId {
+                name: unit_name.clone(),
+                kind: UnitIdKind::Swap,
+            };
+            if unit_table.contains_key(&unit_id) {
+                trace!(
+                    "fstab generator: skipping {} — swap unit already exists",
+                    unit_name
+                );
+                continue;
+            }
+
+            let opt_list: Vec<&str> = options.split(',').collect();
+            let is_noauto = opt_list.contains(&"noauto");
+            let is_nofail = opt_list.contains(&"nofail");
+
+            // Parse priority from options (pri=N) or fstab fields
+            let mut priority: Option<i32> = None;
+            let mut swap_options: Vec<&str> = Vec::new();
+            for opt in &opt_list {
+                let opt = opt.trim();
+                if let Some(pri_str) = opt.strip_prefix("pri=") {
+                    if let Ok(p) = pri_str.parse::<i32>() {
+                        priority = Some(p);
+                    }
+                } else if !matches!(opt, "noauto" | "auto" | "nofail" | "defaults" | "sw" | "")
+                    && !opt.starts_with("x-systemd.")
+                    && !opt.starts_with("comment=")
+                {
+                    swap_options.push(opt);
+                }
+            }
+
+            let options_str = if swap_options.is_empty() {
+                None
+            } else {
+                Some(swap_options.join(","))
+            };
+
+            let swap_target_id = UnitId {
+                name: "swap.target".to_owned(),
+                kind: UnitIdKind::Target,
+            };
+
+            let before = vec![swap_target_id.clone()];
+            let mut wanted_by = Vec::new();
+            let mut required_by = Vec::new();
+
+            if !is_noauto {
+                if is_nofail {
+                    wanted_by.push(swap_target_id.clone());
+                } else {
+                    required_by.push(swap_target_id.clone());
+                }
+            }
+
+            let mut refs_by_name = Vec::new();
+            refs_by_name.extend(before.iter().cloned());
+            refs_by_name.extend(wanted_by.iter().cloned());
+            refs_by_name.extend(required_by.iter().cloned());
+
+            let unit = Unit {
+                id: unit_id.clone(),
+                common: Common {
+                    status: RwLock::new(UnitStatus::NeverStarted),
+                    unit: UnitConfig {
+                        description: format!("Swap unit for {} (from /etc/fstab)", device),
+                        documentation: Vec::new(),
+                        fragment_path: None,
+                        refs_by_name,
+                        default_dependencies: true,
+                        ignore_on_isolate: false,
+                        conditions: Vec::new(),
+                        assertions: Vec::new(),
+                        success_action: Default::default(),
+                        failure_action: Default::default(),
+                        job_timeout_action: Default::default(),
+                        job_timeout_sec: None,
+                        allow_isolate: false,
+                        refuse_manual_start: false,
+                        refuse_manual_stop: false,
+                        on_failure: Vec::new(),
+                        on_failure_job_mode: Default::default(),
+                        start_limit_interval_sec: None,
+                        start_limit_burst: None,
+                        start_limit_action: Default::default(),
+                        aliases: Vec::new(),
+                        default_instance: None,
+                    },
+                    dependencies: Dependencies {
+                        wants: Vec::new(),
+                        wanted_by,
+                        requires: Vec::new(),
+                        required_by,
+                        conflicts: Vec::new(),
+                        conflicted_by: Vec::new(),
+                        before,
+                        after: Vec::new(),
+                        part_of: Vec::new(),
+                        part_of_by: Vec::new(),
+                        binds_to: Vec::new(),
+                        bound_by: Vec::new(),
+                    },
+                },
+                specific: Specific::Swap(SwapSpecific {
+                    conf: SwapConfig {
+                        what: device.to_owned(),
+                        priority,
+                        options: options_str,
+                        timeout_sec: None,
+                    },
+                    state: RwLock::new(SwapState {
+                        common: CommonState::default(),
+                    }),
+                }),
+            };
+
+            trace!(
+                "fstab generator: created {} for swap device {}",
+                unit_name, device
+            );
+            unit_table.insert(unit_id, unit);
             continue;
         }
 

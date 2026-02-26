@@ -114,6 +114,38 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
         | Specific::Device(_) => {
             // Nothing to do
         }
+        Specific::Swap(specific) => {
+            // Deactivate swap during shutdown
+            trace!("Deactivating swap unit: {}", unit.id.name);
+            let conf = &specific.conf;
+            #[cfg(target_os = "linux")]
+            {
+                if let Ok(cstr) = std::ffi::CString::new(conf.what.as_str()) {
+                    // SAFETY: swapoff(2) is a standard Linux syscall. The path
+                    // is a valid NUL-terminated C string.
+                    let ret = unsafe { libc::swapoff(cstr.as_ptr()) };
+                    if ret == 0 {
+                        trace!("Deactivated swap unit: {}", unit.id.name);
+                    } else {
+                        let errno = std::io::Error::last_os_error();
+                        error!(
+                            "Failed to deactivate swap {} ({}): {}",
+                            conf.what, unit.id.name, errno
+                        );
+                    }
+                } else {
+                    error!("Invalid swap path for unit {}: {}", unit.id.name, conf.what);
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = conf;
+                trace!(
+                    "Swap deactivation is a no-op on non-Linux ({})",
+                    unit.id.name
+                );
+            }
+        }
         Specific::Mount(specific) => {
             // Unmount the filesystem during shutdown
             trace!("Unmounting mount unit: {}", unit.id.name);

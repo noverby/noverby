@@ -7,6 +7,7 @@ pub enum UnitIdKind {
     Service,
     Slice,
     Mount,
+    Swap,
     Device,
     Timer,
     Path,
