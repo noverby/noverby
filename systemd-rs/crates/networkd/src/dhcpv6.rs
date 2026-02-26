@@ -2,8 +2,9 @@
 //!
 //! Implements the four-message exchange (Solicit → Advertise → Request → Reply)
 //! and the two-message exchange for stateless DHCPv6 (Information-Request → Reply).
-//! Supports IA_NA for address assignment, DNS recursive name server option,
-//! DNS domain search list option, and DUID-based client identification.
+//! Supports IA_NA for address assignment, IA_PD for prefix delegation (RFC 8415 §6.3),
+//! DNS recursive name server option, DNS domain search list option, and DUID-based
+//! client identification.
 
 use std::fmt;
 use std::net::Ipv6Addr;
@@ -230,6 +231,78 @@ impl fmt::Display for IaNa {
 }
 
 // ---------------------------------------------------------------------------
+// IA_PD (Identity Association for Prefix Delegation) — RFC 8415 §6.3
+// ---------------------------------------------------------------------------
+
+/// A delegated prefix within an IA_PD.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IaPrefix {
+    /// Preferred lifetime in seconds.
+    pub preferred_lifetime: u32,
+    /// Valid lifetime in seconds.
+    pub valid_lifetime: u32,
+    /// Prefix length (e.g. 48, 56, 64).
+    pub prefix_length: u8,
+    /// Delegated prefix (network address portion).
+    pub prefix: Ipv6Addr,
+}
+
+impl fmt::Display for IaPrefix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}/{} preferred={}s valid={}s",
+            self.prefix, self.prefix_length, self.preferred_lifetime, self.valid_lifetime
+        )
+    }
+}
+
+/// Identity Association for Prefix Delegation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IaPd {
+    /// IA identifier (chosen by client, must be consistent across restarts).
+    pub iaid: u32,
+    /// T1: time at which the client contacts the server to extend lifetimes.
+    pub t1: u32,
+    /// T2: time at which the client contacts any server to extend lifetimes.
+    pub t2: u32,
+    /// Delegated prefix bindings.
+    pub prefixes: Vec<IaPrefix>,
+    /// Status code from within the IA_PD (if present).
+    pub status: Option<(u16, String)>,
+}
+
+impl IaPd {
+    /// Create a new IA_PD with the given IAID and no prefixes.
+    pub fn new(iaid: u32) -> Self {
+        Self {
+            iaid,
+            t1: 0,
+            t2: 0,
+            prefixes: Vec::new(),
+            status: None,
+        }
+    }
+}
+
+impl fmt::Display for IaPd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "IA_PD(iaid={:#010x} T1={}s T2={}s",
+            self.iaid, self.t1, self.t2
+        )?;
+        for pfx in &self.prefixes {
+            write!(f, " {}", pfx)?;
+        }
+        if let Some((code, ref msg)) = self.status {
+            write!(f, " status={}:{}", code, msg)?;
+        }
+        write!(f, ")")
+    }
+}
+
+// ---------------------------------------------------------------------------
 // DHCPv6 Lease
 // ---------------------------------------------------------------------------
 
@@ -238,6 +311,9 @@ impl fmt::Display for IaNa {
 pub struct Dhcpv6Lease {
     /// The IA_NA with assigned addresses.
     pub ia_na: IaNa,
+
+    /// The IA_PD with delegated prefixes (empty if PD not requested/granted).
+    pub ia_pd: Option<IaPd>,
 
     /// Server DUID.
     pub server_id: Duid,
@@ -256,8 +332,22 @@ pub struct Dhcpv6Lease {
 }
 
 impl Dhcpv6Lease {
-    /// T1 time from the IA_NA (time to start Renew).
+    /// T1 time — earliest T1 across IA_NA and IA_PD (time to start Renew).
     pub fn t1(&self) -> Duration {
+        let na_t1 = self.t1_from_ia_na();
+        let pd_t1 = self.t1_from_ia_pd();
+        match (na_t1, pd_t1) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(a), None) => a,
+            (None, Some(b)) => b,
+            (None, None) => Duration::from_secs(1800), // Fallback.
+        }
+    }
+
+    fn t1_from_ia_na(&self) -> Option<Duration> {
+        if self.ia_na.addresses.is_empty() {
+            return None;
+        }
         if self.ia_na.t1 == 0 || self.ia_na.t1 == 0xFFFFFFFF {
             // Use 0.5 * shortest preferred lifetime as a reasonable default.
             let min_pref = self
@@ -268,16 +358,48 @@ impl Dhcpv6Lease {
                 .filter(|&t| t > 0 && t != 0xFFFFFFFF)
                 .min()
                 .unwrap_or(3600);
-            Duration::from_secs((min_pref / 2) as u64)
+            Some(Duration::from_secs((min_pref / 2) as u64))
         } else {
-            Duration::from_secs(self.ia_na.t1 as u64)
+            Some(Duration::from_secs(self.ia_na.t1 as u64))
         }
     }
 
-    /// T2 time from the IA_NA (time to start Rebind).
+    fn t1_from_ia_pd(&self) -> Option<Duration> {
+        let ia_pd = self.ia_pd.as_ref()?;
+        if ia_pd.prefixes.is_empty() {
+            return None;
+        }
+        if ia_pd.t1 == 0 || ia_pd.t1 == 0xFFFFFFFF {
+            let min_pref = ia_pd
+                .prefixes
+                .iter()
+                .map(|p| p.preferred_lifetime)
+                .filter(|&t| t > 0 && t != 0xFFFFFFFF)
+                .min()
+                .unwrap_or(3600);
+            Some(Duration::from_secs((min_pref / 2) as u64))
+        } else {
+            Some(Duration::from_secs(ia_pd.t1 as u64))
+        }
+    }
+
+    /// T2 time — earliest T2 across IA_NA and IA_PD (time to start Rebind).
     pub fn t2(&self) -> Duration {
+        let na_t2 = self.t2_from_ia_na();
+        let pd_t2 = self.t2_from_ia_pd();
+        match (na_t2, pd_t2) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(a), None) => a,
+            (None, Some(b)) => b,
+            (None, None) => Duration::from_secs(2880), // Fallback.
+        }
+    }
+
+    fn t2_from_ia_na(&self) -> Option<Duration> {
+        if self.ia_na.addresses.is_empty() {
+            return None;
+        }
         if self.ia_na.t2 == 0 || self.ia_na.t2 == 0xFFFFFFFF {
-            // Use 0.8 * shortest preferred lifetime as a reasonable default.
             let min_pref = self
                 .ia_na
                 .addresses
@@ -286,9 +408,28 @@ impl Dhcpv6Lease {
                 .filter(|&t| t > 0 && t != 0xFFFFFFFF)
                 .min()
                 .unwrap_or(3600);
-            Duration::from_secs((min_pref * 4 / 5) as u64)
+            Some(Duration::from_secs((min_pref * 4 / 5) as u64))
         } else {
-            Duration::from_secs(self.ia_na.t2 as u64)
+            Some(Duration::from_secs(self.ia_na.t2 as u64))
+        }
+    }
+
+    fn t2_from_ia_pd(&self) -> Option<Duration> {
+        let ia_pd = self.ia_pd.as_ref()?;
+        if ia_pd.prefixes.is_empty() {
+            return None;
+        }
+        if ia_pd.t2 == 0 || ia_pd.t2 == 0xFFFFFFFF {
+            let min_pref = ia_pd
+                .prefixes
+                .iter()
+                .map(|p| p.preferred_lifetime)
+                .filter(|&t| t > 0 && t != 0xFFFFFFFF)
+                .min()
+                .unwrap_or(3600);
+            Some(Duration::from_secs((min_pref * 4 / 5) as u64))
+        } else {
+            Some(Duration::from_secs(ia_pd.t2 as u64))
         }
     }
 
@@ -302,19 +443,32 @@ impl Dhcpv6Lease {
         self.obtained_at.elapsed() >= self.t2()
     }
 
-    /// Whether all addresses in the lease have expired (valid_lifetime exceeded).
+    /// Whether all addresses and prefixes in the lease have expired.
     pub fn is_expired(&self) -> bool {
         let elapsed = self.obtained_at.elapsed().as_secs() as u32;
-        self.ia_na
-            .addresses
-            .iter()
-            .all(|a| a.valid_lifetime != 0xFFFFFFFF && elapsed >= a.valid_lifetime)
+        let na_expired = self.ia_na.addresses.is_empty()
+            || self
+                .ia_na
+                .addresses
+                .iter()
+                .all(|a| a.valid_lifetime != 0xFFFFFFFF && elapsed >= a.valid_lifetime);
+        let pd_expired = match &self.ia_pd {
+            Some(pd) => {
+                pd.prefixes.is_empty()
+                    || pd
+                        .prefixes
+                        .iter()
+                        .all(|p| p.valid_lifetime != 0xFFFFFFFF && elapsed >= p.valid_lifetime)
+            }
+            None => true,
+        };
+        na_expired && pd_expired
     }
 
-    /// Remaining time until the first address expires.
+    /// Remaining time until the first address or prefix expires.
     pub fn remaining(&self) -> Duration {
         let elapsed = self.obtained_at.elapsed().as_secs() as u32;
-        let min_valid = self
+        let na_remaining = self
             .ia_na
             .addresses
             .iter()
@@ -325,14 +479,47 @@ impl Dhcpv6Lease {
                     a.valid_lifetime.saturating_sub(elapsed)
                 }
             })
-            .min()
-            .unwrap_or(0);
+            .min();
+        let pd_remaining = self.ia_pd.as_ref().and_then(|pd| {
+            pd.prefixes
+                .iter()
+                .map(|p| {
+                    if p.valid_lifetime == 0xFFFFFFFF {
+                        u32::MAX
+                    } else {
+                        p.valid_lifetime.saturating_sub(elapsed)
+                    }
+                })
+                .min()
+        });
+        let min_valid = match (na_remaining, pd_remaining) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(a), None) => a,
+            (None, Some(b)) => b,
+            (None, None) => 0,
+        };
         Duration::from_secs(min_valid as u64)
     }
 
     /// The primary (first) assigned IPv6 address, if any.
     pub fn primary_address(&self) -> Option<Ipv6Addr> {
         self.ia_na.addresses.first().map(|a| a.address)
+    }
+
+    /// The delegated prefixes, if any.
+    pub fn delegated_prefixes(&self) -> &[IaPrefix] {
+        match &self.ia_pd {
+            Some(pd) => &pd.prefixes,
+            None => &[],
+        }
+    }
+
+    /// Whether this lease contains delegated prefixes.
+    pub fn has_prefix_delegation(&self) -> bool {
+        self.ia_pd
+            .as_ref()
+            .map(|pd| !pd.prefixes.is_empty())
+            .unwrap_or(false)
     }
 }
 
@@ -342,6 +529,11 @@ impl fmt::Display for Dhcpv6Lease {
         for addr in &self.ia_na.addresses {
             write!(f, " addr={}", addr.address)?;
         }
+        if let Some(ref pd) = self.ia_pd {
+            for pfx in &pd.prefixes {
+                write!(f, " prefix={}/{}", pfx.prefix, pfx.prefix_length)?;
+            }
+        }
         if !self.dns_servers.is_empty() {
             write!(f, " dns={:?}", self.dns_servers)?;
         }
@@ -349,6 +541,9 @@ impl fmt::Display for Dhcpv6Lease {
             write!(f, " domains={:?}", self.domains)?;
         }
         write!(f, " T1={}s T2={}s", self.ia_na.t1, self.ia_na.t2)?;
+        if let Some(ref pd) = self.ia_pd {
+            write!(f, " PD-T1={}s PD-T2={}s", pd.t1, pd.t2)?;
+        }
         Ok(())
     }
 }
@@ -416,77 +611,74 @@ pub struct Dhcpv6Message {
 }
 
 impl Dhcpv6Message {
-    /// Create a new message with the given type and a random transaction ID.
-    pub fn new(msg_type: u8, tid: [u8; 3]) -> Self {
+    pub fn new(msg_type: u8, transaction_id: [u8; 3]) -> Self {
         Self {
             msg_type,
-            transaction_id: tid,
+            transaction_id,
             options: Vec::new(),
         }
     }
 
-    /// Add an option.
     pub fn add_option(&mut self, code: u16, data: Vec<u8>) {
         self.options.push(Dhcpv6Option { code, data });
     }
 
-    /// Find the first option with the given code.
     pub fn find_option(&self, code: u16) -> Option<&Dhcpv6Option> {
         self.options.iter().find(|o| o.code == code)
     }
 
-    /// Find all options with the given code.
     pub fn find_options(&self, code: u16) -> Vec<&Dhcpv6Option> {
         self.options.iter().filter(|o| o.code == code).collect()
     }
 
-    /// Get the Server ID option (if present).
     pub fn server_id(&self) -> Option<Duid> {
         self.find_option(OPT_SERVERID)
             .map(|o| Duid::from_bytes(o.data.clone()))
     }
 
-    /// Get the Client ID option (if present).
     pub fn client_id(&self) -> Option<Duid> {
         self.find_option(OPT_CLIENTID)
             .map(|o| Duid::from_bytes(o.data.clone()))
     }
 
-    /// Get the preference value (default 0).
     pub fn preference(&self) -> u8 {
         self.find_option(OPT_PREFERENCE)
             .and_then(|o| o.data.first().copied())
             .unwrap_or(0)
     }
 
-    /// Get the top-level status code (if present).
     pub fn status_code(&self) -> Option<(u16, String)> {
-        parse_status_code_option(self.find_option(OPT_STATUS_CODE)?)
+        self.find_option(OPT_STATUS_CODE)
+            .and_then(parse_status_code_option)
     }
 
-    /// Parse all IA_NA options from the message.
     pub fn parse_ia_nas(&self) -> Vec<IaNa> {
         self.find_options(OPT_IA_NA)
-            .iter()
+            .into_iter()
             .filter_map(|o| parse_ia_na(&o.data))
             .collect()
     }
 
-    /// Parse DNS recursive name servers (option 23).
+    /// Parse all IA_PD options from this message.
+    pub fn parse_ia_pds(&self) -> Vec<IaPd> {
+        self.find_options(OPT_IA_PD)
+            .into_iter()
+            .filter_map(|o| parse_ia_pd(&o.data))
+            .collect()
+    }
+
     pub fn dns_servers(&self) -> Vec<Ipv6Addr> {
         self.find_option(OPT_DNS_SERVERS)
             .map(|o| parse_ipv6_list(&o.data))
             .unwrap_or_default()
     }
 
-    /// Parse DNS domain search list (option 24).
     pub fn domain_list(&self) -> Vec<String> {
         self.find_option(OPT_DOMAIN_LIST)
             .map(|o| parse_dns_labels(&o.data))
             .unwrap_or_default()
     }
 
-    /// Check for Rapid Commit option.
     pub fn has_rapid_commit(&self) -> bool {
         self.find_option(OPT_RAPID_COMMIT).is_some()
     }
@@ -555,6 +747,13 @@ pub struct Dhcpv6ClientConfig {
     /// Whether to request addresses (stateful mode, M flag).
     /// When false, only requests configuration (stateless, O flag).
     pub request_addresses: bool,
+    /// Whether to request prefix delegation (IA_PD).
+    pub request_prefix_delegation: bool,
+    /// Prefix delegation hint: requested prefix length (0 = no hint).
+    /// Common values: 48, 56, 60, 64.
+    pub prefix_hint: u8,
+    /// Prefix delegation hint: requested prefix address (:: = no hint).
+    pub prefix_hint_address: Ipv6Addr,
     /// Use Rapid Commit (2-message exchange).
     pub rapid_commit: bool,
     /// Maximum attempts (0 = unlimited).
@@ -570,6 +769,9 @@ impl Default for Dhcpv6ClientConfig {
             ifname: String::new(),
             mac: [0; 6],
             request_addresses: true,
+            request_prefix_delegation: false,
+            prefix_hint: 0,
+            prefix_hint_address: Ipv6Addr::UNSPECIFIED,
             rapid_commit: false,
             max_attempts: 0,
             request_options: vec![OPT_DNS_SERVERS, OPT_DOMAIN_LIST],
@@ -583,7 +785,7 @@ impl Default for Dhcpv6ClientConfig {
 
 /// Stateful DHCPv6 client implementing the four-message exchange
 /// (Solicit → Advertise → Request → Reply) and stateless
-/// (Information-Request → Reply) mode.
+/// (Information-Request → Reply) mode.  Supports IA_PD for prefix delegation.
 #[derive(Debug)]
 pub struct Dhcpv6Client {
     /// Client configuration.
@@ -596,6 +798,8 @@ pub struct Dhcpv6Client {
     pub transaction_id: [u8; 3],
     /// IAID for IA_NA requests (derived from ifindex).
     pub iaid: u32,
+    /// IAID for IA_PD requests (derived from ifindex + 1 to avoid collision).
+    pub pd_iaid: u32,
     /// Best Advertise received during Soliciting (highest preference).
     pub best_advertise: Option<Dhcpv6Message>,
     /// Current lease.
@@ -621,6 +825,8 @@ impl Dhcpv6Client {
     pub fn new(config: Dhcpv6ClientConfig) -> Self {
         let client_duid = Duid::from_mac(&config.mac);
         let iaid = config.ifindex;
+        // Use ifindex + 1 for PD IAID to avoid collision with IA_NA IAID.
+        let pd_iaid = config.ifindex.wrapping_add(1);
         let tid = generate_transaction_id();
 
         // Both stateful and stateless start in Init;
@@ -633,6 +839,7 @@ impl Dhcpv6Client {
             client_duid,
             transaction_id: tid,
             iaid,
+            pd_iaid,
             best_advertise: None,
             lease: None,
             attempts: 0,
@@ -648,7 +855,7 @@ impl Dhcpv6Client {
     /// Build the next outgoing packet based on current state.
     /// Returns `None` if no packet should be sent.
     pub fn next_packet(&mut self) -> Option<Vec<u8>> {
-        if self.config.request_addresses {
+        if self.config.request_addresses || self.config.request_prefix_delegation {
             self.next_packet_stateful()
         } else {
             self.next_packet_stateless()
@@ -945,18 +1152,75 @@ impl Dhcpv6Client {
             match best_ia {
                 Some(ia) => ia,
                 None => {
-                    log::warn!("{}: DHCPv6 Reply has no usable IA_NA", self.config.ifname);
-                    // If renewing/rebinding, stay in current state and retry.
-                    if self.state == Dhcpv6State::Requesting {
-                        self.state = Dhcpv6State::Init;
-                        self.best_advertise = None;
+                    // If we also requested PD, don't fail just because IA_NA
+                    // is missing — the server may only grant prefixes.
+                    if !self.config.request_prefix_delegation {
+                        log::warn!("{}: DHCPv6 Reply has no usable IA_NA", self.config.ifname);
+                        if self.state == Dhcpv6State::Requesting {
+                            self.state = Dhcpv6State::Init;
+                            self.best_advertise = None;
+                        }
+                        return None;
                     }
-                    return None;
+                    IaNa::new(self.iaid)
                 }
             }
         } else {
-            IaNa::new(self.iaid) // Empty IA_NA for stateless.
+            IaNa::new(self.iaid) // Empty IA_NA for stateless / PD-only.
         };
+
+        // Parse IA_PD options from the reply.
+        let ia_pd = if self.config.request_prefix_delegation {
+            let ia_pds = msg.parse_ia_pds();
+            let mut best_pd: Option<IaPd> = None;
+            for pd in ia_pds {
+                // Check IA-level status.
+                if let Some((code, ref _msg)) = pd.status
+                    && code != STATUS_SUCCESS
+                {
+                    log::warn!(
+                        "{}: IA_PD iaid={:#010x} status={} ({})",
+                        self.config.ifname,
+                        pd.iaid,
+                        code,
+                        status_code_name(code)
+                    );
+                    if code == STATUS_NO_PREFIX_AVAIL {
+                        log::info!(
+                            "{}: server has no prefixes available for delegation",
+                            self.config.ifname
+                        );
+                    }
+                    continue;
+                }
+                if !pd.prefixes.is_empty() && (best_pd.is_none() || pd.iaid == self.pd_iaid) {
+                    best_pd = Some(pd);
+                }
+            }
+            if let Some(ref pd) = best_pd {
+                log::info!(
+                    "{}: DHCPv6 prefix delegation obtained: {}",
+                    self.config.ifname,
+                    pd
+                );
+            }
+            best_pd
+        } else {
+            None
+        };
+
+        // We need at least addresses or prefixes for a successful lease.
+        if ia_na.addresses.is_empty() && ia_pd.as_ref().is_none_or(|pd| pd.prefixes.is_empty()) {
+            log::warn!(
+                "{}: DHCPv6 Reply has no usable addresses or prefixes",
+                self.config.ifname
+            );
+            if self.state == Dhcpv6State::Requesting {
+                self.state = Dhcpv6State::Init;
+                self.best_advertise = None;
+            }
+            return None;
+        }
 
         let server_id = msg
             .server_id()
@@ -966,6 +1230,7 @@ impl Dhcpv6Client {
 
         let lease = Dhcpv6Lease {
             ia_na,
+            ia_pd,
             server_id,
             dns_servers,
             domains,
@@ -1013,6 +1278,7 @@ impl Dhcpv6Client {
             .unwrap_or_else(|| Duid::from_bytes(Vec::new()));
         Some(Dhcpv6Lease {
             ia_na: IaNa::new(self.iaid),
+            ia_pd: None,
             server_id,
             dns_servers,
             domains,
@@ -1046,7 +1312,25 @@ impl Dhcpv6Client {
         msg.add_option(OPT_ELAPSED_TIME, self.elapsed_time_value());
 
         // IA_NA (request an address).
-        msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &[]));
+        if self.config.request_addresses {
+            msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &[]));
+        }
+
+        // IA_PD (request prefix delegation).
+        if self.config.request_prefix_delegation {
+            let hint = if self.config.prefix_hint > 0 {
+                Some(IaPrefix {
+                    preferred_lifetime: 0,
+                    valid_lifetime: 0,
+                    prefix_length: self.config.prefix_hint,
+                    prefix: self.config.prefix_hint_address,
+                })
+            } else {
+                None
+            };
+            let hints: Vec<&IaPrefix> = hint.iter().collect();
+            msg.add_option(OPT_IA_PD, build_ia_pd_option(self.pd_iaid, 0, 0, &hints));
+        }
 
         // Rapid Commit (if configured).
         if self.config.rapid_commit {
@@ -1077,16 +1361,47 @@ impl Dhcpv6Client {
         msg.add_option(OPT_ELAPSED_TIME, self.elapsed_time_value());
 
         // IA_NA — include addresses from the Advertise if available.
-        let adv_ia_nas = advertise.parse_ia_nas();
-        let ia_addrs: Vec<&IaAddress> = adv_ia_nas
-            .iter()
-            .flat_map(|ia| ia.addresses.iter())
-            .collect();
+        if self.config.request_addresses {
+            let adv_ia_nas = advertise.parse_ia_nas();
+            let ia_addrs: Vec<&IaAddress> = adv_ia_nas
+                .iter()
+                .flat_map(|ia| ia.addresses.iter())
+                .collect();
 
-        if ia_addrs.is_empty() {
-            msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &[]));
-        } else {
-            msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &ia_addrs));
+            if ia_addrs.is_empty() {
+                msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &[]));
+            } else {
+                msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &ia_addrs));
+            }
+        }
+
+        // IA_PD — include prefixes from the Advertise if available.
+        if self.config.request_prefix_delegation {
+            let adv_ia_pds = advertise.parse_ia_pds();
+            let ia_prefixes: Vec<&IaPrefix> = adv_ia_pds
+                .iter()
+                .flat_map(|pd| pd.prefixes.iter())
+                .collect();
+
+            if ia_prefixes.is_empty() {
+                let hint = if self.config.prefix_hint > 0 {
+                    Some(IaPrefix {
+                        preferred_lifetime: 0,
+                        valid_lifetime: 0,
+                        prefix_length: self.config.prefix_hint,
+                        prefix: self.config.prefix_hint_address,
+                    })
+                } else {
+                    None
+                };
+                let hints: Vec<&IaPrefix> = hint.iter().collect();
+                msg.add_option(OPT_IA_PD, build_ia_pd_option(self.pd_iaid, 0, 0, &hints));
+            } else {
+                msg.add_option(
+                    OPT_IA_PD,
+                    build_ia_pd_option(self.pd_iaid, 0, 0, &ia_prefixes),
+                );
+            }
         }
 
         // ORO.
@@ -1119,8 +1434,23 @@ impl Dhcpv6Client {
                 OPT_IA_NA,
                 build_ia_na_option(self.iaid, lease.ia_na.t1, lease.ia_na.t2, &addrs),
             );
-        } else {
+        } else if self.config.request_addresses {
             msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &[]));
+        }
+
+        // IA_PD with current prefixes.
+        if self.config.request_prefix_delegation {
+            if let Some(ref lease) = self.lease
+                && let Some(ref pd) = lease.ia_pd
+            {
+                let pfxs: Vec<&IaPrefix> = pd.prefixes.iter().collect();
+                msg.add_option(
+                    OPT_IA_PD,
+                    build_ia_pd_option(self.pd_iaid, pd.t1, pd.t2, &pfxs),
+                );
+            } else {
+                msg.add_option(OPT_IA_PD, build_ia_pd_option(self.pd_iaid, 0, 0, &[]));
+            }
         }
 
         // ORO.
@@ -1148,8 +1478,23 @@ impl Dhcpv6Client {
                 OPT_IA_NA,
                 build_ia_na_option(self.iaid, lease.ia_na.t1, lease.ia_na.t2, &addrs),
             );
-        } else {
+        } else if self.config.request_addresses {
             msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &[]));
+        }
+
+        // IA_PD with current prefixes (no Server ID for Rebind).
+        if self.config.request_prefix_delegation {
+            if let Some(ref lease) = self.lease
+                && let Some(ref pd) = lease.ia_pd
+            {
+                let pfxs: Vec<&IaPrefix> = pd.prefixes.iter().collect();
+                msg.add_option(
+                    OPT_IA_PD,
+                    build_ia_pd_option(self.pd_iaid, pd.t1, pd.t2, &pfxs),
+                );
+            } else {
+                msg.add_option(OPT_IA_PD, build_ia_pd_option(self.pd_iaid, 0, 0, &[]));
+            }
         }
 
         // ORO.
@@ -1172,8 +1517,18 @@ impl Dhcpv6Client {
         msg.add_option(OPT_SERVERID, lease.server_id.data.clone());
 
         // IA_NA with current addresses.
-        let addrs: Vec<&IaAddress> = lease.ia_na.addresses.iter().collect();
-        msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &addrs));
+        if !lease.ia_na.addresses.is_empty() {
+            let addrs: Vec<&IaAddress> = lease.ia_na.addresses.iter().collect();
+            msg.add_option(OPT_IA_NA, build_ia_na_option(self.iaid, 0, 0, &addrs));
+        }
+
+        // IA_PD with current prefixes.
+        if let Some(ref pd) = lease.ia_pd
+            && !pd.prefixes.is_empty()
+        {
+            let pfxs: Vec<&IaPrefix> = pd.prefixes.iter().collect();
+            msg.add_option(OPT_IA_PD, build_ia_pd_option(self.pd_iaid, 0, 0, &pfxs));
+        }
 
         Some(msg.serialize())
     }
@@ -1241,6 +1596,41 @@ fn build_ia_addr(addr: &IaAddress) -> Vec<u8> {
     buf.extend_from_slice(&addr.address.octets());
     buf.extend_from_slice(&addr.preferred_lifetime.to_be_bytes());
     buf.extend_from_slice(&addr.valid_lifetime.to_be_bytes());
+    // No sub-options.
+    buf
+}
+
+/// Build an IA_PD option payload (RFC 8415 §21.21).
+///
+/// Wire format:
+///   IAID (4 bytes) + T1 (4 bytes) + T2 (4 bytes) + IA Prefix sub-options
+fn build_ia_pd_option(iaid: u32, t1: u32, t2: u32, prefixes: &[&IaPrefix]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(12 + prefixes.len() * 29);
+    buf.extend_from_slice(&iaid.to_be_bytes());
+    buf.extend_from_slice(&t1.to_be_bytes());
+    buf.extend_from_slice(&t2.to_be_bytes());
+
+    for pfx in prefixes {
+        // IA Prefix sub-option (option 26).
+        let ia_prefix_data = build_ia_prefix(pfx);
+        buf.extend_from_slice(&OPT_IAPREFIX.to_be_bytes());
+        buf.extend_from_slice(&(ia_prefix_data.len() as u16).to_be_bytes());
+        buf.extend_from_slice(&ia_prefix_data);
+    }
+
+    buf
+}
+
+/// Build an IA Prefix sub-option payload (RFC 8415 §21.22).
+///
+/// Wire format:
+///   preferred-lifetime (4) + valid-lifetime (4) + prefix-length (1) + prefix (16) = 25 bytes
+fn build_ia_prefix(pfx: &IaPrefix) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(25);
+    buf.extend_from_slice(&pfx.preferred_lifetime.to_be_bytes());
+    buf.extend_from_slice(&pfx.valid_lifetime.to_be_bytes());
+    buf.push(pfx.prefix_length);
+    buf.extend_from_slice(&pfx.prefix.octets());
     // No sub-options.
     buf
 }
@@ -1343,6 +1733,75 @@ fn parse_ia_addr(data: &[u8]) -> Option<IaAddress> {
         address,
         preferred_lifetime,
         valid_lifetime,
+    })
+}
+
+/// Parse an IA_PD option from its data payload (RFC 8415 §21.21).
+///
+/// Wire format:
+///   IAID (4) + T1 (4) + T2 (4) + sub-options (IA Prefix, Status Code)
+fn parse_ia_pd(data: &[u8]) -> Option<IaPd> {
+    if data.len() < 12 {
+        return None;
+    }
+
+    let iaid = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+    let t1 = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
+    let t2 = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
+
+    let mut ia_pd = IaPd {
+        iaid,
+        t1,
+        t2,
+        prefixes: Vec::new(),
+        status: None,
+    };
+
+    // Parse sub-options within the IA_PD.
+    let sub_data = &data[12..];
+    if let Some(sub_opts) = parse_options(sub_data) {
+        for opt in &sub_opts {
+            match opt.code {
+                OPT_IAPREFIX => {
+                    if let Some(pfx) = parse_ia_prefix(&opt.data) {
+                        ia_pd.prefixes.push(pfx);
+                    }
+                }
+                OPT_STATUS_CODE => {
+                    if let Some(status) = parse_status_code_option(opt) {
+                        ia_pd.status = Some(status);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Some(ia_pd)
+}
+
+/// Parse an IA Prefix sub-option from its data payload (RFC 8415 §21.22).
+///
+/// Wire format:
+///   preferred-lifetime (4) + valid-lifetime (4) + prefix-length (1) + prefix (16) = 25 bytes min
+fn parse_ia_prefix(data: &[u8]) -> Option<IaPrefix> {
+    if data.len() < 25 {
+        return None;
+    }
+
+    let preferred_lifetime = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+    let valid_lifetime = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
+    let prefix_length = data[8];
+
+    let mut prefix_bytes = [0u8; 16];
+    prefix_bytes.copy_from_slice(&data[9..25]);
+    let prefix = Ipv6Addr::from(prefix_bytes);
+
+    Some(IaPrefix {
+        preferred_lifetime,
+        valid_lifetime,
+        prefix_length,
+        prefix,
     })
 }
 
@@ -1736,10 +2195,11 @@ mod tests {
                 }],
                 status: None,
             },
+            ia_pd: None,
             server_id: Duid::from_bytes(vec![0, 3, 0, 1, 1, 2, 3, 4, 5, 6]),
             dns_servers: vec!["2001:4860:4860::8888".parse().unwrap()],
             domains: vec!["example.com".to_string()],
-            preference: 0,
+            preference: 128,
             obtained_at: Instant::now(),
         }
     }
@@ -2302,6 +2762,9 @@ mod tests {
             ifname: "eth0".to_string(),
             mac: [0x52, 0x54, 0x00, 0x12, 0x34, 0x56],
             request_addresses: true,
+            request_prefix_delegation: false,
+            prefix_hint: 0,
+            prefix_hint_address: Ipv6Addr::UNSPECIFIED,
             rapid_commit: false,
             max_attempts: 0,
             request_options: vec![OPT_DNS_SERVERS, OPT_DOMAIN_LIST],
@@ -2835,5 +3298,876 @@ mod tests {
         reply.add_option(OPT_DOMAIN_LIST, domain_data.to_vec());
 
         reply
+    }
+
+    // ================================================================
+    // DHCPv6 Prefix Delegation (IA_PD) tests
+    // ================================================================
+
+    // -- IaPrefix struct tests --
+
+    #[test]
+    fn test_ia_prefix_display() {
+        let pfx = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 56,
+            prefix: "2001:db8:abcd::".parse().unwrap(),
+        };
+        let s = format!("{pfx}");
+        assert!(s.contains("2001:db8:abcd::/56"));
+        assert!(s.contains("preferred=3600s"));
+        assert!(s.contains("valid=7200s"));
+    }
+
+    // -- IaPd struct tests --
+
+    #[test]
+    fn test_ia_pd_new() {
+        let pd = IaPd::new(42);
+        assert_eq!(pd.iaid, 42);
+        assert_eq!(pd.t1, 0);
+        assert_eq!(pd.t2, 0);
+        assert!(pd.prefixes.is_empty());
+        assert!(pd.status.is_none());
+    }
+
+    #[test]
+    fn test_ia_pd_display() {
+        let mut pd = IaPd::new(0x100);
+        pd.t1 = 1800;
+        pd.t2 = 2880;
+        pd.prefixes.push(IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 48,
+            prefix: "2001:db8::".parse().unwrap(),
+        });
+        let s = format!("{pd}");
+        assert!(s.contains("IA_PD"));
+        assert!(s.contains("T1=1800s"));
+        assert!(s.contains("T2=2880s"));
+        assert!(s.contains("2001:db8::/48"));
+    }
+
+    #[test]
+    fn test_ia_pd_display_with_status() {
+        let mut pd = IaPd::new(1);
+        pd.status = Some((6, "no prefix".to_string()));
+        let s = format!("{pd}");
+        assert!(s.contains("status=6:no prefix"));
+    }
+
+    // -- IA_PD parsing tests --
+
+    #[test]
+    fn test_parse_ia_pd_basic() {
+        let mut data = Vec::new();
+        data.extend_from_slice(&42u32.to_be_bytes()); // IAID
+        data.extend_from_slice(&1800u32.to_be_bytes()); // T1
+        data.extend_from_slice(&2880u32.to_be_bytes()); // T2
+
+        let pd = parse_ia_pd(&data).unwrap();
+        assert_eq!(pd.iaid, 42);
+        assert_eq!(pd.t1, 1800);
+        assert_eq!(pd.t2, 2880);
+        assert!(pd.prefixes.is_empty());
+        assert!(pd.status.is_none());
+    }
+
+    #[test]
+    fn test_parse_ia_pd_with_prefix() {
+        let mut data = Vec::new();
+        data.extend_from_slice(&1u32.to_be_bytes()); // IAID
+        data.extend_from_slice(&900u32.to_be_bytes()); // T1
+        data.extend_from_slice(&1440u32.to_be_bytes()); // T2
+
+        // IA Prefix sub-option.
+        let prefix: Ipv6Addr = "2001:db8:abcd::".parse().unwrap();
+        let mut ia_prefix_data = Vec::new();
+        ia_prefix_data.extend_from_slice(&3600u32.to_be_bytes()); // preferred
+        ia_prefix_data.extend_from_slice(&7200u32.to_be_bytes()); // valid
+        ia_prefix_data.push(56); // prefix length
+        ia_prefix_data.extend_from_slice(&prefix.octets());
+
+        data.extend_from_slice(&OPT_IAPREFIX.to_be_bytes());
+        data.extend_from_slice(&(ia_prefix_data.len() as u16).to_be_bytes());
+        data.extend_from_slice(&ia_prefix_data);
+
+        let pd = parse_ia_pd(&data).unwrap();
+        assert_eq!(pd.prefixes.len(), 1);
+        assert_eq!(pd.prefixes[0].prefix, prefix);
+        assert_eq!(pd.prefixes[0].prefix_length, 56);
+        assert_eq!(pd.prefixes[0].preferred_lifetime, 3600);
+        assert_eq!(pd.prefixes[0].valid_lifetime, 7200);
+    }
+
+    #[test]
+    fn test_parse_ia_pd_with_multiple_prefixes() {
+        let mut data = Vec::new();
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data.extend_from_slice(&0u32.to_be_bytes());
+
+        // First prefix: 2001:db8:1::/48.
+        let pfx1: Ipv6Addr = "2001:db8:1::".parse().unwrap();
+        let mut p1_data = Vec::new();
+        p1_data.extend_from_slice(&3600u32.to_be_bytes());
+        p1_data.extend_from_slice(&7200u32.to_be_bytes());
+        p1_data.push(48);
+        p1_data.extend_from_slice(&pfx1.octets());
+        data.extend_from_slice(&OPT_IAPREFIX.to_be_bytes());
+        data.extend_from_slice(&(p1_data.len() as u16).to_be_bytes());
+        data.extend_from_slice(&p1_data);
+
+        // Second prefix: 2001:db8:2::/48.
+        let pfx2: Ipv6Addr = "2001:db8:2::".parse().unwrap();
+        let mut p2_data = Vec::new();
+        p2_data.extend_from_slice(&1800u32.to_be_bytes());
+        p2_data.extend_from_slice(&3600u32.to_be_bytes());
+        p2_data.push(48);
+        p2_data.extend_from_slice(&pfx2.octets());
+        data.extend_from_slice(&OPT_IAPREFIX.to_be_bytes());
+        data.extend_from_slice(&(p2_data.len() as u16).to_be_bytes());
+        data.extend_from_slice(&p2_data);
+
+        let pd = parse_ia_pd(&data).unwrap();
+        assert_eq!(pd.prefixes.len(), 2);
+        assert_eq!(pd.prefixes[0].prefix, pfx1);
+        assert_eq!(pd.prefixes[0].prefix_length, 48);
+        assert_eq!(pd.prefixes[1].prefix, pfx2);
+        assert_eq!(pd.prefixes[1].prefix_length, 48);
+    }
+
+    #[test]
+    fn test_parse_ia_pd_too_short() {
+        assert!(parse_ia_pd(&[0; 11]).is_none());
+    }
+
+    #[test]
+    fn test_parse_ia_pd_with_status() {
+        let mut data = Vec::new();
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data.extend_from_slice(&0u32.to_be_bytes());
+
+        // Status Code sub-option: NoPrefixAvail (6).
+        let mut status_data = vec![0, 6]; // code = 6
+        status_data.extend_from_slice(b"no prefix available");
+        data.extend_from_slice(&OPT_STATUS_CODE.to_be_bytes());
+        data.extend_from_slice(&(status_data.len() as u16).to_be_bytes());
+        data.extend_from_slice(&status_data);
+
+        let pd = parse_ia_pd(&data).unwrap();
+        assert!(pd.prefixes.is_empty());
+        let (code, msg) = pd.status.unwrap();
+        assert_eq!(code, STATUS_NO_PREFIX_AVAIL);
+        assert_eq!(msg, "no prefix available");
+    }
+
+    // -- IA Prefix parsing tests --
+
+    #[test]
+    fn test_parse_ia_prefix_basic() {
+        let prefix: Ipv6Addr = "2001:db8:ff00::".parse().unwrap();
+        let mut data = Vec::new();
+        data.extend_from_slice(&3600u32.to_be_bytes()); // preferred
+        data.extend_from_slice(&7200u32.to_be_bytes()); // valid
+        data.push(48); // prefix length
+        data.extend_from_slice(&prefix.octets());
+
+        let pfx = parse_ia_prefix(&data).unwrap();
+        assert_eq!(pfx.prefix, prefix);
+        assert_eq!(pfx.prefix_length, 48);
+        assert_eq!(pfx.preferred_lifetime, 3600);
+        assert_eq!(pfx.valid_lifetime, 7200);
+    }
+
+    #[test]
+    fn test_parse_ia_prefix_too_short() {
+        assert!(parse_ia_prefix(&[0; 24]).is_none());
+    }
+
+    #[test]
+    fn test_parse_ia_prefix_infinity() {
+        let prefix: Ipv6Addr = "fd00::".parse().unwrap();
+        let mut data = Vec::new();
+        data.extend_from_slice(&0xFFFFFFFFu32.to_be_bytes());
+        data.extend_from_slice(&0xFFFFFFFFu32.to_be_bytes());
+        data.push(64);
+        data.extend_from_slice(&prefix.octets());
+
+        let pfx = parse_ia_prefix(&data).unwrap();
+        assert_eq!(pfx.preferred_lifetime, 0xFFFFFFFF);
+        assert_eq!(pfx.valid_lifetime, 0xFFFFFFFF);
+        assert_eq!(pfx.prefix_length, 64);
+    }
+
+    #[test]
+    fn test_parse_ia_prefix_slash_56() {
+        let prefix: Ipv6Addr = "2001:db8:abcd:ab00::".parse().unwrap();
+        let mut data = Vec::new();
+        data.extend_from_slice(&1800u32.to_be_bytes());
+        data.extend_from_slice(&3600u32.to_be_bytes());
+        data.push(56);
+        data.extend_from_slice(&prefix.octets());
+
+        let pfx = parse_ia_prefix(&data).unwrap();
+        assert_eq!(pfx.prefix_length, 56);
+        assert_eq!(pfx.prefix, prefix);
+    }
+
+    // -- IA_PD option building tests --
+
+    #[test]
+    fn test_build_ia_pd_option_empty() {
+        let data = build_ia_pd_option(42, 1800, 2880, &[]);
+        assert_eq!(data.len(), 12);
+        assert_eq!(u32::from_be_bytes([data[0], data[1], data[2], data[3]]), 42);
+        assert_eq!(
+            u32::from_be_bytes([data[4], data[5], data[6], data[7]]),
+            1800
+        );
+        assert_eq!(
+            u32::from_be_bytes([data[8], data[9], data[10], data[11]]),
+            2880
+        );
+    }
+
+    #[test]
+    fn test_build_ia_pd_option_with_prefix() {
+        let pfx = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 56,
+            prefix: "2001:db8:abcd::".parse().unwrap(),
+        };
+        let data = build_ia_pd_option(1, 0, 0, &[&pfx]);
+        // 12 bytes header + 4 bytes sub-option header + 25 bytes IA prefix = 41.
+        assert_eq!(data.len(), 41);
+        // Sub-option code should be OPT_IAPREFIX (26).
+        assert_eq!(u16::from_be_bytes([data[12], data[13]]), OPT_IAPREFIX);
+        // Sub-option length should be 25.
+        assert_eq!(u16::from_be_bytes([data[14], data[15]]), 25);
+    }
+
+    #[test]
+    fn test_build_ia_pd_option_with_multiple_prefixes() {
+        let pfx1 = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 48,
+            prefix: "2001:db8:1::".parse().unwrap(),
+        };
+        let pfx2 = IaPrefix {
+            preferred_lifetime: 1800,
+            valid_lifetime: 3600,
+            prefix_length: 64,
+            prefix: "2001:db8:2::".parse().unwrap(),
+        };
+        let data = build_ia_pd_option(5, 900, 1440, &[&pfx1, &pfx2]);
+        // 12 + (4+25) + (4+25) = 70.
+        assert_eq!(data.len(), 70);
+    }
+
+    #[test]
+    fn test_build_ia_prefix_roundtrip() {
+        let original = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 56,
+            prefix: "2001:db8:abcd::".parse().unwrap(),
+        };
+        let data = build_ia_prefix(&original);
+        let parsed = parse_ia_prefix(&data).unwrap();
+        assert_eq!(parsed, original);
+    }
+
+    #[test]
+    fn test_build_ia_pd_roundtrip() {
+        let pfx = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 48,
+            prefix: "2001:db8::".parse().unwrap(),
+        };
+        let data = build_ia_pd_option(99, 1800, 2880, &[&pfx]);
+        let parsed = parse_ia_pd(&data).unwrap();
+        assert_eq!(parsed.iaid, 99);
+        assert_eq!(parsed.t1, 1800);
+        assert_eq!(parsed.t2, 2880);
+        assert_eq!(parsed.prefixes.len(), 1);
+        assert_eq!(parsed.prefixes[0], pfx);
+    }
+
+    // -- Message IA_PD parsing tests --
+
+    #[test]
+    fn test_message_parse_ia_pds() {
+        let mut msg = Dhcpv6Message::new(MSG_REPLY, [0; 3]);
+        let pfx = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 56,
+            prefix: "2001:db8::".parse().unwrap(),
+        };
+        msg.add_option(OPT_IA_PD, build_ia_pd_option(1, 900, 1440, &[&pfx]));
+
+        let pds = msg.parse_ia_pds();
+        assert_eq!(pds.len(), 1);
+        assert_eq!(pds[0].iaid, 1);
+        assert_eq!(pds[0].t1, 900);
+        assert_eq!(pds[0].t2, 1440);
+        assert_eq!(pds[0].prefixes.len(), 1);
+        assert_eq!(pds[0].prefixes[0].prefix_length, 56);
+    }
+
+    #[test]
+    fn test_message_parse_ia_pds_empty() {
+        let msg = Dhcpv6Message::new(MSG_REPLY, [0; 3]);
+        assert!(msg.parse_ia_pds().is_empty());
+    }
+
+    // -- Client PD config tests --
+
+    fn make_pd_config() -> Dhcpv6ClientConfig {
+        Dhcpv6ClientConfig {
+            ifindex: 2,
+            ifname: "wan0".to_string(),
+            mac: [0x52, 0x54, 0x00, 0x12, 0x34, 0x56],
+            request_addresses: true,
+            request_prefix_delegation: true,
+            prefix_hint: 56,
+            prefix_hint_address: Ipv6Addr::UNSPECIFIED,
+            rapid_commit: false,
+            max_attempts: 0,
+            request_options: vec![OPT_DNS_SERVERS, OPT_DOMAIN_LIST],
+        }
+    }
+
+    fn make_pd_only_config() -> Dhcpv6ClientConfig {
+        Dhcpv6ClientConfig {
+            ifindex: 3,
+            ifname: "wan0".to_string(),
+            mac: [0x52, 0x54, 0x00, 0x12, 0x34, 0x56],
+            request_addresses: false,
+            request_prefix_delegation: true,
+            prefix_hint: 48,
+            prefix_hint_address: Ipv6Addr::UNSPECIFIED,
+            rapid_commit: false,
+            max_attempts: 0,
+            request_options: vec![OPT_DNS_SERVERS, OPT_DOMAIN_LIST],
+        }
+    }
+
+    #[test]
+    fn test_client_new_with_pd() {
+        let client = Dhcpv6Client::new(make_pd_config());
+        assert_eq!(client.iaid, 2);
+        assert_eq!(client.pd_iaid, 3); // ifindex + 1
+        assert!(client.config.request_prefix_delegation);
+        assert_eq!(client.config.prefix_hint, 56);
+    }
+
+    #[test]
+    fn test_client_pd_iaid_distinct_from_na_iaid() {
+        let client = Dhcpv6Client::new(make_pd_config());
+        assert_ne!(client.iaid, client.pd_iaid);
+    }
+
+    #[test]
+    fn test_client_solicit_contains_ia_pd() {
+        let mut client = Dhcpv6Client::new(make_pd_config());
+        let pkt = client.next_packet().unwrap();
+        let msg = Dhcpv6Message::parse(&pkt).unwrap();
+
+        assert_eq!(msg.msg_type, MSG_SOLICIT);
+        // Should have both IA_NA and IA_PD.
+        assert!(msg.find_option(OPT_IA_NA).is_some());
+        assert!(msg.find_option(OPT_IA_PD).is_some());
+
+        // Parse the IA_PD and check the hint.
+        let pds = msg.parse_ia_pds();
+        assert_eq!(pds.len(), 1);
+        assert_eq!(pds[0].iaid, client.pd_iaid);
+        // The hint prefix should be present.
+        assert_eq!(pds[0].prefixes.len(), 1);
+        assert_eq!(pds[0].prefixes[0].prefix_length, 56);
+    }
+
+    #[test]
+    fn test_client_solicit_pd_only_no_ia_na() {
+        let mut client = Dhcpv6Client::new(make_pd_only_config());
+        let pkt = client.next_packet().unwrap();
+        let msg = Dhcpv6Message::parse(&pkt).unwrap();
+
+        assert_eq!(msg.msg_type, MSG_SOLICIT);
+        // Should NOT have IA_NA, but should have IA_PD.
+        assert!(msg.find_option(OPT_IA_NA).is_none());
+        assert!(msg.find_option(OPT_IA_PD).is_some());
+    }
+
+    #[test]
+    fn test_client_solicit_pd_no_hint() {
+        let mut config = make_pd_config();
+        config.prefix_hint = 0; // No hint.
+        let mut client = Dhcpv6Client::new(config);
+        let pkt = client.next_packet().unwrap();
+        let msg = Dhcpv6Message::parse(&pkt).unwrap();
+
+        let pds = msg.parse_ia_pds();
+        assert_eq!(pds.len(), 1);
+        // No hint prefix sub-option.
+        assert!(pds[0].prefixes.is_empty());
+    }
+
+    // -- Build a PD Advertise/Reply for testing --
+
+    fn build_pd_advertise(
+        solicit: &Dhcpv6Message,
+        client_duid: &Duid,
+        pd_iaid: u32,
+    ) -> Dhcpv6Message {
+        let mut adv = Dhcpv6Message::new(MSG_ADVERTISE, solicit.transaction_id);
+        adv.add_option(OPT_CLIENTID, client_duid.data.clone());
+        adv.add_option(OPT_SERVERID, vec![0, 3, 0, 1, 1, 2, 3, 4, 5, 6]);
+        adv.add_option(OPT_PREFERENCE, vec![200]);
+
+        // IA_NA with an offered address.
+        let addr = IaAddress {
+            address: "2001:db8::100".parse().unwrap(),
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+        };
+        let ia_nas = solicit.parse_ia_nas();
+        let na_iaid = ia_nas.first().map(|ia| ia.iaid).unwrap_or(1);
+        adv.add_option(OPT_IA_NA, build_ia_na_option(na_iaid, 1800, 2880, &[&addr]));
+
+        // IA_PD with a delegated prefix.
+        let pfx = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 56,
+            prefix: "2001:db8:abcd:ab00::".parse().unwrap(),
+        };
+        adv.add_option(OPT_IA_PD, build_ia_pd_option(pd_iaid, 900, 1440, &[&pfx]));
+
+        adv
+    }
+
+    fn build_pd_reply(request: &Dhcpv6Message, client_duid: &Duid, pd_iaid: u32) -> Dhcpv6Message {
+        let mut reply = Dhcpv6Message::new(MSG_REPLY, request.transaction_id);
+        reply.add_option(OPT_CLIENTID, client_duid.data.clone());
+        reply.add_option(OPT_SERVERID, vec![0, 3, 0, 1, 1, 2, 3, 4, 5, 6]);
+
+        // IA_NA with the assigned address.
+        let addr = IaAddress {
+            address: "2001:db8::100".parse().unwrap(),
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+        };
+        let ia_nas = request.parse_ia_nas();
+        let na_iaid = ia_nas.first().map(|ia| ia.iaid).unwrap_or(1);
+        reply.add_option(OPT_IA_NA, build_ia_na_option(na_iaid, 1800, 2880, &[&addr]));
+
+        // IA_PD with a delegated prefix.
+        let pfx = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 56,
+            prefix: "2001:db8:abcd:ab00::".parse().unwrap(),
+        };
+        reply.add_option(OPT_IA_PD, build_ia_pd_option(pd_iaid, 900, 1440, &[&pfx]));
+
+        // DNS servers.
+        let dns: Ipv6Addr = "2001:4860:4860::8888".parse().unwrap();
+        reply.add_option(OPT_DNS_SERVERS, dns.octets().to_vec());
+
+        reply
+    }
+
+    fn build_pd_only_reply(
+        request: &Dhcpv6Message,
+        client_duid: &Duid,
+        pd_iaid: u32,
+    ) -> Dhcpv6Message {
+        let mut reply = Dhcpv6Message::new(MSG_REPLY, request.transaction_id);
+        reply.add_option(OPT_CLIENTID, client_duid.data.clone());
+        reply.add_option(OPT_SERVERID, vec![0, 3, 0, 1, 1, 2, 3, 4, 5, 6]);
+
+        // Only IA_PD, no IA_NA.
+        let pfx = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 48,
+            prefix: "2001:db8:ff00::".parse().unwrap(),
+        };
+        reply.add_option(OPT_IA_PD, build_ia_pd_option(pd_iaid, 900, 1440, &[&pfx]));
+
+        reply
+    }
+
+    // -- Full PD exchange tests --
+
+    #[test]
+    fn test_client_full_pd_exchange() {
+        let mut client = Dhcpv6Client::new(make_pd_config());
+        let pd_iaid = client.pd_iaid;
+
+        // 1. Client sends Solicit.
+        let pkt = client.next_packet().unwrap();
+        let solicit = Dhcpv6Message::parse(&pkt).unwrap();
+        assert_eq!(solicit.msg_type, MSG_SOLICIT);
+
+        // 2. Server sends Advertise with IA_NA + IA_PD.
+        let advertise = build_pd_advertise(&solicit, &client.client_duid, pd_iaid);
+        client.process_reply(&advertise.serialize());
+        assert_eq!(client.state, Dhcpv6State::Requesting);
+
+        // 3. Client sends Request.
+        let req_pkt = client.next_packet().unwrap();
+        let request = Dhcpv6Message::parse(&req_pkt).unwrap();
+        assert_eq!(request.msg_type, MSG_REQUEST);
+        // Request should contain both IA_NA and IA_PD.
+        assert!(request.find_option(OPT_IA_NA).is_some());
+        assert!(request.find_option(OPT_IA_PD).is_some());
+
+        // Verify the Request IA_PD contains the prefix from the Advertise.
+        let req_pds = request.parse_ia_pds();
+        assert_eq!(req_pds.len(), 1);
+        assert_eq!(req_pds[0].prefixes.len(), 1);
+        assert_eq!(req_pds[0].prefixes[0].prefix_length, 56);
+
+        // 4. Server sends Reply with IA_NA + IA_PD.
+        let reply = build_pd_reply(&request, &client.client_duid, pd_iaid);
+        let lease = client.process_reply(&reply.serialize());
+        assert!(lease.is_some());
+        assert_eq!(client.state, Dhcpv6State::Bound);
+
+        let lease = lease.unwrap();
+        // Check IA_NA.
+        assert_eq!(lease.ia_na.addresses.len(), 1);
+        assert_eq!(
+            lease.ia_na.addresses[0].address,
+            "2001:db8::100".parse::<Ipv6Addr>().unwrap()
+        );
+
+        // Check IA_PD.
+        assert!(lease.ia_pd.is_some());
+        let pd = lease.ia_pd.as_ref().unwrap();
+        assert_eq!(pd.prefixes.len(), 1);
+        assert_eq!(pd.prefixes[0].prefix_length, 56);
+        assert_eq!(
+            pd.prefixes[0].prefix,
+            "2001:db8:abcd:ab00::".parse::<Ipv6Addr>().unwrap()
+        );
+        assert_eq!(pd.t1, 900);
+        assert_eq!(pd.t2, 1440);
+    }
+
+    #[test]
+    fn test_client_pd_only_exchange() {
+        let mut client = Dhcpv6Client::new(make_pd_only_config());
+        let pd_iaid = client.pd_iaid;
+
+        // 1. Solicit — should not have IA_NA.
+        let pkt = client.next_packet().unwrap();
+        let solicit = Dhcpv6Message::parse(&pkt).unwrap();
+        assert!(solicit.find_option(OPT_IA_NA).is_none());
+        assert!(solicit.find_option(OPT_IA_PD).is_some());
+
+        // 2. Advertise with PD only (no IA_NA).
+        let mut adv = Dhcpv6Message::new(MSG_ADVERTISE, solicit.transaction_id);
+        adv.add_option(OPT_CLIENTID, client.client_duid.data.clone());
+        adv.add_option(OPT_SERVERID, vec![0, 3, 0, 1, 1, 2, 3, 4, 5, 6]);
+        adv.add_option(OPT_PREFERENCE, vec![255]);
+        let pfx = IaPrefix {
+            preferred_lifetime: 3600,
+            valid_lifetime: 7200,
+            prefix_length: 48,
+            prefix: "2001:db8:ff00::".parse().unwrap(),
+        };
+        adv.add_option(OPT_IA_PD, build_ia_pd_option(pd_iaid, 900, 1440, &[&pfx]));
+        client.process_reply(&adv.serialize());
+        assert_eq!(client.state, Dhcpv6State::Requesting);
+
+        // 3. Request — should not have IA_NA.
+        let req_pkt = client.next_packet().unwrap();
+        let request = Dhcpv6Message::parse(&req_pkt).unwrap();
+        assert!(request.find_option(OPT_IA_NA).is_none());
+        assert!(request.find_option(OPT_IA_PD).is_some());
+
+        // 4. Reply with PD only.
+        let reply = build_pd_only_reply(&request, &client.client_duid, pd_iaid);
+        let lease = client.process_reply(&reply.serialize());
+        assert!(lease.is_some());
+        assert_eq!(client.state, Dhcpv6State::Bound);
+
+        let lease = lease.unwrap();
+        assert!(lease.ia_na.addresses.is_empty()); // No addresses.
+        assert!(lease.has_prefix_delegation());
+        assert_eq!(lease.delegated_prefixes().len(), 1);
+        assert_eq!(lease.delegated_prefixes()[0].prefix_length, 48);
+    }
+
+    #[test]
+    fn test_client_pd_reply_no_prefix_falls_back() {
+        let mut client = Dhcpv6Client::new(make_pd_only_config());
+        let _pkt = client.next_packet().unwrap();
+
+        // Advertise without IA_PD.
+        let mut adv = Dhcpv6Message::new(MSG_ADVERTISE, client.transaction_id);
+        adv.add_option(OPT_CLIENTID, client.client_duid.data.clone());
+        adv.add_option(OPT_SERVERID, vec![0, 3, 0, 1, 1, 2, 3, 4, 5, 6]);
+        adv.add_option(OPT_PREFERENCE, vec![255]);
+        // IA_PD with no prefixes (just the header).
+        adv.add_option(OPT_IA_PD, build_ia_pd_option(client.pd_iaid, 0, 0, &[]));
+        client.process_reply(&adv.serialize());
+
+        // Request.
+        let req_pkt = client.next_packet().unwrap();
+        let request = Dhcpv6Message::parse(&req_pkt).unwrap();
+
+        // Reply with empty IA_PD and no IA_NA.
+        let mut reply = Dhcpv6Message::new(MSG_REPLY, request.transaction_id);
+        reply.add_option(OPT_CLIENTID, client.client_duid.data.clone());
+        reply.add_option(OPT_SERVERID, vec![0, 3, 0, 1, 1, 2, 3, 4, 5, 6]);
+        reply.add_option(OPT_IA_PD, build_ia_pd_option(client.pd_iaid, 0, 0, &[]));
+
+        let lease = client.process_reply(&reply.serialize());
+        // Should fail: no addresses AND no prefixes.
+        assert!(lease.is_none());
+        assert_eq!(client.state, Dhcpv6State::Init);
+    }
+
+    #[test]
+    fn test_client_renew_includes_ia_pd() {
+        let mut client = Dhcpv6Client::new(make_pd_config());
+        let pd_iaid = client.pd_iaid;
+
+        // Go through full exchange to get to Bound.
+        let pkt = client.next_packet().unwrap();
+        let solicit = Dhcpv6Message::parse(&pkt).unwrap();
+        let advertise = build_pd_advertise(&solicit, &client.client_duid, pd_iaid);
+        client.process_reply(&advertise.serialize());
+        let req_pkt = client.next_packet().unwrap();
+        let request = Dhcpv6Message::parse(&req_pkt).unwrap();
+        let reply = build_pd_reply(&request, &client.client_duid, pd_iaid);
+        client.process_reply(&reply.serialize());
+        assert_eq!(client.state, Dhcpv6State::Bound);
+
+        // Simulate T1 expiry by manually setting state to Renewing.
+        client.state = Dhcpv6State::Renewing;
+        client.transaction_id = generate_transaction_id();
+        client.attempts = 1;
+        client.last_send = Some(Instant::now());
+        client.exchange_start = Some(Instant::now());
+        client.current_rt = REN_TIMEOUT;
+
+        let renew_pkt = client.next_packet().unwrap();
+        let renew_msg = Dhcpv6Message::parse(&renew_pkt).unwrap();
+        assert_eq!(renew_msg.msg_type, MSG_RENEW);
+        // Renew should include both IA_NA and IA_PD with current values.
+        assert!(renew_msg.find_option(OPT_IA_NA).is_some());
+        assert!(renew_msg.find_option(OPT_IA_PD).is_some());
+
+        let renew_pds = renew_msg.parse_ia_pds();
+        assert_eq!(renew_pds.len(), 1);
+        assert_eq!(renew_pds[0].prefixes.len(), 1);
+        assert_eq!(renew_pds[0].prefixes[0].prefix_length, 56);
+    }
+
+    #[test]
+    fn test_client_release_includes_ia_pd() {
+        let mut client = Dhcpv6Client::new(make_pd_config());
+        let pd_iaid = client.pd_iaid;
+
+        // Get to Bound state.
+        let pkt = client.next_packet().unwrap();
+        let solicit = Dhcpv6Message::parse(&pkt).unwrap();
+        let advertise = build_pd_advertise(&solicit, &client.client_duid, pd_iaid);
+        client.process_reply(&advertise.serialize());
+        let req_pkt = client.next_packet().unwrap();
+        let request = Dhcpv6Message::parse(&req_pkt).unwrap();
+        let reply = build_pd_reply(&request, &client.client_duid, pd_iaid);
+        client.process_reply(&reply.serialize());
+
+        // Build release.
+        let release_data = client.build_release().unwrap();
+        let release_msg = Dhcpv6Message::parse(&release_data).unwrap();
+        assert_eq!(release_msg.msg_type, MSG_RELEASE);
+
+        // Release should include both IA_NA and IA_PD.
+        assert!(release_msg.find_option(OPT_IA_NA).is_some());
+        assert!(release_msg.find_option(OPT_IA_PD).is_some());
+    }
+
+    // -- Lease PD integration tests --
+
+    fn make_pd_lease() -> Dhcpv6Lease {
+        Dhcpv6Lease {
+            ia_na: IaNa {
+                iaid: 1,
+                t1: 1800,
+                t2: 2880,
+                addresses: vec![IaAddress {
+                    address: "2001:db8::1".parse().unwrap(),
+                    preferred_lifetime: 3600,
+                    valid_lifetime: 7200,
+                }],
+                status: None,
+            },
+            ia_pd: Some(IaPd {
+                iaid: 2,
+                t1: 900,
+                t2: 1440,
+                prefixes: vec![IaPrefix {
+                    preferred_lifetime: 3600,
+                    valid_lifetime: 7200,
+                    prefix_length: 56,
+                    prefix: "2001:db8:abcd::".parse().unwrap(),
+                }],
+                status: None,
+            }),
+            server_id: Duid::from_bytes(vec![0, 3, 0, 1, 1, 2, 3, 4, 5, 6]),
+            dns_servers: vec![],
+            domains: vec![],
+            preference: 0,
+            obtained_at: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn test_lease_t1_uses_minimum_of_na_and_pd() {
+        let lease = make_pd_lease();
+        // IA_NA T1=1800, IA_PD T1=900. Should pick 900.
+        assert_eq!(lease.t1(), Duration::from_secs(900));
+    }
+
+    #[test]
+    fn test_lease_t2_uses_minimum_of_na_and_pd() {
+        let lease = make_pd_lease();
+        // IA_NA T2=2880, IA_PD T2=1440. Should pick 1440.
+        assert_eq!(lease.t2(), Duration::from_secs(1440));
+    }
+
+    #[test]
+    fn test_lease_t1_na_only_when_no_pd() {
+        let mut lease = make_pd_lease();
+        lease.ia_pd = None;
+        assert_eq!(lease.t1(), Duration::from_secs(1800));
+    }
+
+    #[test]
+    fn test_lease_t1_pd_only_when_no_addresses() {
+        let mut lease = make_pd_lease();
+        lease.ia_na.addresses.clear();
+        // Only PD's T1=900.
+        assert_eq!(lease.t1(), Duration::from_secs(900));
+    }
+
+    #[test]
+    fn test_lease_has_prefix_delegation() {
+        let lease = make_pd_lease();
+        assert!(lease.has_prefix_delegation());
+    }
+
+    #[test]
+    fn test_lease_no_prefix_delegation() {
+        let mut lease = make_pd_lease();
+        lease.ia_pd = None;
+        assert!(!lease.has_prefix_delegation());
+    }
+
+    #[test]
+    fn test_lease_delegated_prefixes() {
+        let lease = make_pd_lease();
+        let pfxs = lease.delegated_prefixes();
+        assert_eq!(pfxs.len(), 1);
+        assert_eq!(pfxs[0].prefix_length, 56);
+    }
+
+    #[test]
+    fn test_lease_delegated_prefixes_empty_when_no_pd() {
+        let mut lease = make_pd_lease();
+        lease.ia_pd = None;
+        assert!(lease.delegated_prefixes().is_empty());
+    }
+
+    #[test]
+    fn test_lease_is_expired_considers_pd() {
+        let mut lease = make_pd_lease();
+        // Make NA addresses expired.
+        lease.ia_na.addresses[0].valid_lifetime = 0;
+        // But PD prefix still valid.
+        // Not expired because PD prefix is still valid.
+        assert!(!lease.is_expired());
+    }
+
+    #[test]
+    fn test_lease_is_expired_when_both_expired() {
+        let mut lease = make_pd_lease();
+        lease.ia_na.addresses[0].valid_lifetime = 0;
+        lease.ia_pd.as_mut().unwrap().prefixes[0].valid_lifetime = 0;
+        assert!(lease.is_expired());
+    }
+
+    #[test]
+    fn test_lease_remaining_considers_pd() {
+        let mut lease = make_pd_lease();
+        // NA valid=7200, PD valid=7200 — remaining should be close to 7200.
+        let remaining = lease.remaining();
+        assert!(remaining.as_secs() >= 7190);
+
+        // Make PD have shorter valid lifetime.
+        lease.ia_pd.as_mut().unwrap().prefixes[0].valid_lifetime = 1800;
+        let remaining2 = lease.remaining();
+        // Should use the shorter one (PD's 1800).
+        assert!(remaining2.as_secs() <= 1801);
+    }
+
+    #[test]
+    fn test_lease_display_includes_prefix() {
+        let lease = make_pd_lease();
+        let s = format!("{lease}");
+        assert!(s.contains("prefix=2001:db8:abcd::/56"));
+        assert!(s.contains("PD-T1=900s"));
+        assert!(s.contains("PD-T2=1440s"));
+    }
+
+    #[test]
+    fn test_lease_display_no_pd() {
+        let mut lease = make_pd_lease();
+        lease.ia_pd = None;
+        let s = format!("{lease}");
+        assert!(!s.contains("prefix="));
+        assert!(!s.contains("PD-T1"));
+    }
+
+    // -- Default config PD fields --
+
+    #[test]
+    fn test_default_config_pd_disabled() {
+        let config = Dhcpv6ClientConfig::default();
+        assert!(!config.request_prefix_delegation);
+        assert_eq!(config.prefix_hint, 0);
+        assert_eq!(config.prefix_hint_address, Ipv6Addr::UNSPECIFIED);
+    }
+
+    // -- PD constant tests --
+
+    #[test]
+    fn test_opt_ia_pd_constant() {
+        assert_eq!(OPT_IA_PD, 25);
+    }
+
+    #[test]
+    fn test_opt_iaprefix_constant() {
+        assert_eq!(OPT_IAPREFIX, 26);
+    }
+
+    #[test]
+    fn test_status_no_prefix_avail_constant() {
+        assert_eq!(STATUS_NO_PREFIX_AVAIL, 6);
     }
 }

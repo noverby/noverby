@@ -1575,6 +1575,7 @@ mod tests {
             routes: Vec::new(),
             routing_policy_rules: Vec::new(),
             dhcpv4: config::DhcpV4Section::default(),
+            dhcpv6: config::DhcpV6Section::default(),
             link: LinkSection::default(),
         }
     }
