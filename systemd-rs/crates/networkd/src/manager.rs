@@ -19,6 +19,7 @@ use crate::config::{self, DhcpMode, NetworkConfig};
 use crate::dhcp::{self, DhcpClient, DhcpClientConfig, DhcpLease, DhcpState};
 use crate::link::{self, LinkInfo};
 use crate::netdev::{self, NetDevConfig};
+use crate::netdev_create;
 
 // ---------------------------------------------------------------------------
 // Managed link — per-interface state
@@ -269,6 +270,60 @@ impl NetworkManager {
         }
 
         Ok(())
+    }
+
+    /// Create virtual network devices from loaded `.netdev` configurations.
+    ///
+    /// This should be called after `load_configs()` and before
+    /// `discover_links()` / `configure_links()` so that the newly created
+    /// virtual interfaces are visible when we enumerate the system's links.
+    ///
+    /// Standalone devices (bridges, bonds, dummies, tunnels, etc.) are
+    /// created first. Dependent devices that need a parent link (VLAN,
+    /// macvlan, ipvlan, etc.) are deferred to a second pass.
+    ///
+    /// Returns the number of devices successfully created.
+    pub fn create_netdevs(&self) -> usize {
+        if self.netdev_configs.is_empty() {
+            return 0;
+        }
+
+        log::info!(
+            "Creating virtual network devices from {} .netdev config(s)",
+            self.netdev_configs.len()
+        );
+
+        let created = netdev_create::create_netdevs(&self.netdev_configs);
+
+        if created > 0 {
+            log::info!("Created {} virtual network device(s)", created);
+        }
+
+        created
+    }
+
+    /// Create a dependent netdev (VLAN, macvlan, etc.) with an explicit
+    /// parent interface, identified by name.
+    ///
+    /// This is called during link configuration when a `.network` file
+    /// references a `.netdev` via `VLAN=`, `MACVLAN=`, etc.
+    pub fn create_dependent_netdev(
+        &self,
+        netdev_name: &str,
+        parent_ifindex: u32,
+    ) -> Result<bool, String> {
+        let config = match self
+            .netdev_configs
+            .iter()
+            .find(|c| c.netdev_section.name == netdev_name)
+        {
+            Some(c) => c,
+            None => {
+                return Err(format!("No .netdev config found for '{}'", netdev_name));
+            }
+        };
+
+        netdev_create::create_netdev_with_parent(config, parent_ifindex)
     }
 
     /// Configure all managed links: bring up interfaces, apply static
