@@ -32,6 +32,8 @@ const RTM_GETADDR: u16 = 22;
 const RTM_NEWROUTE: u16 = 24;
 const RTM_DELROUTE: u16 = 25;
 const RTM_GETROUTE: u16 = 26;
+const RTM_NEWRULE: u16 = 32;
+const RTM_DELRULE: u16 = 33;
 
 // Netlink flags
 const NLM_F_REQUEST: u16 = 0x0001;
@@ -51,6 +53,7 @@ const NLMSG_NOOP: u16 = 1;
 
 // Address families
 const AF_INET: u8 = 2;
+const AF_INET6: u8 = 10;
 const AF_UNSPEC: u8 = 0;
 
 // Interface link attributes (IFLA_*)
@@ -73,6 +76,21 @@ const RTA_PRIORITY: u16 = 6;
 const RTA_TABLE: u16 = 15;
 const RTA_PREFSRC: u16 = 7;
 
+// Routing policy rule attributes (FRA_*)
+const FRA_DST: u16 = 1;
+const FRA_SRC: u16 = 2;
+const FRA_IFNAME: u16 = 3; // incoming interface
+const FRA_TABLE: u16 = 15;
+const FRA_FWMARK: u16 = 10;
+const FRA_FWMASK: u16 = 16;
+const FRA_PRIORITY: u16 = 6;
+const FRA_OIFNAME: u16 = 17;
+const FRA_SUPPRESS_PREFIXLEN: u16 = 14;
+const FRA_IP_PROTO: u16 = 19;
+const FRA_SPORT_RANGE: u16 = 20;
+const FRA_DPORT_RANGE: u16 = 21;
+const FRA_UID_RANGE: u16 = 22;
+
 // Route table
 const RT_TABLE_MAIN: u8 = 254;
 
@@ -83,6 +101,18 @@ const RTPROT_BOOT: u8 = 3;
 
 // Route types
 const RTN_UNICAST: u8 = 1;
+const RTN_BLACKHOLE: u8 = 6;
+const RTN_UNREACHABLE: u8 = 7;
+const RTN_PROHIBIT: u8 = 8;
+
+// FIB rule action (same codes as route types for the rule action field)
+const FR_ACT_TO_TBL: u8 = 1; // look up in routing table
+const FR_ACT_BLACKHOLE: u8 = RTN_BLACKHOLE;
+const FR_ACT_UNREACHABLE: u8 = RTN_UNREACHABLE;
+const FR_ACT_PROHIBIT: u8 = RTN_PROHIBIT;
+
+// FIB rule flags
+const FIB_RULE_INVERT: u32 = 0x00000002;
 
 // Route scopes
 const RT_SCOPE_UNIVERSE: u8 = 0;
@@ -110,6 +140,10 @@ const IFADDRMSG_LEN: usize = 8;
 
 // rtmsg size
 const RTMSG_LEN: usize = 12;
+
+// fib_rule_hdr size (same layout as rtmsg: family, dst_len, src_len, tos,
+// table, res1, res2, action — 12 bytes)
+const FIB_RULE_HDR_LEN: usize = 12;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -1257,6 +1291,474 @@ fn put_rta_ipv4(buf: &mut [u8], offset: usize, rta_type: u16, addr: Ipv4Addr) {
     buf[offset + 4..offset + 8].copy_from_slice(&addr.octets());
 }
 
+/// Write a route attribute with an IPv6 address payload (16 bytes).
+fn put_rta_ipv6(buf: &mut [u8], offset: usize, rta_type: u16, addr: Ipv6Addr) {
+    let rta_len: u16 = 20; // 4 header + 16 address
+    put_u16(buf, offset, rta_len);
+    put_u16(buf, offset + 2, rta_type);
+    buf[offset + 4..offset + 20].copy_from_slice(&addr.octets());
+}
+
+/// Write a route attribute with a NUL-terminated string payload.
+fn put_rta_str(buf: &mut [u8], offset: usize, rta_type: u16, s: &str) {
+    let payload_len = s.len() + 1; // include NUL terminator
+    let rta_len = (4 + payload_len) as u16;
+    put_u16(buf, offset, rta_len);
+    put_u16(buf, offset + 2, rta_type);
+    buf[offset + 4..offset + 4 + s.len()].copy_from_slice(s.as_bytes());
+    buf[offset + 4 + s.len()] = 0; // NUL
+}
+
+/// Write a route attribute with a u8 payload.
+fn put_rta_u8(buf: &mut [u8], offset: usize, rta_type: u16, val: u8) {
+    let rta_len: u16 = 5; // 4 header + 1 payload
+    put_u16(buf, offset, rta_len);
+    put_u16(buf, offset + 2, rta_type);
+    buf[offset + 4] = val;
+}
+
+/// Write a route attribute with a port range payload (two u16 values).
+fn put_rta_port_range(buf: &mut [u8], offset: usize, rta_type: u16, start: u16, end: u16) {
+    let rta_len: u16 = 8; // 4 header + 4 payload (2 × u16)
+    put_u16(buf, offset, rta_len);
+    put_u16(buf, offset + 2, rta_type);
+    put_u16(buf, offset + 4, start);
+    put_u16(buf, offset + 6, end);
+}
+
+/// Write a route attribute with a UID range payload (two u32 values).
+fn put_rta_uid_range(buf: &mut [u8], offset: usize, rta_type: u16, start: u32, end: u32) {
+    let rta_len: u16 = 12; // 4 header + 8 payload (2 × u32)
+    put_u16(buf, offset, rta_len);
+    put_u16(buf, offset + 2, rta_type);
+    put_u32(buf, offset + 4, start);
+    put_u32(buf, offset + 8, end);
+}
+
+// ---------------------------------------------------------------------------
+// Routing policy rules
+// ---------------------------------------------------------------------------
+
+use std::net::Ipv6Addr;
+
+/// Configuration for a routing policy rule to install via netlink.
+#[derive(Debug, Clone)]
+pub struct RuleConfig {
+    /// Address family: `AF_INET` (2) or `AF_INET6` (10).
+    pub family: u8,
+    /// Source prefix (IPv4 or IPv6 in CIDR).
+    pub from: Option<(IpAddr, u8)>,
+    /// Destination prefix (IPv4 or IPv6 in CIDR).
+    pub to: Option<(IpAddr, u8)>,
+    /// TOS value.
+    pub tos: u8,
+    /// Routing table ID.
+    pub table: u32,
+    /// Rule priority.
+    pub priority: Option<u32>,
+    /// Firewall mark value.
+    pub fwmark: Option<u32>,
+    /// Firewall mark mask.
+    pub fwmask: Option<u32>,
+    /// Incoming interface name.
+    pub iifname: Option<String>,
+    /// Outgoing interface name.
+    pub oifname: Option<String>,
+    /// Source port range.
+    pub sport_range: Option<(u16, u16)>,
+    /// Destination port range.
+    pub dport_range: Option<(u16, u16)>,
+    /// IP protocol number.
+    pub ip_proto: Option<u8>,
+    /// Invert the rule match.
+    pub invert: bool,
+    /// UID range.
+    pub uid_range: Option<(u32, u32)>,
+    /// Suppress prefix length.
+    pub suppress_prefix_length: Option<i32>,
+    /// Rule action type (FR_ACT_TO_TBL, FR_ACT_BLACKHOLE, etc.).
+    pub action: u8,
+}
+
+impl Default for RuleConfig {
+    fn default() -> Self {
+        Self {
+            family: AF_INET,
+            from: None,
+            to: None,
+            tos: 0,
+            table: RT_TABLE_MAIN as u32,
+            priority: None,
+            fwmark: None,
+            fwmask: None,
+            iifname: None,
+            oifname: None,
+            sport_range: None,
+            dport_range: None,
+            ip_proto: None,
+            invert: false,
+            uid_range: None,
+            suppress_prefix_length: None,
+            action: FR_ACT_TO_TBL,
+        }
+    }
+}
+
+use std::net::IpAddr;
+
+/// Add a routing policy rule via netlink RTM_NEWRULE.
+pub fn add_rule(cfg: &RuleConfig) -> io::Result<()> {
+    let mut nl = NetlinkSocket::open()?;
+    let seq = nl.next_seq();
+
+    // Calculate sizes for all optional attributes.
+    let src_len = match &cfg.from {
+        Some((IpAddr::V4(_), _)) => rta_aligned_len(4),
+        Some((IpAddr::V6(_), _)) => rta_aligned_len(16),
+        None => 0,
+    };
+    let dst_len = match &cfg.to {
+        Some((IpAddr::V4(_), _)) => rta_aligned_len(4),
+        Some((IpAddr::V6(_), _)) => rta_aligned_len(16),
+        None => 0,
+    };
+    let table_len = rta_aligned_len(4); // FRA_TABLE always present
+    let priority_len = if cfg.priority.is_some() {
+        rta_aligned_len(4)
+    } else {
+        0
+    };
+    let fwmark_len = if cfg.fwmark.is_some() {
+        rta_aligned_len(4)
+    } else {
+        0
+    };
+    let fwmask_len = if cfg.fwmask.is_some() {
+        rta_aligned_len(4)
+    } else {
+        0
+    };
+    let iifname_len = cfg
+        .iifname
+        .as_ref()
+        .map(|s| rta_aligned_len(s.len() + 1))
+        .unwrap_or(0);
+    let oifname_len = cfg
+        .oifname
+        .as_ref()
+        .map(|s| rta_aligned_len(s.len() + 1))
+        .unwrap_or(0);
+    let sport_len = if cfg.sport_range.is_some() {
+        rta_aligned_len(4)
+    } else {
+        0
+    };
+    let dport_len = if cfg.dport_range.is_some() {
+        rta_aligned_len(4)
+    } else {
+        0
+    };
+    let ip_proto_len = if cfg.ip_proto.is_some() {
+        rta_aligned_len(1)
+    } else {
+        0
+    };
+    let uid_range_len = if cfg.uid_range.is_some() {
+        rta_aligned_len(8)
+    } else {
+        0
+    };
+    let suppress_len = if cfg.suppress_prefix_length.is_some() {
+        rta_aligned_len(4)
+    } else {
+        0
+    };
+
+    let msg_len = NLMSG_HDR_LEN
+        + FIB_RULE_HDR_LEN
+        + src_len
+        + dst_len
+        + table_len
+        + priority_len
+        + fwmark_len
+        + fwmask_len
+        + iifname_len
+        + oifname_len
+        + sport_len
+        + dport_len
+        + ip_proto_len
+        + uid_range_len
+        + suppress_len;
+
+    let mut msg = vec![0u8; nlmsg_align(msg_len)];
+
+    // Netlink header
+    put_u32(&mut msg, 0, msg_len as u32);
+    put_u16(&mut msg, 4, RTM_NEWRULE);
+    put_u16(
+        &mut msg,
+        6,
+        NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
+    );
+    put_u32(&mut msg, 8, seq);
+    put_u32(&mut msg, 12, nl.pid);
+
+    // fib_rule_hdr (same layout as rtmsg)
+    let hdr = NLMSG_HDR_LEN;
+    msg[hdr] = cfg.family; // family
+    let src_prefix_len = cfg.from.map(|(_, p)| p).unwrap_or(0);
+    let dst_prefix_len = cfg.to.map(|(_, p)| p).unwrap_or(0);
+    msg[hdr + 1] = dst_prefix_len; // dst_len
+    msg[hdr + 2] = src_prefix_len; // src_len
+    msg[hdr + 3] = cfg.tos; // tos
+    // table field: use RT_TABLE_MAIN (254) as sentinel if real table > 255
+    msg[hdr + 4] = if cfg.table <= 255 {
+        cfg.table as u8
+    } else {
+        RT_TABLE_MAIN
+    };
+    msg[hdr + 5] = 0; // res1
+    msg[hdr + 6] = 0; // res2
+    msg[hdr + 7] = cfg.action; // action
+
+    // flags field (u32 at offset hdr+8)
+    let flags: u32 = if cfg.invert { FIB_RULE_INVERT } else { 0 };
+    put_u32(&mut msg, hdr + 8, flags);
+
+    let mut off = NLMSG_HDR_LEN + FIB_RULE_HDR_LEN;
+
+    // FRA_SRC
+    if let Some((addr, _)) = &cfg.from {
+        match addr {
+            IpAddr::V4(v4) => {
+                put_rta_ipv4(&mut msg, off, FRA_SRC, *v4);
+                off += rta_aligned_len(4);
+            }
+            IpAddr::V6(v6) => {
+                put_rta_ipv6(&mut msg, off, FRA_SRC, *v6);
+                off += rta_aligned_len(16);
+            }
+        }
+    }
+
+    // FRA_DST
+    if let Some((addr, _)) = &cfg.to {
+        match addr {
+            IpAddr::V4(v4) => {
+                put_rta_ipv4(&mut msg, off, FRA_DST, *v4);
+                off += rta_aligned_len(4);
+            }
+            IpAddr::V6(v6) => {
+                put_rta_ipv6(&mut msg, off, FRA_DST, *v6);
+                off += rta_aligned_len(16);
+            }
+        }
+    }
+
+    // FRA_TABLE (always present, carries the full 32-bit table ID)
+    put_rta_u32(&mut msg, off, FRA_TABLE, cfg.table);
+    off += rta_aligned_len(4);
+
+    // FRA_PRIORITY
+    if let Some(prio) = cfg.priority {
+        put_rta_u32(&mut msg, off, FRA_PRIORITY, prio);
+        off += rta_aligned_len(4);
+    }
+
+    // FRA_FWMARK
+    if let Some(mark) = cfg.fwmark {
+        put_rta_u32(&mut msg, off, FRA_FWMARK, mark);
+        off += rta_aligned_len(4);
+    }
+
+    // FRA_FWMASK
+    if let Some(mask) = cfg.fwmask {
+        put_rta_u32(&mut msg, off, FRA_FWMASK, mask);
+        off += rta_aligned_len(4);
+    }
+
+    // FRA_IFNAME (incoming interface)
+    if let Some(ref iifname) = cfg.iifname {
+        put_rta_str(&mut msg, off, FRA_IFNAME, iifname);
+        off += rta_aligned_len(iifname.len() + 1);
+    }
+
+    // FRA_OIFNAME (outgoing interface)
+    if let Some(ref oif) = cfg.oifname {
+        put_rta_str(&mut msg, off, FRA_OIFNAME, oif);
+        off += rta_aligned_len(oif.len() + 1);
+    }
+
+    // FRA_SPORT_RANGE
+    if let Some((start, end)) = cfg.sport_range {
+        put_rta_port_range(&mut msg, off, FRA_SPORT_RANGE, start, end);
+        off += rta_aligned_len(4);
+    }
+
+    // FRA_DPORT_RANGE
+    if let Some((start, end)) = cfg.dport_range {
+        put_rta_port_range(&mut msg, off, FRA_DPORT_RANGE, start, end);
+        off += rta_aligned_len(4);
+    }
+
+    // FRA_IP_PROTO
+    if let Some(proto) = cfg.ip_proto {
+        put_rta_u8(&mut msg, off, FRA_IP_PROTO, proto);
+        off += rta_aligned_len(1);
+    }
+
+    // FRA_UID_RANGE
+    if let Some((start, end)) = cfg.uid_range {
+        put_rta_uid_range(&mut msg, off, FRA_UID_RANGE, start, end);
+        off += rta_aligned_len(8);
+    }
+
+    // FRA_SUPPRESS_PREFIXLEN
+    if let Some(spl) = cfg.suppress_prefix_length {
+        // Kernel expects u32 here (despite the semantics allowing -1 to disable).
+        put_rta_u32(&mut msg, off, FRA_SUPPRESS_PREFIXLEN, spl as u32);
+        // off += rta_aligned_len(4); // last attribute
+    }
+
+    nl.request(&msg)?;
+    Ok(())
+}
+
+/// Delete a routing policy rule via netlink RTM_DELRULE.
+///
+/// The kernel matches the rule to delete by the fields specified in the message
+/// (same structure as add). All fields in `cfg` are used as match criteria.
+pub fn del_rule(cfg: &RuleConfig) -> io::Result<()> {
+    let mut nl = NetlinkSocket::open()?;
+    let seq = nl.next_seq();
+
+    // Calculate sizes (same as add_rule).
+    let src_len = match &cfg.from {
+        Some((IpAddr::V4(_), _)) => rta_aligned_len(4),
+        Some((IpAddr::V6(_), _)) => rta_aligned_len(16),
+        None => 0,
+    };
+    let dst_len = match &cfg.to {
+        Some((IpAddr::V4(_), _)) => rta_aligned_len(4),
+        Some((IpAddr::V6(_), _)) => rta_aligned_len(16),
+        None => 0,
+    };
+    let table_len = rta_aligned_len(4);
+    let priority_len = if cfg.priority.is_some() {
+        rta_aligned_len(4)
+    } else {
+        0
+    };
+
+    let msg_len = NLMSG_HDR_LEN + FIB_RULE_HDR_LEN + src_len + dst_len + table_len + priority_len;
+    let mut msg = vec![0u8; nlmsg_align(msg_len)];
+
+    // Netlink header
+    put_u32(&mut msg, 0, msg_len as u32);
+    put_u16(&mut msg, 4, RTM_DELRULE);
+    put_u16(&mut msg, 6, NLM_F_REQUEST | NLM_F_ACK);
+    put_u32(&mut msg, 8, seq);
+    put_u32(&mut msg, 12, nl.pid);
+
+    // fib_rule_hdr
+    let hdr = NLMSG_HDR_LEN;
+    msg[hdr] = cfg.family;
+    let src_prefix_len = cfg.from.map(|(_, p)| p).unwrap_or(0);
+    let dst_prefix_len = cfg.to.map(|(_, p)| p).unwrap_or(0);
+    msg[hdr + 1] = dst_prefix_len;
+    msg[hdr + 2] = src_prefix_len;
+    msg[hdr + 3] = cfg.tos;
+    msg[hdr + 4] = if cfg.table <= 255 {
+        cfg.table as u8
+    } else {
+        RT_TABLE_MAIN
+    };
+    msg[hdr + 7] = cfg.action;
+
+    let flags: u32 = if cfg.invert { FIB_RULE_INVERT } else { 0 };
+    put_u32(&mut msg, hdr + 8, flags);
+
+    let mut off = NLMSG_HDR_LEN + FIB_RULE_HDR_LEN;
+
+    if let Some((addr, _)) = &cfg.from {
+        match addr {
+            IpAddr::V4(v4) => {
+                put_rta_ipv4(&mut msg, off, FRA_SRC, *v4);
+                off += rta_aligned_len(4);
+            }
+            IpAddr::V6(v6) => {
+                put_rta_ipv6(&mut msg, off, FRA_SRC, *v6);
+                off += rta_aligned_len(16);
+            }
+        }
+    }
+
+    if let Some((addr, _)) = &cfg.to {
+        match addr {
+            IpAddr::V4(v4) => {
+                put_rta_ipv4(&mut msg, off, FRA_DST, *v4);
+                off += rta_aligned_len(4);
+            }
+            IpAddr::V6(v6) => {
+                put_rta_ipv6(&mut msg, off, FRA_DST, *v6);
+                off += rta_aligned_len(16);
+            }
+        }
+    }
+
+    put_rta_u32(&mut msg, off, FRA_TABLE, cfg.table);
+    off += rta_aligned_len(4);
+
+    if let Some(prio) = cfg.priority {
+        put_rta_u32(&mut msg, off, FRA_PRIORITY, prio);
+        // off += rta_aligned_len(4); // last attribute
+    }
+
+    nl.request(&msg)?;
+    Ok(())
+}
+
+/// Helper: determine the address family from a CIDR string.
+/// Returns `AF_INET` for IPv4, `AF_INET6` for IPv6, or `None` on parse failure.
+pub fn family_from_cidr(cidr: &str) -> Option<u8> {
+    let addr_str = cidr.split('/').next()?;
+    let addr: IpAddr = addr_str.trim().parse().ok()?;
+    Some(match addr {
+        IpAddr::V4(_) => AF_INET,
+        IpAddr::V6(_) => AF_INET6,
+    })
+}
+
+/// Public accessor for AF_INET6 constant.
+pub fn af_inet6() -> u8 {
+    AF_INET6
+}
+
+/// Public accessor for AF_INET constant.
+pub fn af_inet() -> u8 {
+    AF_INET
+}
+
+/// Public accessor for FR_ACT_TO_TBL constant.
+pub fn fr_act_to_tbl() -> u8 {
+    FR_ACT_TO_TBL
+}
+
+/// Public accessor for FR_ACT_BLACKHOLE constant.
+pub fn fr_act_blackhole() -> u8 {
+    FR_ACT_BLACKHOLE
+}
+
+/// Public accessor for FR_ACT_UNREACHABLE constant.
+pub fn fr_act_unreachable() -> u8 {
+    FR_ACT_UNREACHABLE
+}
+
+/// Public accessor for FR_ACT_PROHIBIT constant.
+pub fn fr_act_prohibit() -> u8 {
+    FR_ACT_PROHIBIT
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1515,5 +2017,316 @@ mod tests {
         assert_eq!(rtprot_dhcp(), 16);
         assert_eq!(rtprot_static(), 4);
         assert_eq!(rtprot_boot(), 3);
+    }
+
+    // -----------------------------------------------------------------------
+    // Routing policy rule tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_rule_config_default() {
+        let cfg = RuleConfig::default();
+        assert_eq!(cfg.family, AF_INET);
+        assert!(cfg.from.is_none());
+        assert!(cfg.to.is_none());
+        assert_eq!(cfg.tos, 0);
+        assert_eq!(cfg.table, RT_TABLE_MAIN as u32);
+        assert!(cfg.priority.is_none());
+        assert!(cfg.fwmark.is_none());
+        assert!(cfg.fwmask.is_none());
+        assert!(cfg.iifname.is_none());
+        assert!(cfg.oifname.is_none());
+        assert!(cfg.sport_range.is_none());
+        assert!(cfg.dport_range.is_none());
+        assert!(cfg.ip_proto.is_none());
+        assert!(!cfg.invert);
+        assert!(cfg.uid_range.is_none());
+        assert!(cfg.suppress_prefix_length.is_none());
+        assert_eq!(cfg.action, FR_ACT_TO_TBL);
+    }
+
+    #[test]
+    fn test_rule_config_with_ipv4_source() {
+        let cfg = RuleConfig {
+            family: AF_INET,
+            from: Some((IpAddr::V4(Ipv4Addr::new(192, 168, 1, 0)), 24)),
+            table: 100,
+            priority: Some(32765),
+            ..Default::default()
+        };
+        assert_eq!(cfg.family, AF_INET);
+        assert_eq!(
+            cfg.from,
+            Some((IpAddr::V4(Ipv4Addr::new(192, 168, 1, 0)), 24))
+        );
+        assert_eq!(cfg.table, 100);
+        assert_eq!(cfg.priority, Some(32765));
+    }
+
+    #[test]
+    fn test_rule_config_with_ipv6_addresses() {
+        let src: Ipv6Addr = "2001:db8::".parse().unwrap();
+        let dst: Ipv6Addr = "fd00::".parse().unwrap();
+        let cfg = RuleConfig {
+            family: AF_INET6,
+            from: Some((IpAddr::V6(src), 32)),
+            to: Some((IpAddr::V6(dst), 8)),
+            table: 200,
+            ..Default::default()
+        };
+        assert_eq!(cfg.family, AF_INET6);
+        assert_eq!(cfg.from, Some((IpAddr::V6(src), 32)));
+        assert_eq!(cfg.to, Some((IpAddr::V6(dst), 8)));
+    }
+
+    #[test]
+    fn test_rule_config_with_firewall_mark() {
+        let cfg = RuleConfig {
+            fwmark: Some(0xCAFE),
+            fwmask: Some(0xFFFF),
+            table: 100,
+            ..Default::default()
+        };
+        assert_eq!(cfg.fwmark, Some(0xCAFE));
+        assert_eq!(cfg.fwmask, Some(0xFFFF));
+    }
+
+    #[test]
+    fn test_rule_config_with_interfaces() {
+        let cfg = RuleConfig {
+            iifname: Some("eth0".to_string()),
+            oifname: Some("eth1".to_string()),
+            table: 100,
+            ..Default::default()
+        };
+        assert_eq!(cfg.iifname.as_deref(), Some("eth0"));
+        assert_eq!(cfg.oifname.as_deref(), Some("eth1"));
+    }
+
+    #[test]
+    fn test_rule_config_with_port_ranges() {
+        let cfg = RuleConfig {
+            sport_range: Some((1024, 65535)),
+            dport_range: Some((80, 80)),
+            ip_proto: Some(6), // TCP
+            table: 100,
+            ..Default::default()
+        };
+        assert_eq!(cfg.sport_range, Some((1024, 65535)));
+        assert_eq!(cfg.dport_range, Some((80, 80)));
+        assert_eq!(cfg.ip_proto, Some(6));
+    }
+
+    #[test]
+    fn test_rule_config_with_uid_range() {
+        let cfg = RuleConfig {
+            uid_range: Some((1000, 2000)),
+            table: 100,
+            ..Default::default()
+        };
+        assert_eq!(cfg.uid_range, Some((1000, 2000)));
+    }
+
+    #[test]
+    fn test_rule_config_invert() {
+        let cfg = RuleConfig {
+            invert: true,
+            from: Some((IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0)), 8)),
+            table: 100,
+            ..Default::default()
+        };
+        assert!(cfg.invert);
+    }
+
+    #[test]
+    fn test_rule_config_suppress_prefix_length() {
+        let cfg = RuleConfig {
+            suppress_prefix_length: Some(0),
+            table: 254, // main
+            ..Default::default()
+        };
+        assert_eq!(cfg.suppress_prefix_length, Some(0));
+    }
+
+    #[test]
+    fn test_rule_config_action_types() {
+        assert_eq!(FR_ACT_TO_TBL, 1);
+        assert_eq!(FR_ACT_BLACKHOLE, 6);
+        assert_eq!(FR_ACT_UNREACHABLE, 7);
+        assert_eq!(FR_ACT_PROHIBIT, 8);
+
+        let cfg = RuleConfig {
+            action: FR_ACT_BLACKHOLE,
+            ..Default::default()
+        };
+        assert_eq!(cfg.action, FR_ACT_BLACKHOLE);
+    }
+
+    #[test]
+    fn test_family_from_cidr_ipv4() {
+        assert_eq!(family_from_cidr("192.168.1.0/24"), Some(AF_INET));
+        assert_eq!(family_from_cidr("10.0.0.0/8"), Some(AF_INET));
+        assert_eq!(family_from_cidr("0.0.0.0/0"), Some(AF_INET));
+    }
+
+    #[test]
+    fn test_family_from_cidr_ipv6() {
+        assert_eq!(family_from_cidr("2001:db8::/32"), Some(AF_INET6));
+        assert_eq!(family_from_cidr("fd00::/8"), Some(AF_INET6));
+        assert_eq!(family_from_cidr("::/0"), Some(AF_INET6));
+    }
+
+    #[test]
+    fn test_family_from_cidr_invalid() {
+        assert!(family_from_cidr("not-an-address/24").is_none());
+        assert!(family_from_cidr("").is_none());
+    }
+
+    #[test]
+    fn test_put_rta_ipv6() {
+        let addr: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        let mut buf = vec![0u8; 24]; // rta_aligned_len(16) = 20, round to 24
+        put_rta_ipv6(&mut buf, 0, FRA_SRC, addr);
+
+        // rta_len = 20 (4 header + 16 address)
+        assert_eq!(u16::from_ne_bytes([buf[0], buf[1]]), 20);
+        // rta_type = FRA_SRC (2)
+        assert_eq!(u16::from_ne_bytes([buf[2], buf[3]]), FRA_SRC);
+        // Address bytes
+        assert_eq!(&buf[4..20], &addr.octets());
+    }
+
+    #[test]
+    fn test_put_rta_str() {
+        let mut buf = vec![0u8; 12]; // rta_aligned_len(5) for "eth0\0" = 12
+        put_rta_str(&mut buf, 0, FRA_IFNAME, "eth0");
+
+        // rta_len = 4 + 5 = 9
+        assert_eq!(u16::from_ne_bytes([buf[0], buf[1]]), 9);
+        // rta_type = FRA_IFNAME (3)
+        assert_eq!(u16::from_ne_bytes([buf[2], buf[3]]), FRA_IFNAME);
+        // String bytes + NUL
+        assert_eq!(&buf[4..8], b"eth0");
+        assert_eq!(buf[8], 0); // NUL
+    }
+
+    #[test]
+    fn test_put_rta_u8() {
+        let mut buf = vec![0u8; 8]; // rta_aligned_len(1) = 8
+        put_rta_u8(&mut buf, 0, FRA_IP_PROTO, 6);
+
+        // rta_len = 5
+        assert_eq!(u16::from_ne_bytes([buf[0], buf[1]]), 5);
+        assert_eq!(u16::from_ne_bytes([buf[2], buf[3]]), FRA_IP_PROTO);
+        assert_eq!(buf[4], 6);
+    }
+
+    #[test]
+    fn test_put_rta_port_range() {
+        let mut buf = vec![0u8; 8];
+        put_rta_port_range(&mut buf, 0, FRA_SPORT_RANGE, 1024, 65535);
+
+        assert_eq!(u16::from_ne_bytes([buf[0], buf[1]]), 8);
+        assert_eq!(u16::from_ne_bytes([buf[2], buf[3]]), FRA_SPORT_RANGE);
+        assert_eq!(u16::from_ne_bytes([buf[4], buf[5]]), 1024);
+        assert_eq!(u16::from_ne_bytes([buf[6], buf[7]]), 65535);
+    }
+
+    #[test]
+    fn test_put_rta_uid_range() {
+        let mut buf = vec![0u8; 12];
+        put_rta_uid_range(&mut buf, 0, FRA_UID_RANGE, 1000, 2000);
+
+        assert_eq!(u16::from_ne_bytes([buf[0], buf[1]]), 12);
+        assert_eq!(u16::from_ne_bytes([buf[2], buf[3]]), FRA_UID_RANGE);
+        assert_eq!(u32::from_ne_bytes(buf[4..8].try_into().unwrap()), 1000);
+        assert_eq!(u32::from_ne_bytes(buf[8..12].try_into().unwrap()), 2000);
+    }
+
+    #[test]
+    fn test_fra_constants() {
+        assert_eq!(FRA_DST, 1);
+        assert_eq!(FRA_SRC, 2);
+        assert_eq!(FRA_IFNAME, 3);
+        assert_eq!(FRA_TABLE, 15);
+        assert_eq!(FRA_FWMARK, 10);
+        assert_eq!(FRA_FWMASK, 16);
+        assert_eq!(FRA_PRIORITY, 6);
+        assert_eq!(FRA_OIFNAME, 17);
+        assert_eq!(FRA_SUPPRESS_PREFIXLEN, 14);
+        assert_eq!(FRA_IP_PROTO, 19);
+        assert_eq!(FRA_SPORT_RANGE, 20);
+        assert_eq!(FRA_DPORT_RANGE, 21);
+        assert_eq!(FRA_UID_RANGE, 22);
+    }
+
+    #[test]
+    fn test_rtm_rule_constants() {
+        assert_eq!(RTM_NEWRULE, 32);
+        assert_eq!(RTM_DELRULE, 33);
+    }
+
+    #[test]
+    fn test_fib_rule_hdr_len() {
+        // fib_rule_hdr is the same size as rtmsg (12 bytes)
+        assert_eq!(FIB_RULE_HDR_LEN, 12);
+    }
+
+    #[test]
+    fn test_fib_rule_invert_flag() {
+        assert_eq!(FIB_RULE_INVERT, 0x00000002);
+    }
+
+    #[test]
+    fn test_af_inet6_constant() {
+        assert_eq!(af_inet6(), 10);
+        assert_eq!(af_inet(), 2);
+    }
+
+    #[test]
+    fn test_fr_act_accessors() {
+        assert_eq!(fr_act_to_tbl(), 1);
+        assert_eq!(fr_act_blackhole(), 6);
+        assert_eq!(fr_act_unreachable(), 7);
+        assert_eq!(fr_act_prohibit(), 8);
+    }
+
+    #[test]
+    fn test_rule_msg_structure_ipv4_basic() {
+        // Verify the message structure for a minimal IPv4 rule.
+        let _cfg = RuleConfig {
+            family: AF_INET,
+            from: Some((IpAddr::V4(Ipv4Addr::new(192, 168, 1, 0)), 24)),
+            table: 100,
+            priority: Some(32765),
+            ..Default::default()
+        };
+
+        // Calculate expected size:
+        // NLMSG_HDR(16) + FIB_RULE_HDR(12) + FRA_SRC(8) + FRA_TABLE(8) + FRA_PRIORITY(8)
+        let expected_payload = NLMSG_HDR_LEN + FIB_RULE_HDR_LEN + 8 + 8 + 8;
+        let src_len = rta_aligned_len(4); // IPv4 = 4 bytes
+        let table_len = rta_aligned_len(4);
+        let prio_len = rta_aligned_len(4);
+        let msg_len = NLMSG_HDR_LEN + FIB_RULE_HDR_LEN + src_len + table_len + prio_len;
+        assert_eq!(msg_len, expected_payload);
+    }
+
+    #[test]
+    fn test_rule_msg_structure_ipv6_larger() {
+        // IPv6 source adds 16 bytes instead of 4.
+        let src: Ipv6Addr = "2001:db8::".parse().unwrap();
+        let _cfg = RuleConfig {
+            family: AF_INET6,
+            from: Some((IpAddr::V6(src), 32)),
+            table: 200,
+            ..Default::default()
+        };
+
+        let src_len = rta_aligned_len(16); // IPv6 = 16 bytes → rta_aligned_len(16) = 20
+        let table_len = rta_aligned_len(4);
+        let msg_len = NLMSG_HDR_LEN + FIB_RULE_HDR_LEN + src_len + table_len;
+        // 16 + 12 + 20 + 8 = 56
+        assert_eq!(msg_len, 56);
     }
 }
