@@ -1310,6 +1310,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-cryptsetup"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-delta"
 version = "0.1.0"
 dependencies = [
@@ -1390,6 +1398,14 @@ name = "systemd-inhibit"
 version = "0.1.0"
 dependencies = [
  "clap",
+]
+
+[[package]]
+name = "systemd-integritysetup"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
 ]
 
 [[package]]
@@ -1719,6 +1735,14 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "log",
+]
+
+[[package]]
+name = "systemd-veritysetup"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
 ]
 
 [[package]]
