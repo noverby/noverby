@@ -36,6 +36,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use libsystemd::hwdb::{self, Hwdb, HwdbBuiltinArgs};
 use libsystemd::link_config;
+use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -3985,6 +3986,161 @@ fn update_queue_file(queue: &EventQueue) {
 }
 
 // ---------------------------------------------------------------------------
+// Inotify-based rules directory watcher
+// ---------------------------------------------------------------------------
+
+/// Debounce interval: wait this long after the last rules-directory change
+/// before actually reloading, so rapid edits (e.g. a script touching many
+/// files) are batched into a single reload.  Matches real systemd behaviour.
+const RULES_RELOAD_DEBOUNCE: Duration = Duration::from_secs(3);
+
+/// Watches udev rules directories for file changes using Linux inotify and
+/// signals the main loop to reload rules after a debounce period.
+///
+/// Monitors all existing `RULES_DIRS` directories for events that indicate
+/// rule files were created, modified, moved, or deleted:
+///
+/// - `IN_CLOSE_WRITE` — a file was written and closed
+/// - `IN_DELETE` — a file was removed
+/// - `IN_MOVED_TO` — a file was moved into the directory
+/// - `IN_MOVED_FROM` — a file was moved out of the directory
+/// - `IN_CREATE` — a new file or subdirectory was created
+///
+/// Only events touching `.rules` files trigger a reload.  The watcher uses
+/// a 3-second debounce timer so that rapid changes (e.g. a package manager
+/// installing many rules files) result in a single reload.
+pub struct InotifyRulesWatcher {
+    /// The inotify instance (wraps the inotify file descriptor).
+    inotify: Inotify,
+    /// Timestamp of the most recent relevant change.  `None` when no
+    /// pending reload is queued.
+    last_change: Option<Instant>,
+}
+
+impl InotifyRulesWatcher {
+    /// Create a new watcher, adding watches on all existing rules directories.
+    ///
+    /// Returns `None` if `inotify_init1` fails (e.g. on a non-Linux system or
+    /// inside a restricted container), allowing the daemon to fall back to
+    /// SIGHUP-only reload.
+    pub fn new() -> Option<Self> {
+        let inotify = match Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC) {
+            Ok(i) => i,
+            Err(e) => {
+                log::debug!("inotify_init1 failed, rules auto-reload disabled: {}", e);
+                return None;
+            }
+        };
+
+        let watch_flags = AddWatchFlags::IN_CLOSE_WRITE
+            | AddWatchFlags::IN_DELETE
+            | AddWatchFlags::IN_MOVED_TO
+            | AddWatchFlags::IN_MOVED_FROM
+            | AddWatchFlags::IN_CREATE;
+
+        let mut watched = 0;
+        for dir in RULES_DIRS {
+            if Path::new(dir).is_dir() {
+                match inotify.add_watch(Path::new(dir), watch_flags) {
+                    Ok(_wd) => {
+                        log::debug!("Watching rules directory: {}", dir);
+                        watched += 1;
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to watch {}: {}", dir, e);
+                    }
+                }
+            }
+        }
+
+        // Also watch NixOS package-relative rules directories (found by
+        // looking at the executable's location).
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(base) = exe
+                .parent()
+                .and_then(|bin| bin.parent())
+                .map(|p| p.join("lib/udev/rules.d"))
+            && base.is_dir()
+        {
+            match inotify.add_watch(&base, watch_flags) {
+                Ok(_wd) => {
+                    log::debug!("Watching NixOS rules directory: {}", base.display());
+                    watched += 1;
+                }
+                Err(e) => {
+                    log::debug!("Failed to watch {}: {}", base.display(), e);
+                }
+            }
+        }
+
+        if watched == 0 {
+            log::debug!("No rules directories found to watch");
+        } else {
+            log::info!(
+                "Watching {} rules director{} for changes",
+                watched,
+                if watched == 1 { "y" } else { "ies" }
+            );
+        }
+
+        Some(InotifyRulesWatcher {
+            inotify,
+            last_change: None,
+        })
+    }
+
+    /// Read pending inotify events and return `true` if a rules reload should
+    /// be triggered (i.e. a relevant change was seen and the debounce period
+    /// has elapsed).
+    ///
+    /// This is designed to be called on every main-loop iteration.  It is
+    /// non-blocking — if no events are pending, it returns immediately.
+    pub fn check(&mut self) -> bool {
+        // Drain all pending events
+        let mut saw_relevant = false;
+        match self.inotify.read_events() {
+            Ok(events) => {
+                for event in &events {
+                    // Only care about .rules files
+                    if let Some(ref name) = event.name {
+                        let name_str = name.to_string_lossy();
+                        if name_str.ends_with(".rules") {
+                            log::debug!("Rules change detected: {}", name_str);
+                            saw_relevant = true;
+                        }
+                    }
+                }
+            }
+            Err(nix::errno::Errno::EAGAIN) => {
+                // No events pending — expected in non-blocking mode
+            }
+            Err(e) => {
+                log::debug!("inotify read error: {}", e);
+            }
+        }
+
+        if saw_relevant {
+            self.last_change = Some(Instant::now());
+        }
+
+        // Check whether the debounce timer has elapsed
+        if let Some(last) = self.last_change
+            && last.elapsed() >= RULES_RELOAD_DEBOUNCE
+        {
+            self.last_change = None;
+            return true;
+        }
+
+        false
+    }
+
+    /// Returns `true` if a reload is pending (debounce timer is running).
+    pub fn reload_pending(&self) -> bool {
+        self.last_change.is_some()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Command-line arguments
 // ---------------------------------------------------------------------------
 
@@ -4225,6 +4381,9 @@ pub fn run_daemon() {
     let mut rules_reload_needed = false;
     let mut poll_timeout = Duration::from_millis(200);
 
+    // Set up inotify-based rules directory watcher for automatic reload
+    let mut inotify_watcher = InotifyRulesWatcher::new();
+
     // Main loop
     loop {
         if SHUTDOWN_FLAG.load(Ordering::SeqCst) {
@@ -4232,7 +4391,15 @@ pub fn run_daemon() {
             break;
         }
 
-        // Reload rules on SIGHUP
+        // Check inotify watcher for rules directory changes (debounced)
+        if let Some(ref mut watcher) = inotify_watcher
+            && watcher.check()
+        {
+            log::info!("Rules directory change detected (inotify), scheduling reload");
+            rules_reload_needed = true;
+        }
+
+        // Reload rules on SIGHUP or inotify-detected changes
         if RELOAD_FLAG.load(Ordering::SeqCst) || rules_reload_needed {
             RELOAD_FLAG.store(false, Ordering::SeqCst);
             rules_reload_needed = false;
@@ -4385,13 +4552,18 @@ pub fn run_daemon() {
 
         thread::sleep(poll_timeout);
 
-        // Adaptive poll timeout: faster when queue is non-empty
+        // Adaptive poll timeout: faster when queue is non-empty or inotify
+        // debounce is pending
         {
             let q = event_queue.lock().unwrap_or_else(|e| e.into_inner());
-            if q.queue.is_empty() {
-                poll_timeout = Duration::from_millis(200);
-            } else {
+            let inotify_pending = inotify_watcher.as_ref().is_some_and(|w| w.reload_pending());
+            if !q.queue.is_empty() {
                 poll_timeout = Duration::from_millis(10);
+            } else if inotify_pending {
+                // While debouncing, poll faster to fire the reload promptly
+                poll_timeout = Duration::from_millis(100);
+            } else {
+                poll_timeout = Duration::from_millis(200);
             }
         }
     }
@@ -7153,5 +7325,251 @@ mod tests {
         assert_eq!(resolve_keycode("dictate"), Some(0x24a));
         assert_eq!(resolve_keycode("accessibility"), Some(0x24e));
         assert_eq!(resolve_keycode("do_not_disturb"), Some(0x24f));
+    }
+
+    // -----------------------------------------------------------------------
+    // InotifyRulesWatcher tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_inotify_rules_watcher_new_succeeds() {
+        // On a Linux system, inotify_init1 should succeed even if
+        // the rules directories don't exist.
+        let watcher = InotifyRulesWatcher::new();
+        // Should not be None on Linux (inotify is always available)
+        assert!(watcher.is_some(), "inotify should be available on Linux");
+    }
+
+    #[test]
+    fn test_inotify_rules_watcher_check_no_events() {
+        // When no changes have occurred, check() should return false.
+        let mut watcher = InotifyRulesWatcher::new().expect("inotify available");
+        assert!(!watcher.check());
+        assert!(!watcher.reload_pending());
+    }
+
+    #[test]
+    fn test_inotify_rules_watcher_detects_rules_file_creation() {
+        // Create a temporary directory, add it as a watch target,
+        // create a .rules file in it, and verify the watcher detects it.
+        let dir = tempfile::tempdir().unwrap();
+        let inotify = Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC).unwrap();
+        let _wd = inotify
+            .add_watch(
+                dir.path(),
+                AddWatchFlags::IN_CLOSE_WRITE
+                    | AddWatchFlags::IN_DELETE
+                    | AddWatchFlags::IN_MOVED_TO
+                    | AddWatchFlags::IN_MOVED_FROM
+                    | AddWatchFlags::IN_CREATE,
+            )
+            .unwrap();
+
+        let mut watcher = InotifyRulesWatcher {
+            inotify,
+            last_change: None,
+        };
+
+        // No events yet
+        assert!(!watcher.check());
+
+        // Create a .rules file
+        let rules_file = dir.path().join("99-test.rules");
+        fs::write(&rules_file, "# test rule\n").unwrap();
+
+        // Give the kernel a moment to deliver the event
+        thread::sleep(Duration::from_millis(50));
+
+        // check() should see the event and set the debounce timer
+        // (but return false because debounce hasn't elapsed)
+        let result = watcher.check();
+        // The first check detects the change and starts debouncing
+        assert!(
+            watcher.reload_pending() || result,
+            "watcher should have pending reload or immediate trigger"
+        );
+    }
+
+    #[test]
+    fn test_inotify_rules_watcher_ignores_non_rules_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let inotify = Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC).unwrap();
+        let _wd = inotify
+            .add_watch(
+                dir.path(),
+                AddWatchFlags::IN_CLOSE_WRITE
+                    | AddWatchFlags::IN_DELETE
+                    | AddWatchFlags::IN_MOVED_TO
+                    | AddWatchFlags::IN_MOVED_FROM
+                    | AddWatchFlags::IN_CREATE,
+            )
+            .unwrap();
+
+        let mut watcher = InotifyRulesWatcher {
+            inotify,
+            last_change: None,
+        };
+
+        // Create a non-.rules file
+        let other_file = dir.path().join("README.txt");
+        fs::write(&other_file, "hello\n").unwrap();
+
+        thread::sleep(Duration::from_millis(50));
+
+        // Should not trigger a reload
+        assert!(!watcher.check());
+        assert!(!watcher.reload_pending());
+    }
+
+    #[test]
+    fn test_inotify_rules_watcher_debounce_timer() {
+        let dir = tempfile::tempdir().unwrap();
+        let inotify = Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC).unwrap();
+        let _wd = inotify
+            .add_watch(
+                dir.path(),
+                AddWatchFlags::IN_CLOSE_WRITE | AddWatchFlags::IN_CREATE,
+            )
+            .unwrap();
+
+        let mut watcher = InotifyRulesWatcher {
+            inotify,
+            last_change: None,
+        };
+
+        // Create a .rules file to trigger the debounce
+        fs::write(dir.path().join("50-test.rules"), "# rule\n").unwrap();
+        thread::sleep(Duration::from_millis(50));
+
+        // First check — starts debounce, should NOT fire reload yet
+        // (RULES_RELOAD_DEBOUNCE is 3 seconds)
+        let fired = watcher.check();
+        if !fired {
+            // Debounce started but not elapsed — expected
+            assert!(watcher.reload_pending());
+        }
+
+        // Simulate debounce elapsed by manually backdating last_change
+        watcher.last_change =
+            Some(Instant::now() - RULES_RELOAD_DEBOUNCE - Duration::from_millis(100));
+        assert!(watcher.check(), "should fire reload after debounce elapses");
+        assert!(
+            !watcher.reload_pending(),
+            "pending flag should be cleared after firing"
+        );
+    }
+
+    #[test]
+    fn test_inotify_rules_watcher_detects_deletion() {
+        let dir = tempfile::tempdir().unwrap();
+        let inotify = Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC).unwrap();
+        let _wd = inotify
+            .add_watch(
+                dir.path(),
+                AddWatchFlags::IN_CLOSE_WRITE | AddWatchFlags::IN_DELETE | AddWatchFlags::IN_CREATE,
+            )
+            .unwrap();
+
+        // Pre-create a .rules file before we start watching
+        let rules_file = dir.path().join("70-net.rules");
+        fs::write(&rules_file, "# network rule\n").unwrap();
+        thread::sleep(Duration::from_millis(50));
+
+        let mut watcher = InotifyRulesWatcher {
+            inotify,
+            last_change: None,
+        };
+
+        // Drain the creation event
+        let _ = watcher.check();
+        // Reset debounce manually so deletion is a fresh event
+        watcher.last_change = None;
+
+        // Delete the .rules file
+        fs::remove_file(&rules_file).unwrap();
+        thread::sleep(Duration::from_millis(50));
+
+        // Should detect the deletion
+        watcher.check();
+        assert!(
+            watcher.reload_pending(),
+            "watcher should detect .rules file deletion"
+        );
+    }
+
+    #[test]
+    fn test_inotify_rules_watcher_reload_pending_cleared_after_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let inotify = Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC).unwrap();
+        let _wd = inotify
+            .add_watch(
+                dir.path(),
+                AddWatchFlags::IN_CLOSE_WRITE | AddWatchFlags::IN_CREATE,
+            )
+            .unwrap();
+
+        let mut watcher = InotifyRulesWatcher {
+            inotify,
+            last_change: None,
+        };
+
+        // Create a .rules file
+        fs::write(dir.path().join("test.rules"), "# rule\n").unwrap();
+        thread::sleep(Duration::from_millis(50));
+
+        watcher.check();
+        // Force debounce elapsed
+        watcher.last_change = Some(Instant::now() - RULES_RELOAD_DEBOUNCE - Duration::from_secs(1));
+        assert!(watcher.check());
+        // After firing, pending should be cleared
+        assert!(!watcher.reload_pending());
+        // And subsequent checks without new events should return false
+        assert!(!watcher.check());
+    }
+
+    #[test]
+    fn test_inotify_rules_watcher_multiple_rapid_changes_debounced() {
+        let dir = tempfile::tempdir().unwrap();
+        let inotify = Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC).unwrap();
+        let _wd = inotify
+            .add_watch(
+                dir.path(),
+                AddWatchFlags::IN_CLOSE_WRITE | AddWatchFlags::IN_CREATE,
+            )
+            .unwrap();
+
+        let mut watcher = InotifyRulesWatcher {
+            inotify,
+            last_change: None,
+        };
+
+        // Simulate rapid rule file changes (like a package manager installing)
+        for i in 0..5 {
+            fs::write(
+                dir.path().join(format!("{:02}-pkg.rules", i)),
+                format!("# rule {}\n", i),
+            )
+            .unwrap();
+        }
+        thread::sleep(Duration::from_millis(50));
+
+        // First check should see all events and start debounce
+        watcher.check();
+        assert!(
+            watcher.reload_pending(),
+            "should be pending after rapid changes"
+        );
+
+        // Force the debounce to expire
+        watcher.last_change = Some(Instant::now() - RULES_RELOAD_DEBOUNCE - Duration::from_secs(1));
+        // Should fire exactly once
+        assert!(watcher.check());
+        assert!(!watcher.reload_pending());
+    }
+
+    #[test]
+    fn test_rules_reload_debounce_constant() {
+        // Verify the debounce constant matches real systemd's 3-second debounce
+        assert_eq!(RULES_RELOAD_DEBOUNCE, Duration::from_secs(3));
     }
 }
