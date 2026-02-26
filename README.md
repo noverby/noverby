@@ -8,26 +8,26 @@
   - [📦 Packages](#-packages)
   - [📋 Configurations](#-configurations)
   - [🧩 Modules](#-modules)
-- [💻 Hardware](#-hardware)
-- [🌐 Services](#-services)
-  - [🔒 Personal](#-personal)
-  - [👥 Social Platforms](#-social-platforms)
-  - [☁️ Cloud](#-cloud)
 - [📏 Standards](#-standards)
   - [🔌 Hardware](#-hardware)
   - [🔗 Software](#-software)
   - [📝 Data](#-data)
   - [📡 Network](#-network)
+- [💻 Hardware](#-hardware-1)
 - [🖥️ System](#-system)
   - [⚙️ Core](#-core)
-  - [📚 Libraries](#-libraries)
-  - [🏗️ Infrastructure](#-infrastructure)
+  - [📚 Frameworks & Libraries](#-frameworks--libraries)
+- [🏗️ Infrastructure](#-infrastructure)
 - [🛠️ Development](#-development)
   - [🔧 Tooling](#-tooling)
   - [❄️ Configuration](#-configuration)
   - [🦀 Systems](#-systems)
   - [🌐 Web](#-web)
   - [🐍 Scripting](#-scripting)
+- [☁️ Cloud](#-cloud)
+- [🌐 Services](#-services)
+  - [🔒 Personal](#-personal)
+  - [👥 Social Platforms](#-social-platforms)
 - [📱 Applications](#-applications)
   - [💻 Command Line](#-command-line)
   - [🖥️ Desktop Environment](#-desktop-environment)
@@ -168,135 +168,11 @@
 
 </details>
 
-<a id="-hardware"></a>
-
-## 💻 Hardware [⬆](#toc)
-
-<details open>
-
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| 🚫 | CPU | [AMD 🇺🇸](https://en.wikipedia.org/wiki/AMD) | | [Intel 🇺🇸](https://en.wikipedia.org/wiki/Intel) |
-| 🚫 | GPU | [AMD 🇺🇸](https://en.wikipedia.org/wiki/AMD) | [Vortex 📖](https://github.com/vortexgpgpu/vortex) | [Intel 🇺🇸](https://en.wikipedia.org/wiki/Intel), [NVIDIA 🇺🇸](https://en.wikipedia.org/wiki/NVIDIA) |
-| 🚫 | Laptop | [Thinkpad T14 Ryzen 7 Pro Gen 6](https://www.lenovo.com/dk/da/p/laptops/thinkpad/thinkpadt/lenovo-thinkpad-t14s-gen-6-14-inch-amd-laptop/len101t0109) | [Tuxedo ARM Laptop 🇪🇺](https://www.tuxedocomputers.com/en/TUXEDO-on-ARM-is-coming.tuxedo), [StarLabs Systems 🇬🇧](https://starlabs.systems) | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel), [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
-| ✅ | Security Key | [Nitrokey 📖🇪🇺](https://www.nitrokey.com) | | [YubiKey 🔒🇺🇸](https://www.yubico.com) |
-| ✅ | Mobile | [Fairphone 4 🇪🇺](https://en.wikipedia.org/wiki/Fairphone_4) | | [Google Pixel 7 Pro 🇺🇸](https://store.google.com/product/pixel_7_pro) |
-| ✅ | Router | [Turris Omnia 🇪🇺](https://www.turris.com/en/products/omnia) | | |
-| 🚫 | Watch | [Garmin Fenix 7 🔒🇺🇸](https://foundation.mozilla.org/en/privacynotincluded/garmin-fenix) | [Polar 🇬🇧](https://www.polar.com) | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
-| 🚫 | AR Glasses | [XReal Air 2 Pro 🔒🇨🇳](https://next.xreal.com/air2) | | [XReal Light 🔒🇨🇳](https://www.xreal.com/light) |
-| ✅ | Earphones | [Shokz Openfit 2 🇬🇧](https://shokz.com/products/openfit2) | | [Shokz Openfit 🇬🇧](https://shokz.com/products/openfit) |
-| ✅ | E-book Reader | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [PineNote 🇭🇰](https://pine64.org/devices/pinenote) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
-
-</details>
-
-<a id="-services"></a>
-
-## 🌐 Services [⬆](#toc)
-
-<a id="-personal"></a>
-
-### 🔒 Personal [⬆](#toc)
-
-<details open>
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Password Manager | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | 🆗 | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
-| ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | [Mail Import](https://tuta.com/blog/tuta-release-update-february) | [Proton Mail 🌐🇨🇭➡️🇪🇺](https://proton.me/mail) |
-| ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | [iCalendar 📖](https://en.wikipedia.org/wiki/ICalendar) | [Proton Calendar 🔒🌐🇨🇭➡️🇪🇺](https://proton.me/calendar) |
-| ✅ | Storage | [Syncthing 🐹🏡🇪🇺](https://github.com/syncthing/syncthing) | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | 🆗 | [Proton Drive 🌐🇨🇭➡️🇪🇺](https://proton.me/drive) |
-| ✅ | Virtual Private Network | [Adguard VPN 🇪🇺](https://adguard.com) | | 🆗 | [Proton VPN 🌐🇨🇭➡️🇪🇺](https://proton.me/vpn) |
-| ✅ | Domain Name System | [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | [NextDNS 🔒🇺🇸](https://nextdns.io) |
-| ✅ | Search Engine | [Qwant 🇪🇺](https://www.qwant.com) | [Stract 🦀🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines), [EU Search Perspective 🇪🇺](https://eu-searchperspective.com) | [StartPage 🔒🇪🇺](https://startpage.com) |
-| ✅ | Large Language Model | [Devstral 2 🇪🇺](https://mistral.ai/news/devstral-2-vibe-cli) | [EuroLLM 🇪🇺](https://eurollm.io) | | |
-| ✅ | Large Language Model Provider | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai) | [Lumo 🇪🇺](https://lumo.proton.me) | 🆗 | [OpenAI 🔒🇺🇸](https://openai.com) |
-| ✅ | Version Control | [Tangled 🇪🇺🌀](https://tangled.sh/@overby.me), [Codeberg 🇪🇺](https://codeberg.org/noverby) | | [Mirror](https://codeberg.org/Recommendations/Mirror_to_Codeberg) | [Microsoft GitHub 🔒🇺🇸](https://github.com/noverby), [GitLab 🇺🇸](https://gitlab.com/noverby) |
-| 🚧 | Music | [Spotify 🇪🇺](https://spotify.com) | [Qobuz 🇪🇺](https://www.qobuz.com) | 🆗 | [Deezer 🇪🇺](https://deezer.com) |
-| ✅ | Audiobooks | [LibreVox 🌐](https://librivox.org/) | | 🆗 | [Amazon Audible 🇺🇸](https://www.audible.com) |
-| 🚧 | Payment | [MobilePay 🇪🇺](https://mobilepay.dk), [PayPal 🇺🇸](https://paypal.com) | [Wero 🇪🇺](https://wero-wallet.eu) | 🆗 | |
-| 🚧 | Payment Medium | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | | |
-| 🚧 | Donation | [Ko-fi 🇬🇧](https://ko-fi.com) | [Liberapay 🌐🇪🇺](https://liberapay.com) | [GNU Taler 📖🇪🇺](https://taler.net) | [Patreon 🔒🇺🇸](https://patreon.com) |
-| ✅ | Translation | [DeepL 🔒🇪🇺](https://www.deepl.com) | | 🆗 | [Google Translate 🔒🇺🇸](https://translate.google.com) |
-
-</details>
-
-<a id="-social-platforms"></a>
-
-### 👥 Social Platforms [⬆](#toc)
-
-<details open>
-
-#### Communication Platforms
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Messaging | [Etke.cc Matrix 🇪🇺](https://etke.cc) | | [Matrix 🌐](https://matrix.org), [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Automattic Beeper 🔒🇺🇸](https://www.beeper.com), [Meta Messenger 🔒🇺🇸](https://messenger.com), [Meta WhatsApp 🔒🇺🇸](https://whatsapp.com) |
-| ✅ | Event Hosting | [Smoke Signal Events 🌐🌀](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [AT Protocol 🌀](https://atproto.com) | [Meta Facebook Events 🔒🇺🇸](https://facebook.com) |
-
-#### Media Platforms
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🔒🇪🇺🌀](https://github.com/birdsongapps/Flashes) | [AT Protocol 🌀](https://atproto.com) | [Meta Instagram (Flufi) 🔒🇺🇸](https://flufi.me) |
-| 🚧 | Long-form Video | [Alphabet YouTube 🔒🇺🇸](https://youtube.com) | [Skytube 🔒🇺🇸🌀](https://skytube.video) | [AT Protocol 🌀](https://atproto.com) | |
-| 🚧 | Short-form Video | | [SkyLight 🔒🇺🇸🌀](https://skylight.social), [Spark 🔒🇺🇸🌀](https://sprk.so) | | |
-| 🚧 | Live Streaming | [Stream.place 🌀](https://stream.place/) | | [AT Protocol 🌀](https://atproto.com) | [Twitch 🔒🇺🇸](https://twitch.tv) |
-
-#### Discussion Platforms
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Discussion Forums | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit (Libred) 🔒🇺🇸](https://github.com/redlib-org/redlib), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
-| ✅ | Microblogging | [Eurosky 🌐🇪🇺🌀](https://eurosky.social) [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | | [AT Protocol 🌀](https://atproto.com) | [Mastodon 🌐🇪🇺](https://mas.to/@niclasoverby), [X (X-cancel) 🔒🇺🇸](https://xcancel.com) |
-| ✅ | Macroblogging | [Leaflet 🌀](https://leaflet.pub) | | [AT Protocol 🌀](https://atproto.com) | |
-
-#### Content Cataloging
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
-| ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby), [Amazon IMDB 🔒🇺🇸](https://www.imdb.com) |
-| ✅ | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Rocksky 🇲🇬🌀](https://rocksky.app/profile/overby.me) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Spotify 🔒🇪🇺](https://open.spotify.com/user/1148979230) |
-| 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Garmin Connect 🔒🇺🇸](https://connect.garmin.com) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) |
-| ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 👁️🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
-
-#### Collaboration & Knowledge
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Collaboration Tools | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
-| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
-
-#### Social & Dating
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Dating | [Veggly 🔒👁️🇧🇷](https://veggly.net) | | 🆗 | [Tinder 🔒🇺🇸](https://en.wikipedia.org/wiki/Tinder_(app)) |
-
-</details>
-
-<a id="-cloud"></a>
-
-### ☁️ Cloud [⬆](#toc)
-
-<details open>
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| 🚧 | Cloud Provider | [Amazon AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com), [UpCloud 🇪🇺](https://www.upcloud.com) | | |
-| ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
-| ✅ | Static Host | [Statichost 🇪🇺](https://statichost.eu) | [FastFront 🇪🇺](https://www.fastfront.io) | | [Vercel 🇺🇸](https://vercel.com) |
-| ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
-| 🚧 | Backend | [Nhost 🇪🇺](https://nhost.io) | WIP Backend 🔥 | | |
-| ✅ | Logging | [Bugfender 🇪🇺](https://bugfender.com) | | | [Sentry 🇺🇸](https://sentry.io) |
-| ✅ | Analytics | [Counter.dev 🇪🇺](https://counter.dev) | | | [Vercel Analytics 🇺🇸](https://vercel.com/analytics) |
-| ✅ | Content Delivery Network | [Bunny.net 🇪🇺](https://bunny.net) | | | |
-
-</details>
-
 <a id="-standards"></a>
 
 ## 📏 Standards [⬆](#toc)
+
+<a id="-hardware"></a>
 
 ### 🔌 Hardware [⬆](#toc)
 
@@ -389,6 +265,27 @@
 
 </details>
 
+<a id="-hardware-1"></a>
+
+## 💻 Hardware [⬆](#toc)
+
+<details open>
+
+| Status | Component | Current | Research & Development | Legacy |
+|:-:|-|-|-|-|
+| 🚫 | CPU | [AMD 🇺🇸](https://en.wikipedia.org/wiki/AMD) | | [Intel 🇺🇸](https://en.wikipedia.org/wiki/Intel) |
+| 🚫 | GPU | [AMD 🇺🇸](https://en.wikipedia.org/wiki/AMD) | [Vortex 📖](https://github.com/vortexgpgpu/vortex) | [Intel 🇺🇸](https://en.wikipedia.org/wiki/Intel), [NVIDIA 🇺🇸](https://en.wikipedia.org/wiki/NVIDIA) |
+| 🚫 | Laptop | [Thinkpad T14 Ryzen 7 Pro Gen 6](https://www.lenovo.com/dk/da/p/laptops/thinkpad/thinkpadt/lenovo-thinkpad-t14s-gen-6-14-inch-amd-laptop/len101t0109) | [Tuxedo ARM Laptop 🇪🇺](https://www.tuxedocomputers.com/en/TUXEDO-on-ARM-is-coming.tuxedo), [StarLabs Systems 🇬🇧](https://starlabs.systems) | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel), [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
+| ✅ | Security Key | [Nitrokey 📖🇪🇺](https://www.nitrokey.com) | | [YubiKey 🔒🇺🇸](https://www.yubico.com) |
+| ✅ | Mobile | [Fairphone 4 🇪🇺](https://en.wikipedia.org/wiki/Fairphone_4) | | [Google Pixel 7 Pro 🇺🇸](https://store.google.com/product/pixel_7_pro) |
+| ✅ | Router | [Turris Omnia 🇪🇺](https://www.turris.com/en/products/omnia) | | |
+| 🚫 | Watch | [Garmin Fenix 7 🔒🇺🇸](https://foundation.mozilla.org/en/privacynotincluded/garmin-fenix) | [Polar 🇬🇧](https://www.polar.com) | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
+| 🚫 | AR Glasses | [XReal Air 2 Pro 🔒🇨🇳](https://next.xreal.com/air2) | | [XReal Light 🔒🇨🇳](https://www.xreal.com/light) |
+| ✅ | Earphones | [Shokz Openfit 2 🇬🇧](https://shokz.com/products/openfit2) | | [Shokz Openfit 🇬🇧](https://shokz.com/products/openfit) |
+| ✅ | E-book Reader | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [PineNote 🇭🇰](https://pine64.org/devices/pinenote) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
+
+</details>
+
 <a id="-system"></a>
 
 ## 🖥️ System [⬆](#toc)
@@ -413,9 +310,9 @@
 
 </details>
 
-<a id="-libraries"></a>
+<a id="-frameworks--libraries"></a>
 
-### 📚 Libraries [⬆](#toc)
+### 📚 Frameworks & Libraries [⬆](#toc)
 
 <details open>
 
@@ -440,7 +337,7 @@
 
 <a id="-infrastructure"></a>
 
-### 🏗️ Infrastructure [⬆](#toc)
+## 🏗️ Infrastructure [⬆](#toc)
 
 <details open>
 
@@ -464,9 +361,11 @@
 
 ## 🛠️ Development [⬆](#toc)
 
-<details open>
+<a id="-tooling"></a>
 
-### 🔧 Tooling
+### 🔧 Tooling [⬆](#toc)
+
+<details open>
 
 #### Tools & Utilities
 
@@ -476,7 +375,6 @@
 | ✅ | Editor | [Helix 🦀](https://github.com/helix-editor/helix) | | 🆗 | [Neovim 💣](https://github.com/neovim/neovim) |
 | ✅ | IDE | [Zed 🦀](https://github.com/zed-industries/zed) | | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium 🐒💣](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | [Lurk 🦀](https://github.com/JakWai01/lurk), [Tracexec 🦀](https://github.com/kxxt/tracexec) | | 🆗 | [Strace 💣](https://github.com/strace/strace) |
-| ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
 | ✅ | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
@@ -574,6 +472,138 @@
 | ✅ | Type Checker | [Ty 🦀](https://github.com/astral-sh/ty) | | 🆗 | [Mypy 🐍](https://github.com/python/mypy) |
 | ✅ | Profiler | [Py-spy 🦀](https://github.com/benfred/py-spy) | | 🆗 | [Yappi](https://github.com/sumerc/yappi) |
 | ✅ | Language Server | [Ty 🦀](https://github.com/astral-sh/ty) | | 🆗 | [Pyright 🐒](https://github.com/microsoft/pyright) |
+
+</details>
+
+<a id="-cloud"></a>
+
+## ☁️ Cloud [⬆](#toc)
+
+<details open>
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Cloud Provider | [Amazon AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com), [UpCloud 🇪🇺](https://www.upcloud.com) | | |
+| ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
+| ✅ | Static Host | [Statichost 🇪🇺](https://statichost.eu) | [FastFront 🇪🇺](https://www.fastfront.io) | | [Vercel 🇺🇸](https://vercel.com) |
+| ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
+| 🚧 | Backend | [Nhost 🇪🇺](https://nhost.io) | WIP Backend 🔥 | | |
+| ✅ | Logging | [Bugfender 🇪🇺](https://bugfender.com) | | | [Sentry 🇺🇸](https://sentry.io) |
+| ✅ | Analytics | [Counter.dev 🇪🇺](https://counter.dev) | | | [Vercel Analytics 🇺🇸](https://vercel.com/analytics) |
+| ✅ | Content Delivery Network | [Bunny.net 🇪🇺](https://bunny.net) | | | |
+
+</details>
+
+<a id="-services"></a>
+
+## 🌐 Services [⬆](#toc)
+
+<a id="-personal"></a>
+
+### 🔒 Personal [⬆](#toc)
+
+<details open>
+
+#### Security & Privacy
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Password Manager | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | 🆗 | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
+| ✅ | Virtual Private Network | [Adguard VPN 🇪🇺](https://adguard.com) | | 🆗 | [Proton VPN 🌐🇨🇭➡️🇪🇺](https://proton.me/vpn) |
+| ✅ | Domain Name System | [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | [NextDNS 🔒🇺🇸](https://nextdns.io) |
+
+#### Communication & Productivity
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | [Mail Import](https://tuta.com/blog/tuta-release-update-february) | [Proton Mail 🌐🇨🇭➡️🇪🇺](https://proton.me/mail) |
+| ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | [iCalendar 📖](https://en.wikipedia.org/wiki/ICalendar) | [Proton Calendar 🔒🌐🇨🇭➡️🇪🇺](https://proton.me/calendar) |
+| ✅ | Storage | [Syncthing 🐹🏡🇪🇺](https://github.com/syncthing/syncthing) | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | 🆗 | [Proton Drive 🌐🇨🇭➡️🇪🇺](https://proton.me/drive) |
+| ✅ | Search Engine | [Qwant 🇪🇺](https://www.qwant.com) | [Stract 🦀🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines), [EU Search Perspective 🇪🇺](https://eu-searchperspective.com) | [StartPage 🔒🇪🇺](https://startpage.com) |
+| ✅ | Translation | [DeepL 🔒🇪🇺](https://www.deepl.com) | | 🆗 | [Google Translate 🔒🇺🇸](https://translate.google.com) |
+
+#### AI
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Large Language Model | [Devstral 2 🇪🇺](https://mistral.ai/news/devstral-2-vibe-cli) | [EuroLLM 🇪🇺](https://eurollm.io) | | |
+| ✅ | Large Language Model Provider | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai) | [Lumo 🇪🇺](https://lumo.proton.me) | 🆗 | [OpenAI 🔒🇺🇸](https://openai.com) |
+
+#### Development
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Version Control | [Tangled 🇪🇺🌀](https://tangled.sh/@overby.me), [Codeberg 🇪🇺](https://codeberg.org/noverby) | | [Mirror](https://codeberg.org/Recommendations/Mirror_to_Codeberg) | [Microsoft GitHub 🔒🇺🇸](https://github.com/noverby), [GitLab 🇺🇸](https://gitlab.com/noverby) |
+
+#### Media & Entertainment
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Music | [Spotify 🇪🇺](https://spotify.com) | [Qobuz 🇪🇺](https://www.qobuz.com) | 🆗 | [Deezer 🇪🇺](https://deezer.com) |
+| ✅ | Audiobooks | [LibreVox 🌐](https://librivox.org/) | | 🆗 | [Amazon Audible 🇺🇸](https://www.audible.com) |
+
+#### Finance
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Payment | [MobilePay 🇪🇺](https://mobilepay.dk), [PayPal 🇺🇸](https://paypal.com) | [Wero 🇪🇺](https://wero-wallet.eu) | 🆗 | |
+| 🚧 | Payment Medium | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | | |
+| 🚧 | Donation | [Ko-fi 🇬🇧](https://ko-fi.com) | [Liberapay 🌐🇪🇺](https://liberapay.com) | [GNU Taler 📖🇪🇺](https://taler.net) | [Patreon 🔒🇺🇸](https://patreon.com) |
+
+</details>
+
+<a id="-social-platforms"></a>
+
+### 👥 Social Platforms [⬆](#toc)
+
+<details open>
+
+#### Communication Platforms
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Messaging | [Etke.cc Matrix 🇪🇺](https://etke.cc) | | [Matrix 🌐](https://matrix.org), [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Automattic Beeper 🔒🇺🇸](https://www.beeper.com), [Meta Messenger 🔒🇺🇸](https://messenger.com), [Meta WhatsApp 🔒🇺🇸](https://whatsapp.com) |
+
+#### Media Platforms
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🔒🇪🇺🌀](https://github.com/birdsongapps/Flashes) | [AT Protocol 🌀](https://atproto.com) | [Meta Instagram (Flufi) 🔒🇺🇸](https://flufi.me) |
+| 🚧 | Long-form Video | [Alphabet YouTube 🔒🇺🇸](https://youtube.com) | [Skytube 🔒🇺🇸🌀](https://skytube.video) | [AT Protocol 🌀](https://atproto.com) | |
+| 🚧 | Short-form Video | | [SkyLight 🔒🇺🇸🌀](https://skylight.social), [Spark 🔒🇺🇸🌀](https://sprk.so) | | |
+| 🚧 | Live Streaming | [Stream.place 🌀](https://stream.place/) | | [AT Protocol 🌀](https://atproto.com) | [Twitch 🔒🇺🇸](https://twitch.tv) |
+
+#### Discussion Platforms
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Discussion Forums | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit (Libred) 🔒🇺🇸](https://github.com/redlib-org/redlib), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
+| ✅ | Microblogging | [Eurosky 🌐🇪🇺🌀](https://eurosky.social) [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | | [AT Protocol 🌀](https://atproto.com) | [Mastodon 🌐🇪🇺](https://mas.to/@niclasoverby), [X (X-cancel) 🔒🇺🇸](https://xcancel.com) |
+| ✅ | Macroblogging | [Leaflet 🌀](https://leaflet.pub) | | [AT Protocol 🌀](https://atproto.com) | |
+
+#### Content Cataloging
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
+| ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby), [Amazon IMDB 🔒🇺🇸](https://www.imdb.com) |
+| ✅ | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Rocksky 🇲🇬🌀](https://rocksky.app/profile/overby.me) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Spotify 🔒🇪🇺](https://open.spotify.com/user/1148979230) |
+| 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Garmin Connect 🔒🇺🇸](https://connect.garmin.com) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) |
+| ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 👁️🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
+
+#### Collaboration & Knowledge
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Collaboration Tools | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
+| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
+
+#### Meetup
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Event Hosting | [Smoke Signal Events 🌐🌀](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [AT Protocol 🌀](https://atproto.com) | [Meta Facebook Events 🔒🇺🇸](https://facebook.com) |
+| ✅ | Dating | [Veggly 🔒👁️🇧🇷](https://veggly.net) | | 🆗 | [Tinder 🔒🇺🇸](https://en.wikipedia.org/wiki/Tinder_(app)) |
 
 </details>
 
