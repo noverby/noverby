@@ -77,29 +77,11 @@
 
 <details open>
 
-#### Jupyter
-
-| Package | Description |
-|-|-|
-| [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/deno-jupyter-kernel.nix) | Jupyter Notebook kernel for Deno |
-| [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/mojo-jupyter-kernel.nix) | Jupyter Notebook kernel for Mojo |
-| [Nu-jupyter-kernel 🦪](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/nu-jupyter-kernel.nix) | Jupyter Notebook kernel for Nushell |
-| [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/Rust-jupyter-kernel.nix) | Jupyter Notebook kernel for Rust |
-| [Sidecar 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sidecar/default.nix) | Jupyter Notebook viewer |
-| [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/xeus-lix/default.nix) | Jupyter Notebook kernel for Nix |
-
 #### AI
 
 | Package | Description |
 |-|-|
 | [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | Secure personal AI assistant (OpenClaw-inspired) |
-
-#### Social
-
-| Package | Description |
-|-|-|
-| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | Rust atproto crates and services for microcosm |
-| [Perch 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | AT Protocol social client |
 
 #### Development
 
@@ -111,6 +93,17 @@
 | [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/rcgen.nix) | X.509 certificate generation CLI tool |
 | [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/starship-jj.nix) | Starship plugin for jj |
 
+#### Jupyter
+
+| Package | Description |
+|-|-|
+| [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/deno-jupyter-kernel.nix) | Jupyter Notebook kernel for Deno |
+| [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/mojo-jupyter-kernel.nix) | Jupyter Notebook kernel for Mojo |
+| [Nu-jupyter-kernel 🦪](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/nu-jupyter-kernel.nix) | Jupyter Notebook kernel for Nushell |
+| [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/Rust-jupyter-kernel.nix) | Jupyter Notebook kernel for Rust |
+| [Sidecar 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sidecar/default.nix) | Jupyter Notebook viewer |
+| [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/xeus-lix/default.nix) | Jupyter Notebook kernel for Nix |
+
 #### Media
 
 | Package | Description |
@@ -120,6 +113,21 @@
 | [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/vibe.nix) | A desktop audio visualizer |
 | [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/wondermagick/default.nix) | Memory-safe replacement for Imagemagick |
 
+#### Security
+
+| Package | Description |
+|-|-|
+| [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/age-plugin-fido2prf.nix) | FIDO2 PRF plugin for age |
+| [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/forkfs.nix) | Sandbox a process's changes to file system |
+| [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/hakoniwa.nix) | Process isolation CLI tool |
+
+#### Social
+
+| Package | Description |
+|-|-|
+| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | Rust atproto crates and services for microcosm |
+| [Perch 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | AT Protocol social client |
+
 #### System
 
 | Package | Description |
@@ -128,14 +136,6 @@
 | [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cpx.nix) | Cp reimagined |
 | [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/lacy.nix) | Fast magical cd alternative |
 | [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sunsetc.nix) | SSH in Rust |
-
-#### Security
-
-| Package | Description |
-|-|-|
-| [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/age-plugin-fido2prf.nix) | FIDO2 PRF plugin for age |
-| [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/forkfs.nix) | Sandbox a process's changes to file system |
-| [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/hakoniwa.nix) | Process isolation CLI tool |
 
 </details>
 
@@ -229,14 +229,6 @@
 
 <details open>
 
-#### Text & Object Notation
-
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
-| ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | |
-| ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
-
 #### Media Codecs
 
 | Status | Component | Current | Research & Development | Legacy |
@@ -245,6 +237,14 @@
 | ✅ | Image Codec (Lossless) | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics) | [AVIF (lossless) 📖](https://en.wikipedia.org/wiki/AVIF) | |
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
 | ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
+
+#### Text & Object Notation
+
+| Status | Component | Current | Research & Development | Legacy |
+|:-:|-|-|-|-|
+| ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
+| ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | |
+| ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
 
 </details>
 
@@ -504,13 +504,12 @@
 
 <details open>
 
-#### Security & Privacy
+#### AI
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Password Manager | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | 🆗 | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
-| ✅ | Virtual Private Network | [Adguard VPN 🇪🇺](https://adguard.com) | | 🆗 | [Proton VPN 🌐🇨🇭➡️🇪🇺](https://proton.me/vpn) |
-| ✅ | Domain Name System | [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | [NextDNS 🔒🇺🇸](https://nextdns.io) |
+| ✅ | Large Language Model | [Devstral 2 🇪🇺](https://mistral.ai/news/devstral-2-vibe-cli) | [EuroLLM 🇪🇺](https://eurollm.io) | | |
+| ✅ | Large Language Model Provider | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai) | [Lumo 🇪🇺](https://lumo.proton.me) | 🆗 | [OpenAI 🔒🇺🇸](https://openai.com) |
 
 #### Communication & Productivity
 
@@ -522,25 +521,11 @@
 | ✅ | Search Engine | [Qwant 🇪🇺](https://www.qwant.com) | [Stract 🦀🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines), [EU Search Perspective 🇪🇺](https://eu-searchperspective.com) | [StartPage 🔒🇪🇺](https://startpage.com) |
 | ✅ | Translation | [DeepL 🔒🇪🇺](https://www.deepl.com) | | 🆗 | [Google Translate 🔒🇺🇸](https://translate.google.com) |
 
-#### AI
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Large Language Model | [Devstral 2 🇪🇺](https://mistral.ai/news/devstral-2-vibe-cli) | [EuroLLM 🇪🇺](https://eurollm.io) | | |
-| ✅ | Large Language Model Provider | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai) | [Lumo 🇪🇺](https://lumo.proton.me) | 🆗 | [OpenAI 🔒🇺🇸](https://openai.com) |
-
 #### Development
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Version Control | [Tangled 🇪🇺🌀](https://tangled.sh/@overby.me), [Codeberg 🇪🇺](https://codeberg.org/noverby) | | [Mirror](https://codeberg.org/Recommendations/Mirror_to_Codeberg) | [Microsoft GitHub 🔒🇺🇸](https://github.com/noverby), [GitLab 🇺🇸](https://gitlab.com/noverby) |
-
-#### Media & Entertainment
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| 🚧 | Music | [Spotify 🇪🇺](https://spotify.com) | [Qobuz 🇪🇺](https://www.qobuz.com) | 🆗 | [Deezer 🇪🇺](https://deezer.com) |
-| ✅ | Audiobooks | [LibreVox 🌐](https://librivox.org/) | | 🆗 | [Amazon Audible 🇺🇸](https://www.audible.com) |
 
 #### Finance
 
@@ -550,6 +535,21 @@
 | 🚧 | Payment Medium | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | | |
 | 🚧 | Donation | [Ko-fi 🇬🇧](https://ko-fi.com) | [Liberapay 🌐🇪🇺](https://liberapay.com) | [GNU Taler 📖🇪🇺](https://taler.net) | [Patreon 🔒🇺🇸](https://patreon.com) |
 
+#### Media & Entertainment
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Music | [Spotify 🇪🇺](https://spotify.com) | [Qobuz 🇪🇺](https://www.qobuz.com) | 🆗 | [Deezer 🇪🇺](https://deezer.com) |
+| ✅ | Audiobooks | [LibreVox 🌐](https://librivox.org/) | | 🆗 | [Amazon Audible 🇺🇸](https://www.audible.com) |
+
+#### Security & Privacy
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Password Manager | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | 🆗 | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
+| ✅ | Virtual Private Network | [Adguard VPN 🇪🇺](https://adguard.com) | | 🆗 | [Proton VPN 🌐🇨🇭➡️🇪🇺](https://proton.me/vpn) |
+| ✅ | Domain Name System | [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | [NextDNS 🔒🇺🇸](https://nextdns.io) |
+
 </details>
 
 <a id="-social-platforms"></a>
@@ -558,28 +558,18 @@
 
 <details open>
 
+#### Collaboration & Knowledge
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Collaboration Tools | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
+| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
+
 #### Communication Platforms
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Messaging | [Etke.cc Matrix 🇪🇺](https://etke.cc) | | [Matrix 🌐](https://matrix.org), [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Automattic Beeper 🔒🇺🇸](https://www.beeper.com), [Meta Messenger 🔒🇺🇸](https://messenger.com), [Meta WhatsApp 🔒🇺🇸](https://whatsapp.com) |
-
-#### Media Platforms
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🔒🇪🇺🌀](https://github.com/birdsongapps/Flashes) | [AT Protocol 🌀](https://atproto.com) | [Meta Instagram (Flufi) 🔒🇺🇸](https://flufi.me) |
-| 🚧 | Long-form Video | [Alphabet YouTube 🔒🇺🇸](https://youtube.com) | [Skytube 🔒🇺🇸🌀](https://skytube.video) | [AT Protocol 🌀](https://atproto.com) | |
-| 🚧 | Short-form Video | | [SkyLight 🔒🇺🇸🌀](https://skylight.social), [Spark 🔒🇺🇸🌀](https://sprk.so) | | |
-| 🚧 | Live Streaming | [Stream.place 🌀](https://stream.place/) | | [AT Protocol 🌀](https://atproto.com) | [Twitch 🔒🇺🇸](https://twitch.tv) |
-
-#### Discussion Platforms
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Discussion Forums | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit (Libred) 🔒🇺🇸](https://github.com/redlib-org/redlib), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
-| ✅ | Microblogging | [Eurosky 🌐🇪🇺🌀](https://eurosky.social) [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | | [AT Protocol 🌀](https://atproto.com) | [Mastodon 🌐🇪🇺](https://mas.to/@niclasoverby), [X (X-cancel) 🔒🇺🇸](https://xcancel.com) |
-| ✅ | Macroblogging | [Leaflet 🌀](https://leaflet.pub) | | [AT Protocol 🌀](https://atproto.com) | |
 
 #### Content Cataloging
 
@@ -591,12 +581,22 @@
 | 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Garmin Connect 🔒🇺🇸](https://connect.garmin.com) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) |
 | ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 👁️🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
 
-#### Collaboration & Knowledge
+#### Discussion Platforms
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Collaboration Tools | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
-| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
+| ✅ | Discussion Forums | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit (Libred) 🔒🇺🇸](https://github.com/redlib-org/redlib), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
+| ✅ | Microblogging | [Eurosky 🌐🇪🇺🌀](https://eurosky.social) [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | | [AT Protocol 🌀](https://atproto.com) | [Mastodon 🌐🇪🇺](https://mas.to/@niclasoverby), [X (X-cancel) 🔒🇺🇸](https://xcancel.com) |
+| ✅ | Macroblogging | [Leaflet 🌀](https://leaflet.pub) | | [AT Protocol 🌀](https://atproto.com) | |
+
+#### Media Platforms
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🔒🇪🇺🌀](https://github.com/birdsongapps/Flashes) | [AT Protocol 🌀](https://atproto.com) | [Meta Instagram (Flufi) 🔒🇺🇸](https://flufi.me) |
+| 🚧 | Long-form Video | [Alphabet YouTube 🔒🇺🇸](https://youtube.com) | [Skytube 🔒🇺🇸🌀](https://skytube.video) | [AT Protocol 🌀](https://atproto.com) | |
+| 🚧 | Short-form Video | | [SkyLight 🔒🇺🇸🌀](https://skylight.social), [Spark 🔒🇺🇸🌀](https://sprk.so) | | |
+| 🚧 | Live Streaming | [Stream.place 🌀](https://stream.place/) | | [AT Protocol 🌀](https://atproto.com) | [Twitch 🔒🇺🇸](https://twitch.tv) |
 
 #### Meetup
 
@@ -631,15 +631,6 @@
 | ✅ | Hex Viewer | [Hyxel 🦀](https://github.com/hyxel/hyxel) | | | [Util Linux Hexdump 💣](https://github.com/util-linux/util-linux) |
 | ✅ | Tree Viewer | [Tre 🦀](https://github.com/dduan/tre) | | 🆗 | [Tree 💣](https://oldmanprogrammer.net/source.php?dir=projects/tree) |
 
-#### Process Management
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | 🆗 | [Ps 💣](https://gitlab.com/procps-ng/procps) |
-| ✅ | Process Monitor | [Bottom 🦀](https://github.com/ClementTsang/bottom) | | 🆗 | [Top 💣](https://gitlab.com/procps-ng/procps) |
-| ✅ | Parallel Processing | [Rust Parallel 🦀](https://github.com/aaronriekenberg/rust-parallel) | | 🆗 | [GNU Parallel 💣](https://en.wikipedia.org/wiki/GNU_parallel) |
-| ✅ | Terminal Workspace | [Zellij 🦀](https://github.com/zellij-org/zellij) | | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
-
 #### Networking
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
@@ -649,6 +640,15 @@
 | ✅ | Port Scanner | [RustScan 🦀](https://github.com/rustscan/rustscan) | | 🆗 | [Nmap 💣](https://github.com/nmap/nmap) |
 | 🚧 | PGP | [GnuPG 💣](https://gnupg.org) | [Sequoia-PGP 🦀](https://gitlab.com/sequoia-pgp/sequoia) | 🆗 | |
 | 🚧 | SSH | [OpenSSH 💣](https://github.com/openssh/openssh-portable) | [Sunset 🦀](https://github.com/mkj/sunset) | 🆗 | |
+
+#### Process Management
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | 🆗 | [Ps 💣](https://gitlab.com/procps-ng/procps) |
+| ✅ | Process Monitor | [Bottom 🦀](https://github.com/ClementTsang/bottom) | | 🆗 | [Top 💣](https://gitlab.com/procps-ng/procps) |
+| ✅ | Parallel Processing | [Rust Parallel 🦀](https://github.com/aaronriekenberg/rust-parallel) | | 🆗 | [GNU Parallel 💣](https://en.wikipedia.org/wiki/GNU_parallel) |
+| ✅ | Terminal Workspace | [Zellij 🦀](https://github.com/zellij-org/zellij) | | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
 
 #### System Utilities
 
