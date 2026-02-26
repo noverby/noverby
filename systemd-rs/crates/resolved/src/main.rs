@@ -19,6 +19,7 @@
 
 mod config;
 mod dns;
+mod hosts;
 
 use std::fs;
 use std::io::{self, Read, Write};
@@ -218,11 +219,15 @@ fn write_file_atomic(path: &str, content: &str) {
 /// Shared DNS cache type (thread-safe).
 type SharedCache = Arc<Mutex<DnsCache>>;
 
+/// Shared `/etc/hosts` database (thread-safe, reloadable).
+type SharedHosts = Arc<Mutex<hosts::EtcHosts>>;
+
 fn handle_query(
     query_data: &[u8],
     upstreams: &[SocketAddr],
     stats: &AtomicStats,
     cache: &SharedCache,
+    etc_hosts: &SharedHosts,
 ) -> Vec<u8> {
     stats.queries_received.fetch_add(1, Ordering::Relaxed);
 
@@ -244,7 +249,16 @@ fn handle_query(
 
     log::debug!("Query: {}", query_info);
 
-    // Check the DNS cache first.
+    // Check /etc/hosts first (highest priority, matching real systemd-resolved).
+    if let Ok(hosts) = etc_hosts.lock()
+        && let Some(response) = hosts.lookup(query_data)
+    {
+        log::debug!("/etc/hosts hit for {}", query_info);
+        stats.responses_ok.fetch_add(1, Ordering::Relaxed);
+        return response;
+    }
+
+    // Check the DNS cache.
     if let Ok(mut dns_cache) = cache.lock()
         && let Some(cached_response) = dns_cache.lookup(query_data)
     {
@@ -305,6 +319,7 @@ fn handle_tcp_connection(
     upstreams: Vec<SocketAddr>,
     stats: Arc<AtomicStats>,
     cache: SharedCache,
+    etc_hosts: SharedHosts,
 ) {
     let _ = stream.set_read_timeout(Some(TCP_TIMEOUT));
     let _ = stream.set_write_timeout(Some(TCP_TIMEOUT));
@@ -327,7 +342,7 @@ fn handle_tcp_connection(
         return;
     }
 
-    let response = handle_query(&query, &upstreams, &stats, &cache);
+    let response = handle_query(&query, &upstreams, &stats, &cache, &etc_hosts);
 
     // Write response with length prefix
     let resp_len = (response.len() as u16).to_be_bytes();
@@ -344,6 +359,7 @@ fn run_udp_listener(
     stats: Arc<AtomicStats>,
     shutdown: Arc<AtomicBool>,
     cache: SharedCache,
+    etc_hosts: SharedHosts,
 ) {
     let mut buf = vec![0u8; UDP_RECV_BUF];
 
@@ -368,7 +384,7 @@ fn run_udp_listener(
             Ok((len, src)) => {
                 let query = &buf[..len];
                 let upstream_list = upstreams.read().unwrap_or_else(|e| e.into_inner()).clone();
-                let response = handle_query(query, &upstream_list, &stats, &cache);
+                let response = handle_query(query, &upstream_list, &stats, &cache, &etc_hosts);
 
                 if let Err(e) = socket.send_to(&response, src) {
                     log::debug!("Failed to send UDP response to {}: {}", src, e);
@@ -402,6 +418,7 @@ fn run_tcp_listener(
     stats: Arc<AtomicStats>,
     shutdown: Arc<AtomicBool>,
     cache: SharedCache,
+    etc_hosts: SharedHosts,
 ) {
     log::info!(
         "TCP stub listener ready on {}",
@@ -421,9 +438,16 @@ fn run_tcp_listener(
                 let upstream_list = upstreams.read().unwrap_or_else(|e| e.into_inner()).clone();
                 let stats_clone = Arc::clone(&stats);
                 let cache_clone = Arc::clone(&cache);
+                let hosts_clone = Arc::clone(&etc_hosts);
 
                 thread::spawn(move || {
-                    handle_tcp_connection(stream, upstream_list, stats_clone, cache_clone);
+                    handle_tcp_connection(
+                        stream,
+                        upstream_list,
+                        stats_clone,
+                        cache_clone,
+                        hosts_clone,
+                    );
                 });
             }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -896,6 +920,15 @@ fn main() {
     // Create DNS cache.
     let dns_cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
 
+    // Load /etc/hosts database.
+    let mut etc_hosts_db = hosts::EtcHosts::new();
+    if let Ok(stats) = etc_hosts_db.load() {
+        log::info!("Loaded /etc/hosts: {}", stats);
+    } else {
+        log::debug!("/etc/hosts not available (will retry later)");
+    }
+    let etc_hosts: SharedHosts = Arc::new(Mutex::new(etc_hosts_db));
+
     // Load configuration
     let mut config = ResolvedConfig::load();
     log::info!(
@@ -974,6 +1007,7 @@ fn main() {
                         let stats_clone = Arc::clone(&stats);
                         let shutdown_clone = Arc::clone(&shutdown);
                         let cache_clone = Arc::clone(&dns_cache);
+                        let hosts_clone = Arc::clone(&etc_hosts);
                         listener_threads.push(thread::spawn(move || {
                             run_udp_listener(
                                 socket,
@@ -981,6 +1015,7 @@ fn main() {
                                 stats_clone,
                                 shutdown_clone,
                                 cache_clone,
+                                hosts_clone,
                             );
                         }));
                     }
@@ -1002,6 +1037,7 @@ fn main() {
                         let stats_clone = Arc::clone(&stats);
                         let shutdown_clone = Arc::clone(&shutdown);
                         let cache_clone = Arc::clone(&dns_cache);
+                        let hosts_clone = Arc::clone(&etc_hosts);
                         listener_threads.push(thread::spawn(move || {
                             run_tcp_listener(
                                 listener,
@@ -1009,6 +1045,7 @@ fn main() {
                                 stats_clone,
                                 shutdown_clone,
                                 cache_clone,
+                                hosts_clone,
                             );
                         }));
                     }
@@ -1033,6 +1070,7 @@ fn main() {
                 let stats_clone = Arc::clone(&stats);
                 let shutdown_clone = Arc::clone(&shutdown);
                 let cache_clone = Arc::clone(&dns_cache);
+                let hosts_clone = Arc::clone(&etc_hosts);
                 listener_threads.push(thread::spawn(move || {
                     run_udp_listener(
                         socket,
@@ -1040,6 +1078,7 @@ fn main() {
                         stats_clone,
                         shutdown_clone,
                         cache_clone,
+                        hosts_clone,
                     );
                 }));
             }
@@ -1074,6 +1113,8 @@ fn main() {
     };
     let mut last_watchdog = Instant::now();
     let mut last_link_refresh = Instant::now();
+    let mut last_hosts_check = Instant::now();
+    const HOSTS_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 
     // ── Main loop ──────────────────────────────────────────────────────
     loop {
@@ -1133,7 +1174,42 @@ fn main() {
                 log::info!("Flushed DNS cache ({} entries)", cache_size);
             }
 
+            // Reload /etc/hosts
+            if new_config.read_etc_hosts
+                && let Ok(mut hosts_guard) = etc_hosts.lock()
+            {
+                match hosts_guard.load() {
+                    Ok(stats) => {
+                        log::info!("Reloaded /etc/hosts: {}", stats);
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to reload /etc/hosts: {}", e);
+                    }
+                }
+            }
+
+            config = new_config;
+
             sd_notify_status("Processing requests...");
+        }
+
+        // Periodically refresh /etc/hosts if the file changed on disk.
+        if config.read_etc_hosts && last_hosts_check.elapsed() >= HOSTS_REFRESH_INTERVAL {
+            if let Ok(hosts_guard) = etc_hosts.lock() {
+                let changed = hosts_guard.has_changed();
+                drop(hosts_guard);
+                if changed && let Ok(mut hosts_guard) = etc_hosts.lock() {
+                    match hosts_guard.load() {
+                        Ok(stats) => {
+                            log::info!("Reloaded /etc/hosts: {}", stats);
+                        }
+                        Err(e) => {
+                            log::debug!("Failed to reload /etc/hosts: {}", e);
+                        }
+                    }
+                }
+            }
+            last_hosts_check = Instant::now();
         }
 
         // Periodically refresh link DNS from networkd
@@ -1255,13 +1331,14 @@ mod tests {
     fn test_handle_query_empty_upstreams() {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
 
         // Build a minimal valid DNS query
         let mut query = vec![0u8; 12]; // minimal header
         query[2] = 0x01; // RD=1
         query[5] = 0; // QDCOUNT=0
 
-        let response = handle_query(&query, &[], &stats, &cache);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
 
         // Should get SERVFAIL
         assert!(response.len() >= HEADER_SIZE);
@@ -1276,6 +1353,7 @@ mod tests {
     fn test_handle_query_malformed() {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
 
         // Too short to be a valid DNS message but has a header
         let query = vec![0u8; HEADER_SIZE];
@@ -1283,7 +1361,7 @@ mod tests {
         let mut query = query;
         query[5] = 1; // QDCOUNT=1
 
-        let response = handle_query(&query, &[], &stats, &cache);
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
         // Should get FORMERR since the message can't be parsed (truncated question)
         assert!(response.len() >= HEADER_SIZE);
         let rcode = response[3] & 0x0F;
@@ -1296,13 +1374,14 @@ mod tests {
     fn test_handle_query_response_not_query() {
         let stats = AtomicStats::new();
         let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
 
         // Send a response (QR=1) as if it were a query
         let mut data = vec![0u8; HEADER_SIZE];
         data[2] = 0x80; // QR=1 (response)
         data[5] = 0; // QDCOUNT=0
 
-        let response = handle_query(&data, &[], &stats, &cache);
+        let response = handle_query(&data, &[], &stats, &cache, &etc_hosts);
         let rcode = response[3] & 0x0F;
         assert_eq!(rcode, 1); // FORMERR
     }
@@ -1458,5 +1537,144 @@ mod tests {
         let (family, bytes) = dns_server_to_dbus(&server);
         assert_eq!(family, 2);
         assert_eq!(bytes, vec![8, 8, 8, 8]);
+    }
+
+    // ── /etc/hosts integration tests ──────────────────────────────────
+
+    #[test]
+    fn test_handle_query_etc_hosts_a_record() {
+        let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+
+        let mut hosts_db = hosts::EtcHosts::new();
+        hosts_db.load_from_str("192.168.1.10 myhost.local\n", None);
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+
+        // Build an A query for myhost.local
+        let query = hosts::tests_support::build_test_query("myhost.local", dns::RecordType::A);
+
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+
+        // Should get a successful response from /etc/hosts (not SERVFAIL)
+        assert!(response.len() >= HEADER_SIZE);
+        // QR=1
+        assert_ne!(response[2] & 0x80, 0);
+        // RCODE=0 (NOERROR)
+        assert_eq!(response[3] & 0x0F, 0);
+        // ANCOUNT=1
+        assert_eq!(u16::from_be_bytes([response[6], response[7]]), 1);
+
+        // Stats: query received, response OK, no forwarding
+        assert_eq!(stats.queries_received.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.responses_ok.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.queries_forwarded.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_handle_query_etc_hosts_aaaa_record() {
+        let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+
+        let mut hosts_db = hosts::EtcHosts::new();
+        hosts_db.load_from_str("::1 localhost\n", None);
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+
+        let query = hosts::tests_support::build_test_query("localhost", dns::RecordType::AAAA);
+
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+
+        assert!(response.len() >= HEADER_SIZE);
+        assert_eq!(response[3] & 0x0F, 0); // NOERROR
+        assert_eq!(u16::from_be_bytes([response[6], response[7]]), 1);
+        assert_eq!(stats.queries_forwarded.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_handle_query_etc_hosts_miss_falls_through() {
+        let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+
+        let mut hosts_db = hosts::EtcHosts::new();
+        hosts_db.load_from_str("127.0.0.1 localhost\n", None);
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+
+        // Query for a name NOT in /etc/hosts, with no upstreams
+        let query = hosts::tests_support::build_test_query("unknown.host", dns::RecordType::A);
+
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+
+        // Should fall through to upstream (which is empty) and get SERVFAIL
+        assert_eq!(response[3] & 0x0F, 2); // SERVFAIL
+        assert_eq!(stats.responses_servfail.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_handle_query_etc_hosts_priority_over_cache() {
+        let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+
+        let mut hosts_db = hosts::EtcHosts::new();
+        hosts_db.load_from_str("10.0.0.1 cached.host\n", None);
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+
+        let query = hosts::tests_support::build_test_query("cached.host", dns::RecordType::A);
+
+        // Insert a fake response into the cache first
+        {
+            let mut c = cache.lock().unwrap();
+            // Build a minimal fake cached response
+            let mut fake_resp = query.clone();
+            fake_resp[2] |= 0x80; // QR=1
+            fake_resp[3] = 0x80; // RA=1, RCODE=0
+            // Set a non-zero TTL answer so it would be cached
+            c.insert(&query, &fake_resp);
+        }
+
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+
+        // /etc/hosts should take priority — response should have AA=1
+        // (our hosts responses set AA=1, cache responses don't)
+        assert_ne!(
+            response[2] & 0x04,
+            0,
+            "/etc/hosts response should have AA=1"
+        );
+        assert_eq!(response[3] & 0x0F, 0); // NOERROR
+    }
+
+    #[test]
+    fn test_handle_query_etc_hosts_empty_db() {
+        let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
+
+        let query = hosts::tests_support::build_test_query("localhost", dns::RecordType::A);
+
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+
+        // Empty hosts DB, no upstreams → SERVFAIL
+        assert_eq!(response[3] & 0x0F, 2);
+    }
+
+    #[test]
+    fn test_handle_query_etc_hosts_ptr_query() {
+        let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+
+        let mut hosts_db = hosts::EtcHosts::new();
+        hosts_db.load_from_str("192.168.1.10 myhost.example.com\n", None);
+        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+
+        let query = hosts::tests_support::build_test_query(
+            "10.1.168.192.in-addr.arpa",
+            dns::RecordType::PTR,
+        );
+
+        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts);
+
+        assert!(response.len() >= HEADER_SIZE);
+        assert_eq!(response[3] & 0x0F, 0); // NOERROR
+        assert_eq!(u16::from_be_bytes([response[6], response[7]]), 1);
+        assert_eq!(stats.queries_forwarded.load(Ordering::Relaxed), 0);
     }
 }
