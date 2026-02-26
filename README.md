@@ -98,7 +98,8 @@
 
 | Package | Description |
 |-|-|
-| [Perch 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | AT Protocol social client |
+| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | Rust atproto crates and services for microcosm |
+| [Perch 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | AT Protocol social client |
 
 #### Development
 
