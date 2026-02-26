@@ -15,6 +15,7 @@ log = "0.4"
 fern = "0.7"
 chrono = "0.4"
 signal-hook = "0.4"
+libsystemd = { path = "../libsystemd" }
 nix = { version = "0.31", features = [
   "signal",
   "process",

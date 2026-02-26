@@ -1496,6 +1496,7 @@ dependencies = [
  "chrono",
  "fern",
  "libc",
+ "libsystemd",
  "log",
  "nix",
  "signal-hook",
@@ -1716,6 +1717,7 @@ name = "systemd-udevd"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "libsystemd",
  "log",
  "nix",
  "serde",

@@ -19,6 +19,7 @@
 //! - Event queue with settle support
 //! - sd_notify protocol (READY, WATCHDOG, STATUS, STOPPING)
 //! - Signal handling (SIGTERM, SIGINT, SIGHUP, SIGCHLD)
+//! - `net_setup_link` builtin for `.link` file-based network interface naming
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
@@ -31,6 +32,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
+
+use libsystemd::link_config;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1704,6 +1707,179 @@ fn handle_import(import_type: &str, value: &str, event: &mut UEvent, program_res
     }
 }
 
+/// `net_setup_link` builtin — apply `.link` file configuration to a network device.
+///
+/// This is the udev builtin that determines the final interface name for network
+/// devices based on `.link` files (see `systemd.link(5)`). It:
+///
+/// 1. Loads all `.link` files from standard search directories.
+/// 2. Matches the current device against each file's `[Match]` section.
+/// 3. If a match is found, resolves the interface name via `NamePolicy=` (checking
+///    `ID_NET_NAME_FROM_DATABASE`, `ID_NET_NAME_ONBOARD`, `ID_NET_NAME_SLOT`,
+///    `ID_NET_NAME_PATH`, `ID_NET_NAME_MAC` environment variables set by earlier
+///    builtins like `net_id`) or falls back to the explicit `Name=` setting.
+/// 4. Sets `ID_NET_LINK_FILE` to the path of the matching `.link` file.
+/// 5. Sets `ID_NET_NAME` to the resolved interface name (consumed by the kernel
+///    rename logic and networkd).
+/// 6. Propagates `MTUBytes=` as `ID_NET_LINK_FILE_MTU` and `MACAddress=` as
+///    `ID_NET_LINK_FILE_MACADDRESS` for downstream consumers.
+fn builtin_net_setup_link(event: &mut UEvent) {
+    // Only process network subsystem devices.
+    if event.subsystem != "net" {
+        return;
+    }
+
+    // Determine the original interface name. In udev, this is typically the
+    // kernel-assigned name available as INTERFACE or the device name.
+    let original_name = event.env.get("INTERFACE").cloned().unwrap_or_else(|| {
+        // Fall back to extracting the last component of devpath.
+        event.devpath.rsplit('/').next().unwrap_or("").to_string()
+    });
+
+    if original_name.is_empty() {
+        log::trace!("net_setup_link: no interface name available, skipping");
+        return;
+    }
+
+    // Gather device properties for matching.
+    let mac = event
+        .env
+        .get("ID_NET_NAME_MAC")
+        .or_else(|| event.env.get("ATTR_address"))
+        .cloned()
+        .or_else(|| {
+            // Try to read the MAC address from sysfs.
+            event.read_sysattr("address")
+        });
+    let driver = event
+        .env
+        .get("ID_NET_DRIVER")
+        .cloned()
+        .or_else(|| event.driver.is_empty().then_some(()).and(None))
+        .or_else(|| {
+            if event.driver.is_empty() {
+                None
+            } else {
+                Some(event.driver.clone())
+            }
+        });
+    let dev_type = event.env.get("DEVTYPE").cloned();
+    let id_path = event.env.get("ID_PATH").cloned();
+
+    // Load .link files and find the first match.
+    let link_configs = link_config::load_link_configs();
+    let matched = link_config::find_matching_link_config(
+        &link_configs,
+        &original_name,
+        mac.as_deref(),
+        driver.as_deref(),
+        dev_type.as_deref(),
+        id_path.as_deref(),
+    );
+
+    let link = match matched {
+        Some(cfg) => cfg,
+        None => {
+            log::trace!(
+                "net_setup_link: no .link file matched for '{}'",
+                original_name
+            );
+            return;
+        }
+    };
+
+    log::debug!(
+        "net_setup_link: matched '{}' for interface '{}'",
+        link.path.display(),
+        original_name
+    );
+
+    // Set ID_NET_LINK_FILE so downstream rules and networkd know which
+    // .link file was applied.
+    event.env.insert(
+        "ID_NET_LINK_FILE".to_string(),
+        link.path.to_string_lossy().to_string(),
+    );
+
+    // Resolve the interface name from NamePolicy / Name.
+    // The closure looks up naming environment variables that were set by
+    // earlier builtins (typically `net_id` and `path_id`).
+    let env_snapshot: HashMap<String, String> = event.env.clone();
+    if let Some(new_name) =
+        link_config::resolve_name_from_policy(link, |key| env_snapshot.get(key).cloned())
+        && !new_name.is_empty()
+        && new_name != original_name
+    {
+        log::debug!(
+            "net_setup_link: renaming '{}' -> '{}'",
+            original_name,
+            new_name
+        );
+        event
+            .env
+            .insert("ID_NET_NAME".to_string(), new_name.clone());
+    }
+
+    // Propagate link-level settings as environment variables for downstream
+    // consumers (networkd, udev rules, etc.).
+    if let Some(mtu) = link.link_section.mtu {
+        event
+            .env
+            .insert("ID_NET_LINK_FILE_MTU".to_string(), mtu.to_string());
+    }
+
+    if let Some(ref mac_addr) = link.link_section.mac_address {
+        event
+            .env
+            .insert("ID_NET_LINK_FILE_MACADDRESS".to_string(), mac_addr.clone());
+    }
+
+    // Propagate MACAddressPolicy for downstream (networkd uses this).
+    if let Some(ref policy) = link.link_section.mac_address_policy {
+        event.env.insert(
+            "ID_NET_LINK_FILE_MACADDRESS_POLICY".to_string(),
+            policy.as_str().to_string(),
+        );
+    }
+
+    // Propagate alternative names if specified.
+    // Build ID_NET_LINK_FILE_ALTNAMES from AlternativeName= entries and
+    // AlternativeNamesPolicy= resolved names.
+    let mut alt_names: Vec<String> = Vec::new();
+
+    // Explicit AlternativeName= entries.
+    for name in &link.link_section.alternative_names {
+        if !name.is_empty() {
+            alt_names.push(name.clone());
+        }
+    }
+
+    // AlternativeNamesPolicy= entries.
+    for policy in &link.link_section.alternative_names_policy {
+        let env_key = match policy {
+            link_config::NamePolicy::Kernel => continue,
+            link_config::NamePolicy::Database => "ID_NET_NAME_FROM_DATABASE",
+            link_config::NamePolicy::Onboard => "ID_NET_NAME_ONBOARD",
+            link_config::NamePolicy::Slot => "ID_NET_NAME_SLOT",
+            link_config::NamePolicy::Path => "ID_NET_NAME_PATH",
+            link_config::NamePolicy::Mac => "ID_NET_NAME_MAC",
+            link_config::NamePolicy::Keep => continue,
+        };
+        if let Some(name) = env_snapshot.get(env_key)
+            && !name.is_empty()
+            && !alt_names.contains(name)
+        {
+            alt_names.push(name.clone());
+        }
+    }
+
+    if !alt_names.is_empty() {
+        event
+            .env
+            .insert("ID_NET_LINK_FILE_ALTNAMES".to_string(), alt_names.join(" "));
+    }
+}
+
 /// Handle IMPORT{builtin} for common udev builtins.
 fn handle_builtin_import(cmd: &str, event: &mut UEvent) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
@@ -1814,7 +1990,7 @@ fn handle_builtin_import(cmd: &str, event: &mut UEvent) {
             log::trace!("builtin keyboard not fully implemented");
         }
         "net_setup_link" => {
-            log::trace!("builtin net_setup_link not fully implemented");
+            builtin_net_setup_link(event);
         }
         "kmod" => {
             // Load kernel module
@@ -4532,5 +4708,351 @@ mod tests {
     fn test_invoked_as_daemon_false() {
         // When running tests, argv[0] is the test binary, not systemd-udevd
         assert!(!invoked_as_daemon());
+    }
+
+    // -----------------------------------------------------------------------
+    // builtin_net_setup_link tests
+    // -----------------------------------------------------------------------
+
+    fn make_net_event(interface: &str) -> UEvent {
+        let mut event = UEvent::new();
+        event.action = "add".to_string();
+        event.subsystem = "net".to_string();
+        event.devpath = format!("/devices/pci0000:00/0000:00:03.0/net/{}", interface);
+        event
+            .env
+            .insert("INTERFACE".to_string(), interface.to_string());
+        event.env.insert("ACTION".to_string(), "add".to_string());
+        event.env.insert("SUBSYSTEM".to_string(), "net".to_string());
+        event
+    }
+
+    #[test]
+    fn test_net_setup_link_skips_non_net_subsystem() {
+        let mut event = UEvent::new();
+        event.subsystem = "block".to_string();
+        event.devpath = "/devices/pci0000:00/0000:00:1f.2/ata1/host0".to_string();
+        builtin_net_setup_link(&mut event);
+        // Should not set any ID_NET_ variables.
+        assert!(event.env.get("ID_NET_LINK_FILE").is_none());
+        assert!(event.env.get("ID_NET_NAME").is_none());
+    }
+
+    #[test]
+    fn test_net_setup_link_skips_empty_interface() {
+        let mut event = UEvent::new();
+        event.subsystem = "net".to_string();
+        event.devpath = String::new();
+        // No INTERFACE env var, empty devpath — no interface name available.
+        builtin_net_setup_link(&mut event);
+        assert!(event.env.get("ID_NET_LINK_FILE").is_none());
+    }
+
+    #[test]
+    fn test_net_setup_link_no_matching_link_file() {
+        // With no .link files on disk matching, nothing should be set.
+        // In practice load_link_configs() loads from standard dirs that may
+        // or may not have files. We test the function doesn't panic.
+        let mut event = make_net_event("test_unlikely_iface_name_12345");
+        builtin_net_setup_link(&mut event);
+        // We can't assert ID_NET_LINK_FILE is absent because system .link
+        // files with OriginalName=* would match. Just verify no panic.
+    }
+
+    #[test]
+    fn test_net_setup_link_uses_interface_env_var() {
+        let mut event = UEvent::new();
+        event.subsystem = "net".to_string();
+        event.devpath = "/devices/virtual/net/dummy0".to_string();
+        event
+            .env
+            .insert("INTERFACE".to_string(), "dummy0".to_string());
+        // Should use INTERFACE, not extract from devpath.
+        builtin_net_setup_link(&mut event);
+        // Just verify no panic; the function uses INTERFACE correctly.
+    }
+
+    #[test]
+    fn test_net_setup_link_falls_back_to_devpath() {
+        let mut event = UEvent::new();
+        event.subsystem = "net".to_string();
+        event.devpath = "/devices/virtual/net/lo".to_string();
+        // No INTERFACE env var — should extract "lo" from devpath.
+        builtin_net_setup_link(&mut event);
+        // Just verify no panic.
+    }
+
+    #[test]
+    fn test_net_setup_link_with_name_policy_path() {
+        // Simulate a device where net_id already set ID_NET_NAME_PATH.
+        let mut event = make_net_event("eth0");
+        event
+            .env
+            .insert("ID_NET_NAME_PATH".to_string(), "enp3s0".to_string());
+
+        // This will run against real system .link files. If a default
+        // .link file with NamePolicy containing "path" matches, it should
+        // pick up enp3s0 from ID_NET_NAME_PATH.
+        builtin_net_setup_link(&mut event);
+
+        // If a .link file matched and used path policy, ID_NET_NAME should
+        // be set. We verify the function runs without panic.
+        // On systems with 99-default.link (NamePolicy=kernel database onboard slot path),
+        // ID_NET_NAME should be "enp3s0".
+        if event.env.contains_key("ID_NET_LINK_FILE") {
+            // A .link file matched — verify ID_NET_NAME if it was set.
+            if let Some(name) = event.env.get("ID_NET_NAME") {
+                assert!(!name.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn test_net_setup_link_with_mac_in_sysattr() {
+        // Test that the function tries to read MAC from sysfs.
+        let mut event = make_net_event("eth0");
+        // No MAC in env, function will try read_sysattr("address").
+        // On test systems this won't find a real sysfs path, so mac=None.
+        builtin_net_setup_link(&mut event);
+        // No panic = success.
+    }
+
+    #[test]
+    fn test_net_setup_link_driver_from_event() {
+        let mut event = make_net_event("eth0");
+        event.driver = "virtio_net".to_string();
+        builtin_net_setup_link(&mut event);
+        // No panic = success.
+    }
+
+    #[test]
+    fn test_net_setup_link_driver_from_env() {
+        let mut event = make_net_event("eth0");
+        event
+            .env
+            .insert("ID_NET_DRIVER".to_string(), "e1000".to_string());
+        builtin_net_setup_link(&mut event);
+        // No panic = success.
+    }
+
+    #[test]
+    fn test_net_setup_link_devtype_from_env() {
+        let mut event = make_net_event("wlan0");
+        event.env.insert("DEVTYPE".to_string(), "wlan".to_string());
+        builtin_net_setup_link(&mut event);
+        // No panic = success.
+    }
+
+    #[test]
+    fn test_net_setup_link_id_path_from_env() {
+        let mut event = make_net_event("eth0");
+        event
+            .env
+            .insert("ID_PATH".to_string(), "pci-0000:00:03.0".to_string());
+        builtin_net_setup_link(&mut event);
+        // No panic = success.
+    }
+
+    #[test]
+    fn test_net_setup_link_resolve_name_from_policy_unit() {
+        // Unit test the resolve_name_from_policy logic directly.
+        use libsystemd::link_config::{parse_link_file_content, resolve_name_from_policy};
+        use std::path::Path;
+
+        let cfg = parse_link_file_content(
+            "[Link]\nNamePolicy=kernel database onboard slot path\n",
+            Path::new("99-default.link"),
+        )
+        .unwrap();
+
+        // Simulate having ID_NET_NAME_PATH available.
+        let name = resolve_name_from_policy(&cfg, |key| {
+            if key == "ID_NET_NAME_PATH" {
+                Some("enp0s3".to_string())
+            } else {
+                None
+            }
+        });
+        assert_eq!(name.as_deref(), Some("enp0s3"));
+    }
+
+    #[test]
+    fn test_net_setup_link_resolve_name_prefers_onboard_over_path() {
+        use libsystemd::link_config::{parse_link_file_content, resolve_name_from_policy};
+        use std::path::Path;
+
+        let cfg = parse_link_file_content(
+            "[Link]\nNamePolicy=onboard slot path\n",
+            Path::new("99-default.link"),
+        )
+        .unwrap();
+
+        let name = resolve_name_from_policy(&cfg, |key| match key {
+            "ID_NET_NAME_ONBOARD" => Some("eno1".to_string()),
+            "ID_NET_NAME_SLOT" => Some("ens3".to_string()),
+            "ID_NET_NAME_PATH" => Some("enp0s3".to_string()),
+            _ => None,
+        });
+        assert_eq!(name.as_deref(), Some("eno1"));
+    }
+
+    #[test]
+    fn test_net_setup_link_resolve_name_explicit_name_fallback() {
+        use libsystemd::link_config::{parse_link_file_content, resolve_name_from_policy};
+        use std::path::Path;
+
+        let cfg = parse_link_file_content(
+            "[Link]\nNamePolicy=database\nName=eth0\n",
+            Path::new("10-custom.link"),
+        )
+        .unwrap();
+
+        // No naming env vars available — falls back to Name=.
+        let name = resolve_name_from_policy(&cfg, |_| None);
+        assert_eq!(name.as_deref(), Some("eth0"));
+    }
+
+    #[test]
+    fn test_net_setup_link_resolve_name_keep_returns_none() {
+        use libsystemd::link_config::{parse_link_file_content, resolve_name_from_policy};
+        use std::path::Path;
+
+        let cfg = parse_link_file_content("[Link]\nNamePolicy=keep\n", Path::new("99-keep.link"))
+            .unwrap();
+
+        let name = resolve_name_from_policy(&cfg, |_| None);
+        assert!(name.is_none());
+    }
+
+    #[test]
+    fn test_net_setup_link_link_config_matching() {
+        use libsystemd::link_config::{find_matching_link_config, parse_link_file_content};
+        use std::path::Path;
+
+        let configs = vec![
+            parse_link_file_content(
+                "[Match]\nOriginalName=en*\n\n[Link]\nName=eth0\n",
+                Path::new("10-eth.link"),
+            )
+            .unwrap(),
+            parse_link_file_content(
+                "[Match]\nOriginalName=wl*\n\n[Link]\nName=wlan0\n",
+                Path::new("20-wlan.link"),
+            )
+            .unwrap(),
+        ];
+
+        let result = find_matching_link_config(&configs, "enp3s0", None, None, None, None);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().link_section.name.as_deref(), Some("eth0"));
+
+        let result = find_matching_link_config(&configs, "wlp2s0", None, None, None, None);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().link_section.name.as_deref(), Some("wlan0"));
+
+        let result = find_matching_link_config(&configs, "lo", None, None, None, None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_net_setup_link_link_config_first_match_wins() {
+        use libsystemd::link_config::{find_matching_link_config, parse_link_file_content};
+        use std::path::Path;
+
+        let configs = vec![
+            parse_link_file_content(
+                "[Match]\nOriginalName=en*\n\n[Link]\nName=first\n",
+                Path::new("10-first.link"),
+            )
+            .unwrap(),
+            parse_link_file_content(
+                "[Match]\nOriginalName=en*\n\n[Link]\nName=second\n",
+                Path::new("20-second.link"),
+            )
+            .unwrap(),
+        ];
+
+        let result = find_matching_link_config(&configs, "enp0s3", None, None, None, None);
+        assert_eq!(result.unwrap().link_section.name.as_deref(), Some("first"));
+    }
+
+    #[test]
+    fn test_net_setup_link_link_config_mac_match() {
+        use libsystemd::link_config::{find_matching_link_config, parse_link_file_content};
+        use std::path::Path;
+
+        let configs = vec![
+            parse_link_file_content(
+                "[Match]\nMACAddress=00:11:22:33:44:55\n\n[Link]\nName=specific\n",
+                Path::new("10-mac.link"),
+            )
+            .unwrap(),
+            parse_link_file_content(
+                "[Match]\nOriginalName=*\n\n[Link]\nName=fallback\n",
+                Path::new("99-default.link"),
+            )
+            .unwrap(),
+        ];
+
+        let result = find_matching_link_config(
+            &configs,
+            "enp0s3",
+            Some("00:11:22:33:44:55"),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            result.unwrap().link_section.name.as_deref(),
+            Some("specific")
+        );
+
+        let result = find_matching_link_config(
+            &configs,
+            "enp0s3",
+            Some("aa:bb:cc:dd:ee:ff"),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            result.unwrap().link_section.name.as_deref(),
+            Some("fallback")
+        );
+    }
+
+    #[test]
+    fn test_net_setup_link_link_config_driver_match() {
+        use libsystemd::link_config::{find_matching_link_config, parse_link_file_content};
+        use std::path::Path;
+
+        let configs = vec![
+            parse_link_file_content(
+                "[Match]\nDriver=virtio*\n\n[Link]\nName=virt0\n",
+                Path::new("10-virtio.link"),
+            )
+            .unwrap(),
+        ];
+
+        let result =
+            find_matching_link_config(&configs, "eth0", None, Some("virtio_net"), None, None);
+        assert!(result.is_some());
+
+        let result = find_matching_link_config(&configs, "eth0", None, Some("e1000"), None, None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_net_setup_link_alternative_names_policy() {
+        use libsystemd::link_config::parse_link_file_content;
+        use std::path::Path;
+
+        let cfg = parse_link_file_content(
+            "[Match]\nOriginalName=*\n\n[Link]\nNamePolicy=path\nAlternativeNamesPolicy=database onboard slot mac\n",
+            Path::new("99-default.link"),
+        )
+        .unwrap();
+
+        assert_eq!(cfg.link_section.alternative_names_policy.len(), 4);
     }
 }
