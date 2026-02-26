@@ -3713,8 +3713,9 @@ pub enum ServiceRestart {
     /// (not SIGHUP, SIGINT, SIGTERM, SIGPIPE).
     OnAbort,
     /// Restart only if the watchdog timeout for the service expired.
-    /// (Currently treated as never restarting since systemd-rs does not yet
-    /// implement watchdog support.)
+    /// Restarts the service when the watchdog timeout fires (i.e. the service
+    /// failed to send `WATCHDOG=1` within the configured `WatchdogSec=`
+    /// interval). Enforced by the background watchdog thread.
     OnWatchdog,
 }
 

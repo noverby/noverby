@@ -85,10 +85,16 @@ fn get_success_exit_status(unit: &crate::units::Unit) -> SuccessExitStatus {
 ///
 /// "Clean" exit codes are 0 plus any additional codes listed in
 /// `SuccessExitStatus=`.
+///
+/// `watchdog_fired` is `true` when the watchdog enforcement thread killed
+/// this service due to a `WatchdogSec=` timeout (or `WATCHDOG=trigger`).
+/// This enables `Restart=on-watchdog` and also counts as a failure for
+/// `Restart=on-failure` and `Restart=on-abnormal`.
 fn should_restart(
     policy: &ServiceRestart,
     termination: &ChildTermination,
     success_exit_status: &SuccessExitStatus,
+    watchdog_fired: bool,
 ) -> bool {
     match policy {
         ServiceRestart::No => false,
@@ -98,6 +104,10 @@ fn should_restart(
                 || success_exit_status.is_clean_signal(termination)
         }
         ServiceRestart::OnFailure => {
+            // Watchdog timeout counts as a failure.
+            if watchdog_fired {
+                return true;
+            }
             // Non-zero exit (not in SuccessExitStatus), unclean signal, or
             // timeout (timeout is not currently tracked separately – a
             // killed-by-signal counts).
@@ -111,6 +121,10 @@ fn should_restart(
             }
         }
         ServiceRestart::OnAbnormal => {
+            // Watchdog timeout counts as abnormal.
+            if watchdog_fired {
+                return true;
+            }
             // Unclean signal or timeout – not on any exit code.
             match termination {
                 ChildTermination::Exit(_) => false,
@@ -120,7 +134,7 @@ fn should_restart(
             }
         }
         ServiceRestart::OnAbort => {
-            // Unclean signal only.
+            // Unclean signal only (watchdog does NOT trigger on-abort).
             match termination {
                 ChildTermination::Exit(_) => false,
                 ChildTermination::Signal(sig) => {
@@ -129,9 +143,8 @@ fn should_restart(
             }
         }
         ServiceRestart::OnWatchdog => {
-            // Watchdog timeout only – systemd-rs does not implement watchdog yet,
-            // so this never triggers a restart.
-            false
+            // Restart only on watchdog timeout.
+            watchdog_fired
         }
     }
 }
@@ -251,6 +264,18 @@ pub fn service_exit_handler(
                 srvc_id, unit.id.name, pid, code
             );
 
+            // Check whether the watchdog enforcement thread killed this service.
+            let watchdog_fired = {
+                let state = srvc.state.read_poisoned();
+                state.srvc.watchdog_timeout_fired
+            };
+            if watchdog_fired {
+                trace!(
+                    "Service {}: exit was caused by watchdog timeout",
+                    unit.id.name
+                );
+            }
+
             // RestartPreventExitStatus= overrides the Restart= policy: if the
             // termination status matches any entry, prevent restart regardless
             // of the configured Restart= setting.
@@ -280,7 +305,12 @@ pub fn service_exit_handler(
                 };
 
                 let do_restart = force_restart
-                    || should_restart(&srvc.conf.restart, &code, &success_exit_status);
+                    || should_restart(
+                        &srvc.conf.restart,
+                        &code,
+                        &success_exit_status,
+                        watchdog_fired,
+                    );
 
                 // Graduated restart delay: if RestartSteps= > 0 and
                 // RestartMaxDelaySec= is set, compute an increasing delay
@@ -474,17 +504,20 @@ mod tests {
         assert!(!should_restart(
             &ServiceRestart::No,
             &ChildTermination::Exit(0),
-            &ses
+            &ses,
+            false,
         ));
         assert!(!should_restart(
             &ServiceRestart::No,
             &ChildTermination::Exit(1),
-            &ses
+            &ses,
+            false,
         ));
         assert!(!should_restart(
             &ServiceRestart::No,
             &ChildTermination::Signal(Signal::SIGKILL),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -494,22 +527,26 @@ mod tests {
         assert!(should_restart(
             &ServiceRestart::Always,
             &ChildTermination::Exit(0),
-            &ses
+            &ses,
+            false,
         ));
         assert!(should_restart(
             &ServiceRestart::Always,
             &ChildTermination::Exit(1),
-            &ses
+            &ses,
+            false,
         ));
         assert!(should_restart(
             &ServiceRestart::Always,
             &ChildTermination::Signal(Signal::SIGKILL),
-            &ses
+            &ses,
+            false,
         ));
         assert!(should_restart(
             &ServiceRestart::Always,
             &ChildTermination::Signal(Signal::SIGTERM),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -520,13 +557,15 @@ mod tests {
         assert!(should_restart(
             &ServiceRestart::OnSuccess,
             &ChildTermination::Exit(0),
-            &ses
+            &ses,
+            false,
         ));
         // Exit code 1 is not clean
         assert!(!should_restart(
             &ServiceRestart::OnSuccess,
             &ChildTermination::Exit(1),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -537,13 +576,15 @@ mod tests {
         assert!(should_restart(
             &ServiceRestart::OnSuccess,
             &ChildTermination::Signal(Signal::SIGTERM),
-            &ses
+            &ses,
+            false,
         ));
         // SIGKILL is not a clean signal
         assert!(!should_restart(
             &ServiceRestart::OnSuccess,
             &ChildTermination::Signal(Signal::SIGKILL),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -557,7 +598,8 @@ mod tests {
         assert!(should_restart(
             &ServiceRestart::OnSuccess,
             &ChildTermination::Exit(42),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -568,13 +610,15 @@ mod tests {
         assert!(should_restart(
             &ServiceRestart::OnFailure,
             &ChildTermination::Exit(1),
-            &ses
+            &ses,
+            false,
         ));
         // Zero exit should not restart on-failure
         assert!(!should_restart(
             &ServiceRestart::OnFailure,
             &ChildTermination::Exit(0),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -585,13 +629,15 @@ mod tests {
         assert!(should_restart(
             &ServiceRestart::OnFailure,
             &ChildTermination::Signal(Signal::SIGKILL),
-            &ses
+            &ses,
+            false,
         ));
         // SIGTERM is clean — should not restart
         assert!(!should_restart(
             &ServiceRestart::OnFailure,
             &ChildTermination::Signal(Signal::SIGTERM),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -605,7 +651,8 @@ mod tests {
         assert!(!should_restart(
             &ServiceRestart::OnFailure,
             &ChildTermination::Exit(42),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -616,24 +663,28 @@ mod tests {
         assert!(should_restart(
             &ServiceRestart::OnAbnormal,
             &ChildTermination::Signal(Signal::SIGKILL),
-            &ses
+            &ses,
+            false,
         ));
         // on-abnormal: clean signal → no restart
         assert!(!should_restart(
             &ServiceRestart::OnAbnormal,
             &ChildTermination::Signal(Signal::SIGTERM),
-            &ses
+            &ses,
+            false,
         ));
         // on-abnormal: any exit code → no restart
         assert!(!should_restart(
             &ServiceRestart::OnAbnormal,
             &ChildTermination::Exit(1),
-            &ses
+            &ses,
+            false,
         ));
         assert!(!should_restart(
             &ServiceRestart::OnAbnormal,
             &ChildTermination::Exit(0),
-            &ses
+            &ses,
+            false,
         ));
     }
 
@@ -644,35 +695,166 @@ mod tests {
         assert!(should_restart(
             &ServiceRestart::OnAbort,
             &ChildTermination::Signal(Signal::SIGKILL),
-            &ses
+            &ses,
+            false,
         ));
         // on-abort: clean signal → no restart
         assert!(!should_restart(
             &ServiceRestart::OnAbort,
             &ChildTermination::Signal(Signal::SIGTERM),
-            &ses
+            &ses,
+            false,
         ));
         // on-abort: exit code → no restart
         assert!(!should_restart(
             &ServiceRestart::OnAbort,
             &ChildTermination::Exit(1),
-            &ses
+            &ses,
+            false,
         ));
     }
 
     #[test]
-    fn test_should_restart_on_watchdog_never() {
+    fn test_should_restart_on_watchdog_without_flag() {
         let ses = SuccessExitStatus::default();
-        // on-watchdog never triggers (no watchdog support yet)
+        // on-watchdog should NOT restart when watchdog_fired is false
         assert!(!should_restart(
             &ServiceRestart::OnWatchdog,
             &ChildTermination::Exit(0),
-            &ses
+            &ses,
+            false,
         ));
         assert!(!should_restart(
             &ServiceRestart::OnWatchdog,
             &ChildTermination::Signal(Signal::SIGKILL),
-            &ses
+            &ses,
+            false,
+        ));
+    }
+
+    #[test]
+    fn test_should_restart_on_watchdog_with_flag() {
+        let ses = SuccessExitStatus::default();
+        // on-watchdog should restart when watchdog_fired is true
+        assert!(should_restart(
+            &ServiceRestart::OnWatchdog,
+            &ChildTermination::Signal(Signal::SIGABRT),
+            &ses,
+            true,
+        ));
+        // Even with a clean exit code, watchdog flag triggers restart
+        assert!(should_restart(
+            &ServiceRestart::OnWatchdog,
+            &ChildTermination::Exit(0),
+            &ses,
+            true,
+        ));
+    }
+
+    #[test]
+    fn test_should_restart_on_failure_with_watchdog() {
+        let ses = SuccessExitStatus::default();
+        // on-failure should restart when watchdog fires (watchdog counts as failure)
+        assert!(should_restart(
+            &ServiceRestart::OnFailure,
+            &ChildTermination::Exit(0),
+            &ses,
+            true,
+        ));
+        // Even a clean exit with watchdog_fired is a failure
+        assert!(should_restart(
+            &ServiceRestart::OnFailure,
+            &ChildTermination::Signal(Signal::SIGTERM),
+            &ses,
+            true,
+        ));
+    }
+
+    #[test]
+    fn test_should_restart_on_abnormal_with_watchdog() {
+        let ses = SuccessExitStatus::default();
+        // on-abnormal should restart when watchdog fires
+        assert!(should_restart(
+            &ServiceRestart::OnAbnormal,
+            &ChildTermination::Exit(0),
+            &ses,
+            true,
+        ));
+        assert!(should_restart(
+            &ServiceRestart::OnAbnormal,
+            &ChildTermination::Signal(Signal::SIGABRT),
+            &ses,
+            true,
+        ));
+    }
+
+    #[test]
+    fn test_should_restart_on_abort_ignores_watchdog() {
+        let ses = SuccessExitStatus::default();
+        // on-abort does NOT restart on watchdog (only on unclean signals)
+        // Clean exit + watchdog → no restart for on-abort
+        assert!(!should_restart(
+            &ServiceRestart::OnAbort,
+            &ChildTermination::Exit(0),
+            &ses,
+            true,
+        ));
+        // Clean signal + watchdog → no restart for on-abort
+        assert!(!should_restart(
+            &ServiceRestart::OnAbort,
+            &ChildTermination::Signal(Signal::SIGTERM),
+            &ses,
+            true,
+        ));
+        // Unclean signal + watchdog → restart (because of the signal, not watchdog)
+        assert!(should_restart(
+            &ServiceRestart::OnAbort,
+            &ChildTermination::Signal(Signal::SIGABRT),
+            &ses,
+            true,
+        ));
+    }
+
+    #[test]
+    fn test_should_restart_on_success_ignores_watchdog() {
+        let ses = SuccessExitStatus::default();
+        // on-success does NOT restart on watchdog (only on clean exits)
+        assert!(!should_restart(
+            &ServiceRestart::OnSuccess,
+            &ChildTermination::Exit(1),
+            &ses,
+            true,
+        ));
+        // Clean exit + watchdog → restart (because exit was clean)
+        assert!(should_restart(
+            &ServiceRestart::OnSuccess,
+            &ChildTermination::Exit(0),
+            &ses,
+            true,
+        ));
+    }
+
+    #[test]
+    fn test_should_restart_no_ignores_watchdog() {
+        let ses = SuccessExitStatus::default();
+        // Restart=no never restarts, even with watchdog
+        assert!(!should_restart(
+            &ServiceRestart::No,
+            &ChildTermination::Signal(Signal::SIGABRT),
+            &ses,
+            true,
+        ));
+    }
+
+    #[test]
+    fn test_should_restart_always_with_watchdog() {
+        let ses = SuccessExitStatus::default();
+        // Restart=always restarts with or without watchdog
+        assert!(should_restart(
+            &ServiceRestart::Always,
+            &ChildTermination::Signal(Signal::SIGABRT),
+            &ses,
+            true,
         ));
     }
 
@@ -698,13 +880,15 @@ mod tests {
         assert!(!should_restart(
             &ServiceRestart::OnFailure,
             &ChildTermination::Signal(Signal::SIGUSR1),
-            &ses
+            &ses,
+            false,
         ));
         // SIGUSR2 is not — on-failure should restart
         assert!(should_restart(
             &ServiceRestart::OnFailure,
             &ChildTermination::Signal(Signal::SIGUSR2),
-            &ses
+            &ses,
+            false,
         ));
     }
 

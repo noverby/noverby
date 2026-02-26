@@ -40,6 +40,7 @@ pub mod sockets;
 pub mod timer_scheduler;
 pub mod unit_name;
 pub mod units;
+pub mod watchdog;
 
 #[cfg(test)]
 mod tests;
