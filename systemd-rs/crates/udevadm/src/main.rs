@@ -1137,7 +1137,7 @@ fn cmd_test(action: &str, devpath: &str) -> i32 {
         env,
     };
 
-    let result = process_rules(&ruleset, &mut event);
+    let result = process_rules(&ruleset, &mut event, None);
 
     // Display rule processing results
     if let Some(ref name) = result.name {

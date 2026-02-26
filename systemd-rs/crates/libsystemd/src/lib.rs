@@ -22,6 +22,7 @@ pub mod dbus_wait;
 pub mod entrypoints;
 pub mod fd_store;
 pub mod generators;
+pub mod hwdb;
 pub mod journal;
 pub mod kmsg_log;
 pub mod link_config;
