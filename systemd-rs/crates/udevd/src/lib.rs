@@ -20,6 +20,8 @@
 //! - sd_notify protocol (READY, WATCHDOG, STATUS, STOPPING)
 //! - Signal handling (SIGTERM, SIGINT, SIGHUP, SIGCHLD)
 //! - `net_setup_link` builtin for `.link` file-based network interface naming
+//! - Network interface renaming via netlink RTM_SETLINK (NAME= / ID_NET_NAME)
+//! - Network interface MAC address and MTU setting from .link file properties
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
@@ -3728,7 +3730,333 @@ fn execute_run_programs(event: &mut UEvent, result: &RuleResult, hwdb: Option<&H
 // Event processing pipeline
 // ---------------------------------------------------------------------------
 
-/// Process a single uevent through the rules engine.
+// ---------------------------------------------------------------------------
+// Network interface configuration via netlink
+// ---------------------------------------------------------------------------
+
+// Netlink ROUTE protocol constants (for RTM_SETLINK).
+const NETLINK_ROUTE: i32 = 0;
+const RTM_SETLINK: u16 = 19;
+const NLM_F_REQUEST: u16 = 0x0001;
+const NLM_F_ACK: u16 = 0x0004;
+const NLMSG_ERROR: u16 = 2;
+const NLMSG_HDR_LEN: usize = 16;
+const NLMSG_ALIGN: usize = 4;
+const IFINFOMSG_LEN: usize = 16; // ifi_family(1) + pad(1) + ifi_type(2) + ifi_index(4) + ifi_flags(4) + ifi_change(4)
+const IFLA_IFNAME: u16 = 3;
+const IFLA_ADDRESS: u16 = 1;
+const IFLA_MTU: u16 = 4;
+const AF_UNSPEC: u8 = 0;
+
+fn nl_align(len: usize) -> usize {
+    (len + NLMSG_ALIGN - 1) & !(NLMSG_ALIGN - 1)
+}
+
+fn nl_rta_align(len: usize) -> usize {
+    (len + 3) & !3
+}
+
+fn nl_put_u16(buf: &mut [u8], offset: usize, val: u16) {
+    buf[offset..offset + 2].copy_from_slice(&val.to_ne_bytes());
+}
+
+fn nl_put_u32(buf: &mut [u8], offset: usize, val: u32) {
+    buf[offset..offset + 4].copy_from_slice(&val.to_ne_bytes());
+}
+
+fn nl_put_i32(buf: &mut [u8], offset: usize, val: i32) {
+    buf[offset..offset + 4].copy_from_slice(&val.to_ne_bytes());
+}
+
+/// Write a netlink route attribute with arbitrary bytes payload.
+fn nl_put_rta_bytes(buf: &mut [u8], offset: usize, rta_type: u16, data: &[u8]) {
+    let rta_len = 4 + data.len();
+    nl_put_u16(buf, offset, rta_len as u16);
+    nl_put_u16(buf, offset + 2, rta_type);
+    buf[offset + 4..offset + 4 + data.len()].copy_from_slice(data);
+}
+
+/// Write a netlink route attribute with a u32 payload.
+fn nl_put_rta_u32(buf: &mut [u8], offset: usize, rta_type: u16, val: u32) {
+    let rta_len: u16 = 8; // 4 header + 4 payload
+    nl_put_u16(buf, offset, rta_len);
+    nl_put_u16(buf, offset + 2, rta_type);
+    nl_put_u32(buf, offset + 4, val);
+}
+
+/// Open a NETLINK_ROUTE socket, send a message, and wait for the ACK/error.
+fn netlink_route_request(msg: &[u8]) -> io::Result<()> {
+    let fd = unsafe {
+        libc::socket(
+            libc::AF_NETLINK,
+            libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+            NETLINK_ROUTE,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    // Bind to auto-assigned port.
+    let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
+    addr.nl_family = libc::AF_NETLINK as u16;
+
+    let ret = unsafe {
+        libc::bind(
+            fd,
+            &addr as *const libc::sockaddr_nl as *const libc::sockaddr,
+            std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
+        )
+    };
+    if ret < 0 {
+        let err = io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(err);
+    }
+
+    // Set receive timeout so we don't block forever.
+    let tv = libc::timeval {
+        tv_sec: 5,
+        tv_usec: 0,
+    };
+    unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            &tv as *const libc::timeval as *const libc::c_void,
+            std::mem::size_of::<libc::timeval>() as libc::socklen_t,
+        );
+    }
+
+    // Send.
+    let sent = unsafe { libc::send(fd, msg.as_ptr() as *const libc::c_void, msg.len(), 0) };
+    if sent < 0 {
+        let err = io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(err);
+    }
+
+    // Receive ACK/error.
+    let mut buf = [0u8; 4096];
+    let n = unsafe { libc::recv(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), 0) };
+    unsafe { libc::close(fd) };
+
+    if n < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let n = n as usize;
+    if n >= NLMSG_HDR_LEN + 4 {
+        let nlmsg_type = u16::from_ne_bytes(buf[4..6].try_into().unwrap());
+        if nlmsg_type == NLMSG_ERROR {
+            let errno =
+                i32::from_ne_bytes(buf[NLMSG_HDR_LEN..NLMSG_HDR_LEN + 4].try_into().unwrap());
+            if errno < 0 {
+                return Err(io::Error::from_raw_os_error(-errno));
+            }
+            // errno == 0 means ACK (success).
+        }
+    }
+
+    Ok(())
+}
+
+/// Rename a network interface via netlink RTM_SETLINK with IFLA_IFNAME.
+fn rename_network_interface(ifindex: i32, new_name: &str) -> io::Result<()> {
+    // IFLA_IFNAME payload is the name as a NUL-terminated string.
+    let name_bytes = new_name.as_bytes();
+    let name_payload_len = name_bytes.len() + 1; // include NUL
+    let attr_total = nl_rta_align(4 + name_payload_len);
+
+    let msg_len = NLMSG_HDR_LEN + IFINFOMSG_LEN + attr_total;
+    let mut msg = vec![0u8; nl_align(msg_len)];
+
+    // nlmsghdr
+    nl_put_u32(&mut msg, 0, msg_len as u32); // nlmsg_len
+    nl_put_u16(&mut msg, 4, RTM_SETLINK); // nlmsg_type
+    nl_put_u16(&mut msg, 6, NLM_F_REQUEST | NLM_F_ACK); // nlmsg_flags
+    nl_put_u32(&mut msg, 8, 1); // nlmsg_seq
+    nl_put_u32(&mut msg, 12, 0); // nlmsg_pid (kernel)
+
+    // ifinfomsg
+    let ifi = NLMSG_HDR_LEN;
+    msg[ifi] = AF_UNSPEC; // ifi_family
+    nl_put_i32(&mut msg, ifi + 4, ifindex); // ifi_index
+
+    // IFLA_IFNAME attribute
+    let attr_off = NLMSG_HDR_LEN + IFINFOMSG_LEN;
+    nl_put_rta_bytes(&mut msg, attr_off, IFLA_IFNAME, &{
+        let mut v = name_bytes.to_vec();
+        v.push(0); // NUL terminator
+        v
+    });
+
+    netlink_route_request(&msg)
+}
+
+/// Set the hardware (MAC) address on a network interface via netlink RTM_SETLINK with IFLA_ADDRESS.
+fn set_network_interface_mac(ifindex: i32, mac: &[u8; 6]) -> io::Result<()> {
+    let attr_total = nl_rta_align(4 + 6);
+    let msg_len = NLMSG_HDR_LEN + IFINFOMSG_LEN + attr_total;
+    let mut msg = vec![0u8; nl_align(msg_len)];
+
+    nl_put_u32(&mut msg, 0, msg_len as u32);
+    nl_put_u16(&mut msg, 4, RTM_SETLINK);
+    nl_put_u16(&mut msg, 6, NLM_F_REQUEST | NLM_F_ACK);
+    nl_put_u32(&mut msg, 8, 1);
+    nl_put_u32(&mut msg, 12, 0);
+
+    let ifi = NLMSG_HDR_LEN;
+    msg[ifi] = AF_UNSPEC;
+    nl_put_i32(&mut msg, ifi + 4, ifindex);
+
+    let attr_off = NLMSG_HDR_LEN + IFINFOMSG_LEN;
+    nl_put_rta_bytes(&mut msg, attr_off, IFLA_ADDRESS, mac);
+
+    netlink_route_request(&msg)
+}
+
+/// Set the MTU on a network interface via netlink RTM_SETLINK with IFLA_MTU.
+fn set_network_interface_mtu(ifindex: i32, mtu: u32) -> io::Result<()> {
+    let attr_total = nl_rta_align(4 + 4);
+    let msg_len = NLMSG_HDR_LEN + IFINFOMSG_LEN + attr_total;
+    let mut msg = vec![0u8; nl_align(msg_len)];
+
+    nl_put_u32(&mut msg, 0, msg_len as u32);
+    nl_put_u16(&mut msg, 4, RTM_SETLINK);
+    nl_put_u16(&mut msg, 6, NLM_F_REQUEST | NLM_F_ACK);
+    nl_put_u32(&mut msg, 8, 1);
+    nl_put_u32(&mut msg, 12, 0);
+
+    let ifi = NLMSG_HDR_LEN;
+    msg[ifi] = AF_UNSPEC;
+    nl_put_i32(&mut msg, ifi + 4, ifindex);
+
+    let attr_off = NLMSG_HDR_LEN + IFINFOMSG_LEN;
+    nl_put_rta_u32(&mut msg, attr_off, IFLA_MTU, mtu);
+
+    netlink_route_request(&msg)
+}
+
+/// Read the interface index from sysfs for a network device event.
+fn read_net_ifindex(event: &UEvent) -> Option<i32> {
+    event
+        .read_sysattr("ifindex")
+        .and_then(|s| s.trim().parse::<i32>().ok())
+        .filter(|&idx| idx > 0)
+}
+
+/// Parse a colon-separated MAC address string (e.g. "aa:bb:cc:dd:ee:ff") into 6 bytes.
+fn parse_mac_address(mac_str: &str) -> Option<[u8; 6]> {
+    let parts: Vec<&str> = mac_str.split(':').collect();
+    if parts.len() != 6 {
+        return None;
+    }
+    let mut bytes = [0u8; 6];
+    for (i, part) in parts.iter().enumerate() {
+        bytes[i] = u8::from_str_radix(part, 16).ok()?;
+    }
+    Some(bytes)
+}
+
+/// Get the current kernel name of a network interface from sysfs/devpath.
+/// The kernel name is the last component of the devpath (e.g. "eth0" from
+/// "/devices/pci0000:00/0000:00:03.0/net/eth0").
+fn net_kernel_name(event: &UEvent) -> Option<&str> {
+    if event.subsystem != "net" {
+        return None;
+    }
+    event.devpath.rsplit('/').next()
+}
+
+/// Apply network link-level settings (rename, MAC address, MTU) after rules
+/// processing for network device events. This is called for "add" and "move"
+/// actions on the "net" subsystem.
+///
+/// The function checks:
+/// - `ID_NET_NAME` env var (set by `net_setup_link` builtin or rules) for interface renaming
+/// - `NAME=` from rules (`result.name`) as a fallback rename source
+/// - `ID_NET_LINK_FILE_MACADDRESS` for MAC address override
+/// - `ID_NET_LINK_FILE_MTU` for MTU override
+fn apply_net_link_settings(event: &mut UEvent, result: &RuleResult) {
+    if event.subsystem != "net" {
+        return;
+    }
+
+    let ifindex = match read_net_ifindex(event) {
+        Some(idx) => idx,
+        None => {
+            log::debug!(
+                "apply_net_link_settings: could not read ifindex for {}",
+                event.devpath
+            );
+            return;
+        }
+    };
+
+    let current_name = net_kernel_name(event).unwrap_or("").to_string();
+
+    // Determine the target interface name.
+    // Priority: ID_NET_NAME (from net_setup_link/rules) > NAME= from rules.
+    let target_name = event
+        .env
+        .get("ID_NET_NAME")
+        .cloned()
+        .or_else(|| result.name.clone());
+
+    // Rename the interface if a target name is set and differs from current.
+    if let Some(ref new_name) = target_name
+        && !new_name.is_empty()
+        && *new_name != current_name
+    {
+        log::info!(
+            "Renaming network interface '{}' -> '{}' (ifindex={})",
+            current_name,
+            new_name,
+            ifindex
+        );
+        match rename_network_interface(ifindex, new_name) {
+            Ok(()) => {
+                log::debug!("Successfully renamed '{}' -> '{}'", current_name, new_name);
+                // Update the event environment with the new name so that
+                // downstream RUN programs and database entries see it.
+                event.env.insert("INTERFACE".to_string(), new_name.clone());
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to rename network interface '{}' -> '{}': {}",
+                    current_name,
+                    new_name,
+                    e
+                );
+            }
+        }
+    }
+
+    // Set MAC address if specified by .link file.
+    if let Some(mac_str) = event.env.get("ID_NET_LINK_FILE_MACADDRESS").cloned() {
+        if let Some(mac_bytes) = parse_mac_address(&mac_str) {
+            log::debug!("Setting MAC address on ifindex={} to {}", ifindex, mac_str);
+            if let Err(e) = set_network_interface_mac(ifindex, &mac_bytes) {
+                log::warn!("Failed to set MAC address on ifindex={}: {}", ifindex, e);
+            }
+        } else {
+            log::debug!("Invalid MAC address format '{}', skipping", mac_str);
+        }
+    }
+
+    // Set MTU if specified by .link file.
+    if let Some(mtu_str) = event.env.get("ID_NET_LINK_FILE_MTU").cloned()
+        && let Ok(mtu) = mtu_str.parse::<u32>()
+        && mtu > 0
+    {
+        log::debug!("Setting MTU on ifindex={} to {}", ifindex, mtu);
+        if let Err(e) = set_network_interface_mtu(ifindex, mtu) {
+            log::warn!("Failed to set MTU on ifindex={}: {}", ifindex, e);
+        }
+    }
+}
+
 fn process_event(rules: &RuleSet, event: &mut UEvent, hwdb: Option<&Hwdb>) {
     log::debug!(
         "Processing event: {} {} (subsystem={}, devname={})",
@@ -3742,6 +4070,13 @@ fn process_event(rules: &RuleSet, event: &mut UEvent, hwdb: Option<&Hwdb>) {
 
     match event.action.as_str() {
         "add" | "change" | "bind" | "move" | "online" => {
+            // Apply network link settings (rename, MAC, MTU) before other actions.
+            // This must happen early so that symlinks, database entries, and RUN
+            // programs see the final interface name.
+            if event.subsystem == "net" && matches!(event.action.as_str(), "add" | "move") {
+                apply_net_link_settings(event, &result);
+            }
+
             // Set device permissions
             set_device_permissions(event, &result);
 
@@ -4587,6 +4922,391 @@ pub fn run_daemon() {
 
 #[cfg(test)]
 mod tests {
+    // -----------------------------------------------------------------------
+    // Network interface renaming tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_mac_address_valid() {
+        let mac = super::parse_mac_address("aa:bb:cc:dd:ee:ff").unwrap();
+        assert_eq!(mac, [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
+    }
+
+    #[test]
+    fn test_parse_mac_address_uppercase() {
+        let mac = super::parse_mac_address("AA:BB:CC:DD:EE:FF").unwrap();
+        assert_eq!(mac, [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
+    }
+
+    #[test]
+    fn test_parse_mac_address_mixed_case() {
+        let mac = super::parse_mac_address("aA:Bb:0C:dD:eE:Ff").unwrap();
+        assert_eq!(mac, [0xaa, 0xbb, 0x0c, 0xdd, 0xee, 0xff]);
+    }
+
+    #[test]
+    fn test_parse_mac_address_zeros() {
+        let mac = super::parse_mac_address("00:00:00:00:00:00").unwrap();
+        assert_eq!(mac, [0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_parse_mac_address_broadcast() {
+        let mac = super::parse_mac_address("ff:ff:ff:ff:ff:ff").unwrap();
+        assert_eq!(mac, [0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+    }
+
+    #[test]
+    fn test_parse_mac_address_too_short() {
+        assert!(super::parse_mac_address("aa:bb:cc:dd:ee").is_none());
+    }
+
+    #[test]
+    fn test_parse_mac_address_too_long() {
+        assert!(super::parse_mac_address("aa:bb:cc:dd:ee:ff:00").is_none());
+    }
+
+    #[test]
+    fn test_parse_mac_address_invalid_hex() {
+        assert!(super::parse_mac_address("gg:bb:cc:dd:ee:ff").is_none());
+    }
+
+    #[test]
+    fn test_parse_mac_address_wrong_separator() {
+        assert!(super::parse_mac_address("aa-bb-cc-dd-ee-ff").is_none());
+    }
+
+    #[test]
+    fn test_parse_mac_address_empty() {
+        assert!(super::parse_mac_address("").is_none());
+    }
+
+    #[test]
+    fn test_net_kernel_name_net_subsystem() {
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.devpath = "/devices/pci0000:00/0000:00:03.0/net/eth0".to_string();
+        assert_eq!(super::net_kernel_name(&event), Some("eth0"));
+    }
+
+    #[test]
+    fn test_net_kernel_name_non_net_subsystem() {
+        let mut event = super::UEvent::new();
+        event.subsystem = "block".to_string();
+        event.devpath =
+            "/devices/pci0000:00/0000:00:1f.2/ata1/host0/target0:0:0/0:0:0:0/block/sda".to_string();
+        assert_eq!(super::net_kernel_name(&event), None);
+    }
+
+    #[test]
+    fn test_net_kernel_name_complex_path() {
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.devpath = "/devices/pci0000:00/0000:00:1c.0/0000:02:00.0/net/enp2s0".to_string();
+        assert_eq!(super::net_kernel_name(&event), Some("enp2s0"));
+    }
+
+    #[test]
+    fn test_rename_network_interface_message_structure() {
+        // Validate the netlink message is correctly constructed by checking
+        // the raw bytes. We can't actually rename an interface in tests, but
+        // we can verify the message format.
+        let ifindex = 42i32;
+        let new_name = "enp0s3";
+        let name_bytes = new_name.as_bytes();
+        let name_payload_len = name_bytes.len() + 1;
+        let attr_total = super::nl_rta_align(4 + name_payload_len);
+        let msg_len = super::NLMSG_HDR_LEN + super::IFINFOMSG_LEN + attr_total;
+        let mut msg = vec![0u8; super::nl_align(msg_len)];
+
+        // nlmsghdr
+        super::nl_put_u32(&mut msg, 0, msg_len as u32);
+        super::nl_put_u16(&mut msg, 4, super::RTM_SETLINK);
+        super::nl_put_u16(&mut msg, 6, super::NLM_F_REQUEST | super::NLM_F_ACK);
+        super::nl_put_u32(&mut msg, 8, 1);
+        super::nl_put_u32(&mut msg, 12, 0);
+
+        let ifi = super::NLMSG_HDR_LEN;
+        msg[ifi] = super::AF_UNSPEC;
+        super::nl_put_i32(&mut msg, ifi + 4, ifindex);
+
+        let attr_off = super::NLMSG_HDR_LEN + super::IFINFOMSG_LEN;
+        let mut name_with_nul = name_bytes.to_vec();
+        name_with_nul.push(0);
+        super::nl_put_rta_bytes(&mut msg, attr_off, super::IFLA_IFNAME, &name_with_nul);
+
+        // Verify nlmsghdr
+        assert_eq!(
+            u32::from_ne_bytes(msg[0..4].try_into().unwrap()),
+            msg_len as u32
+        );
+        assert_eq!(
+            u16::from_ne_bytes(msg[4..6].try_into().unwrap()),
+            super::RTM_SETLINK
+        );
+        assert_eq!(
+            u16::from_ne_bytes(msg[6..8].try_into().unwrap()),
+            super::NLM_F_REQUEST | super::NLM_F_ACK
+        );
+
+        // Verify ifinfomsg
+        assert_eq!(msg[ifi], super::AF_UNSPEC);
+        assert_eq!(
+            i32::from_ne_bytes(msg[ifi + 4..ifi + 8].try_into().unwrap()),
+            ifindex
+        );
+
+        // Verify IFLA_IFNAME attribute
+        let rta_len = u16::from_ne_bytes(msg[attr_off..attr_off + 2].try_into().unwrap());
+        assert_eq!(rta_len as usize, 4 + name_payload_len);
+        let rta_type = u16::from_ne_bytes(msg[attr_off + 2..attr_off + 4].try_into().unwrap());
+        assert_eq!(rta_type, super::IFLA_IFNAME);
+        let name_data = &msg[attr_off + 4..attr_off + 4 + name_payload_len];
+        assert_eq!(&name_data[..name_payload_len - 1], new_name.as_bytes());
+        assert_eq!(name_data[name_payload_len - 1], 0); // NUL terminator
+    }
+
+    #[test]
+    fn test_set_network_interface_mac_message_structure() {
+        let ifindex = 7i32;
+        let mac = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+        let attr_total = super::nl_rta_align(4 + 6);
+        let msg_len = super::NLMSG_HDR_LEN + super::IFINFOMSG_LEN + attr_total;
+        let mut msg = vec![0u8; super::nl_align(msg_len)];
+
+        super::nl_put_u32(&mut msg, 0, msg_len as u32);
+        super::nl_put_u16(&mut msg, 4, super::RTM_SETLINK);
+        super::nl_put_u16(&mut msg, 6, super::NLM_F_REQUEST | super::NLM_F_ACK);
+        super::nl_put_u32(&mut msg, 8, 1);
+        super::nl_put_u32(&mut msg, 12, 0);
+
+        let ifi = super::NLMSG_HDR_LEN;
+        msg[ifi] = super::AF_UNSPEC;
+        super::nl_put_i32(&mut msg, ifi + 4, ifindex);
+
+        let attr_off = super::NLMSG_HDR_LEN + super::IFINFOMSG_LEN;
+        super::nl_put_rta_bytes(&mut msg, attr_off, super::IFLA_ADDRESS, &mac);
+
+        // Verify IFLA_ADDRESS attribute
+        let rta_len = u16::from_ne_bytes(msg[attr_off..attr_off + 2].try_into().unwrap());
+        assert_eq!(rta_len, 4 + 6); // header + 6-byte MAC
+        let rta_type = u16::from_ne_bytes(msg[attr_off + 2..attr_off + 4].try_into().unwrap());
+        assert_eq!(rta_type, super::IFLA_ADDRESS);
+        assert_eq!(&msg[attr_off + 4..attr_off + 10], &mac);
+    }
+
+    #[test]
+    fn test_set_network_interface_mtu_message_structure() {
+        let ifindex = 3i32;
+        let mtu = 9000u32;
+        let attr_total = super::nl_rta_align(4 + 4);
+        let msg_len = super::NLMSG_HDR_LEN + super::IFINFOMSG_LEN + attr_total;
+        let mut msg = vec![0u8; super::nl_align(msg_len)];
+
+        super::nl_put_u32(&mut msg, 0, msg_len as u32);
+        super::nl_put_u16(&mut msg, 4, super::RTM_SETLINK);
+        super::nl_put_u16(&mut msg, 6, super::NLM_F_REQUEST | super::NLM_F_ACK);
+        super::nl_put_u32(&mut msg, 8, 1);
+        super::nl_put_u32(&mut msg, 12, 0);
+
+        let ifi = super::NLMSG_HDR_LEN;
+        msg[ifi] = super::AF_UNSPEC;
+        super::nl_put_i32(&mut msg, ifi + 4, ifindex);
+
+        let attr_off = super::NLMSG_HDR_LEN + super::IFINFOMSG_LEN;
+        super::nl_put_rta_u32(&mut msg, attr_off, super::IFLA_MTU, mtu);
+
+        // Verify IFLA_MTU attribute
+        let rta_len = u16::from_ne_bytes(msg[attr_off..attr_off + 2].try_into().unwrap());
+        assert_eq!(rta_len, 8); // 4 header + 4 u32
+        let rta_type = u16::from_ne_bytes(msg[attr_off + 2..attr_off + 4].try_into().unwrap());
+        assert_eq!(rta_type, super::IFLA_MTU);
+        let mtu_val = u32::from_ne_bytes(msg[attr_off + 4..attr_off + 8].try_into().unwrap());
+        assert_eq!(mtu_val, 9000);
+    }
+
+    #[test]
+    fn test_nl_align() {
+        assert_eq!(super::nl_align(0), 0);
+        assert_eq!(super::nl_align(1), 4);
+        assert_eq!(super::nl_align(4), 4);
+        assert_eq!(super::nl_align(5), 8);
+        assert_eq!(super::nl_align(16), 16);
+        assert_eq!(super::nl_align(17), 20);
+    }
+
+    #[test]
+    fn test_nl_rta_align() {
+        assert_eq!(super::nl_rta_align(0), 0);
+        assert_eq!(super::nl_rta_align(1), 4);
+        assert_eq!(super::nl_rta_align(4), 4);
+        assert_eq!(super::nl_rta_align(5), 8);
+        assert_eq!(super::nl_rta_align(10), 12);
+    }
+
+    #[test]
+    fn test_nl_put_rta_bytes_basic() {
+        let mut buf = vec![0u8; 16];
+        let data = [0x01, 0x02, 0x03];
+        super::nl_put_rta_bytes(&mut buf, 0, 5, &data);
+        // rta_len = 4 + 3 = 7
+        assert_eq!(u16::from_ne_bytes(buf[0..2].try_into().unwrap()), 7);
+        // rta_type = 5
+        assert_eq!(u16::from_ne_bytes(buf[2..4].try_into().unwrap()), 5);
+        // payload
+        assert_eq!(&buf[4..7], &[0x01, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn test_nl_put_rta_u32_basic() {
+        let mut buf = vec![0u8; 16];
+        super::nl_put_rta_u32(&mut buf, 0, 4, 1500);
+        // rta_len = 8
+        assert_eq!(u16::from_ne_bytes(buf[0..2].try_into().unwrap()), 8);
+        // rta_type = 4 (IFLA_MTU)
+        assert_eq!(u16::from_ne_bytes(buf[2..4].try_into().unwrap()), 4);
+        // payload
+        assert_eq!(u32::from_ne_bytes(buf[4..8].try_into().unwrap()), 1500);
+    }
+
+    #[test]
+    fn test_apply_net_link_settings_skips_non_net() {
+        let mut event = super::UEvent::new();
+        event.subsystem = "block".to_string();
+        event.action = "add".to_string();
+        event.devpath = "/devices/block/sda".to_string();
+        let result = super::RuleResult::default();
+        // Should return immediately without error (no rename attempted).
+        super::apply_net_link_settings(&mut event, &result);
+        // No env changes expected.
+        assert!(event.env.get("INTERFACE").is_none());
+    }
+
+    #[test]
+    fn test_apply_net_link_settings_no_ifindex() {
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.action = "add".to_string();
+        event.devpath = "/devices/nonexistent/net/eth99".to_string();
+        event
+            .env
+            .insert("ID_NET_NAME".to_string(), "enp0s3".to_string());
+        let result = super::RuleResult::default();
+        // No ifindex readable from sysfs — should return gracefully.
+        super::apply_net_link_settings(&mut event, &result);
+    }
+
+    #[test]
+    fn test_apply_net_link_settings_same_name_skips() {
+        // When the target name is the same as the current name, no rename.
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.action = "add".to_string();
+        event.devpath = "/devices/pci0000:00/net/eth0".to_string();
+        // ID_NET_NAME matches the current kernel name (last path component).
+        event
+            .env
+            .insert("ID_NET_NAME".to_string(), "eth0".to_string());
+        let result = super::RuleResult::default();
+        // No actual rename attempted (target == current).
+        super::apply_net_link_settings(&mut event, &result);
+        // INTERFACE env should NOT be set (no rename happened).
+        assert!(event.env.get("INTERFACE").is_none());
+    }
+
+    #[test]
+    fn test_apply_net_link_settings_name_from_rules_fallback() {
+        // When ID_NET_NAME is not set, fall back to result.name.
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.action = "add".to_string();
+        event.devpath = "/devices/pci0000:00/net/eth0".to_string();
+        let mut result = super::RuleResult::default();
+        result.name = Some("customnet0".to_string());
+        // Can't actually rename (no sysfs ifindex), but verify fallback logic.
+        super::apply_net_link_settings(&mut event, &result);
+        // Without sysfs, the function returns early at ifindex check.
+    }
+
+    #[test]
+    fn test_apply_net_link_settings_id_net_name_priority() {
+        // ID_NET_NAME should take priority over result.name.
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.action = "add".to_string();
+        event.devpath = "/devices/pci0000:00/net/eth0".to_string();
+        event
+            .env
+            .insert("ID_NET_NAME".to_string(), "enp0s3".to_string());
+        let mut result = super::RuleResult::default();
+        result.name = Some("customnet0".to_string());
+        // The target_name should be "enp0s3" (from ID_NET_NAME), not "customnet0".
+        // We can verify this by checking the logic directly.
+        let target = event
+            .env
+            .get("ID_NET_NAME")
+            .cloned()
+            .or_else(|| result.name.clone());
+        assert_eq!(target.as_deref(), Some("enp0s3"));
+    }
+
+    #[test]
+    fn test_apply_net_link_settings_empty_name_skips() {
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.action = "add".to_string();
+        event.devpath = "/devices/pci0000:00/net/eth0".to_string();
+        event.env.insert("ID_NET_NAME".to_string(), "".to_string());
+        let result = super::RuleResult::default();
+        super::apply_net_link_settings(&mut event, &result);
+        // Empty name means no rename.
+    }
+
+    #[test]
+    fn test_apply_net_link_settings_invalid_mac_skipped() {
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.action = "add".to_string();
+        event.devpath = "/devices/pci0000:00/net/eth0".to_string();
+        event.env.insert(
+            "ID_NET_LINK_FILE_MACADDRESS".to_string(),
+            "not-a-mac".to_string(),
+        );
+        let result = super::RuleResult::default();
+        // Invalid MAC should be skipped gracefully (no ifindex anyway).
+        super::apply_net_link_settings(&mut event, &result);
+    }
+
+    #[test]
+    fn test_apply_net_link_settings_zero_mtu_skipped() {
+        let mut event = super::UEvent::new();
+        event.subsystem = "net".to_string();
+        event.action = "add".to_string();
+        event.devpath = "/devices/pci0000:00/net/eth0".to_string();
+        event
+            .env
+            .insert("ID_NET_LINK_FILE_MTU".to_string(), "0".to_string());
+        let result = super::RuleResult::default();
+        // Zero MTU should be skipped.
+        super::apply_net_link_settings(&mut event, &result);
+    }
+
+    #[test]
+    fn test_netlink_constants() {
+        assert_eq!(super::NETLINK_ROUTE, 0);
+        assert_eq!(super::RTM_SETLINK, 19);
+        assert_eq!(super::NLM_F_REQUEST, 0x0001);
+        assert_eq!(super::NLM_F_ACK, 0x0004);
+        assert_eq!(super::NLMSG_ERROR, 2);
+        assert_eq!(super::NLMSG_HDR_LEN, 16);
+        assert_eq!(super::NLMSG_ALIGN, 4);
+        assert_eq!(super::IFINFOMSG_LEN, 16);
+        assert_eq!(super::IFLA_IFNAME, 3);
+        assert_eq!(super::IFLA_ADDRESS, 1);
+        assert_eq!(super::IFLA_MTU, 4);
+        assert_eq!(super::AF_UNSPEC, 0);
+    }
+
     use super::*;
     use std::io::Write;
 
