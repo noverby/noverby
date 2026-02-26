@@ -33,6 +33,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
+use libsystemd::hwdb::{self, Hwdb, HwdbBuiltinArgs};
 use libsystemd::link_config;
 
 // ---------------------------------------------------------------------------
@@ -1174,7 +1175,7 @@ pub struct RuleResult {
 }
 
 /// Process all rules against an event, returning the combined result.
-pub fn process_rules(rules: &RuleSet, event: &mut UEvent) -> RuleResult {
+pub fn process_rules(rules: &RuleSet, event: &mut UEvent, hwdb: Option<&Hwdb>) -> RuleResult {
     let mut result = RuleResult::default();
     let mut program_result = String::new();
     let mut final_keys: HashSet<String> = HashSet::new();
@@ -1231,6 +1232,7 @@ pub fn process_rules(rules: &RuleSet, event: &mut UEvent) -> RuleResult {
                     &mut result,
                     &mut program_result,
                     &mut final_keys,
+                    hwdb,
                 );
             }
 
@@ -1480,6 +1482,7 @@ fn execute_assignment(
     result: &mut RuleResult,
     program_result: &mut String,
     final_keys: &mut HashSet<String>,
+    hwdb: Option<&Hwdb>,
 ) {
     let fkey = format!("{}{}", token.key, token.attr.as_deref().unwrap_or(""));
 
@@ -1588,7 +1591,7 @@ fn execute_assignment(
         }
         "IMPORT" => {
             let import_type = token.attr.as_deref().unwrap_or("file");
-            handle_import(import_type, value, event, program_result);
+            handle_import(import_type, value, event, program_result, hwdb);
         }
         "PROGRAM" => {
             // PROGRAM as assignment runs and captures output
@@ -1607,7 +1610,13 @@ fn execute_assignment(
 }
 
 /// Handle IMPORT{type}="value" directives.
-fn handle_import(import_type: &str, value: &str, event: &mut UEvent, program_result: &mut String) {
+fn handle_import(
+    import_type: &str,
+    value: &str,
+    event: &mut UEvent,
+    program_result: &mut String,
+    hwdb: Option<&Hwdb>,
+) {
     match import_type {
         "program" => {
             if let Some(output) = run_program_capture(value, event) {
@@ -1660,7 +1669,7 @@ fn handle_import(import_type: &str, value: &str, event: &mut UEvent, program_res
         }
         "builtin" => {
             // Handle common builtins
-            handle_builtin_import(value, event);
+            handle_builtin_import(value, event, hwdb);
         }
         "db" => {
             // Import from udev database — look up previous device properties
@@ -1723,6 +1732,194 @@ fn handle_import(import_type: &str, value: &str, event: &mut UEvent, program_res
 ///    rename logic and networkd).
 /// 6. Propagates `MTUBytes=` as `ID_NET_LINK_FILE_MTU` and `MACAddress=` as
 ///    `ID_NET_LINK_FILE_MACADDRESS` for downstream consumers.
+///
+/// `hwdb` builtin — look up device properties from the compiled hardware database.
+///
+/// Implements the `IMPORT{builtin}="hwdb …"` udev rule action.  Parses
+/// optional `--subsystem`, `--filter`, `--lookup-prefix`, and `--device`
+/// arguments.  With `--subsystem`, walks parent devices in sysfs looking
+/// for one in the requested subsystem, reads its `MODALIAS`, and looks up
+/// properties in the hwdb trie.  Without `--subsystem`, uses the current
+/// device's `MODALIAS` (from the event environment or sysfs).
+///
+/// Matching properties are set on the event environment so they are
+/// visible to subsequent rules and exported to the device database.
+fn builtin_hwdb(cmd: &str, event: &mut UEvent, hwdb: Option<&Hwdb>) {
+    let hwdb = match hwdb {
+        Some(h) => h,
+        None => {
+            log::trace!("hwdb builtin: no hwdb.bin loaded, skipping");
+            return;
+        }
+    };
+
+    let args = HwdbBuiltinArgs::parse(cmd);
+
+    // If an explicit modalias is given as a positional argument, use it directly.
+    if let Some(ref explicit) = args.modalias {
+        let mut lookup_str = String::new();
+        if let Some(ref pfx) = args.prefix {
+            lookup_str.push_str(pfx);
+        }
+        lookup_str.push_str(explicit);
+
+        let props = hwdb.lookup(&lookup_str);
+        let props = hwdb::filter_properties(&props, args.filter.as_deref());
+        for (k, v) in &props {
+            log::debug!("hwdb builtin: {}={}", k, v);
+            event.env.insert(k.clone(), v.clone());
+        }
+        return;
+    }
+
+    // Walk parent devices if --subsystem is given, otherwise use current device.
+    if let Some(ref subsystem) = args.subsystem {
+        hwdb_search_parents(
+            event,
+            hwdb,
+            subsystem,
+            args.prefix.as_deref(),
+            args.filter.as_deref(),
+        );
+    } else {
+        // Use current device's MODALIAS
+        if let Some(modalias) = event.env.get("MODALIAS").cloned().or_else(|| {
+            let path = event.syspath().join("modalias");
+            fs::read_to_string(&path).ok().map(|s| s.trim().to_string())
+        }) {
+            let mut lookup_str = String::new();
+            if let Some(ref pfx) = args.prefix {
+                lookup_str.push_str(pfx);
+            }
+            lookup_str.push_str(&modalias);
+
+            log::debug!("hwdb builtin: lookup \"{}\"", lookup_str);
+            let props = hwdb.lookup(&lookup_str);
+            let props = hwdb::filter_properties(&props, args.filter.as_deref());
+            for (k, v) in &props {
+                log::debug!("hwdb builtin: {}={}", k, v);
+                event.env.insert(k.clone(), v.clone());
+            }
+        }
+    }
+}
+
+/// Walk parent devices in sysfs looking for one in the given subsystem,
+/// then look up its MODALIAS in the hwdb.
+///
+/// For USB devices (`usb` subsystem with devtype `usb_device`), if no
+/// MODALIAS is present a synthetic one is composed from `idVendor` and
+/// `idProduct` sysfs attributes, matching real systemd behaviour.
+fn hwdb_search_parents(
+    event: &mut UEvent,
+    hwdb: &Hwdb,
+    subsystem: &str,
+    prefix: Option<&str>,
+    filter: Option<&str>,
+) {
+    let mut syspath = event.syspath();
+
+    // Walk up from the current device through parents.
+    loop {
+        // Check if this device belongs to the requested subsystem.
+        let sub_path = syspath.join("subsystem");
+        let dev_subsystem = fs::read_link(&sub_path)
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+
+        if dev_subsystem.as_deref() == Some(subsystem) {
+            // Read MODALIAS from this device.
+            let modalias = read_sysattr_at(&syspath, "uevent")
+                .and_then(|content| {
+                    for line in content.lines() {
+                        if let Some(val) = line.strip_prefix("MODALIAS=") {
+                            return Some(val.to_string());
+                        }
+                    }
+                    None
+                })
+                .or_else(|| read_sysattr_at(&syspath, "modalias"));
+
+            // For USB devices without a MODALIAS, compose one from idVendor/idProduct.
+            let modalias = modalias.or_else(|| {
+                if subsystem == "usb" {
+                    compose_usb_modalias(&syspath)
+                } else {
+                    None
+                }
+            });
+
+            if let Some(modalias) = modalias {
+                let mut lookup_str = String::new();
+                if let Some(pfx) = prefix {
+                    lookup_str.push_str(pfx);
+                }
+                lookup_str.push_str(&modalias);
+
+                log::debug!(
+                    "hwdb builtin: parent lookup \"{}\" (subsystem={})",
+                    lookup_str,
+                    subsystem
+                );
+                let props = hwdb.lookup(&lookup_str);
+                let props = hwdb::filter_properties(&props, filter);
+
+                if !props.is_empty() {
+                    for (k, v) in &props {
+                        log::debug!("hwdb builtin: {}={}", k, v);
+                        event.env.insert(k.clone(), v.clone());
+                    }
+                    return;
+                }
+            }
+
+            // For USB subsystem, stop after the first usb_device — parents
+            // are usually just hubs and would give wrong results.
+            if subsystem == "usb" {
+                let devtype = read_sysattr_at(&syspath, "uevent").and_then(|content| {
+                    for line in content.lines() {
+                        if let Some(val) = line.strip_prefix("DEVTYPE=") {
+                            return Some(val.to_string());
+                        }
+                    }
+                    None
+                });
+                if devtype.as_deref() == Some("usb_device") {
+                    return;
+                }
+            }
+        }
+
+        // Move to parent device (strip last path component).
+        if !syspath.pop() {
+            return;
+        }
+        // Stop at /sys/devices
+        if syspath == Path::new("/sys/devices") || syspath == Path::new("/sys") {
+            return;
+        }
+    }
+}
+
+/// Read a sysfs attribute file, trimming trailing whitespace.
+fn read_sysattr_at(syspath: &Path, attr: &str) -> Option<String> {
+    let path = syspath.join(attr);
+    fs::read_to_string(&path)
+        .ok()
+        .map(|s| s.trim_end().to_string())
+}
+
+/// Compose a USB modalias from `idVendor` and `idProduct` sysfs attributes,
+/// matching systemd's `modalias_usb()` function.
+fn compose_usb_modalias(syspath: &Path) -> Option<String> {
+    let vendor = read_sysattr_at(syspath, "idVendor")?;
+    let product = read_sysattr_at(syspath, "idProduct")?;
+    let vn = u16::from_str_radix(vendor.trim(), 16).ok()?;
+    let prod_num = u16::from_str_radix(product.trim(), 16).ok()?;
+    let name = read_sysattr_at(syspath, "product").unwrap_or_default();
+    Some(format!("usb:v{:04X}p{:04X}:{}", vn, prod_num, name))
+}
+
 fn builtin_net_setup_link(event: &mut UEvent) {
     // Only process network subsystem devices.
     if event.subsystem != "net" {
@@ -1881,7 +2078,7 @@ fn builtin_net_setup_link(event: &mut UEvent) {
 }
 
 /// Handle IMPORT{builtin} for common udev builtins.
-fn handle_builtin_import(cmd: &str, event: &mut UEvent) {
+fn handle_builtin_import(cmd: &str, event: &mut UEvent, hwdb: Option<&Hwdb>) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {
         return;
@@ -1983,8 +2180,7 @@ fn handle_builtin_import(cmd: &str, event: &mut UEvent) {
             }
         }
         "hwdb" => {
-            // Hardware database lookup — stub
-            log::trace!("builtin hwdb not fully implemented");
+            builtin_hwdb(cmd, event, hwdb);
         }
         "keyboard" => {
             log::trace!("builtin keyboard not fully implemented");
@@ -2393,7 +2589,7 @@ fn write_sysattrs(event: &UEvent, writes: &[(String, String)]) {
 // RUN program execution
 // ---------------------------------------------------------------------------
 
-fn execute_run_programs(event: &UEvent, result: &RuleResult) {
+fn execute_run_programs(event: &mut UEvent, result: &RuleResult, hwdb: Option<&Hwdb>) {
     // Execute RUN{program} entries
     for cmd in &result.run_programs {
         let expanded = expand_substitutions(cmd, event, "", "", &result.symlinks);
@@ -2445,7 +2641,7 @@ fn execute_run_programs(event: &UEvent, result: &RuleResult) {
         }
         // For builtins, run them in-process
         let mut tmp_event = event.clone();
-        handle_builtin_import(cmd, &mut tmp_event);
+        handle_builtin_import(cmd, &mut tmp_event, hwdb);
     }
 }
 
@@ -2454,7 +2650,7 @@ fn execute_run_programs(event: &UEvent, result: &RuleResult) {
 // ---------------------------------------------------------------------------
 
 /// Process a single uevent through the rules engine.
-fn process_event(rules: &RuleSet, event: &mut UEvent) {
+fn process_event(rules: &RuleSet, event: &mut UEvent, hwdb: Option<&Hwdb>) {
     log::debug!(
         "Processing event: {} {} (subsystem={}, devname={})",
         event.action,
@@ -2463,7 +2659,7 @@ fn process_event(rules: &RuleSet, event: &mut UEvent) {
         event.devname
     );
 
-    let result = process_rules(rules, event);
+    let result = process_rules(rules, event, hwdb);
 
     match event.action.as_str() {
         "add" | "change" | "bind" | "move" | "online" => {
@@ -2489,7 +2685,7 @@ fn process_event(rules: &RuleSet, event: &mut UEvent) {
             }
 
             // Execute RUN programs
-            execute_run_programs(event, &result);
+            execute_run_programs(event, &result, hwdb);
         }
         "remove" | "unbind" | "offline" => {
             // Remove symlinks (read from database first)
@@ -2511,12 +2707,12 @@ fn process_event(rules: &RuleSet, event: &mut UEvent) {
             remove_device_db(event);
 
             // Execute RUN programs (even on remove)
-            execute_run_programs(event, &result);
+            execute_run_programs(event, &result, hwdb);
         }
         _ => {
             log::debug!("Unknown action '{}', processing rules only", event.action);
             // Still process rules and run programs
-            execute_run_programs(event, &result);
+            execute_run_programs(event, &result, hwdb);
         }
     }
 }
@@ -2874,6 +3070,18 @@ pub fn run_daemon() {
     // Load rules (Arc for sharing with worker threads)
     let mut rules = Arc::new(RuleSet::load());
 
+    // Load hardware database (hwdb.bin)
+    let mut hwdb: Arc<Option<Hwdb>> = Arc::new(match Hwdb::open_default() {
+        Ok(h) => {
+            log::info!("Loaded hwdb from {}", h.path.display());
+            Some(h)
+        }
+        Err(e) => {
+            log::debug!("hwdb.bin not available: {}", e);
+            None
+        }
+    });
+
     // Open netlink uevent socket
     let nl_fd = match open_uevent_socket() {
         Ok(fd) => {
@@ -2952,6 +3160,17 @@ pub fn run_daemon() {
             rules_reload_needed = false;
             log::info!("Reloading rules...");
             rules = Arc::new(RuleSet::load());
+            // Also reload hwdb
+            hwdb = Arc::new(match Hwdb::open_default() {
+                Ok(h) => {
+                    log::info!("Reloaded hwdb from {}", h.path.display());
+                    Some(h)
+                }
+                Err(e) => {
+                    log::debug!("hwdb.bin not available on reload: {}", e);
+                    None
+                }
+            });
             log::info!("Reloaded {} rules", rules.rules.len());
             sd_notify(&format!(
                 "STATUS=Processing events (rules={})",
@@ -3024,6 +3243,7 @@ pub fn run_daemon() {
                 q.active_workers += 1;
 
                 let rules_ref = rules.clone();
+                let hwdb_ref = hwdb.clone();
                 let queue_ref = event_queue.clone();
                 let worker_exec_delay = exec_delay;
                 let devpath_for_worker = devpath.clone();
@@ -3036,7 +3256,7 @@ pub fn run_daemon() {
                         if worker_exec_delay > 0 {
                             thread::sleep(Duration::from_secs(worker_exec_delay));
                         }
-                        process_event(&rules_ref, &mut event);
+                        process_event(&rules_ref, &mut event, hwdb_ref.as_ref().as_ref());
 
                         let mut q = queue_ref.lock().unwrap_or_else(|e| e.into_inner());
                         q.active_workers -= 1;
@@ -3546,6 +3766,15 @@ mod tests {
     }
 
     #[test]
+    fn test_process_rules_hwdb_none() {
+        // Passing hwdb=None should work fine (no hwdb lookups happen).
+        let rules = RuleSet::new();
+        let mut event = make_test_event("add", "/devices/test", "test");
+        let result = process_rules(&rules, &mut event, None);
+        assert!(result.name.is_none());
+    }
+
+    #[test]
     fn test_program_result_capture_propagation() {
         // Verify that PROGRAM match captures stdout into program_result,
         // and a subsequent RESULT== match can use it.
@@ -3639,7 +3868,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
 
         // The RESULT== "capture_test*" rule should have matched
         assert!(
@@ -3658,6 +3887,262 @@ mod tests {
     // -----------------------------------------------------------------------
     // Rule processing
     // -----------------------------------------------------------------------
+
+    // -- hwdb builtin tests -------------------------------------------------
+    #[test]
+    fn test_builtin_hwdb_no_hwdb() {
+        // When hwdb is None, the builtin should return without crashing.
+        let mut event = make_test_event("add", "/devices/test", "test");
+        builtin_hwdb("hwdb", &mut event, None);
+        // No properties should be set from hwdb.
+    }
+
+    #[test]
+    fn test_builtin_hwdb_no_modalias() {
+        // Device without MODALIAS — hwdb should gracefully do nothing.
+        let data = build_test_hwdb(&[("usb:v1234", "ID_FOUND", "yes")]);
+        let hwdb =
+            libsystemd::hwdb::Hwdb::from_bytes(data, std::path::PathBuf::from("test.bin")).unwrap();
+        let mut event = make_test_event("add", "/devices/test", "test");
+        event.env.remove("MODALIAS");
+        builtin_hwdb("hwdb", &mut event, Some(&hwdb));
+        assert!(!event.env.contains_key("ID_FOUND"));
+    }
+
+    #[test]
+    fn test_builtin_hwdb_with_modalias() {
+        let data = build_test_hwdb(&[("usb:v1234p5678", "ID_MODEL", "TestDevice")]);
+        let hwdb =
+            libsystemd::hwdb::Hwdb::from_bytes(data, std::path::PathBuf::from("test.bin")).unwrap();
+        let mut event = make_test_event("add", "/devices/test", "test");
+        event.env.insert("MODALIAS".into(), "usb:v1234p5678".into());
+        builtin_hwdb("hwdb", &mut event, Some(&hwdb));
+        assert_eq!(event.env.get("ID_MODEL"), Some(&"TestDevice".to_string()));
+    }
+
+    #[test]
+    fn test_builtin_hwdb_explicit_modalias_arg() {
+        let data = build_test_hwdb(&[("pci:v00001234", "ID_PCI_FOUND", "1")]);
+        let hwdb =
+            libsystemd::hwdb::Hwdb::from_bytes(data, std::path::PathBuf::from("test.bin")).unwrap();
+        let mut event = make_test_event("add", "/devices/test", "test");
+        // Explicit modalias as positional argument overrides MODALIAS property.
+        builtin_hwdb("hwdb pci:v00001234", &mut event, Some(&hwdb));
+        assert_eq!(event.env.get("ID_PCI_FOUND"), Some(&"1".to_string()));
+    }
+
+    #[test]
+    fn test_builtin_hwdb_with_prefix() {
+        // --lookup-prefix=evdev: should prepend to the modalias.
+        let data = build_test_hwdb(&[("evdev:input:b0003", "ID_INPUT", "1")]);
+        let hwdb =
+            libsystemd::hwdb::Hwdb::from_bytes(data, std::path::PathBuf::from("test.bin")).unwrap();
+        let mut event = make_test_event("add", "/devices/test", "test");
+        event.env.insert("MODALIAS".into(), "input:b0003".into());
+        builtin_hwdb("hwdb --lookup-prefix=evdev:", &mut event, Some(&hwdb));
+        assert_eq!(event.env.get("ID_INPUT"), Some(&"1".to_string()));
+    }
+
+    #[test]
+    fn test_builtin_hwdb_with_filter() {
+        let data = build_test_hwdb(&[
+            ("usb:v1234", "ID_VENDOR", "Acme"),
+            ("usb:v1234", "ID_MODEL", "Widget"),
+        ]);
+        let hwdb =
+            libsystemd::hwdb::Hwdb::from_bytes(data, std::path::PathBuf::from("test.bin")).unwrap();
+        let mut event = make_test_event("add", "/devices/test", "test");
+        event.env.insert("MODALIAS".into(), "usb:v1234".into());
+        // Filter should only include ID_MODEL*
+        builtin_hwdb("hwdb --filter=ID_MODEL*", &mut event, Some(&hwdb));
+        assert_eq!(event.env.get("ID_MODEL"), Some(&"Widget".to_string()));
+        assert!(!event.env.contains_key("ID_VENDOR"));
+    }
+
+    #[test]
+    fn test_builtin_hwdb_wildcard_pattern() {
+        let data = build_test_hwdb(&[("usb:v1234*", "ID_FOUND", "yes")]);
+        let hwdb =
+            libsystemd::hwdb::Hwdb::from_bytes(data, std::path::PathBuf::from("test.bin")).unwrap();
+        let mut event = make_test_event("add", "/devices/test", "test");
+        event.env.insert("MODALIAS".into(), "usb:v1234pABCD".into());
+        builtin_hwdb("hwdb", &mut event, Some(&hwdb));
+        assert_eq!(event.env.get("ID_FOUND"), Some(&"yes".to_string()));
+    }
+
+    #[test]
+    fn test_builtin_hwdb_no_match() {
+        let data = build_test_hwdb(&[("usb:v9999", "ID_FOUND", "yes")]);
+        let hwdb =
+            libsystemd::hwdb::Hwdb::from_bytes(data, std::path::PathBuf::from("test.bin")).unwrap();
+        let mut event = make_test_event("add", "/devices/test", "test");
+        event.env.insert("MODALIAS".into(), "usb:v1234".into());
+        builtin_hwdb("hwdb", &mut event, Some(&hwdb));
+        assert!(!event.env.contains_key("ID_FOUND"));
+    }
+
+    #[test]
+    fn test_compose_usb_modalias_basic() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("idVendor"), "04d9\n").unwrap();
+        fs::write(dir.path().join("idProduct"), "0024\n").unwrap();
+        fs::write(dir.path().join("product"), "USB Keyboard\n").unwrap();
+        let m = compose_usb_modalias(dir.path()).unwrap();
+        assert_eq!(m, "usb:v04D9p0024:USB Keyboard");
+    }
+
+    #[test]
+    fn test_compose_usb_modalias_no_product() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("idVendor"), "abcd\n").unwrap();
+        fs::write(dir.path().join("idProduct"), "1234\n").unwrap();
+        let m = compose_usb_modalias(dir.path()).unwrap();
+        assert_eq!(m, "usb:vABCDp1234:");
+    }
+
+    #[test]
+    fn test_compose_usb_modalias_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(compose_usb_modalias(dir.path()).is_none());
+    }
+
+    #[test]
+    fn test_read_sysattr_at() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("modalias"), "pci:v00001234\n").unwrap();
+        let val = read_sysattr_at(dir.path(), "modalias");
+        assert_eq!(val, Some("pci:v00001234".to_string()));
+    }
+
+    #[test]
+    fn test_read_sysattr_at_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_sysattr_at(dir.path(), "nonexistent").is_none());
+    }
+
+    /// Helper to build a minimal hwdb.bin for udevd tests.
+    /// Delegates to libsystemd's test builder exposed via from_bytes + manual construction.
+    fn build_test_hwdb(entries: &[(&str, &str, &str)]) -> Vec<u8> {
+        // Build a simple character-per-edge trie.
+        let header_size: u64 = 80;
+        let node_size: u64 = 24;
+        let child_entry_size: u64 = 16;
+        let value_entry_size: u64 = 16;
+
+        struct TNode {
+            children: Vec<(u8, usize)>,
+            values: Vec<(String, String)>,
+        }
+
+        let mut nodes: Vec<TNode> = vec![TNode {
+            children: Vec::new(),
+            values: Vec::new(),
+        }];
+
+        for &(pattern, key, value) in entries {
+            let mut cur = 0usize;
+            for ch in pattern.bytes() {
+                let existing = nodes[cur].children.iter().find(|&&(c, _)| c == ch);
+                if let Some(&(_, idx)) = existing {
+                    cur = idx;
+                } else {
+                    let new_idx = nodes.len();
+                    nodes.push(TNode {
+                        children: Vec::new(),
+                        values: Vec::new(),
+                    });
+                    nodes[cur].children.push((ch, new_idx));
+                    nodes[cur].children.sort_by_key(|&(c, _)| c);
+                    cur = new_idx;
+                }
+            }
+            nodes[cur]
+                .values
+                .push((format!(" {}", key), value.to_string()));
+        }
+
+        // Compute sizes
+        let mut total_nodes_bytes: usize = 0;
+        for n in &nodes {
+            total_nodes_bytes += node_size as usize
+                + n.children.len() * child_entry_size as usize
+                + n.values.len() * value_entry_size as usize;
+        }
+        let strings_base = header_size as usize + total_nodes_bytes;
+
+        // Build string table with absolute offsets
+        let mut strings = Vec::<u8>::new();
+        let mut str_off = std::collections::HashMap::<String, u64>::new();
+        let add_str = |strings: &mut Vec<u8>,
+                       off: &mut std::collections::HashMap<String, u64>,
+                       s: &str|
+         -> u64 {
+            if let Some(&o) = off.get(s) {
+                return o;
+            }
+            let o = strings_base as u64 + strings.len() as u64;
+            strings.extend_from_slice(s.as_bytes());
+            strings.push(0);
+            off.insert(s.to_string(), o);
+            o
+        };
+        add_str(&mut strings, &mut str_off, ""); // empty prefix
+        for n in &nodes {
+            for (k, v) in &n.values {
+                add_str(&mut strings, &mut str_off, k);
+                add_str(&mut strings, &mut str_off, v);
+            }
+        }
+
+        // Node offsets
+        let mut node_offsets = Vec::new();
+        let mut off = header_size as usize;
+        for n in &nodes {
+            node_offsets.push(off);
+            off += node_size as usize
+                + n.children.len() * child_entry_size as usize
+                + n.values.len() * value_entry_size as usize;
+        }
+
+        let file_size = strings_base + strings.len();
+
+        // Serialize
+        let mut out = Vec::with_capacity(file_size);
+        // Header
+        out.extend_from_slice(b"KSLPHHRH");
+        out.extend_from_slice(&1u64.to_le_bytes());
+        out.extend_from_slice(&(file_size as u64).to_le_bytes());
+        out.extend_from_slice(&header_size.to_le_bytes());
+        out.extend_from_slice(&node_size.to_le_bytes());
+        out.extend_from_slice(&child_entry_size.to_le_bytes());
+        out.extend_from_slice(&value_entry_size.to_le_bytes());
+        out.extend_from_slice(&(node_offsets[0] as u64).to_le_bytes());
+        out.extend_from_slice(&(total_nodes_bytes as u64).to_le_bytes());
+        out.extend_from_slice(&(strings.len() as u64).to_le_bytes());
+
+        // Nodes
+        for n in &nodes {
+            out.extend_from_slice(&0u64.to_le_bytes()); // prefix_off=0 (empty)
+            out.push(n.children.len() as u8);
+            out.extend_from_slice(&[0u8; 7]);
+            out.extend_from_slice(&(n.values.len() as u64).to_le_bytes());
+            for &(c, idx) in &n.children {
+                out.push(c);
+                out.extend_from_slice(&[0u8; 7]);
+                out.extend_from_slice(&(node_offsets[idx] as u64).to_le_bytes());
+            }
+            for (k, v) in &n.values {
+                let ko = *str_off.get(k.as_str()).unwrap();
+                let vo = *str_off.get(v.as_str()).unwrap();
+                out.extend_from_slice(&ko.to_le_bytes());
+                out.extend_from_slice(&vo.to_le_bytes());
+            }
+        }
+
+        out.extend_from_slice(&strings);
+        assert_eq!(out.len(), file_size);
+        out
+    }
 
     #[test]
     fn test_process_rules_symlink() {
@@ -3685,7 +4170,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert_eq!(result.symlinks, vec!["mydisk".to_string()]);
     }
 
@@ -3727,7 +4212,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/platform/serial8250/tty/ttyS0", "tty");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert_eq!(result.mode, Some(0o660));
         assert_eq!(result.owner, Some("root".to_string()));
         assert_eq!(result.group, Some("dialout".to_string()));
@@ -3759,7 +4244,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/net/eth0", "net");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert_eq!(
             result.env_overrides.get("MY_TAG"),
             Some(&"network_device".to_string())
@@ -3793,7 +4278,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert!(result.symlinks.is_empty());
     }
 
@@ -3856,7 +4341,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert!(!result.symlinks.contains(&"should_not_appear".to_string()));
         assert!(result.symlinks.contains(&"should_appear".to_string()));
     }
@@ -3887,7 +4372,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert!(result.tags.contains(&"systemd".to_string()));
     }
 
@@ -3917,7 +4402,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert_eq!(result.run_programs, vec!["/bin/true".to_string()]);
     }
 
@@ -3969,7 +4454,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert!(result.symlinks.contains(&"link1".to_string()));
         assert!(result.symlinks.contains(&"link2".to_string()));
     }
@@ -4022,7 +4507,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         // The first rule used :=, so the second rule's = should be ignored
         assert_eq!(result.mode, Some(0o600));
     }
@@ -4053,7 +4538,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert_eq!(result.name, Some("my-disk".to_string()));
     }
 
@@ -4291,7 +4776,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         // SYMLINK= (assign) replaces, so only link2 should remain
         assert!(!result.symlinks.contains(&"link1".to_string()));
         assert!(result.symlinks.contains(&"link2".to_string()));
@@ -4345,7 +4830,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert!(result.symlinks.contains(&"link1".to_string()));
         assert!(!result.symlinks.contains(&"link2".to_string()));
         assert!(result.symlinks.contains(&"link3".to_string()));
@@ -4526,7 +5011,7 @@ mod tests {
         };
 
         let mut event = make_test_event("add", "/devices/virtual/block/sda", "block");
-        let result = process_rules(&rules, &mut event);
+        let result = process_rules(&rules, &mut event, None);
         assert!(result.options.contains("link_priority=100"));
     }
 
