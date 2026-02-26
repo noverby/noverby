@@ -145,6 +145,13 @@
       inputs.flake-parts.follows = "flake-parts";
     };
     systems.url = "github:nix-systems/default";
+    drowse = {
+      url = "github:figsoda/drowse";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-parts.follows = "flake-parts";
+      };
+    };
   };
 
   outputs = inputs:

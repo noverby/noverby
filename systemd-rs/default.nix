@@ -5,155 +5,203 @@
     ];
   };
 
-  packages.systemd-rs = {
-    lib,
-    rustPlatform,
-  }:
-    rustPlatform.buildRustPackage {
-      pname = "systemd-rs";
-      version = "unstable";
+  packages = {
+    systemd-rs = {
+      lib,
+      rustPlatform,
+    }:
+      rustPlatform.buildRustPackage {
+        pname = "systemd-rs";
+        version = "unstable";
 
-      src = lib.fileset.toSource {
-        root = ./.;
-        fileset = lib.fileset.unions [
-          ./Cargo.toml
-          ./Cargo.lock
-          ./crates
-        ];
-      };
-
-      cargoLock.lockFile = ./Cargo.lock;
-
-      doCheck = false;
-
-      meta = {
-        description = "A service manager that is able to run \"traditional\" systemd services, written in rust";
-        homepage = "https://tangled.org/overby.me/overby.me/tree/main/systemd-rs";
-        license = lib.licenses.mit;
-        maintainers = with lib.maintainers; [noverby];
-        mainProgram = "systemd";
-      };
-    };
-
-  packages.systemd-rs-systemd = {
-    runCommand,
-    makeBinaryWrapper,
-    systemd-rs,
-    kbd,
-    kmod,
-    util-linuxMinimal,
-    systemd,
-  }:
-    runCommand "systemd-rs-systemd-${systemd-rs.version}" {
-      nativeBuildInputs = [makeBinaryWrapper];
-
-      passthru = {
-        inherit kbd kmod;
-        util-linux = util-linuxMinimal;
-        interfaceVersion = 2;
-        withBootloader = false;
-        withCryptsetup = false;
-        withEfi = false;
-        withFido2 = false;
-        withHostnamed = true;
-        withImportd = false;
-        withKmod = false;
-        withLocaled = true;
-        withMachined = true;
-        withNetworkd = true;
-        withHomed = true;
-        withPortabled = true;
-        withSysupdate = false;
-        withTimedated = true;
-        withTpm2Tss = false;
-        withTpm2Units = false;
-        withUtmp = false;
-      };
-
-      meta =
-        systemd-rs.meta
-        // {
-          description = "systemd-rs packaged as a systemd drop-in replacement for NixOS";
+        src = lib.fileset.toSource {
+          root = ./.;
+          fileset = lib.fileset.unions [
+            ./Cargo.toml
+            ./Cargo.lock
+            ./crates
+          ];
         };
-    } ''
-      mkdir -p $out
 
-      # Copy data/config files from systemd that NixOS modules expect
-      cp -r ${systemd}/example $out/example
-      cp -r ${systemd}/lib $out/lib
-      cp -r ${systemd}/etc $out/etc 2>/dev/null || true
-      cp -r ${systemd}/share $out/share 2>/dev/null || true
+        cargoLock.lockFile = ./Cargo.lock;
 
-      # Make copied files writable so we can overwrite them
-      chmod -R u+w $out
+        doCheck = false;
 
-      # Start with all systemd binaries
-      mkdir -p $out/bin
-      for bin in ${systemd}/bin/*; do
-        name=$(basename "$bin")
-        cp -a "$bin" "$out/bin/$name"
-      done
+        meta = {
+          description = "A service manager that is able to run \"traditional\" systemd services, written in rust";
+          homepage = "https://tangled.org/overby.me/overby.me/tree/main/systemd-rs";
+          license = lib.licenses.mit;
+          maintainers = with lib.maintainers; [noverby];
+          mainProgram = "systemd";
+        };
+      };
 
-      # Make copied binaries writable so systemd-rs can overwrite them
-      chmod -R u+w $out/bin
+    systemd-rs-drowse = {
+      drowse,
+      lib,
+    }:
+      drowse.crate2nix {
+        pname = "systemd-rs";
+        version = "unstable";
 
-      # Overwrite with systemd-rs binaries (takes precedence)
-      for bin in ${systemd-rs}/bin/*; do
-        name=$(basename "$bin")
-        cp -a "$bin" "$out/bin/$name"
-      done
+        src = lib.fileset.toSource {
+          root = ./.;
+          fileset = lib.fileset.unions [
+            ./Cargo.toml
+            ./Cargo.lock
+            ./crates
+          ];
+        };
 
-      # Provide sbin as a symlink to bin (matching systemd layout)
-      if [ ! -e "$out/sbin" ]; then
-        ln -s bin "$out/sbin"
-      fi
+        #dynamicCargoDeps = false;
 
-      # Replace the systemd init binary with a wrapper that execs systemd-rs,
-      # so NixOS actually boots with systemd-rs as PID 1 instead of systemd.
-      # NixOS uses $out/lib/systemd/systemd as the init binary (stage-2).
-      # We can't symlink because systemd-rs's main() dispatches on argv[0]
-      # ending with "systemd-rs" or "systemd", so we need a wrapper script.
-      rm -f $out/lib/systemd/systemd
-      makeBinaryWrapper ${systemd-rs}/bin/systemd $out/lib/systemd/systemd \
-        --argv0 systemd-rs
+        select = ''
+          project:
+          let
+            pkgs = import <nixpkgs> {};
+            members = builtins.attrValues (builtins.mapAttrs (_: m: m.build) project.workspaceMembers);
+          in
+          pkgs.runCommand "systemd-rs" {} '''
+            mkdir -p $out/bin
+            for pkg in ''${pkgs.lib.concatMapStringsSep " " toString members}; do
+              for bin in $pkg/bin/*; do
+                cp -a "$bin" "$out/bin/"
+              done
+            done
+          '''
+        '';
 
-      # Replace lib/systemd/* helper binaries with systemd-rs equivalents.
-      # Many service units use ExecStart=$out/lib/systemd/systemd-<foo> rather
-      # than $out/bin/systemd-<foo>, so we need to overwrite those too.
-      for bin in ${systemd-rs}/bin/*; do
-        name=$(basename "$bin")
-        if [ -e "$out/lib/systemd/$name" ]; then
-          rm -f "$out/lib/systemd/$name"
-          cp -a "$bin" "$out/lib/systemd/$name"
+        doCheck = false;
+
+        meta = {
+          description = "A service manager that is able to run \"traditional\" systemd services, written in rust";
+          homepage = "https://tangled.org/overby.me/overby.me/tree/main/systemd-rs";
+          license = lib.licenses.mit;
+          maintainers = with lib.maintainers; [noverby];
+          mainProgram = "systemd";
+        };
+      };
+
+    systemd-rs-systemd = {
+      runCommand,
+      makeBinaryWrapper,
+      systemd-rs,
+      kbd,
+      kmod,
+      util-linuxMinimal,
+      systemd,
+    }:
+      runCommand "systemd-rs-systemd-${systemd-rs.version}" {
+        nativeBuildInputs = [makeBinaryWrapper];
+
+        passthru = {
+          inherit kbd kmod;
+          util-linux = util-linuxMinimal;
+          interfaceVersion = 2;
+          withBootloader = false;
+          withCryptsetup = false;
+          withEfi = false;
+          withFido2 = false;
+          withHostnamed = true;
+          withImportd = false;
+          withKmod = false;
+          withLocaled = true;
+          withMachined = true;
+          withNetworkd = true;
+          withHomed = true;
+          withPortabled = true;
+          withSysupdate = false;
+          withTimedated = true;
+          withTpm2Tss = false;
+          withTpm2Units = false;
+          withUtmp = false;
+        };
+
+        meta =
+          systemd-rs.meta
+          // {
+            description = "systemd-rs packaged as a systemd drop-in replacement for NixOS";
+          };
+      } ''
+        mkdir -p $out
+
+        # Copy data/config files from systemd that NixOS modules expect
+        cp -r ${systemd}/example $out/example
+        cp -r ${systemd}/lib $out/lib
+        cp -r ${systemd}/etc $out/etc 2>/dev/null || true
+        cp -r ${systemd}/share $out/share 2>/dev/null || true
+
+        # Make copied files writable so we can overwrite them
+        chmod -R u+w $out
+
+        # Start with all systemd binaries
+        mkdir -p $out/bin
+        for bin in ${systemd}/bin/*; do
+          name=$(basename "$bin")
+          cp -a "$bin" "$out/bin/$name"
+        done
+
+        # Make copied binaries writable so systemd-rs can overwrite them
+        chmod -R u+w $out/bin
+
+        # Overwrite with systemd-rs binaries (takes precedence)
+        for bin in ${systemd-rs}/bin/*; do
+          name=$(basename "$bin")
+          cp -a "$bin" "$out/bin/$name"
+        done
+
+        # Provide sbin as a symlink to bin (matching systemd layout)
+        if [ ! -e "$out/sbin" ]; then
+          ln -s bin "$out/sbin"
         fi
-      done
 
-      # Replace all references to the real systemd store path with
-      # the systemd-rs-systemd output path so NixOS module substitutions work.
-      #
-      # NOTE: Only text files are patched. ELF binaries (e.g. udevadm) have
-      # the original systemd store path compiled into their RPATH and default
-      # config/rules directories. Binary string substitution is NOT safe here
-      # because the store paths are different lengths (the original systemd
-      # path like "...-systemd-258.3" is shorter than our overlay path like
-      # "...-systemd-rs-systemd-unstable"), so replacing would corrupt the
-      # binary layout. This means udevd will still read its built-in rules
-      # from the original systemd package — a cosmetic issue until udevd is
-      # reimplemented in Rust.
-      find $out -type f | while read -r f; do
-        if file "$f" | grep -q text; then
-          substituteInPlace "$f" \
-            --replace-quiet "${systemd}" "$out"
-        fi
-      done
+        # Replace the systemd init binary with a wrapper that execs systemd-rs,
+        # so NixOS actually boots with systemd-rs as PID 1 instead of systemd.
+        # NixOS uses $out/lib/systemd/systemd as the init binary (stage-2).
+        # We can't symlink because systemd-rs's main() dispatches on argv[0]
+        # ending with "systemd-rs" or "systemd", so we need a wrapper script.
+        rm -f $out/lib/systemd/systemd
+        makeBinaryWrapper ${systemd-rs}/bin/systemd $out/lib/systemd/systemd \
+          --argv0 systemd-rs
 
-      # Fix broken symlinks that pointed within the systemd package
-      find $out -type l | while read -r link; do
-        target=$(readlink "$link")
-        if [[ "$target" == ${systemd}* ]]; then
-          newtarget="$out''${target#${systemd}}"
-          ln -sf "$newtarget" "$link"
-        fi
-      done
-    '';
+        # Replace lib/systemd/* helper binaries with systemd-rs equivalents.
+        # Many service units use ExecStart=$out/lib/systemd/systemd-<foo> rather
+        # than $out/bin/systemd-<foo>, so we need to overwrite those too.
+        for bin in ${systemd-rs}/bin/*; do
+          name=$(basename "$bin")
+          if [ -e "$out/lib/systemd/$name" ]; then
+            rm -f "$out/lib/systemd/$name"
+            cp -a "$bin" "$out/lib/systemd/$name"
+          fi
+        done
+
+        # Replace all references to the real systemd store path with
+        # the systemd-rs-systemd output path so NixOS module substitutions work.
+        #
+        # NOTE: Only text files are patched. ELF binaries (e.g. udevadm) have
+        # the original systemd store path compiled into their RPATH and default
+        # config/rules directories. Binary string substitution is NOT safe here
+        # because the store paths are different lengths (the original systemd
+        # path like "...-systemd-258.3" is shorter than our overlay path like
+        # "...-systemd-rs-systemd-unstable"), so replacing would corrupt the
+        # binary layout. This means udevd will still read its built-in rules
+        # from the original systemd package — a cosmetic issue until udevd is
+        # reimplemented in Rust.
+        find $out -type f | while read -r f; do
+          if file "$f" | grep -q text; then
+            substituteInPlace "$f" \
+              --replace-quiet "${systemd}" "$out"
+          fi
+        done
+
+        # Fix broken symlinks that pointed within the systemd package
+        find $out -type l | while read -r link; do
+          target=$(readlink "$link")
+          if [[ "$target" == ${systemd}* ]]; then
+            newtarget="$out''${target#${systemd}}"
+            ln -sf "$newtarget" "$link"
+          fi
+        done
+      '';
+  };
 }
