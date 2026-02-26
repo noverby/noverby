@@ -20,6 +20,7 @@ mod config;
 mod dhcp;
 mod link;
 mod manager;
+mod netdev;
 
 use std::io;
 use std::net::Ipv4Addr;

@@ -1,8 +1,9 @@
-//! Network manager — coordinates `.network` config files, DHCP clients,
-//! static address configuration, and interface lifecycle.
+//! Network manager — coordinates `.network` and `.netdev` config files, DHCP
+//! clients, static address configuration, and interface lifecycle.
 //!
 //! This is the core orchestration layer of `systemd-networkd`. It:
 //! - Loads `.network` configuration files
+//! - Loads `.netdev` configuration files (virtual network device definitions)
 //! - Enumerates network interfaces
 //! - Matches configs to interfaces
 //! - Runs DHCP clients for interfaces with `DHCP=yes`/`DHCP=ipv4`
@@ -17,6 +18,7 @@ use std::net::Ipv4Addr;
 use crate::config::{self, DhcpMode, NetworkConfig};
 use crate::dhcp::{self, DhcpClient, DhcpClientConfig, DhcpLease, DhcpState};
 use crate::link::{self, LinkInfo};
+use crate::netdev::{self, NetDevConfig};
 
 // ---------------------------------------------------------------------------
 // Managed link — per-interface state
@@ -138,6 +140,9 @@ pub struct NetworkManager {
     /// Loaded `.network` config files.
     pub configs: Vec<NetworkConfig>,
 
+    /// Loaded `.netdev` config files (virtual network device definitions).
+    pub netdev_configs: Vec<NetDevConfig>,
+
     /// Global DNS servers (aggregated from all links).
     pub dns_servers: Vec<Ipv4Addr>,
 
@@ -154,13 +159,14 @@ impl NetworkManager {
         Self {
             links: HashMap::new(),
             configs: Vec::new(),
+            netdev_configs: Vec::new(),
             dns_servers: Vec::new(),
             search_domains: Vec::new(),
             initial_config_done: false,
         }
     }
 
-    /// Load `.network` configuration files from standard paths.
+    /// Load `.network` and `.netdev` configuration files from standard paths.
     pub fn load_configs(&mut self) {
         self.configs = config::load_network_configs();
         log::info!("Loaded {} .network config file(s)", self.configs.len());
@@ -172,11 +178,26 @@ impl NetworkManager {
                 cfg.network_section.dhcp,
             );
         }
+
+        self.netdev_configs = netdev::load_netdev_configs();
+        log::info!(
+            "Loaded {} .netdev config file(s)",
+            self.netdev_configs.len()
+        );
+        for cfg in &self.netdev_configs {
+            log::debug!(
+                "  {} — name={} kind={}",
+                cfg.path.display(),
+                cfg.netdev_section.name,
+                cfg.netdev_section.kind,
+            );
+        }
     }
 
     /// Load configs from explicit directories (for testing).
     pub fn load_configs_from(&mut self, dirs: &[std::path::PathBuf]) {
         self.configs = config::load_network_configs_from(dirs);
+        self.netdev_configs = netdev::load_netdev_configs_from(dirs);
     }
 
     /// Discover network interfaces and match them against configs.
