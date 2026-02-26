@@ -221,6 +221,17 @@ pub struct NetworkSection {
     /// `IPv6PrivacyExtensions=`
     pub ipv6_privacy_extensions: Option<String>,
 
+    /// `IPv6StableSecretAddress=` — secret key for RFC 7217 stable privacy addresses.
+    /// When set, SLAAC addresses use a hash-based interface identifier instead of
+    /// EUI-64, preventing MAC address leakage. The value is a hex-encoded secret
+    /// or the special value "machine-id" to derive from `/etc/machine-id`.
+    pub ipv6_stable_secret_address: Option<String>,
+
+    /// `IPv6LinkLocalAddressGenerationMode=` — how to generate the link-local address.
+    /// Values: "eui64" (default, from MAC), "stable-privacy" (RFC 7217 hash),
+    /// "none" (no link-local), "random".
+    pub ipv6_ll_addr_gen_mode: Option<String>,
+
     /// `Bridge=`
     pub bridge: Option<String>,
 
@@ -656,6 +667,10 @@ fn parse_network_entry(key: &str, value: &str, section: &mut NetworkSection) {
         "IPForward" => section.ip_forward = Some(value.to_string()),
         "IPMasquerade" => section.ip_masquerade = Some(value.to_string()),
         "IPv6PrivacyExtensions" => section.ipv6_privacy_extensions = Some(value.to_string()),
+        "IPv6StableSecretAddress" => section.ipv6_stable_secret_address = Some(value.to_string()),
+        "IPv6LinkLocalAddressGenerationMode" => {
+            section.ipv6_ll_addr_gen_mode = Some(value.to_string())
+        }
         "Bridge" => section.bridge = Some(value.to_string()),
         "Bond" => section.bond = Some(value.to_string()),
         "VLAN" => section.vlans.extend(split_whitespace_values(value)),

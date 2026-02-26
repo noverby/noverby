@@ -1078,6 +1078,12 @@ fn main() {
             last_watchdog = Instant::now();
         }
 
+        // Check SLAAC address lifetimes (deprecation and expiration).
+        if mgr.check_ra_address_lifetimes() {
+            mgr.write_state_files();
+            update_shared_state(&shared_state, &mgr);
+        }
+
         // Sleep until next poll.
         std::thread::sleep(poll_interval);
     }
