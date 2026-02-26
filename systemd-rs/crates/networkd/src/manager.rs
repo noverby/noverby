@@ -13,10 +13,11 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::config::{self, DhcpMode, NetworkConfig};
+use crate::config::{self, DhcpMode, Ipv6AcceptRa, NetworkConfig};
 use crate::dhcp::{self, DhcpClient, DhcpClientConfig, DhcpLease, DhcpState};
+use crate::ipv6_ra::{self, RaAction, RaState};
 use crate::link::{self, LinkInfo};
 use crate::netdev::{self, NetDevConfig};
 use crate::netdev_create;
@@ -54,6 +55,15 @@ pub struct ManagedLink {
 
     /// Search domains collected from DHCP and/or static config.
     pub search_domains: Vec<String>,
+
+    /// IPv6 Router Advertisement state (if RA is enabled).
+    pub ra_state: Option<RaState>,
+
+    /// IPv6 DNS servers collected from RA RDNSS.
+    pub dns6_servers: Vec<Ipv6Addr>,
+
+    /// IPv6 search domains collected from RA DNSSL.
+    pub search6_domains: Vec<String>,
 }
 
 /// Desired administrative state of a link.
@@ -150,6 +160,9 @@ pub struct NetworkManager {
     /// Global search domains.
     pub search_domains: Vec<String>,
 
+    /// Global IPv6 DNS servers (aggregated from RA RDNSS).
+    pub dns6_servers: Vec<Ipv6Addr>,
+
     /// Whether we've completed initial configuration.
     pub initial_config_done: bool,
 }
@@ -163,6 +176,7 @@ impl NetworkManager {
             netdev_configs: Vec::new(),
             dns_servers: Vec::new(),
             search_domains: Vec::new(),
+            dns6_servers: Vec::new(),
             initial_config_done: false,
         }
     }
@@ -244,6 +258,9 @@ impl NetworkManager {
                 has_carrier,
                 dns_servers: Vec::new(),
                 search_domains: Vec::new(),
+                ra_state: None,
+                dns6_servers: Vec::new(),
+                search6_domains: Vec::new(),
             };
 
             if matched_config.is_some() {
@@ -487,6 +504,43 @@ impl NetworkManager {
             managed.dhcp_client = Some(client);
         }
 
+        // 7. Initialize IPv6 Router Advertisement handling if enabled.
+        let accepts_ra = matches!(config.network_section.ipv6_accept_ra, Ipv6AcceptRa::Yes);
+        // Also accept RA by default when DHCP is not set to managed-only mode
+        // and link-local IPv6 is not explicitly disabled.
+        let default_ra = config.network_section.ipv6_accept_ra == Ipv6AcceptRa::Yes
+            || (matches!(
+                config.network_section.link_local,
+                config::LinkLocalMode::Yes | config::LinkLocalMode::Ipv6
+            ) && !matches!(config.network_section.dhcp, DhcpMode::Yes));
+
+        if accepts_ra || default_ra {
+            let mut mac_arr = [0u8; 6];
+            if mac.len() >= 6 {
+                mac_arr.copy_from_slice(&mac[..6]);
+            }
+
+            let ra_state = RaState::new(ifindex, link_name.clone(), mac_arr);
+
+            // Add link-local address first (needed for RA to work).
+            if let Some(ll_addr) = ra_state.link_local {
+                log::info!("Adding IPv6 link-local address {} to {link_name}", ll_addr);
+                if let Err(e) = ipv6_ra::add_ipv6_address(ifindex, ll_addr, 64) {
+                    let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                    if !is_exists {
+                        log::warn!(
+                            "Failed to add link-local address {} to {link_name}: {e}",
+                            ll_addr
+                        );
+                    }
+                }
+            }
+
+            log::info!("Enabling IPv6 Router Advertisement on {link_name}");
+            let managed = self.links.get_mut(&ifindex).unwrap();
+            managed.ra_state = Some(ra_state);
+        }
+
         Ok(())
     }
 
@@ -663,6 +717,7 @@ impl NetworkManager {
     fn update_global_dns(&mut self) {
         let mut dns = Vec::new();
         let mut domains = Vec::new();
+        let mut dns6 = Vec::new();
 
         for managed in self.links.values() {
             for server in &managed.dns_servers {
@@ -675,14 +730,167 @@ impl NetworkManager {
                     domains.push(domain.clone());
                 }
             }
+            // Collect IPv6 DNS from RA RDNSS
+            for server in &managed.dns6_servers {
+                if !dns6.contains(server) {
+                    dns6.push(*server);
+                }
+            }
+            // Collect IPv6 search domains from RA DNSSL
+            for domain in &managed.search6_domains {
+                if !domains.contains(domain) {
+                    domains.push(domain.clone());
+                }
+            }
         }
 
         self.dns_servers = dns.clone();
         self.search_domains = domains.clone();
+        self.dns6_servers = dns6;
 
         if let Err(e) = link::write_resolv_conf(&dns, &domains) {
             log::warn!("Failed to write resolv.conf: {e}");
         }
+    }
+
+    /// Get interface indices that have IPv6 RA enabled and need RS sending.
+    pub fn ra_active_links(&self) -> Vec<u32> {
+        self.links
+            .iter()
+            .filter_map(|(&idx, m)| {
+                if m.ra_state.as_ref().is_some_and(|s| s.enabled) {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Process a received Router Advertisement on a given interface.
+    ///
+    /// Applies the RA actions (add SLAAC addresses, default route, DNS, etc.)
+    /// and returns whether any state changed.
+    pub fn apply_ra_actions(&mut self, ifindex: u32, actions: Vec<RaAction>) -> bool {
+        let managed = match self.links.get_mut(&ifindex) {
+            Some(m) => m,
+            None => return false,
+        };
+        let link_name = managed.link.name.clone();
+        let mut changed = false;
+
+        for action in actions {
+            match action {
+                RaAction::AddAddress {
+                    address,
+                    prefix_len,
+                    ..
+                } => {
+                    log::info!("{link_name}: adding SLAAC address {address}/{prefix_len}");
+                    if let Err(e) = ipv6_ra::add_ipv6_address(ifindex, address, prefix_len) {
+                        let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                        if !is_exists {
+                            log::warn!(
+                                "{link_name}: failed to add SLAAC address {address}/{prefix_len}: {e}"
+                            );
+                        }
+                    }
+                    changed = true;
+                }
+                RaAction::AddDefaultRoute { gateway, .. } => {
+                    log::info!("{link_name}: adding IPv6 default route via {gateway}");
+                    if let Err(e) = ipv6_ra::add_ipv6_default_route(gateway, ifindex, Some(1024)) {
+                        let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                        if !is_exists {
+                            log::warn!(
+                                "{link_name}: failed to add IPv6 default route via {gateway}: {e}"
+                            );
+                        }
+                    }
+                    changed = true;
+                }
+                RaAction::RemoveDefaultRoute { gateway } => {
+                    log::info!("{link_name}: removing IPv6 default route via {gateway}");
+                    // Best-effort removal — not fatal if it fails.
+                    changed = true;
+                }
+                RaAction::AddOnLinkRoute {
+                    prefix, prefix_len, ..
+                } => {
+                    log::info!("{link_name}: adding on-link route {prefix}/{prefix_len}");
+                    if let Err(e) = ipv6_ra::add_ipv6_route(
+                        prefix,
+                        prefix_len,
+                        None,
+                        ifindex,
+                        None,
+                        ipv6_ra::rtprot_ra(),
+                    ) {
+                        let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                        if !is_exists {
+                            log::warn!(
+                                "{link_name}: failed to add on-link route {prefix}/{prefix_len}: {e}"
+                            );
+                        }
+                    }
+                    changed = true;
+                }
+                RaAction::AddRoute {
+                    prefix,
+                    prefix_len,
+                    gateway,
+                    ..
+                } => {
+                    log::info!("{link_name}: adding route {prefix}/{prefix_len} via {gateway}");
+                    if let Err(e) = ipv6_ra::add_ipv6_route(
+                        prefix,
+                        prefix_len,
+                        Some(gateway),
+                        ifindex,
+                        None,
+                        ipv6_ra::rtprot_ra(),
+                    ) {
+                        let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                        if !is_exists {
+                            log::warn!(
+                                "{link_name}: failed to add route {prefix}/{prefix_len} via {gateway}: {e}"
+                            );
+                        }
+                    }
+                    changed = true;
+                }
+                RaAction::UpdateDns { servers } => {
+                    log::info!(
+                        "{link_name}: updating IPv6 DNS servers from RA: {:?}",
+                        servers
+                    );
+                    let managed = self.links.get_mut(&ifindex).unwrap();
+                    managed.dns6_servers = servers;
+                    changed = true;
+                }
+                RaAction::UpdateSearchDomains { domains } => {
+                    log::info!(
+                        "{link_name}: updating search domains from RA: {:?}",
+                        domains
+                    );
+                    let managed = self.links.get_mut(&ifindex).unwrap();
+                    managed.search6_domains = domains;
+                    changed = true;
+                }
+                RaAction::SetMtu { mtu } => {
+                    log::info!("{link_name}: setting MTU from RA to {mtu}");
+                    if let Err(e) = link::set_link_mtu(ifindex, mtu) {
+                        log::warn!("{link_name}: failed to set MTU to {mtu}: {e}");
+                    }
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            self.update_global_dns();
+        }
+        changed
     }
 
     /// Get a summary of the operational state of all managed links.
@@ -962,6 +1170,9 @@ mod tests {
             has_carrier: true,
             dns_servers: Vec::new(),
             search_domains: Vec::new(),
+            ra_state: None,
+            dns6_servers: Vec::new(),
+            search6_domains: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::Unmanaged);
     }
@@ -978,6 +1189,9 @@ mod tests {
             has_carrier: true,
             dns_servers: Vec::new(),
             search_domains: Vec::new(),
+            ra_state: None,
+            dns6_servers: Vec::new(),
+            search6_domains: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::Pending);
     }
@@ -994,6 +1208,9 @@ mod tests {
             has_carrier: true,
             dns_servers: Vec::new(),
             search_domains: Vec::new(),
+            ra_state: None,
+            dns6_servers: Vec::new(),
+            search6_domains: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::Configured);
     }
@@ -1012,6 +1229,9 @@ mod tests {
             has_carrier: false,
             dns_servers: Vec::new(),
             search_domains: Vec::new(),
+            ra_state: None,
+            dns6_servers: Vec::new(),
+            search6_domains: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::NoCarrier);
     }
@@ -1028,6 +1248,9 @@ mod tests {
             has_carrier: true,
             dns_servers: Vec::new(),
             search_domains: Vec::new(),
+            ra_state: None,
+            dns6_servers: Vec::new(),
+            search6_domains: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::Configuring);
     }
@@ -1078,6 +1301,9 @@ mod tests {
                 has_carrier: true,
                 dns_servers: Vec::new(),
                 search_domains: Vec::new(),
+                ra_state: None,
+                dns6_servers: Vec::new(),
+                search6_domains: Vec::new(),
             },
         );
         assert_eq!(mgr.overall_state(), "configured");
@@ -1105,6 +1331,9 @@ mod tests {
                 has_carrier: true,
                 dns_servers: vec![Ipv4Addr::new(8, 8, 8, 8)],
                 search_domains: vec!["example.com".into()],
+                ra_state: None,
+                dns6_servers: Vec::new(),
+                search6_domains: Vec::new(),
             },
         );
 
@@ -1155,6 +1384,9 @@ mod tests {
                 has_carrier: true,
                 dns_servers: Vec::new(),
                 search_domains: Vec::new(),
+                ra_state: None,
+                dns6_servers: Vec::new(),
+                search6_domains: Vec::new(),
             },
         );
 
@@ -1177,6 +1409,9 @@ mod tests {
                 has_carrier: true,
                 dns_servers: Vec::new(),
                 search_domains: Vec::new(),
+                ra_state: None,
+                dns6_servers: Vec::new(),
+                search6_domains: Vec::new(),
             },
         );
 
@@ -1212,6 +1447,9 @@ mod tests {
                 has_carrier: true,
                 dns_servers: Vec::new(),
                 search_domains: Vec::new(),
+                ra_state: None,
+                dns6_servers: Vec::new(),
+                search6_domains: Vec::new(),
             },
         );
 
