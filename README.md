@@ -94,6 +94,13 @@
 |-|-|
 | [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | Secure personal AI assistant (OpenClaw-inspired) |
 
+#### Social
+
+| Package | Description |
+|-|-|
+| [Perch 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | AT Protocol social client |
+
+
 #### Development
 
 | Package | Description |
