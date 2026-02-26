@@ -10,7 +10,8 @@
       connect-timeout = 10;
       stalled-download-timeout = 10;
       trusted-users = ["root" "noverby"];
-      experimental-features = "nix-command flakes ca-derivations";
+      experimental-features = "nix-command flakes ca-derivations dynamic-derivations recursive-nix";
+      system-features = ["benchmark" "big-parallel" "kvm" "nixos-test" "recursive-nix"];
       download-buffer-size = 1024 * 1024 * 1024;
       substituters = [
         "https://overby-me.cachix.org"
