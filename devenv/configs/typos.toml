@@ -9,6 +9,8 @@ nin = "nin"
 als = "als"
 # Linux kernel bond option num_grat_arp (gratuitous ARP)
 grat = "grat"
+# GOST R 34.11-94 — Russian cryptographic hash standard (DNSSEC digest type 3)
+gost = "gost"
 
 [default]
 extend-ignore-re = [
@@ -21,6 +23,8 @@ extend-ignore-re = [
   "localed",
   "OIF",
   "oif",
+  "GOST",
+  "Gost",
 ]
 
 [files]
