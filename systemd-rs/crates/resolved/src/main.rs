@@ -68,6 +68,9 @@ const TCP_TIMEOUT: Duration = Duration::from_secs(10);
 const DBUS_NAME: &str = "org.freedesktop.resolve1";
 const DBUS_PATH: &str = "/org/freedesktop/resolve1";
 
+/// PID file path for resolved discovery by resolvectl.
+const PID_FILE: &str = "/run/systemd/resolve/systemd-resolved.pid";
+
 // ── Logging ────────────────────────────────────────────────────────────────
 
 fn setup_logging() {
@@ -181,6 +184,21 @@ impl AtomicStats {
 }
 
 // ── resolv.conf management ─────────────────────────────────────────────────
+
+/// Write the PID file so that resolvectl can find us.
+fn write_pid_file() {
+    let pid = std::process::id();
+    // Ensure the parent directory exists.
+    let _ = fs::create_dir_all("/run/systemd/resolve");
+    if let Err(e) = fs::write(PID_FILE, format!("{}\n", pid)) {
+        log::warn!("Failed to write PID file {}: {}", PID_FILE, e);
+    }
+}
+
+/// Remove the PID file on shutdown.
+fn remove_pid_file() {
+    let _ = fs::remove_file(PID_FILE);
+}
 
 fn write_resolv_conf_files(config: &ResolvedConfig) {
     // Ensure state directory exists
@@ -1149,6 +1167,9 @@ fn main() {
         }
     }
 
+    // Write PID file for resolvectl discovery.
+    write_pid_file();
+
     // Signal readiness
     sd_notify_ready();
     sd_notify_status("Processing requests...");
@@ -1323,6 +1344,7 @@ fn main() {
     sd_notify_stopping();
     sd_notify_status("Shutting down...");
     log::info!("Shutting down...");
+    remove_pid_file();
 
     // Signal listener threads to stop
     shutdown.store(true, Ordering::Relaxed);

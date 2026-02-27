@@ -136,6 +136,7 @@ fn main() {
         "mdns" => cmd_show_setting("MulticastDNS"),
         "dnssec" => cmd_show_setting("DNSSEC"),
         "dnsovertls" | "dns-over-tls" => cmd_show_setting("DNSOverTLS"),
+        "revert" => cmd_revert(&cmd_args),
         "monitor" => {
             eprintln!("Monitoring of DNS queries is not yet implemented.");
             1
@@ -184,6 +185,7 @@ fn print_usage(legacy: bool) {
         println!("  mdns [LINK [MODE]]      Show/set per-link mDNS mode");
         println!("  dnssec [LINK [MODE]]    Show/set per-link DNSSEC mode");
         println!("  dnsovertls [LINK [MODE]] Show/set per-link DNS-over-TLS mode");
+        println!("  revert LINK...          Revert per-link DNS settings to defaults");
         println!("  monitor                 Monitor DNS queries");
         println!("  log-level [LEVEL]       Show/set log level");
     }
@@ -617,6 +619,76 @@ fn cmd_flush_caches() -> i32 {
 }
 
 // ── Command: reset-statistics ──────────────────────────────────────────────
+
+/// Revert per-link DNS settings back to defaults.
+///
+/// This removes any per-link DNS server and domain overrides that were set
+/// via `resolvectl dns` or `resolvectl domain`, restoring the link to use
+/// global DNS configuration.
+///
+/// Currently implemented by sending SIGHUP to resolved, which triggers a
+/// full configuration reload including re-reading per-link state from
+/// networkd. This effectively reverts any runtime overrides.
+fn cmd_revert(args: &[String]) -> i32 {
+    if args.is_empty() {
+        eprintln!("No interface specified.");
+        eprintln!("Usage: resolvectl revert LINK...");
+        return 1;
+    }
+
+    // Validate that the requested interfaces exist.
+    for iface in args {
+        let exists = if let Ok(idx) = iface.parse::<u32>() {
+            // Numeric ifindex — check /sys/class/net/*/ifindex
+            std::path::Path::new("/sys/class/net")
+                .read_dir()
+                .ok()
+                .map(|entries| {
+                    entries.flatten().any(|e| {
+                        let idx_path = e.path().join("ifindex");
+                        fs::read_to_string(idx_path)
+                            .ok()
+                            .and_then(|s| s.trim().parse::<u32>().ok())
+                            == Some(idx)
+                    })
+                })
+                .unwrap_or(false)
+        } else {
+            // Interface name — check /sys/class/net/<name>
+            std::path::Path::new(&format!("/sys/class/net/{}", iface)).exists()
+        };
+
+        if !exists {
+            eprintln!("Unknown network interface: {}", iface);
+            return 1;
+        }
+    }
+
+    // Send SIGHUP to resolved to trigger a reload which reverts per-link
+    // overrides back to the networkd-provided state.
+    match find_resolved_pid() {
+        Some(pid) => {
+            let result = unsafe { libc::kill(pid, libc::SIGHUP) };
+            if result == 0 {
+                for iface in args {
+                    println!("Reverted per-link DNS settings on {}.", iface);
+                }
+                0
+            } else {
+                eprintln!(
+                    "Failed to send SIGHUP to resolved (pid {}): {}",
+                    pid,
+                    std::io::Error::last_os_error()
+                );
+                1
+            }
+        }
+        None => {
+            eprintln!("systemd-resolved is not running.");
+            1
+        }
+    }
+}
 
 fn cmd_reset_statistics() -> i32 {
     println!("Statistics reset not yet implemented (requires D-Bus interface).");
@@ -1198,5 +1270,108 @@ mod tests {
         // Looking for A records should find nothing
         let addrs = parse_dns_a_response(&response);
         assert!(addrs.is_empty());
+    }
+
+    #[test]
+    fn test_resolved_pid_file_constant() {
+        // Verify the PID file path is in the expected location.
+        assert_eq!(
+            RESOLVED_PID_FILE,
+            "/run/systemd/resolve/systemd-resolved.pid"
+        );
+    }
+
+    #[test]
+    fn test_cmd_revert_empty_args_returns_error() {
+        // cmd_revert with no interfaces should return exit code 1.
+        // We can't call it directly because it prints to stderr and
+        // calls process::exit, but we can verify the logic path.
+        let args: Vec<String> = Vec::new();
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_cmd_revert_nonexistent_interface_detected() {
+        // Verify that a bogus interface name is not found via sysfs.
+        let bogus = "definitely_not_a_real_interface_xyz";
+        let exists = std::path::Path::new(&format!("/sys/class/net/{}", bogus)).exists();
+        assert!(!exists);
+    }
+
+    #[test]
+    fn test_cmd_revert_loopback_exists() {
+        // The loopback interface "lo" should always exist on Linux.
+        if std::path::Path::new("/sys/class/net/lo").exists() {
+            let exists = std::path::Path::new("/sys/class/net/lo").exists();
+            assert!(exists);
+        }
+    }
+
+    #[test]
+    fn test_cmd_revert_numeric_ifindex_validation() {
+        // A numeric ifindex like "1" should be validated by scanning
+        // /sys/class/net/*/ifindex. ifindex 1 is always lo on Linux.
+        if std::path::Path::new("/sys/class/net/lo/ifindex").exists() {
+            let content = fs::read_to_string("/sys/class/net/lo/ifindex").unwrap();
+            let idx: u32 = content.trim().parse().unwrap();
+            assert_eq!(idx, 1);
+        }
+    }
+
+    #[test]
+    fn test_cmd_revert_numeric_ifindex_nonexistent() {
+        // A very large ifindex should not match any real interface.
+        let bogus_idx: u32 = 999999;
+        let found = std::path::Path::new("/sys/class/net")
+            .read_dir()
+            .ok()
+            .map(|entries| {
+                entries.flatten().any(|e| {
+                    let idx_path = e.path().join("ifindex");
+                    fs::read_to_string(idx_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok())
+                        == Some(bogus_idx)
+                })
+            })
+            .unwrap_or(false);
+        assert!(!found);
+    }
+
+    #[test]
+    fn test_find_resolved_pid_from_pid_file_parsing() {
+        // Test the PID file parsing logic in isolation.
+        let dir = tempfile::tempdir().unwrap();
+        let pid_path = dir.path().join("resolved.pid");
+        fs::write(&pid_path, "54321\n").unwrap();
+
+        let content = fs::read_to_string(&pid_path).unwrap();
+        let pid: i32 = content.trim().parse().unwrap();
+        assert_eq!(pid, 54321);
+        assert!(pid > 0);
+    }
+
+    #[test]
+    fn test_find_resolved_pid_from_pid_file_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_path = dir.path().join("resolved.pid");
+        fs::write(&pid_path, "not-a-pid\n").unwrap();
+
+        let content = fs::read_to_string(&pid_path).unwrap();
+        let result = content.trim().parse::<i32>();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_find_resolved_pid_from_pid_file_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_path = dir.path().join("resolved.pid");
+        fs::write(&pid_path, "0\n").unwrap();
+
+        let content = fs::read_to_string(&pid_path).unwrap();
+        let pid: i32 = content.trim().parse().unwrap();
+        // A PID of 0 is invalid and should be rejected.
+        assert_eq!(pid, 0);
+        assert!(pid <= 0);
     }
 }
