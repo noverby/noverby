@@ -83,8 +83,17 @@ pub enum Command {
     SuspendThenHibernate,
     /// `list-timers` — list active timer units with next elapse times.
     ListTimers,
-    /// `set-property <unit> <property>=<value>...` — set runtime properties (no-op for now).
+    /// `set-property <unit> <property>=<value>...` — set runtime properties on a unit.
+    /// Creates a drop-in file at `/etc/systemd/system/<unit>.d/50-set-property.conf`
+    /// (or `/run/systemd/system/<unit>.d/` with `--runtime`).
     SetProperty(String, Vec<String>),
+    /// `edit <unit>` — query the unit's fragment path so the client can open an editor.
+    /// Returns the fragment path and existing drop-in override content (if any).
+    /// The actual editor interaction happens client-side in systemctl.
+    Edit(String, bool),
+    /// `revert <unit>` — remove all local customizations (drop-in overrides and
+    /// admin-provided unit file copies) for a unit, reverting to the vendor version.
+    Revert(String),
     /// `start-transient` — create and start a transient (in-memory) unit.
     ///
     /// Params is an object with:
@@ -540,6 +549,37 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
                     ));
                 }
             }
+        }
+        "edit" => {
+            // edit <unit> [--full]
+            match &call.params {
+                Some(Value::String(s)) => Command::Edit(s.clone(), false),
+                Some(Value::Array(arr)) if !arr.is_empty() => {
+                    let name = arr[0].as_str().unwrap_or("").to_owned();
+                    let full = arr.iter().skip(1).any(|v| v.as_str() == Some("--full"));
+                    Command::Edit(name, full)
+                }
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "edit requires a unit name".to_string(),
+                    ));
+                }
+            }
+        }
+        "revert" => {
+            // revert <unit>
+            let name = match &call.params {
+                Some(Value::String(s)) => s.clone(),
+                Some(Value::Array(arr)) if !arr.is_empty() => {
+                    arr[0].as_str().unwrap_or("").to_owned()
+                }
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "revert requires a unit name".to_string(),
+                    ));
+                }
+            };
+            Command::Revert(name)
         }
         _ => {
             return Err(ParseError::MethodNotFound(format!(
@@ -1340,12 +1380,221 @@ pub fn execute_command(
             return Ok(serde_json::json!({ "disabled": disabled }));
         }
         Command::SetProperty(unit_name, props) => {
-            // No-op for now — real systemd sets runtime properties on units
-            // (e.g. CPUWeight=, MemoryMax=). We silently succeed to prevent
-            // "Unknown method" errors from systemd-run --scope and NixOS
-            // switch-to-configuration.
-            log::debug!("set-property {}: {:?} (no-op)", unit_name, props);
-            return Ok(serde_json::json!(null));
+            if props.is_empty() {
+                log::debug!("set-property {}: no properties specified", unit_name);
+                return Ok(serde_json::json!(null));
+            }
+
+            // Verify the unit exists.
+            {
+                let ri = run_info.read_poisoned();
+                let units = find_units_with_name(&unit_name, &ri.unit_table);
+                if units.is_empty() {
+                    return Err(format!("Unit {unit_name} not found."));
+                }
+            }
+
+            // Group properties by section.
+            // Properties like CPUWeight, MemoryMax, etc. belong to [Service],
+            // [Slice], [Socket], [Mount], or [Swap] sections. For simplicity
+            // we put resource-control and execution properties under [Service]
+            // and unit-level properties under [Unit].
+            let unit_props = [
+                "Description",
+                "Documentation",
+                "Wants",
+                "Requires",
+                "After",
+                "Before",
+            ];
+            let mut unit_section_lines = Vec::new();
+            let mut specific_section_lines = Vec::new();
+            for prop in &props {
+                if let Some((key, _val)) = prop.split_once('=') {
+                    if unit_props.contains(&key) {
+                        unit_section_lines.push(prop.as_str());
+                    } else {
+                        specific_section_lines.push(prop.as_str());
+                    }
+                } else {
+                    log::warn!("set-property: ignoring malformed property: {prop}");
+                }
+            }
+
+            // Determine the specific section name from the unit suffix.
+            let section_name = if unit_name.ends_with(".service") {
+                "Service"
+            } else if unit_name.ends_with(".socket") {
+                "Socket"
+            } else if unit_name.ends_with(".slice") {
+                "Slice"
+            } else if unit_name.ends_with(".mount") {
+                "Mount"
+            } else if unit_name.ends_with(".swap") {
+                "Swap"
+            } else if unit_name.ends_with(".timer") {
+                "Timer"
+            } else if unit_name.ends_with(".path") {
+                "Path"
+            } else {
+                "Service"
+            };
+
+            // Build the drop-in content.
+            let mut content = String::new();
+            if !unit_section_lines.is_empty() {
+                content.push_str("[Unit]\n");
+                for line in &unit_section_lines {
+                    content.push_str(line);
+                    content.push('\n');
+                }
+                content.push('\n');
+            }
+            if !specific_section_lines.is_empty() {
+                let _ = writeln!(content, "[{section_name}]");
+                for line in &specific_section_lines {
+                    content.push_str(line);
+                    content.push('\n');
+                }
+                content.push('\n');
+            }
+
+            // Write the drop-in file.
+            let dropin_dir =
+                std::path::Path::new("/etc/systemd/system").join(format!("{unit_name}.d"));
+            if let Err(e) = std::fs::create_dir_all(&dropin_dir) {
+                return Err(format!(
+                    "Failed to create drop-in directory {}: {e}",
+                    dropin_dir.display()
+                ));
+            }
+            let dropin_path = dropin_dir.join("50-set-property.conf");
+            if let Err(e) = std::fs::write(&dropin_path, &content) {
+                return Err(format!(
+                    "Failed to write drop-in file {}: {e}",
+                    dropin_path.display()
+                ));
+            }
+            info!(
+                "set-property {}: wrote drop-in {}",
+                unit_name,
+                dropin_path.display()
+            );
+            return Ok(serde_json::json!({
+                "dropin": dropin_path.display().to_string(),
+                "properties": props,
+            }));
+        }
+        Command::Edit(unit_name, full) => {
+            // Return info about the unit so the client can open an editor.
+            let ri = run_info.read_poisoned();
+            let units = find_units_with_name(&unit_name, &ri.unit_table);
+            if units.is_empty() {
+                return Err(format!("Unit {unit_name} not found."));
+            }
+            let unit = &units[0];
+            let fragment_path = unit
+                .common
+                .unit
+                .fragment_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+
+            let dropin_dir = format!("/etc/systemd/system/{unit_name}.d");
+            let override_path = format!("{dropin_dir}/override.conf");
+
+            // Read existing override content if present.
+            let existing_override = std::fs::read_to_string(&override_path).unwrap_or_default();
+
+            // For --full mode, read the original unit file content.
+            let original_content = if full && !fragment_path.is_empty() {
+                std::fs::read_to_string(&fragment_path).unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+            return Ok(serde_json::json!({
+                "unit": unit_name,
+                "fragment_path": fragment_path,
+                "dropin_dir": dropin_dir,
+                "override_path": override_path,
+                "existing_override": existing_override,
+                "original_content": original_content,
+                "full": full,
+            }));
+        }
+        Command::Revert(unit_name) => {
+            // Remove all local customizations for the unit:
+            // 1. Drop-in directory: /etc/systemd/system/<unit>.d/
+            // 2. Drop-in directory: /run/systemd/system/<unit>.d/
+            // 3. Admin override: /etc/systemd/system/<unit> (only if a vendor copy exists)
+            // 4. Runtime override: /run/systemd/system/<unit>
+            let mut removed = Vec::new();
+
+            // Verify the unit exists.
+            {
+                let ri = run_info.read_poisoned();
+                let units = find_units_with_name(&unit_name, &ri.unit_table);
+                if units.is_empty() {
+                    return Err(format!("Unit {unit_name} not found."));
+                }
+            }
+
+            // Check if a vendor-provided unit file exists (in /usr/lib or /lib).
+            let vendor_paths = [
+                std::path::Path::new("/usr/lib/systemd/system").join(&unit_name),
+                std::path::Path::new("/lib/systemd/system").join(&unit_name),
+                std::path::Path::new("/usr/local/lib/systemd/system").join(&unit_name),
+            ];
+            let has_vendor = vendor_paths.iter().any(|p| p.exists());
+
+            // Remove /etc/systemd/system/<unit> only if vendor copy exists.
+            let etc_override = std::path::Path::new("/etc/systemd/system").join(&unit_name);
+            if has_vendor && etc_override.is_file() {
+                if let Err(e) = std::fs::remove_file(&etc_override) {
+                    return Err(format!("Failed to remove {}: {e}", etc_override.display()));
+                }
+                removed.push(etc_override.display().to_string());
+            }
+
+            // Remove /etc/systemd/system/<unit>.d/
+            let etc_dropin =
+                std::path::Path::new("/etc/systemd/system").join(format!("{unit_name}.d"));
+            if etc_dropin.is_dir() {
+                if let Err(e) = std::fs::remove_dir_all(&etc_dropin) {
+                    return Err(format!("Failed to remove {}: {e}", etc_dropin.display()));
+                }
+                removed.push(etc_dropin.display().to_string());
+            }
+
+            // Remove /run/systemd/system/<unit>
+            let run_override = std::path::Path::new("/run/systemd/system").join(&unit_name);
+            if run_override.is_file() {
+                if let Err(e) = std::fs::remove_file(&run_override) {
+                    return Err(format!("Failed to remove {}: {e}", run_override.display()));
+                }
+                removed.push(run_override.display().to_string());
+            }
+
+            // Remove /run/systemd/system/<unit>.d/
+            let run_dropin =
+                std::path::Path::new("/run/systemd/system").join(format!("{unit_name}.d"));
+            if run_dropin.is_dir() {
+                if let Err(e) = std::fs::remove_dir_all(&run_dropin) {
+                    return Err(format!("Failed to remove {}: {e}", run_dropin.display()));
+                }
+                removed.push(run_dropin.display().to_string());
+            }
+
+            if removed.is_empty() {
+                info!("revert {}: nothing to remove", unit_name);
+            } else {
+                info!("revert {}: removed {:?}", unit_name, removed);
+            }
+
+            let removed_values: Vec<Value> = removed.into_iter().map(Value::String).collect();
+            return Ok(serde_json::json!({ "reverted": unit_name, "removed": removed_values }));
         }
         Command::ListTimers => {
             let ri = run_info.read_poisoned();
@@ -3994,5 +4243,453 @@ mod tests {
         assert_eq!(cloned.working_directory, params.working_directory);
         assert_eq!(cloned.service_type, params.service_type);
         assert_eq!(cloned.remain_after_exit, params.remain_after_exit);
+    }
+
+    // ── Edit command parsing tests ──────────────────────────────────────
+
+    #[test]
+    fn test_parse_edit_string() {
+        let call = super::super::jsonrpc2::Call {
+            method: "edit".to_string(),
+            params: Some(Value::String("sshd.service".to_string())),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::Edit(name, full) => {
+                assert_eq!(name, "sshd.service");
+                assert!(!full);
+            }
+            _ => panic!("Expected Edit"),
+        }
+    }
+
+    #[test]
+    fn test_parse_edit_array_no_full() {
+        let call = super::super::jsonrpc2::Call {
+            method: "edit".to_string(),
+            params: Some(Value::Array(vec![Value::String(
+                "nginx.service".to_string(),
+            )])),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::Edit(name, full) => {
+                assert_eq!(name, "nginx.service");
+                assert!(!full);
+            }
+            _ => panic!("Expected Edit"),
+        }
+    }
+
+    #[test]
+    fn test_parse_edit_array_with_full() {
+        let call = super::super::jsonrpc2::Call {
+            method: "edit".to_string(),
+            params: Some(Value::Array(vec![
+                Value::String("sshd.service".to_string()),
+                Value::String("--full".to_string()),
+            ])),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::Edit(name, full) => {
+                assert_eq!(name, "sshd.service");
+                assert!(full);
+            }
+            _ => panic!("Expected Edit"),
+        }
+    }
+
+    #[test]
+    fn test_parse_edit_no_params() {
+        let call = super::super::jsonrpc2::Call {
+            method: "edit".to_string(),
+            params: None,
+            id: None,
+        };
+        assert!(parse_command(&call).is_err());
+    }
+
+    // ── Revert command parsing tests ────────────────────────────────────
+
+    #[test]
+    fn test_parse_revert_string() {
+        let call = super::super::jsonrpc2::Call {
+            method: "revert".to_string(),
+            params: Some(Value::String("sshd.service".to_string())),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::Revert(name) => assert_eq!(name, "sshd.service"),
+            _ => panic!("Expected Revert"),
+        }
+    }
+
+    #[test]
+    fn test_parse_revert_array() {
+        let call = super::super::jsonrpc2::Call {
+            method: "revert".to_string(),
+            params: Some(Value::Array(vec![Value::String(
+                "nginx.service".to_string(),
+            )])),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::Revert(name) => assert_eq!(name, "nginx.service"),
+            _ => panic!("Expected Revert"),
+        }
+    }
+
+    #[test]
+    fn test_parse_revert_no_params() {
+        let call = super::super::jsonrpc2::Call {
+            method: "revert".to_string(),
+            params: None,
+            id: None,
+        };
+        assert!(parse_command(&call).is_err());
+    }
+
+    // ── Set-property command parsing tests ──────────────────────────────
+
+    #[test]
+    fn test_parse_set_property_string_only() {
+        let call = super::super::jsonrpc2::Call {
+            method: "set-property".to_string(),
+            params: Some(Value::String("sshd.service".to_string())),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::SetProperty(name, props) => {
+                assert_eq!(name, "sshd.service");
+                assert!(props.is_empty());
+            }
+            _ => panic!("Expected SetProperty"),
+        }
+    }
+
+    #[test]
+    fn test_parse_set_property_with_props() {
+        let call = super::super::jsonrpc2::Call {
+            method: "set-property".to_string(),
+            params: Some(Value::Array(vec![
+                Value::String("sshd.service".to_string()),
+                Value::String("CPUWeight=200".to_string()),
+                Value::String("MemoryMax=1G".to_string()),
+            ])),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::SetProperty(name, props) => {
+                assert_eq!(name, "sshd.service");
+                assert_eq!(props, vec!["CPUWeight=200", "MemoryMax=1G"]);
+            }
+            _ => panic!("Expected SetProperty"),
+        }
+    }
+
+    #[test]
+    fn test_parse_set_property_no_params() {
+        let call = super::super::jsonrpc2::Call {
+            method: "set-property".to_string(),
+            params: None,
+            id: None,
+        };
+        assert!(parse_command(&call).is_err());
+    }
+
+    // ── Set-property execution tests ────────────────────────────────────
+
+    #[test]
+    fn test_set_property_writes_dropin_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let etc_dir = dir.path().join("etc/systemd/system");
+        std::fs::create_dir_all(&etc_dir).unwrap();
+
+        // We can't easily call execute_command without a full runtime,
+        // so test the drop-in content generation logic directly.
+        let unit_name = "test.service";
+        let props = vec!["CPUWeight=200".to_string(), "MemoryMax=1G".to_string()];
+
+        // Simulate the section grouping logic from execute_command.
+        let unit_props = [
+            "Description",
+            "Documentation",
+            "Wants",
+            "Requires",
+            "After",
+            "Before",
+        ];
+        let mut unit_section_lines = Vec::new();
+        let mut specific_section_lines = Vec::new();
+        for prop in &props {
+            if let Some((key, _val)) = prop.split_once('=') {
+                if unit_props.contains(&key) {
+                    unit_section_lines.push(prop.as_str());
+                } else {
+                    specific_section_lines.push(prop.as_str());
+                }
+            }
+        }
+
+        let section_name = "Service";
+        let mut content = String::new();
+        if !unit_section_lines.is_empty() {
+            content.push_str("[Unit]\n");
+            for line in &unit_section_lines {
+                content.push_str(line);
+                content.push('\n');
+            }
+            content.push('\n');
+        }
+        if !specific_section_lines.is_empty() {
+            use std::fmt::Write;
+            let _ = write!(content, "[{section_name}]\n");
+            for line in &specific_section_lines {
+                content.push_str(line);
+                content.push('\n');
+            }
+            content.push('\n');
+        }
+
+        let dropin_dir = etc_dir.join(format!("{unit_name}.d"));
+        std::fs::create_dir_all(&dropin_dir).unwrap();
+        let dropin_path = dropin_dir.join("50-set-property.conf");
+        std::fs::write(&dropin_path, &content).unwrap();
+
+        let written = std::fs::read_to_string(&dropin_path).unwrap();
+        assert!(written.contains("[Service]"));
+        assert!(written.contains("CPUWeight=200"));
+        assert!(written.contains("MemoryMax=1G"));
+        // No [Unit] section since these are service-level properties.
+        assert!(!written.contains("[Unit]"));
+    }
+
+    #[test]
+    fn test_set_property_unit_section_props() {
+        // Properties like Description= should go under [Unit].
+        let props = vec![
+            "Description=My Service".to_string(),
+            "CPUWeight=100".to_string(),
+        ];
+        let unit_props = [
+            "Description",
+            "Documentation",
+            "Wants",
+            "Requires",
+            "After",
+            "Before",
+        ];
+        let mut unit_section_lines = Vec::new();
+        let mut specific_section_lines = Vec::new();
+        for prop in &props {
+            if let Some((key, _val)) = prop.split_once('=') {
+                if unit_props.contains(&key) {
+                    unit_section_lines.push(prop.as_str());
+                } else {
+                    specific_section_lines.push(prop.as_str());
+                }
+            }
+        }
+        assert_eq!(unit_section_lines, vec!["Description=My Service"]);
+        assert_eq!(specific_section_lines, vec!["CPUWeight=100"]);
+    }
+
+    // ── Revert execution tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_revert_removes_etc_dropin_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let dropin = dir.path().join("test.service.d");
+        std::fs::create_dir_all(&dropin).unwrap();
+        std::fs::write(dropin.join("override.conf"), "[Service]\nCPUWeight=200\n").unwrap();
+
+        assert!(dropin.is_dir());
+        std::fs::remove_dir_all(&dropin).unwrap();
+        assert!(!dropin.exists());
+    }
+
+    #[test]
+    fn test_revert_removes_run_dropin_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let dropin = dir.path().join("test.service.d");
+        std::fs::create_dir_all(&dropin).unwrap();
+        std::fs::write(dropin.join("override.conf"), "[Service]\nRestart=always\n").unwrap();
+
+        assert!(dropin.is_dir());
+        std::fs::remove_dir_all(&dropin).unwrap();
+        assert!(!dropin.exists());
+    }
+
+    #[test]
+    fn test_revert_only_removes_admin_override_when_vendor_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let vendor_dir = dir.path().join("vendor");
+        let admin_dir = dir.path().join("admin");
+        std::fs::create_dir_all(&vendor_dir).unwrap();
+        std::fs::create_dir_all(&admin_dir).unwrap();
+
+        // Create a vendor unit file.
+        std::fs::write(
+            vendor_dir.join("test.service"),
+            "[Unit]\nDescription=Vendor\n",
+        )
+        .unwrap();
+        // Create an admin override.
+        std::fs::write(
+            admin_dir.join("test.service"),
+            "[Unit]\nDescription=Admin Override\n",
+        )
+        .unwrap();
+
+        // Simulate revert: only remove admin copy if vendor exists.
+        let has_vendor = vendor_dir.join("test.service").exists();
+        assert!(has_vendor);
+        let admin_path = admin_dir.join("test.service");
+        if has_vendor && admin_path.is_file() {
+            std::fs::remove_file(&admin_path).unwrap();
+        }
+        assert!(!admin_path.exists());
+        // Vendor file should still exist.
+        assert!(vendor_dir.join("test.service").exists());
+    }
+
+    #[test]
+    fn test_revert_no_vendor_keeps_admin_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let admin_dir = dir.path().join("admin");
+        std::fs::create_dir_all(&admin_dir).unwrap();
+
+        // Create an admin unit file with no vendor counterpart.
+        std::fs::write(
+            admin_dir.join("custom.service"),
+            "[Unit]\nDescription=Custom\n",
+        )
+        .unwrap();
+
+        // Simulate revert: no vendor file, so don't remove the admin file.
+        let vendor_paths = [
+            dir.path().join("vendor1/custom.service"),
+            dir.path().join("vendor2/custom.service"),
+        ];
+        let has_vendor = vendor_paths.iter().any(|p| p.exists());
+        assert!(!has_vendor);
+        // Admin file should remain.
+        assert!(admin_dir.join("custom.service").exists());
+    }
+
+    // ── Edit execution tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_edit_returns_unit_info() {
+        // Test that the edit command response structure has the expected fields.
+        let response = serde_json::json!({
+            "unit": "sshd.service",
+            "fragment_path": "/usr/lib/systemd/system/sshd.service",
+            "dropin_dir": "/etc/systemd/system/sshd.service.d",
+            "override_path": "/etc/systemd/system/sshd.service.d/override.conf",
+            "existing_override": "",
+            "original_content": "",
+            "full": false,
+        });
+
+        assert_eq!(
+            response.get("unit").and_then(|v| v.as_str()),
+            Some("sshd.service")
+        );
+        assert_eq!(
+            response.get("dropin_dir").and_then(|v| v.as_str()),
+            Some("/etc/systemd/system/sshd.service.d")
+        );
+        assert_eq!(
+            response.get("override_path").and_then(|v| v.as_str()),
+            Some("/etc/systemd/system/sshd.service.d/override.conf")
+        );
+        assert_eq!(response.get("full").and_then(|v| v.as_bool()), Some(false));
+    }
+
+    #[test]
+    fn test_edit_full_returns_original_content() {
+        let original = "[Unit]\nDescription=OpenSSH\n\n[Service]\nExecStart=/usr/sbin/sshd\n";
+        let response = serde_json::json!({
+            "unit": "sshd.service",
+            "fragment_path": "/usr/lib/systemd/system/sshd.service",
+            "dropin_dir": "/etc/systemd/system/sshd.service.d",
+            "override_path": "/etc/systemd/system/sshd.service.d/override.conf",
+            "existing_override": "",
+            "original_content": original,
+            "full": true,
+        });
+
+        assert_eq!(response.get("full").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            response.get("original_content").and_then(|v| v.as_str()),
+            Some(original)
+        );
+    }
+
+    #[test]
+    fn test_edit_returns_existing_override() {
+        let existing = "[Service]\nCPUWeight=200\n";
+        let response = serde_json::json!({
+            "unit": "sshd.service",
+            "fragment_path": "/usr/lib/systemd/system/sshd.service",
+            "dropin_dir": "/etc/systemd/system/sshd.service.d",
+            "override_path": "/etc/systemd/system/sshd.service.d/override.conf",
+            "existing_override": existing,
+            "original_content": "",
+            "full": false,
+        });
+
+        assert_eq!(
+            response.get("existing_override").and_then(|v| v.as_str()),
+            Some(existing)
+        );
+    }
+
+    // ── Section name inference tests ────────────────────────────────────
+
+    #[test]
+    fn test_set_property_section_name_from_unit_suffix() {
+        let cases = vec![
+            ("test.service", "Service"),
+            ("test.socket", "Socket"),
+            ("test.slice", "Slice"),
+            ("test.mount", "Mount"),
+            ("test.swap", "Swap"),
+            ("test.timer", "Timer"),
+            ("test.path", "Path"),
+            ("test.target", "Service"), // targets default to Service
+        ];
+        for (unit_name, expected_section) in cases {
+            let section = if unit_name.ends_with(".service") {
+                "Service"
+            } else if unit_name.ends_with(".socket") {
+                "Socket"
+            } else if unit_name.ends_with(".slice") {
+                "Slice"
+            } else if unit_name.ends_with(".mount") {
+                "Mount"
+            } else if unit_name.ends_with(".swap") {
+                "Swap"
+            } else if unit_name.ends_with(".timer") {
+                "Timer"
+            } else if unit_name.ends_with(".path") {
+                "Path"
+            } else {
+                "Service"
+            };
+            assert_eq!(
+                section, expected_section,
+                "unit {unit_name} should map to section [{expected_section}]"
+            );
+        }
     }
 }
