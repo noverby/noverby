@@ -19,7 +19,12 @@
 
 mod config;
 mod dns;
+mod dnssec;
+mod dnstls;
+mod edns;
 mod hosts;
+mod llmnr;
+mod mdns;
 mod routing;
 
 use std::fs;

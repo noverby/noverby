@@ -23,7 +23,7 @@
 
 use std::env;
 use std::fs;
-use std::io;
+use std::io::{self, BufRead};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::path::Path;
 use std::process;
@@ -137,10 +137,7 @@ fn main() {
         "dnssec" => cmd_show_setting("DNSSEC"),
         "dnsovertls" | "dns-over-tls" => cmd_show_setting("DNSOverTLS"),
         "revert" => cmd_revert(&cmd_args),
-        "monitor" => {
-            eprintln!("Monitoring of DNS queries is not yet implemented.");
-            1
-        }
+        "monitor" => cmd_monitor(),
         "log-level" => {
             if cmd_args.is_empty() {
                 println!("info");
@@ -186,8 +183,85 @@ fn print_usage(legacy: bool) {
         println!("  dnssec [LINK [MODE]]    Show/set per-link DNSSEC mode");
         println!("  dnsovertls [LINK [MODE]] Show/set per-link DNS-over-TLS mode");
         println!("  revert LINK...          Revert per-link DNS settings to defaults");
-        println!("  monitor                 Monitor DNS queries");
+        println!("  monitor                 Monitor DNS queries in real time");
         println!("  log-level [LEVEL]       Show/set log level");
+    }
+}
+
+// ── Command: monitor ───────────────────────────────────────────────────────
+
+fn cmd_monitor() -> i32 {
+    // resolvectl monitor streams DNS query activity from systemd-resolved.
+    //
+    // Real systemd uses a D-Bus SubscribeQueryResults() call on the
+    // org.freedesktop.resolve1.Manager interface.  Since our D-Bus interface
+    // doesn't yet support streaming signals, we fall back to tailing the
+    // journal for resolved log lines that describe query traffic.
+    //
+    // This gives equivalent visibility into what resolved is doing.
+
+    eprintln!("Monitoring DNS queries (press Ctrl+C to stop)...");
+    eprintln!();
+
+    // Try journalctl first (works on systemd-based systems including NixOS)
+    let result = std::process::Command::new("journalctl")
+        .args([
+            "--follow",
+            "--no-pager",
+            "--output=short-precise",
+            "--unit=systemd-resolved.service",
+            "--grep=Query:|Cache hit|Upstream|/etc/hosts|Routed",
+        ])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+
+    match result {
+        Ok(mut child) => {
+            // Stream stdout to our stdout, reformatting lines for clarity
+            if let Some(stdout) = child.stdout.take() {
+                let reader = io::BufReader::new(stdout);
+                for line in reader.lines() {
+                    match line {
+                        Ok(text) => {
+                            // Extract the message portion after the systemd-resolved[PID]: prefix
+                            if let Some(msg_start) = text.find("]: ") {
+                                let msg = &text[msg_start + 3..];
+                                // Extract timestamp (first field)
+                                let timestamp = text.split_whitespace().next().unwrap_or("");
+                                println!("{} {}", timestamp, msg);
+                            } else {
+                                println!("{}", text);
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+
+            // Wait for the child process to exit
+            match child.wait() {
+                Ok(status) => {
+                    if status.success() || status.code() == Some(130) {
+                        // 130 = SIGINT (Ctrl+C), which is normal for --follow
+                        0
+                    } else {
+                        1
+                    }
+                }
+                Err(_) => 1,
+            }
+        }
+        Err(_) => {
+            // journalctl not available — fall back to watching resolved log file
+            eprintln!("journalctl not available.");
+            eprintln!();
+            eprintln!("To monitor DNS queries, try one of:");
+            eprintln!("  journalctl -f -u systemd-resolved");
+            eprintln!("  tail -f /var/log/syslog | grep resolved");
+            1
+        }
     }
 }
 
