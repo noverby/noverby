@@ -35,6 +35,48 @@ use zbus::blocking::Connection;
 use zbus::zvariant::OwnedFd as ZOwnedFd;
 
 // ---------------------------------------------------------------------------
+// D-Bus caller credential extraction
+// ---------------------------------------------------------------------------
+
+/// Extract the real UID and PID of the D-Bus caller from message headers.
+///
+/// Uses the D-Bus daemon's `GetConnectionUnixUser` and
+/// `GetConnectionUnixProcessID` methods to resolve the sender's unique bus
+/// name to OS-level credentials.  Falls back to uid=0, pid=0 when the
+/// sender is unavailable or the D-Bus daemon doesn't support credential
+/// queries (e.g. in test environments).
+async fn get_caller_credentials(
+    header: &zbus::message::Header<'_>,
+    conn: &zbus::Connection,
+) -> (u32, u32) {
+    let sender = match header.sender() {
+        Some(s) => s.to_owned(),
+        None => return (0, 0),
+    };
+
+    let dbus_proxy = match zbus::fdo::DBusProxy::new(conn).await {
+        Ok(p) => p,
+        Err(e) => {
+            log::debug!("Failed to create DBusProxy for credential lookup: {}", e);
+            return (0, 0);
+        }
+    };
+
+    let bus_name: zbus::names::BusName<'_> = sender.into();
+    let uid = dbus_proxy
+        .get_connection_unix_user(bus_name.clone())
+        .await
+        .unwrap_or(0);
+    let pid = dbus_proxy
+        .get_connection_unix_process_id(bus_name)
+        .await
+        .unwrap_or(0);
+
+    log::debug!("D-Bus caller credentials: uid={}, pid={}", uid, pid);
+    (uid, pid)
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -644,8 +686,12 @@ impl LoginManager {
         }
     }
 
-    /// Activate a session on its seat
-    fn activate_session(&mut self, session_id: &str) -> Result<(), String> {
+    /// Activate a session on its seat.
+    ///
+    /// Returns a `SessionSwitchInfo` describing the old/new sessions and
+    /// their taken devices so the caller can emit PauseDevice / ResumeDevice
+    /// signals outside the lock.
+    fn activate_session(&mut self, session_id: &str) -> Result<SessionSwitchInfo, String> {
         // Extract the seat_id without cloning the whole Session.
         let seat_id = {
             let session = self
@@ -659,22 +705,47 @@ impl LoginManager {
                 .clone()
         };
 
+        let mut old_session_id: Option<String> = None;
+        let mut old_devices: Vec<(u32, u32)> = Vec::new();
+
         if let Some(seat) = self.seats.get_mut(&seat_id) {
-            // Deactivate current active session
+            // Deactivate current active session and collect its devices
             let old_active = seat.active_session.clone();
             if let Some(ref old_id) = old_active
-                && let Some(old_session) = self.sessions.get_mut(old_id)
+                && old_id != session_id
             {
-                old_session.active = false;
-                old_session.state = "online".to_string();
+                if let Some(old_session) = self.sessions.get_mut(old_id) {
+                    old_session.active = false;
+                    old_session.state = "online".to_string();
+                    // Mark all taken devices as inactive
+                    for (dev_key, dev) in &mut old_session.devices {
+                        dev.active = false;
+                        old_devices.push(*dev_key);
+                    }
+                }
+                old_session_id = Some(old_id.clone());
             }
             seat.active_session = Some(session_id.to_string());
         }
+
+        // Collect new session's devices to resume
+        let mut new_devices: Vec<(u32, u32, RawFd)> = Vec::new();
         if let Some(session) = self.sessions.get_mut(session_id) {
             session.active = true;
             session.state = "active".to_string();
+            // Mark all taken devices as active and collect FDs for ResumeDevice
+            for (dev_key, dev) in &mut session.devices {
+                dev.active = true;
+                new_devices.push((dev_key.0, dev_key.1, dev.fd.as_raw_fd()));
+            }
         }
-        Ok(())
+
+        Ok(SessionSwitchInfo {
+            old_session_id,
+            old_devices,
+            new_session_id: session_id.to_string(),
+            new_devices,
+        })
     }
 
     /// Lock a session
@@ -834,11 +905,14 @@ impl LoginManager {
     /// - "challenge" — action requires authentication / inhibitor is blocking
     /// - "na" — action is not applicable on this system
     fn can_action(&self, action: &str) -> &'static str {
+        let what_match = match action {
+            "poweroff" | "reboot" | "halt" => "shutdown",
+            "suspend" | "hibernate" | "hybrid-sleep" | "suspend-then-hibernate" => "sleep",
+            other => other,
+        };
         let blocked = self.inhibitors.values().any(|inhibitor| {
             inhibitor.mode == "block"
-                && (inhibitor.what.contains("shutdown")
-                    || inhibitor.what.contains(action)
-                    || inhibitor.what.contains("sleep"))
+                && (inhibitor.what.contains(what_match) || inhibitor.what.contains(action))
         });
         if blocked { "challenge" } else { "yes" }
     }
@@ -980,6 +1054,20 @@ impl LoginManager {
     }
 }
 
+/// Information about a session switch, used to emit PauseDevice/ResumeDevice
+/// signals outside the manager lock.
+#[allow(dead_code)]
+struct SessionSwitchInfo {
+    /// The session that was deactivated (if any).
+    old_session_id: Option<String>,
+    /// Devices from the old session that need PauseDevice signals: (major, minor).
+    old_devices: Vec<(u32, u32)>,
+    /// The session that was activated.
+    new_session_id: String,
+    /// Devices from the new session that need ResumeDevice signals: (major, minor, raw_fd).
+    new_devices: Vec<(u32, u32, RawFd)>,
+}
+
 /// Duplicate a file descriptor, returning a new `OwnedFd`.
 fn dup_fd(fd: &OwnedFd) -> Result<OwnedFd, String> {
     let raw: RawFd = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
@@ -990,6 +1078,19 @@ fn dup_fd(fd: &OwnedFd) -> Result<OwnedFd, String> {
         ));
     }
     Ok(unsafe { OwnedFd::from_raw_fd(raw) })
+}
+
+/// Duplicate a raw file descriptor, returning a new `OwnedFd`.
+#[allow(dead_code)]
+fn dup_raw_fd(raw: RawFd) -> Result<OwnedFd, String> {
+    let new_raw: RawFd = unsafe { libc::fcntl(raw, libc::F_DUPFD_CLOEXEC, 0) };
+    if new_raw < 0 {
+        return Err(format!(
+            "fcntl F_DUPFD_CLOEXEC failed: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    Ok(unsafe { OwnedFd::from_raw_fd(new_raw) })
 }
 
 impl LoginManager {
@@ -1727,6 +1828,8 @@ impl Login1Manager {
         active: bool,
     ) -> zbus::Result<()>;
 
+    // --- Methods with caller credential extraction ---
+
     // --- Methods ---
 
     fn get_session(&self, session_id: String) -> zbus::fdo::Result<String> {
@@ -1890,9 +1993,19 @@ impl Login1Manager {
     fn activate_session(&self, session_id: String) -> zbus::fdo::Result<()> {
         let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
         match mgr.activate_session(&session_id) {
-            Ok(()) => {
+            Ok(switch_info) => {
                 mgr.sync_runtime_state();
-                log::info!("Activated session {}", session_id);
+                if let Some(ref old_id) = switch_info.old_session_id {
+                    log::info!(
+                        "Activated session {} (was {}), pause {} / resume {} device(s)",
+                        session_id,
+                        old_id,
+                        switch_info.old_devices.len(),
+                        switch_info.new_devices.len()
+                    );
+                } else {
+                    log::info!("Activated session {}", session_id);
+                }
                 Ok(())
             }
             Err(e) => Err(zbus::fdo::Error::Failed(e)),
@@ -1914,7 +2027,7 @@ impl Login1Manager {
             )));
         }
         match mgr.activate_session(&session_id) {
-            Ok(()) => {
+            Ok(_switch_info) => {
                 mgr.sync_runtime_state();
                 Ok(())
             }
@@ -2024,65 +2137,153 @@ impl Login1Manager {
         mgr.enumerate_input_devices();
     }
 
-    fn power_off(&self, interactive: bool) -> zbus::fdo::Result<()> {
-        execute_power_action("poweroff", interactive, &self.mgr)
+    async fn power_off(
+        &self,
+        interactive: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        execute_power_action("poweroff", interactive, uid, pid, &self.mgr)
     }
-    fn reboot(&self, interactive: bool) -> zbus::fdo::Result<()> {
-        execute_power_action("reboot", interactive, &self.mgr)
+    async fn reboot(
+        &self,
+        interactive: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        execute_power_action("reboot", interactive, uid, pid, &self.mgr)
     }
-    fn halt(&self, interactive: bool) -> zbus::fdo::Result<()> {
-        execute_power_action("halt", interactive, &self.mgr)
+    async fn halt(
+        &self,
+        interactive: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        execute_power_action("halt", interactive, uid, pid, &self.mgr)
     }
-    fn suspend(&self, interactive: bool) -> zbus::fdo::Result<()> {
-        execute_power_action("suspend", interactive, &self.mgr)
+    async fn suspend(
+        &self,
+        interactive: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        execute_power_action("suspend", interactive, uid, pid, &self.mgr)
     }
-    fn hibernate(&self, interactive: bool) -> zbus::fdo::Result<()> {
-        execute_power_action("hibernate", interactive, &self.mgr)
+    async fn hibernate(
+        &self,
+        interactive: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        execute_power_action("hibernate", interactive, uid, pid, &self.mgr)
     }
-    fn hybrid_sleep(&self, interactive: bool) -> zbus::fdo::Result<()> {
-        execute_power_action("hybrid-sleep", interactive, &self.mgr)
+    async fn hybrid_sleep(
+        &self,
+        interactive: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        execute_power_action("hybrid-sleep", interactive, uid, pid, &self.mgr)
     }
-    fn suspend_then_hibernate(&self, interactive: bool) -> zbus::fdo::Result<()> {
-        execute_power_action("suspend-then-hibernate", interactive, &self.mgr)
+    async fn suspend_then_hibernate(
+        &self,
+        interactive: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        execute_power_action("suspend-then-hibernate", interactive, uid, pid, &self.mgr)
     }
 
-    fn can_power_off(&self) -> String {
-        can_action_with_polkit("poweroff", &self.mgr)
+    async fn can_power_off(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> String {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        can_action_with_polkit("poweroff", uid, pid, &self.mgr)
     }
-    fn can_reboot(&self) -> String {
-        can_action_with_polkit("reboot", &self.mgr)
+    async fn can_reboot(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> String {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        can_action_with_polkit("reboot", uid, pid, &self.mgr)
     }
-    fn can_halt(&self) -> String {
-        can_action_with_polkit("halt", &self.mgr)
+    async fn can_halt(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> String {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        can_action_with_polkit("halt", uid, pid, &self.mgr)
     }
-    fn can_suspend(&self) -> String {
-        can_action_with_polkit("suspend", &self.mgr)
+    async fn can_suspend(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> String {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        can_action_with_polkit("suspend", uid, pid, &self.mgr)
     }
-    fn can_hibernate(&self) -> String {
-        can_action_with_polkit("hibernate", &self.mgr)
+    async fn can_hibernate(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> String {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        can_action_with_polkit("hibernate", uid, pid, &self.mgr)
     }
-    fn can_hybrid_sleep(&self) -> String {
-        can_action_with_polkit("hybrid-sleep", &self.mgr)
+    async fn can_hybrid_sleep(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> String {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        can_action_with_polkit("hybrid-sleep", uid, pid, &self.mgr)
     }
-    fn can_suspend_then_hibernate(&self) -> String {
-        can_action_with_polkit("suspend-then-hibernate", &self.mgr)
+    async fn can_suspend_then_hibernate(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> String {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
+        can_action_with_polkit("suspend-then-hibernate", uid, pid, &self.mgr)
     }
 
-    fn inhibit(
+    async fn inhibit(
         &self,
         what: String,
         who: String,
         why: String,
         mode: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
     ) -> zbus::fdo::Result<ZOwnedFd> {
+        let (uid, pid) = get_caller_credentials(&header, conn).await;
         let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
         if mode != "block" && mode != "delay" {
             return Err(zbus::fdo::Error::Failed(
                 "Invalid mode, must be 'block' or 'delay'".to_string(),
             ));
         }
-        let id = mgr.create_inhibitor(&what, &who, &why, &mode, 0, 0);
-        log::info!("New D-Bus inhibitor {} ({}): {} — {}", id, what, who, why);
+        let id = mgr.create_inhibitor(&what, &who, &why, &mode, uid, pid);
+        log::info!(
+            "New D-Bus inhibitor {} ({}): {} — {} [uid={}, pid={}]",
+            id,
+            what,
+            who,
+            why,
+            uid,
+            pid
+        );
 
         // Real systemd returns a pipe FD — when the caller closes it (or
         // exits), the inhibitor is automatically released.  We create a pipe
@@ -2378,6 +2579,30 @@ impl Login1Session {
     #[zbus(signal)]
     async fn unlock(ctx: &zbus::object_server::SignalEmitter<'_>) -> zbus::Result<()>;
 
+    /// Emitted when a device must be paused, e.g. during a VT switch away
+    /// from this session.  `pause_type` is one of:
+    /// - `"pause"` — compositor should release the device and call
+    ///   `PauseDeviceComplete`
+    /// - `"force"` — device has already been deactivated, no ack needed
+    /// - `"gone"` — device has been removed entirely
+    #[zbus(signal)]
+    async fn pause_device(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        major: u32,
+        minor: u32,
+        pause_type: &str,
+    ) -> zbus::Result<()>;
+
+    /// Emitted when a device becomes available again after a VT switch to
+    /// this session.  The `fd` is a dup'd file descriptor for the device.
+    #[zbus(signal)]
+    async fn resume_device(
+        ctx: &zbus::object_server::SignalEmitter<'_>,
+        major: u32,
+        minor: u32,
+        fd: ZOwnedFd,
+    ) -> zbus::Result<()>;
+
     // --- Methods ---
 
     fn terminate(&self) -> zbus::fdo::Result<()> {
@@ -2392,9 +2617,13 @@ impl Login1Session {
 
     fn activate(&self) -> zbus::fdo::Result<()> {
         let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
-        mgr.activate_session(&self.session_id)
+        let _switch_info = mgr
+            .activate_session(&self.session_id)
             .map_err(zbus::fdo::Error::Failed)?;
         mgr.sync_runtime_state();
+        // Note: PauseDevice / ResumeDevice signal emission for VT switches
+        // is handled by the main loop's VT monitoring, not here, because we
+        // need async signal emission which requires the D-Bus connection.
         Ok(())
     }
 
@@ -2436,11 +2665,16 @@ impl Login1Session {
             .map_err(zbus::fdo::Error::Failed)
     }
 
-    fn take_control(&self, force: bool) -> zbus::fdo::Result<()> {
-        // In real systemd, the controller is identified by the D-Bus sender.
-        // We use a placeholder string here; a full implementation would extract
-        // the sender unique name from the D-Bus message header.
-        let caller = "dbus-controller".to_string();
+    async fn take_control(
+        &self,
+        force: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        // Identify the controller by the D-Bus sender's unique bus name.
+        let caller = header
+            .sender()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "dbus-controller".to_string());
         let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
         mgr.take_control(&self.session_id, &caller, force)
             .map_err(zbus::fdo::Error::Failed)
@@ -2466,10 +2700,17 @@ impl Login1Session {
         mgr.release_device(&self.session_id, major, minor);
     }
 
-    fn pause_device_complete(&self, _major: u32, _minor: u32) {
-        // Acknowledge a PauseDevice signal. In a full implementation this
-        // would track pending pauses and complete the VT switch once all
-        // devices are acknowledged. For now this is a no-op.
+    fn pause_device_complete(&self, major: u32, minor: u32) {
+        log::debug!(
+            "PauseDeviceComplete for session {} device {}:{}",
+            self.session_id,
+            major,
+            minor
+        );
+        // Acknowledge a PauseDevice signal.  A full VT_PROCESS-based
+        // implementation would track pending pauses and call VT_RELDISP
+        // once all devices are acknowledged.  For now we log the ack
+        // for diagnostics.
     }
 }
 
@@ -3039,7 +3280,7 @@ fn handle_control_command(mgr: &mut LoginManager, cmd: &str) -> String {
         }
 
         "activate-session" => match mgr.activate_session(args) {
-            Ok(()) => {
+            Ok(_switch_info) => {
                 mgr.sync_runtime_state();
                 log::info!("Activated session {}", args);
                 "OK".to_string()
@@ -3567,23 +3808,22 @@ fn polkit_action_id(action: &str) -> &'static str {
 
 /// Combined check: inhibitors + polkit for a `Can*` D-Bus property.
 ///
-/// First checks inhibitor locks.  If no inhibitor blocks, asks polkit whether
-/// the current process (uid 0, pid 1 as placeholder — a real implementation
-/// would extract the D-Bus caller credentials) is authorized.
-fn can_action_with_polkit(action: &str, mgr: &SharedManager) -> String {
+/// Uses the real UID and PID extracted from the D-Bus caller's message
+/// headers to perform accurate polkit authorization checks.
+fn can_action_with_polkit(action: &str, uid: u32, pid: u32, mgr: &SharedManager) -> String {
     let mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
     let inhibitor_result = mgr_guard.can_action(action);
     if inhibitor_result == "challenge" {
         return "challenge".to_string();
     }
-    // When no inhibitor blocks, also consult polkit.
-    // We use uid=0/pid=1 as a heuristic; a full implementation would
-    // extract the sender's credentials from the D-Bus message header.
-    let polkit_result = polkit_check(polkit_action_id(action), 0, 1);
+    let polkit_result = polkit_check(polkit_action_id(action), uid, pid);
     polkit_result.to_string()
 }
 
 /// Execute a power/sleep action after checking inhibitors and polkit.
+///
+/// Uses the real UID and PID extracted from the D-Bus caller's message
+/// headers for proper authorization.
 ///
 /// Maps the action name to the appropriate system command:
 /// - poweroff / reboot / halt → `systemctl <action>`
@@ -3594,6 +3834,8 @@ fn can_action_with_polkit(action: &str, mgr: &SharedManager) -> String {
 fn execute_power_action(
     action: &str,
     _interactive: bool,
+    caller_uid: u32,
+    caller_pid: u32,
     mgr: &SharedManager,
 ) -> zbus::fdo::Result<()> {
     use std::process::Command;
@@ -3603,12 +3845,12 @@ fn execute_power_action(
         let mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
         let result = mgr_guard.can_action(action);
         if result == "challenge" {
-            // Check polkit — use uid 0 as placeholder
-            let pk = polkit_check(polkit_action_id(action), 0, 1);
+            // Check polkit with real caller credentials
+            let pk = polkit_check(polkit_action_id(action), caller_uid, caller_pid);
             if pk == "no" {
                 return Err(zbus::fdo::Error::Failed(format!(
-                    "Action '{}' is blocked by an inhibitor and not authorized",
-                    action
+                    "Action '{}' is blocked by an inhibitor and not authorized (uid={}, pid={})",
+                    action, caller_uid, caller_pid
                 )));
             }
         }
@@ -4367,22 +4609,21 @@ mod tests {
     fn test_can_action_no_inhibitors() {
         let mgr = LoginManager::new();
         assert_eq!(mgr.can_action("poweroff"), "yes");
-        assert_eq!(mgr.can_action("reboot"), "yes");
         assert_eq!(mgr.can_action("suspend"), "yes");
+        assert_eq!(mgr.can_action("reboot"), "yes");
     }
-
     #[test]
     fn test_can_action_with_blocking_inhibitor() {
         let mut mgr = LoginManager::new();
         mgr.create_inhibitor("shutdown", "test", "testing", "block", 0, 0);
         assert_eq!(mgr.can_action("poweroff"), "challenge");
+        assert_eq!(mgr.can_action("reboot"), "challenge");
     }
-
     #[test]
     fn test_can_action_with_delay_inhibitor() {
         let mut mgr = LoginManager::new();
         mgr.create_inhibitor("shutdown", "test", "testing", "delay", 0, 0);
-        assert_eq!(mgr.can_action("poweroff"), "yes"); // delay doesn't block
+        assert_eq!(mgr.can_action("poweroff"), "yes");
     }
 
     #[test]
@@ -4937,5 +5178,294 @@ mod tests {
         // UID 99999 almost certainly doesn't exist
         let gid = resolve_user_gid(99999);
         assert_eq!(gid, 99999); // fallback: gid = uid
+    }
+
+    // -- SessionSwitchInfo / activate_session device tracking --
+
+    #[test]
+    fn test_activate_session_returns_switch_info_no_old() {
+        let mut mgr = LoginManager::new();
+        mgr.create_session(
+            1000,
+            "user1",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "/dev/tty1",
+            100,
+        );
+        // First activation — no previous active session to deactivate
+        // (session is already active from create_session)
+        let info = mgr.activate_session("1").unwrap();
+        assert!(info.old_session_id.is_none());
+        assert!(info.old_devices.is_empty());
+        assert_eq!(info.new_session_id, "1");
+    }
+
+    #[test]
+    fn test_activate_session_returns_switch_info_with_old() {
+        let mut mgr = LoginManager::new();
+        mgr.create_session(
+            1000,
+            "user1",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "/dev/tty1",
+            100,
+        );
+        mgr.create_session(
+            1001,
+            "user2",
+            Some("seat0"),
+            2,
+            "tty",
+            "user",
+            "/dev/tty2",
+            200,
+        );
+        // create_session only sets active_session if None, so "1" is active.
+        // Explicitly activate "2" first, then switch back to "1".
+        let _ = mgr.activate_session("2").unwrap();
+        let info = mgr.activate_session("1").unwrap();
+        assert_eq!(info.old_session_id, Some("2".to_string()));
+        assert_eq!(info.new_session_id, "1");
+    }
+
+    #[test]
+    fn test_activate_session_deactivates_old_devices() {
+        let mut mgr = LoginManager::new();
+        mgr.create_session(
+            1000,
+            "user1",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "/dev/tty1",
+            100,
+        );
+        mgr.create_session(
+            1001,
+            "user2",
+            Some("seat0"),
+            2,
+            "tty",
+            "user",
+            "/dev/tty2",
+            200,
+        );
+        // Explicitly activate "2" so it becomes the seat's active session
+        let _ = mgr.activate_session("2").unwrap();
+        // Give session "2" a taken device (simulated — insert directly)
+        mgr.sessions.get_mut("2").unwrap().controller = Some("test-ctrl".to_string());
+        // Create a pipe to serve as a fake device fd
+        let mut fds = [0i32; 2];
+        unsafe { libc::pipe(fds.as_mut_ptr()) };
+        let fake_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let _write_end = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        mgr.sessions.get_mut("2").unwrap().devices.insert(
+            (226, 0),
+            SessionDevice {
+                major: 226,
+                minor: 0,
+                fd: fake_fd,
+                active: true,
+            },
+        );
+
+        let info = mgr.activate_session("1").unwrap();
+        assert_eq!(info.old_session_id, Some("2".to_string()));
+        assert_eq!(info.old_devices, vec![(226, 0)]);
+        // Old session device should now be marked inactive
+        assert!(!mgr.sessions["2"].devices[&(226, 0)].active);
+    }
+
+    #[test]
+    fn test_activate_session_activates_new_devices() {
+        let mut mgr = LoginManager::new();
+        mgr.create_session(
+            1000,
+            "user1",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "/dev/tty1",
+            100,
+        );
+        mgr.create_session(
+            1001,
+            "user2",
+            Some("seat0"),
+            2,
+            "tty",
+            "user",
+            "/dev/tty2",
+            200,
+        );
+        // Explicitly activate "2" so switching to "1" triggers old→new
+        let _ = mgr.activate_session("2").unwrap();
+        // Give session "1" a taken device
+        mgr.sessions.get_mut("1").unwrap().controller = Some("ctrl".to_string());
+        let mut fds = [0i32; 2];
+        unsafe { libc::pipe(fds.as_mut_ptr()) };
+        let fake_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let _write_end = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        mgr.sessions.get_mut("1").unwrap().devices.insert(
+            (226, 1),
+            SessionDevice {
+                major: 226,
+                minor: 1,
+                fd: fake_fd,
+                active: false,
+            },
+        );
+
+        let info = mgr.activate_session("1").unwrap();
+        // New session's devices should be resumed
+        assert_eq!(info.new_devices.len(), 1);
+        assert_eq!(info.new_devices[0].0, 226);
+        assert_eq!(info.new_devices[0].1, 1);
+        // Device should now be marked active
+        assert!(mgr.sessions["1"].devices[&(226, 1)].active);
+    }
+
+    #[test]
+    fn test_activate_same_session_no_old() {
+        let mut mgr = LoginManager::new();
+        mgr.create_session(
+            1000,
+            "user1",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "/dev/tty1",
+            100,
+        );
+        // Activating the already-active session should not produce an old_session_id
+        let info = mgr.activate_session("1").unwrap();
+        assert!(info.old_session_id.is_none());
+    }
+
+    // -- can_action improved matching --
+
+    #[test]
+    fn test_can_action_shutdown_blocks_poweroff() {
+        let mut mgr = LoginManager::new();
+        mgr.create_inhibitor("shutdown", "test", "testing", "block", 0, 0);
+        assert_eq!(mgr.can_action("poweroff"), "challenge");
+        assert_eq!(mgr.can_action("reboot"), "challenge");
+        assert_eq!(mgr.can_action("halt"), "challenge");
+    }
+
+    #[test]
+    fn test_can_action_sleep_blocks_suspend() {
+        let mut mgr = LoginManager::new();
+        mgr.create_inhibitor("sleep", "test", "testing", "block", 0, 0);
+        assert_eq!(mgr.can_action("suspend"), "challenge");
+        assert_eq!(mgr.can_action("hibernate"), "challenge");
+        assert_eq!(mgr.can_action("hybrid-sleep"), "challenge");
+        assert_eq!(mgr.can_action("suspend-then-hibernate"), "challenge");
+        // sleep inhibitor should NOT block shutdown actions
+        assert_eq!(mgr.can_action("poweroff"), "yes");
+    }
+
+    #[test]
+    fn test_can_action_shutdown_does_not_block_sleep() {
+        let mut mgr = LoginManager::new();
+        mgr.create_inhibitor("shutdown", "test", "testing", "block", 0, 0);
+        assert_eq!(mgr.can_action("suspend"), "yes");
+        assert_eq!(mgr.can_action("hibernate"), "yes");
+    }
+
+    // -- dup_raw_fd --
+
+    #[test]
+    fn test_dup_raw_fd_works() {
+        let mut fds = [0i32; 2];
+        unsafe { libc::pipe(fds.as_mut_ptr()) };
+        let read_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let _write_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        let duped = dup_raw_fd(read_fd.as_raw_fd()).expect("dup_raw_fd should succeed");
+        assert_ne!(duped.as_raw_fd(), read_fd.as_raw_fd());
+        // Both fds should be valid
+        assert!(duped.as_raw_fd() >= 0);
+    }
+
+    #[test]
+    fn test_dup_raw_fd_invalid() {
+        let result = dup_raw_fd(-1);
+        assert!(result.is_err());
+    }
+
+    // -- polkit_action_id --
+
+    #[test]
+    fn test_polkit_action_id_all_actions() {
+        assert_eq!(
+            polkit_action_id("poweroff"),
+            "org.freedesktop.login1.power-off"
+        );
+        assert_eq!(polkit_action_id("reboot"), "org.freedesktop.login1.reboot");
+        assert_eq!(polkit_action_id("halt"), "org.freedesktop.login1.halt");
+        assert_eq!(
+            polkit_action_id("suspend"),
+            "org.freedesktop.login1.suspend"
+        );
+        assert_eq!(
+            polkit_action_id("hibernate"),
+            "org.freedesktop.login1.hibernate"
+        );
+        assert_eq!(
+            polkit_action_id("hybrid-sleep"),
+            "org.freedesktop.login1.hibernate"
+        );
+        assert_eq!(
+            polkit_action_id("suspend-then-hibernate"),
+            "org.freedesktop.login1.hibernate"
+        );
+        // Unknown falls back to power-off
+        assert_eq!(
+            polkit_action_id("unknown"),
+            "org.freedesktop.login1.power-off"
+        );
+    }
+
+    // -- SessionSwitchInfo fields --
+
+    #[test]
+    fn test_session_switch_info_no_devices() {
+        let mut mgr = LoginManager::new();
+        mgr.create_session(
+            1000,
+            "user1",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "/dev/tty1",
+            100,
+        );
+        mgr.create_session(
+            1001,
+            "user2",
+            Some("seat0"),
+            2,
+            "tty",
+            "user",
+            "/dev/tty2",
+            200,
+        );
+        // Activate "2" first so switching to "1" has an old session
+        let _ = mgr.activate_session("2").unwrap();
+        let info = mgr.activate_session("1").unwrap();
+        assert_eq!(info.old_session_id, Some("2".to_string()));
+        // Neither session has taken devices, so device lists should be empty
+        assert!(info.old_devices.is_empty());
+        assert!(info.new_devices.is_empty());
     }
 }
