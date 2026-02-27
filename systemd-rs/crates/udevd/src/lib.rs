@@ -16,7 +16,10 @@
 //! - Device database persistence in `/run/udev/data/`
 //! - Device symlink management in `/dev/`
 //! - Control socket for udevadm communication
-//! - Event queue with settle support
+//! - D-Bus interface (`org.freedesktop.udev1.Manager`) with Ping, Reload, Exit,
+//!   StartExecQueue, StopExecQueue, SetLogLevel, SetChildrenMax methods and
+//!   ResolveNames, Children, ChildrenMax, ExecQueuePaused properties
+//! - Event queue with settle support and exec queue pause/resume
 //! - sd_notify protocol (READY, WATCHDOG, STATUS, STOPPING)
 //! - Signal handling (SIGTERM, SIGINT, SIGHUP, SIGCHLD)
 //! - `net_setup_link` builtin for `.link` file-based network interface naming
@@ -39,6 +42,7 @@ use std::time::{Duration, Instant, SystemTime};
 use libsystemd::hwdb::{self, Hwdb, HwdbBuiltinArgs};
 use libsystemd::link_config;
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+use zbus::blocking::Connection;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,6 +54,9 @@ pub const DB_DIR: &str = "/run/udev/data";
 pub const DB_LOCK_FILE: &str = "/run/udev/data/.lock";
 pub const TAGS_DIR: &str = "/run/udev/tags";
 pub const QUEUE_FILE: &str = "/run/udev/queue";
+
+const DBUS_NAME: &str = "org.freedesktop.udev1";
+const DBUS_PATH: &str = "/org/freedesktop/udev1";
 
 /// Directories to search for udev rules, in priority order.
 /// Files in earlier directories shadow files with the same basename in later ones.
@@ -73,6 +80,7 @@ const EVENT_TIMEOUT_SECS: u64 = 180;
 static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
 static RELOAD_FLAG: AtomicBool = AtomicBool::new(false);
 static CHILDREN_FLAG: AtomicBool = AtomicBool::new(false);
+static EXEC_QUEUE_PAUSED: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn handle_sigterm(_: libc::c_int) {
     SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
@@ -4202,6 +4210,145 @@ struct EventQueue {
     busy_devpaths: HashSet<String>,
 }
 
+// ---------------------------------------------------------------------------
+// D-Bus interface: org.freedesktop.udev1.Manager
+// ---------------------------------------------------------------------------
+
+/// Shared daemon state accessible from the D-Bus interface.
+struct DaemonState {
+    event_queue: Arc<Mutex<EventQueue>>,
+    resolve_names: String,
+    children_max: usize,
+}
+
+/// D-Bus interface struct for `org.freedesktop.udev1.Manager`.
+///
+/// This mirrors the real systemd-udevd D-Bus interface that tools like
+/// `udevadm control` can use to manage the running daemon.
+struct UDev1Manager {
+    state: Arc<Mutex<DaemonState>>,
+}
+
+#[zbus::interface(name = "org.freedesktop.udev1.Manager")]
+impl UDev1Manager {
+    // --- Properties ---
+
+    /// The name resolution mode (`early`, `late`, or `never`).
+    #[zbus(property, name = "ResolveNames")]
+    fn resolve_names(&self) -> String {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.resolve_names.clone()
+    }
+
+    /// Number of currently active worker threads.
+    #[zbus(property, name = "Children")]
+    fn children(&self) -> u32 {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let q = st.event_queue.lock().unwrap_or_else(|e| e.into_inner());
+        q.active_workers as u32
+    }
+
+    /// Maximum number of concurrent worker threads.
+    #[zbus(property, name = "ChildrenMax")]
+    fn children_max(&self) -> u32 {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.children_max as u32
+    }
+
+    /// Whether the event execution queue is currently paused.
+    #[zbus(property, name = "ExecQueuePaused")]
+    fn exec_queue_paused(&self) -> bool {
+        EXEC_QUEUE_PAUSED.load(Ordering::SeqCst)
+    }
+
+    // --- Methods ---
+
+    /// Ping the daemon (no-op, returns successfully if the daemon is alive).
+    fn ping(&self) -> zbus::fdo::Result<()> {
+        log::debug!("D-Bus: Ping");
+        Ok(())
+    }
+
+    /// Reload rules and hardware databases.
+    fn reload(&self) -> zbus::fdo::Result<()> {
+        log::info!("D-Bus: Reload requested");
+        RELOAD_FLAG.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Exit the daemon cleanly.
+    fn exit(&self) -> zbus::fdo::Result<()> {
+        log::info!("D-Bus: Exit requested");
+        SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Resume event queue processing.
+    fn start_exec_queue(&self) -> zbus::fdo::Result<()> {
+        log::info!("D-Bus: StartExecQueue");
+        EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Pause event queue processing. Events continue to be queued but
+    /// workers are not dispatched until `StartExecQueue` is called.
+    fn stop_exec_queue(&self) -> zbus::fdo::Result<()> {
+        log::info!("D-Bus: StopExecQueue");
+        EXEC_QUEUE_PAUSED.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Set the daemon log level. Accepted values: `emerg`, `alert`, `crit`,
+    /// `err`, `warning`, `notice`, `info`, `debug`.
+    fn set_log_level(&self, level: &str) -> zbus::fdo::Result<()> {
+        log::info!("D-Bus: SetLogLevel({})", level);
+        let filter = match level {
+            "emerg" | "alert" | "crit" => log::LevelFilter::Error,
+            "err" | "error" => log::LevelFilter::Error,
+            "warning" | "warn" => log::LevelFilter::Warn,
+            "notice" | "info" => log::LevelFilter::Info,
+            "debug" => log::LevelFilter::Debug,
+            _ => {
+                return Err(zbus::fdo::Error::InvalidArgs(format!(
+                    "Unknown log level: {}",
+                    level
+                )));
+            }
+        };
+        log::set_max_level(filter);
+        Ok(())
+    }
+
+    /// Set the maximum number of concurrent event workers.
+    fn set_children_max(&self, max: u32) -> zbus::fdo::Result<()> {
+        log::info!("D-Bus: SetChildrenMax({})", max);
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.children_max = max as usize;
+        Ok(())
+    }
+}
+
+/// Wrapper around the D-Bus connection for the udevd daemon.
+struct DbusServer {
+    #[allow(dead_code)]
+    conn: Connection,
+}
+
+impl DbusServer {
+    /// Create a new D-Bus server, register the `org.freedesktop.udev1` bus
+    /// name, and serve the `Manager` interface at `/org/freedesktop/udev1`.
+    fn new(state: Arc<Mutex<DaemonState>>) -> Result<Self, Box<dyn std::error::Error>> {
+        let manager_iface = UDev1Manager { state };
+
+        let conn = zbus::blocking::connection::Builder::system()?
+            .name(DBUS_NAME)?
+            .serve_at(DBUS_PATH, manager_iface)?
+            .build()?;
+
+        Ok(DbusServer { conn })
+    }
+}
+
 impl EventQueue {
     fn new() -> Self {
         Self {
@@ -4273,8 +4420,14 @@ fn handle_control_command(
             // Stub
             "OK\n".to_string()
         }
-        "START_EXEC_QUEUE" => "OK\n".to_string(),
-        "STOP_EXEC_QUEUE" => "OK\n".to_string(),
+        "START_EXEC_QUEUE" => {
+            EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
+            "OK\n".to_string()
+        }
+        "STOP_EXEC_QUEUE" => {
+            EXEC_QUEUE_PAUSED.store(true, Ordering::SeqCst);
+            "OK\n".to_string()
+        }
         _ => format!("ERR unknown command: {}\n", command),
     }
 }
@@ -4758,15 +4911,47 @@ pub fn run_daemon() {
     let exec_delay = args.exec_delay;
     let _event_timeout = args.event_timeout;
 
+    // Shared daemon state for D-Bus interface
+    let daemon_state = Arc::new(Mutex::new(DaemonState {
+        event_queue: event_queue.clone(),
+        resolve_names: args.resolve_names.clone(),
+        children_max,
+    }));
+
+    // Initialize D-Bus server (org.freedesktop.udev1)
+    let _dbus_server = match DbusServer::new(daemon_state.clone()) {
+        Ok(server) => {
+            log::info!("D-Bus interface registered on {}", DBUS_NAME);
+            Some(server)
+        }
+        Err(e) => {
+            log::warn!(
+                "Failed to initialize D-Bus interface: {}. Running without D-Bus.",
+                e
+            );
+            None
+        }
+    };
+
     sd_notify(&format!(
-        "READY=1\nSTATUS=Processing events (rules={})",
-        rules.rules.len()
+        "READY=1\nSTATUS=Processing events (rules={}, D-Bus: {})",
+        rules.rules.len(),
+        if _dbus_server.is_some() {
+            "active"
+        } else {
+            "unavailable"
+        }
     ));
 
     log::info!(
-        "systemd-udevd ready ({} rules loaded, max_workers={})",
+        "systemd-udevd ready ({} rules loaded, max_workers={}, D-Bus: {})",
         rules.rules.len(),
-        children_max
+        children_max,
+        if _dbus_server.is_some() {
+            "active"
+        } else {
+            "unavailable"
+        }
     );
 
     let mut rules_reload_needed = false;
@@ -4856,9 +5041,17 @@ pub fn run_daemon() {
         // Events for the same devpath are serialized (only one worker
         // at a time per device) to avoid races on the device database,
         // symlinks, and sysfs attributes — matching real systemd behaviour.
-        {
+        //
+        // When the exec queue is paused (via D-Bus StopExecQueue or
+        // control socket STOP_EXEC_QUEUE), events are still queued but
+        // no new workers are dispatched.
+        if !EXEC_QUEUE_PAUSED.load(Ordering::SeqCst) {
+            let current_children_max = {
+                let st = daemon_state.lock().unwrap_or_else(|e| e.into_inner());
+                st.children_max
+            };
             let mut q = event_queue.lock().unwrap_or_else(|e| e.into_inner());
-            let max_new = children_max.saturating_sub(q.active_workers);
+            let max_new = current_children_max.saturating_sub(q.active_workers);
             let mut dispatched = 0usize;
             let mut idx = 0usize;
 
@@ -4924,7 +5117,7 @@ pub fn run_daemon() {
             // Update queue file outside the dispatch loop (lock already held
             // only for the non-worker path — workers update it themselves).
             update_queue_file(&q);
-        }
+        } // end if !EXEC_QUEUE_PAUSED
 
         // Handle control socket connections
         if let Some(ref l) = listener {
@@ -8347,5 +8540,195 @@ mod tests {
     fn test_rules_reload_debounce_constant() {
         // Verify the debounce constant matches real systemd's 3-second debounce
         assert_eq!(RULES_RELOAD_DEBOUNCE, Duration::from_secs(3));
+    }
+
+    // -----------------------------------------------------------------------
+    // D-Bus interface unit tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_dbus_constants() {
+        assert_eq!(DBUS_NAME, "org.freedesktop.udev1");
+        assert_eq!(DBUS_PATH, "/org/freedesktop/udev1");
+    }
+
+    #[test]
+    fn test_daemon_state_new() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let state = DaemonState {
+            event_queue: eq,
+            resolve_names: "early".to_string(),
+            children_max: 8,
+        };
+        assert_eq!(state.resolve_names, "early");
+        assert_eq!(state.children_max, 8);
+    }
+
+    #[test]
+    fn test_daemon_state_children_max_update() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let state = Arc::new(Mutex::new(DaemonState {
+            event_queue: eq,
+            resolve_names: "late".to_string(),
+            children_max: 4,
+        }));
+        {
+            let mut st = state.lock().unwrap();
+            st.children_max = 16;
+        }
+        let st = state.lock().unwrap();
+        assert_eq!(st.children_max, 16);
+    }
+
+    #[test]
+    fn test_daemon_state_resolve_names_values() {
+        for name in &["early", "late", "never"] {
+            let eq = Arc::new(Mutex::new(EventQueue::new()));
+            let state = DaemonState {
+                event_queue: eq,
+                resolve_names: name.to_string(),
+                children_max: MAX_WORKERS,
+            };
+            assert_eq!(state.resolve_names, *name);
+        }
+    }
+
+    #[test]
+    fn test_exec_queue_paused_default_false() {
+        // Reset to known state
+        EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
+        assert!(!EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_exec_queue_paused_toggle() {
+        EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
+        assert!(!EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+
+        EXEC_QUEUE_PAUSED.store(true, Ordering::SeqCst);
+        assert!(EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+
+        EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
+        assert!(!EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_control_command_start_exec_queue() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let mut reload = false;
+        EXEC_QUEUE_PAUSED.store(true, Ordering::SeqCst);
+
+        let resp = handle_control_command("START_EXEC_QUEUE", &eq, &mut reload);
+        assert_eq!(resp, "OK\n");
+        assert!(!EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_control_command_stop_exec_queue() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let mut reload = false;
+        EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
+
+        let resp = handle_control_command("STOP_EXEC_QUEUE", &eq, &mut reload);
+        assert_eq!(resp, "OK\n");
+        assert!(EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+
+        // Clean up
+        EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn test_control_command_start_stop_roundtrip() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let mut reload = false;
+
+        EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
+        assert!(!EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+
+        handle_control_command("STOP_EXEC_QUEUE", &eq, &mut reload);
+        assert!(EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+
+        handle_control_command("START_EXEC_QUEUE", &eq, &mut reload);
+        assert!(!EXEC_QUEUE_PAUSED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_daemon_state_event_queue_shared() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let state = DaemonState {
+            event_queue: eq.clone(),
+            resolve_names: "early".to_string(),
+            children_max: 8,
+        };
+        // Modify via state's event_queue ref
+        {
+            let mut q = state.event_queue.lock().unwrap();
+            q.events_processed = 42;
+        }
+        // Should be visible via the original Arc
+        let q = eq.lock().unwrap();
+        assert_eq!(q.events_processed, 42);
+    }
+
+    #[test]
+    fn test_daemon_state_event_queue_active_workers() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let state = DaemonState {
+            event_queue: eq.clone(),
+            resolve_names: "early".to_string(),
+            children_max: 8,
+        };
+        {
+            let mut q = state.event_queue.lock().unwrap();
+            q.active_workers = 3;
+        }
+        let q = eq.lock().unwrap();
+        assert_eq!(q.active_workers, 3);
+    }
+
+    #[test]
+    fn test_daemon_state_children_max_zero() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let state = DaemonState {
+            event_queue: eq,
+            resolve_names: "early".to_string(),
+            children_max: 0,
+        };
+        // children_max of 0 means no workers dispatched
+        assert_eq!(state.children_max, 0);
+    }
+
+    #[test]
+    fn test_daemon_state_children_max_large() {
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        let state = DaemonState {
+            event_queue: eq,
+            resolve_names: "early".to_string(),
+            children_max: 1024,
+        };
+        assert_eq!(state.children_max, 1024);
+    }
+
+    #[test]
+    fn test_exec_queue_paused_does_not_affect_queueing() {
+        // Events should still be added to the queue even when paused
+        let eq = Arc::new(Mutex::new(EventQueue::new()));
+        EXEC_QUEUE_PAUSED.store(true, Ordering::SeqCst);
+
+        {
+            let mut q = eq.lock().unwrap();
+            q.queue.push_back(make_test_event(
+                "add",
+                "/devices/virtual/block/sda",
+                "block",
+            ));
+        }
+
+        let q = eq.lock().unwrap();
+        assert_eq!(q.queue.len(), 1);
+        assert!(!q.is_empty()); // queue has items
+
+        // Clean up
+        EXEC_QUEUE_PAUSED.store(false, Ordering::SeqCst);
     }
 }
