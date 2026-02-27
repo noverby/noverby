@@ -185,6 +185,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                     invocation_id: None,
                     watchdog_usec_override: None,
                     stored_fds: Vec::new(),
+                    notify_access_override: None,
                     notifications: None,
                     notifications_path: None,
                     stdout: None,

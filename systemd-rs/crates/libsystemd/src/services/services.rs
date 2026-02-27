@@ -4,9 +4,30 @@ use super::start_service::start_service;
 use crate::lock_ext::{MutexExt, RwLockExt};
 use crate::runtime_info::{PidEntry, RuntimeInfo};
 use crate::units::{
-    ActivationSource, Commandline, CommandlinePrefix, KillMode, ServiceConfig, ServiceType,
-    Timeout, UnitId, UnitStatus,
+    ActivationSource, Commandline, CommandlinePrefix, KillMode, NotifyKind, ServiceConfig,
+    ServiceType, Timeout, UnitId, UnitStatus,
 };
+
+/// Returns the effective `NotifyAccess` given an optional runtime override and
+/// the unit file's configured value.
+///
+/// This is the core logic extracted for easy testing without needing a full
+/// `ServiceConfig`.
+pub fn effective_notify_access_from_parts(
+    runtime_override: Option<NotifyKind>,
+    config_value: NotifyKind,
+) -> NotifyKind {
+    runtime_override.unwrap_or(config_value)
+}
+
+/// Returns the effective `NotifyAccess` for a service, considering any runtime
+/// override sent via `NOTIFYACCESS=` in an sd_notify message.
+///
+/// The runtime override (stored in `Service::notify_access_override`) takes
+/// precedence over the unit file setting (`ServiceConfig::notifyaccess`).
+pub fn effective_notify_access(srvc: &Service, conf: &ServiceConfig) -> NotifyKind {
+    effective_notify_access_from_parts(srvc.notify_access_override, conf.notifyaccess)
+}
 
 use std::fmt::Write as _;
 use std::io::Write;
@@ -88,6 +109,11 @@ pub struct Service {
     /// File descriptors received via FDSTORE=1 sd_notify messages with SCM_RIGHTS.
     /// Stored as (fd_name, raw_fd) pairs, respecting FileDescriptorStoreMax=.
     pub stored_fds: Vec<(String, RawFd)>,
+    /// NOTIFYACCESS= runtime override from sd_notify.
+    /// When a service sends `NOTIFYACCESS=<value>` via sd_notify, this field
+    /// is set to override the unit file's `NotifyAccess=` setting at runtime.
+    /// Use [`effective_notify_access()`] to get the effective value.
+    pub notify_access_override: Option<NotifyKind>,
 
     pub notifications: Option<UnixDatagram>,
     pub notifications_path: Option<std::path::PathBuf>,

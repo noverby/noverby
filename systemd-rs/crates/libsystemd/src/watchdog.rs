@@ -118,7 +118,8 @@ fn check_watchdog_timeouts(run_info: &ArcMutRuntimeInfo) {
             // watchdog.  During startup the service has not had a chance to
             // ping yet.
             if !srvc.signaled_ready
-                && srvc_specific.conf.notifyaccess != crate::units::NotifyKind::None
+                && crate::services::effective_notify_access(srvc, &srvc_specific.conf)
+                    != crate::units::NotifyKind::None
             {
                 // For notify-type services, wait until READY=1 before
                 // enforcing the watchdog.
@@ -293,6 +294,7 @@ mod tests {
             invocation_id: None,
             watchdog_usec_override: None,
             stored_fds: Vec::new(),
+            notify_access_override: None,
             notifications: None,
             notifications_path: None,
             stdout: None,
