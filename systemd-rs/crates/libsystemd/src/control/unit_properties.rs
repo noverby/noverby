@@ -63,6 +63,17 @@ pub fn collect_properties(unit: &Unit) -> BTreeMap<String, String> {
 
             // MainPID — read from state if available
             let state = svc.state.read_poisoned();
+
+            // Override NotifyAccess with the effective value (runtime
+            // NOTIFYACCESS= override takes precedence over unit file).
+            insert(
+                &mut props,
+                "NotifyAccess",
+                &format_notify_access(crate::services::effective_notify_access(
+                    &state.srvc,
+                    &svc.conf,
+                )),
+            );
             if let Some(pid) = state.srvc.pid {
                 insert(&mut props, "MainPID", &pid.to_string());
             } else {

@@ -10,7 +10,7 @@ use crate::platform::reset_event_fd;
 use crate::runtime_info::ArcMutRuntimeInfo;
 use crate::services::Service;
 use crate::services::StdIo;
-use crate::units::{Specific, UnitId};
+use crate::units::{NotifyKind, Specific, UnitId};
 use std::os::unix::io::BorrowedFd;
 use std::os::unix::io::RawFd;
 use std::{collections::HashMap, os::unix::io::AsRawFd};
@@ -732,14 +732,31 @@ pub fn handle_notification_message(msg: &str, srvc: &mut Service, name: &str) {
             trace!("Service {name}: sd_notify {msg} (fd store handled in stream receiver)");
         }
         "NOTIFYACCESS" => {
-            // NOTIFYACCESS= from sd_notify is a request by the service to
-            // change its own NotifyAccess= setting at runtime. Currently
-            // logged; the unit's notifyaccess is set at parse time.
+            // NOTIFYACCESS= from sd_notify allows a service to change its
+            // own NotifyAccess= setting at runtime (see sd_notify(3)).
             if split.len() > 1 {
-                trace!(
-                    "Service {name}: NOTIFYACCESS={} (runtime change not yet supported)",
-                    split[1]
-                );
+                let value = split[1].trim();
+                match value.to_lowercase().as_str() {
+                    "none" => {
+                        srvc.notify_access_override = Some(NotifyKind::None);
+                        trace!("Service {name}: NOTIFYACCESS=none (runtime override applied)");
+                    }
+                    "main" => {
+                        srvc.notify_access_override = Some(NotifyKind::Main);
+                        trace!("Service {name}: NOTIFYACCESS=main (runtime override applied)");
+                    }
+                    "exec" => {
+                        srvc.notify_access_override = Some(NotifyKind::Exec);
+                        trace!("Service {name}: NOTIFYACCESS=exec (runtime override applied)");
+                    }
+                    "all" => {
+                        srvc.notify_access_override = Some(NotifyKind::All);
+                        trace!("Service {name}: NOTIFYACCESS=all (runtime override applied)");
+                    }
+                    other => {
+                        trace!("Service {name}: ignoring unknown NOTIFYACCESS={other}");
+                    }
+                }
             }
         }
         _ => {
@@ -782,6 +799,7 @@ mod tests {
             invocation_id: None,
             watchdog_usec_override: None,
             stored_fds: Vec::new(),
+            notify_access_override: None,
             notifications: None,
             notifications_path: None,
             stdout: None,
@@ -1327,13 +1345,144 @@ mod tests {
     // ── NOTIFYACCESS= tests ──────────────────────────────────────────
 
     #[test]
-    fn test_notifyaccess_does_not_crash() {
+    fn test_notifyaccess_all() {
+        let mut srvc = make_test_service();
+        assert_eq!(srvc.notify_access_override, None);
+        handle_notification_message("NOTIFYACCESS=all", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::All));
+    }
+
+    #[test]
+    fn test_notifyaccess_main() {
+        let mut srvc = make_test_service();
+        handle_notification_message("NOTIFYACCESS=main", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::Main));
+    }
+
+    #[test]
+    fn test_notifyaccess_exec() {
+        let mut srvc = make_test_service();
+        handle_notification_message("NOTIFYACCESS=exec", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::Exec));
+    }
+
+    #[test]
+    fn test_notifyaccess_none() {
+        let mut srvc = make_test_service();
+        handle_notification_message("NOTIFYACCESS=none", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::None));
+    }
+
+    #[test]
+    fn test_notifyaccess_case_insensitive() {
+        let mut srvc = make_test_service();
+        handle_notification_message("NOTIFYACCESS=All", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::All));
+
+        handle_notification_message("NOTIFYACCESS=MAIN", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::Main));
+
+        handle_notification_message("NOTIFYACCESS=Exec", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::Exec));
+
+        handle_notification_message("NOTIFYACCESS=NONE", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::None));
+    }
+
+    #[test]
+    fn test_notifyaccess_unknown_value_ignored() {
+        let mut srvc = make_test_service();
+        handle_notification_message("NOTIFYACCESS=bogus", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, None);
+    }
+
+    #[test]
+    fn test_notifyaccess_empty_value_ignored() {
+        let mut srvc = make_test_service();
+        handle_notification_message("NOTIFYACCESS=", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, None);
+    }
+
+    #[test]
+    fn test_notifyaccess_no_value_ignored() {
+        let mut srvc = make_test_service();
+        handle_notification_message("NOTIFYACCESS", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, None);
+    }
+
+    #[test]
+    fn test_notifyaccess_whitespace_trimmed() {
+        let mut srvc = make_test_service();
+        handle_notification_message("NOTIFYACCESS= all ", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::All));
+    }
+
+    #[test]
+    fn test_notifyaccess_sequential_overrides() {
         let mut srvc = make_test_service();
         handle_notification_message("NOTIFYACCESS=all", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::All));
+
         handle_notification_message("NOTIFYACCESS=main", &mut srvc, "test.service");
-        handle_notification_message("NOTIFYACCESS=exec", &mut srvc, "test.service");
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::Main));
+
         handle_notification_message("NOTIFYACCESS=none", &mut srvc, "test.service");
-        // NOTIFYACCESS is accepted but not yet acted upon — just ensure no panic
+        assert_eq!(srvc.notify_access_override, Some(NotifyKind::None));
+    }
+
+    #[test]
+    fn test_effective_notify_access_logic() {
+        use crate::services::effective_notify_access_from_parts;
+
+        // No override — config value is returned
+        assert_eq!(
+            effective_notify_access_from_parts(None, NotifyKind::Main),
+            NotifyKind::Main,
+        );
+        assert_eq!(
+            effective_notify_access_from_parts(None, NotifyKind::All),
+            NotifyKind::All,
+        );
+
+        // Override takes precedence over config
+        assert_eq!(
+            effective_notify_access_from_parts(Some(NotifyKind::All), NotifyKind::Main),
+            NotifyKind::All,
+        );
+        assert_eq!(
+            effective_notify_access_from_parts(Some(NotifyKind::None), NotifyKind::All),
+            NotifyKind::None,
+        );
+        assert_eq!(
+            effective_notify_access_from_parts(Some(NotifyKind::Exec), NotifyKind::Main),
+            NotifyKind::Exec,
+        );
+    }
+
+    #[test]
+    fn test_notifyaccess_then_effective() {
+        use crate::services::effective_notify_access_from_parts;
+
+        let mut srvc = make_test_service();
+        // Initially no override
+        assert_eq!(
+            effective_notify_access_from_parts(srvc.notify_access_override, NotifyKind::Main),
+            NotifyKind::Main,
+        );
+
+        // After runtime override, override wins
+        handle_notification_message("NOTIFYACCESS=all", &mut srvc, "test.service");
+        assert_eq!(
+            effective_notify_access_from_parts(srvc.notify_access_override, NotifyKind::Main),
+            NotifyKind::All,
+        );
+
+        // Service can restrict its own access to none
+        handle_notification_message("NOTIFYACCESS=none", &mut srvc, "test.service");
+        assert_eq!(
+            effective_notify_access_from_parts(srvc.notify_access_override, NotifyKind::All),
+            NotifyKind::None,
+        );
     }
 
     // ── Buffer parsing with new fields ───────────────────────────────
