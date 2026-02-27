@@ -138,14 +138,14 @@ fn parse_swap_section(
     Ok(())
 }
 
-/// Parse a timeout value in seconds. Returns None for "infinity" or "0".
+/// Parse a timeout value in seconds using the full systemd timespan syntax.
+/// Returns None for "infinity" or "0".
 fn parse_timeout_sec(value: &str) -> Option<u64> {
     let trimmed = value.trim().to_lowercase();
     if trimmed == "infinity" || trimmed == "0" {
         return None;
     }
-    let numeric: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
-    numeric.parse::<u64>().ok()
+    crate::units::from_parsed_config::parse_timespan(value).map(|d| d.as_secs())
 }
 
 /// Convert a swap unit name back to the device/file path it represents.

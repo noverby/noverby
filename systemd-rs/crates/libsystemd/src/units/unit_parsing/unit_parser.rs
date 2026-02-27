@@ -15,9 +15,39 @@ pub type ParsedFile = HashMap<String, ParsedSection>;
 
 pub fn parse_file(content: &str) -> Result<ParsedFile, ParsingErrorReason> {
     let mut sections = HashMap::new();
-    let lines: Vec<&str> = content.split('\n').collect();
-    let lines: Vec<_> = lines.iter().map(|s| s.trim()).collect();
 
+    // Handle line continuation: lines ending with '\' are joined with the
+    // next line (the backslash and newline are removed, and leading
+    // whitespace on the continuation line is collapsed to a single space).
+    // This matches systemd's INI parser behavior per systemd.syntax(7).
+    let raw_lines: Vec<&str> = content.split('\n').collect();
+    let mut joined_lines: Vec<String> = Vec::with_capacity(raw_lines.len());
+    let mut accumulator = String::new();
+    for raw_line in &raw_lines {
+        let trimmed = raw_line.trim();
+        if let Some(prefix) = trimmed.strip_suffix('\\') {
+            // Continuation: append content before the backslash
+            if !accumulator.is_empty() {
+                accumulator.push(' ');
+            }
+            accumulator.push_str(prefix.trim_end());
+        } else {
+            // Final line (no trailing backslash)
+            if !accumulator.is_empty() {
+                accumulator.push(' ');
+                accumulator.push_str(trimmed);
+                joined_lines.push(std::mem::take(&mut accumulator));
+            } else {
+                joined_lines.push(trimmed.to_string());
+            }
+        }
+    }
+    // Flush any remaining accumulator (file ending with backslash)
+    if !accumulator.is_empty() {
+        joined_lines.push(accumulator);
+    }
+
+    let lines: Vec<&str> = joined_lines.iter().map(|s| s.as_str()).collect();
     let mut lines_left = &lines[..];
 
     // remove lines before the first section
@@ -4420,5 +4450,90 @@ mod tests {
         // First set values, then add more, then reset
         let s = exec_from_lines(&["CPUAffinity=0 1", "CPUAffinity=", "CPUAffinity=4 5 6"]);
         assert_eq!(s.cpu_affinity, vec!["4", "5", "6"]);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // Line continuation (backslash at end of line)
+    // ════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn line_continuation_basic() {
+        let content = "\
+[Unit]
+Description=A very long \\
+description value
+";
+        let parsed = parse_file(content).unwrap();
+        let section = parsed.get("[Unit]").unwrap();
+        let desc = &section.get("DESCRIPTION").unwrap()[0].1;
+        assert_eq!(desc, "A very long description value");
+    }
+
+    #[test]
+    fn line_continuation_multi_line() {
+        let content = "\
+[Unit]
+Description=first \\
+second \\
+third
+";
+        let parsed = parse_file(content).unwrap();
+        let section = parsed.get("[Unit]").unwrap();
+        let desc = &section.get("DESCRIPTION").unwrap()[0].1;
+        assert_eq!(desc, "first second third");
+    }
+
+    #[test]
+    fn line_continuation_exec_start() {
+        let content = "\
+[Service]
+ExecStart=/usr/bin/foo \\
+  --option1=value1 \\
+  --option2=value2
+";
+        let parsed = parse_file(content).unwrap();
+        let section = parsed.get("[Service]").unwrap();
+        let exec = &section.get("EXECSTART").unwrap()[0].1;
+        assert_eq!(exec, "/usr/bin/foo --option1=value1 --option2=value2");
+    }
+
+    #[test]
+    fn line_continuation_no_backslash_unchanged() {
+        let content = "\
+[Unit]
+Description=normal line
+";
+        let parsed = parse_file(content).unwrap();
+        let section = parsed.get("[Unit]").unwrap();
+        let desc = &section.get("DESCRIPTION").unwrap()[0].1;
+        assert_eq!(desc, "normal line");
+    }
+
+    #[test]
+    fn line_continuation_trailing_backslash_at_eof() {
+        // Edge case: file ends with a continuation backslash
+        let content = "\
+[Unit]
+Description=trailing \\";
+        let parsed = parse_file(content).unwrap();
+        let section = parsed.get("[Unit]").unwrap();
+        let desc = &section.get("DESCRIPTION").unwrap()[0].1;
+        assert_eq!(desc, "trailing");
+    }
+
+    #[test]
+    fn line_continuation_preserves_separate_keys() {
+        let content = "\
+[Unit]
+Description=hello \\
+world
+After=foo.service
+";
+        let parsed = parse_file(content).unwrap();
+        let section = parsed.get("[Unit]").unwrap();
+        let desc = &section.get("DESCRIPTION").unwrap()[0].1;
+        assert_eq!(desc, "hello world");
+        let after = &section.get("AFTER").unwrap()[0].1;
+        assert_eq!(after, "foo.service");
     }
 }

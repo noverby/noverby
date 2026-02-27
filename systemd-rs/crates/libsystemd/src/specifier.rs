@@ -967,6 +967,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_capital_w_variant_id() {
+        let c = ctx();
+        // VARIANT_ID is set to "" in for_test()
+        assert_eq!(resolve_specifiers("%W", "foo.service", "", &c), "");
+    }
+
     // --- %f specifier ---
 
     #[test]

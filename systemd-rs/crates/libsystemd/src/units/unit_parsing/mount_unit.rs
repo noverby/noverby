@@ -201,7 +201,7 @@ fn parse_mount_section(
     if let Some(values) = section.get("TIMEOUTSEC")
         && let Some((_line, value)) = values.last()
     {
-        mount.timeout_sec = parse_timeout_sec(value);
+        mount.timeout_sec = parse_mount_timeout_sec(value);
     }
     // Log any unrecognized keys at trace level
     let known_keys = [
@@ -239,16 +239,14 @@ fn parse_directory_mode(value: &str) -> u32 {
     u32::from_str_radix(trimmed, 8).unwrap_or(0o755)
 }
 
-/// Parse a timeout value in seconds. Returns None for "infinity" or "0".
-fn parse_timeout_sec(value: &str) -> Option<u64> {
+/// Parse a timeout value in seconds using the full systemd timespan syntax.
+/// Returns None for "infinity" or "0".
+fn parse_mount_timeout_sec(value: &str) -> Option<u64> {
     let trimmed = value.trim().to_lowercase();
     if trimmed == "infinity" || trimmed == "0" {
         return None;
     }
-    // Handle values with units suffix (s, min, h, etc.)
-    // For simplicity, parse as plain seconds first; support unit suffixes later.
-    let numeric: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
-    numeric.parse::<u64>().ok()
+    crate::units::from_parsed_config::parse_timespan(value).map(|d| d.as_secs())
 }
 
 /// Convert a mount unit name back to the filesystem path it represents.
@@ -468,12 +466,18 @@ WantedBy=local-fs.target
     }
 
     #[test]
-    fn test_parse_timeout_sec() {
-        assert_eq!(parse_timeout_sec("60"), Some(60));
-        assert_eq!(parse_timeout_sec("90"), Some(90));
-        assert_eq!(parse_timeout_sec("0"), None);
-        assert_eq!(parse_timeout_sec("infinity"), None);
-        assert_eq!(parse_timeout_sec("Infinity"), None);
+    fn test_parse_mount_timeout_sec() {
+        assert_eq!(parse_mount_timeout_sec("60"), Some(60));
+        assert_eq!(parse_mount_timeout_sec("90"), Some(90));
+        assert_eq!(parse_mount_timeout_sec("0"), None);
+        assert_eq!(parse_mount_timeout_sec("infinity"), None);
+        assert_eq!(parse_mount_timeout_sec("Infinity"), None);
+        // Full timespan syntax now supported
+        assert_eq!(parse_mount_timeout_sec("1min"), Some(60));
+        assert_eq!(parse_mount_timeout_sec("1min 30s"), Some(90));
+        assert_eq!(parse_mount_timeout_sec("2h"), Some(7200));
+        assert_eq!(parse_mount_timeout_sec("2hrs"), Some(7200));
+        assert_eq!(parse_mount_timeout_sec("500ms"), Some(0)); // sub-second rounds to 0
     }
 
     #[test]
