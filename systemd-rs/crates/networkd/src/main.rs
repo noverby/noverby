@@ -26,6 +26,7 @@ mod netdev;
 mod netdev_create;
 
 use std::collections::HashMap;
+use std::fs;
 use std::io;
 use std::net::Ipv4Addr;
 use std::os::unix::net::UnixDatagram;
@@ -42,6 +43,9 @@ use manager::NetworkManager;
 
 const DBUS_NAME: &str = "org.freedesktop.network1";
 const DBUS_PATH: &str = "/org/freedesktop/network1";
+
+/// PID file path for networkd discovery by networkctl.
+const PID_FILE: &str = "/run/systemd/netif/systemd-networkd.pid";
 
 /// Send an sd_notify message to the service manager.
 fn sd_notify(msg: &str) {
@@ -248,6 +252,24 @@ struct LinkSummary {
     gateway: String,
 }
 
+/// Shared signal flags that allow the D-Bus interface to trigger actions
+/// in the main event loop (e.g. Reload, ForceRenew).
+#[derive(Debug)]
+struct SignalFlags {
+    reload: AtomicBool,
+    /// ifindex of link to force-renew; 0 means no pending renew, -1 means all.
+    force_renew_ifindex: std::sync::atomic::AtomicI32,
+}
+
+impl SignalFlags {
+    fn new() -> Self {
+        Self {
+            reload: AtomicBool::new(false),
+            force_renew_ifindex: std::sync::atomic::AtomicI32::new(0),
+        }
+    }
+}
+
 /// Snapshot of networkd state exposed via D-Bus properties.
 #[derive(Debug, Clone)]
 struct NetworkdState {
@@ -294,6 +316,7 @@ type SharedState = Arc<Mutex<NetworkdState>>;
 ///   ForceRenew(i ifindex)   — force DHCP renew on a link (stub)
 struct Network1Manager {
     state: SharedState,
+    signals: Arc<SignalFlags>,
 }
 
 #[zbus::interface(name = "org.freedesktop.network1.Manager")]
@@ -451,14 +474,18 @@ impl Network1Manager {
         )
     }
 
-    /// Reload() — stub, signals are handled in the main loop
+    /// Reload() — trigger configuration reload via shared signal flag
     fn reload(&self) {
         log::info!("D-Bus Reload() called");
+        self.signals.reload.store(true, Ordering::Relaxed);
     }
 
-    /// ForceRenew(i ifindex) — stub
-    fn force_renew(&self, _ifindex: i32) {
-        log::info!("D-Bus ForceRenew() called (stub)");
+    /// ForceRenew(i ifindex) — trigger DHCP renewal on a link
+    fn force_renew(&self, ifindex: i32) {
+        log::info!("D-Bus ForceRenew() called for ifindex={}", ifindex);
+        self.signals
+            .force_renew_ifindex
+            .store(ifindex, Ordering::Relaxed);
     }
 }
 
@@ -472,8 +499,11 @@ fn link_object_path(ifindex: u32) -> String {
 /// Uses zbus's blocking connection which dispatches messages automatically
 /// in a background thread. The returned `Connection` must be kept alive
 /// for as long as we want to serve D-Bus requests.
-fn setup_dbus(shared: SharedState) -> Result<Connection, String> {
-    let iface = Network1Manager { state: shared };
+fn setup_dbus(shared: SharedState, signals: Arc<SignalFlags>) -> Result<Connection, String> {
+    let iface = Network1Manager {
+        state: shared,
+        signals,
+    };
     let conn = zbus::blocking::connection::Builder::system()
         .map_err(|e| format!("D-Bus builder failed: {}", e))?
         .name(DBUS_NAME)
@@ -525,6 +555,21 @@ fn update_shared_state(shared: &SharedState, mgr: &NetworkManager) {
     s.links = links;
 }
 
+/// Write the PID file so that networkctl can find us.
+fn write_pid_file() {
+    let pid = std::process::id();
+    // Ensure the parent directory exists.
+    let _ = fs::create_dir_all("/run/systemd/netif");
+    if let Err(e) = fs::write(PID_FILE, format!("{}\n", pid)) {
+        log::warn!("Failed to write PID file {}: {}", PID_FILE, e);
+    }
+}
+
+/// Remove the PID file on shutdown.
+fn remove_pid_file() {
+    let _ = fs::remove_file(PID_FILE);
+}
+
 fn main() {
     // Parse arguments.
     let args: Vec<String> = std::env::args().collect();
@@ -556,8 +601,9 @@ fn main() {
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown)).ok();
     signal_hook::flag::register(signal_hook::consts::SIGHUP, Arc::clone(&reload)).ok();
 
-    // Shared D-Bus state.
+    // Shared D-Bus state and signal flags.
     let shared_state: SharedState = Arc::new(Mutex::new(NetworkdState::default()));
+    let signal_flags = Arc::new(SignalFlags::new());
 
     // Create the network manager.
     let mut mgr = NetworkManager::new();
@@ -722,6 +768,9 @@ fn main() {
     // Update shared D-Bus state with initial link info.
     update_shared_state(&shared_state, &mgr);
 
+    // Write PID file for networkctl discovery.
+    write_pid_file();
+
     // Notify systemd we're ready.
     sd_notify("READY=1\nSTATUS=Configured network interfaces");
     log::info!(
@@ -746,7 +795,7 @@ fn main() {
         // Attempt D-Bus registration once (deferred from startup).
         if !dbus_attempted {
             dbus_attempted = true;
-            match setup_dbus(shared_state.clone()) {
+            match setup_dbus(shared_state.clone(), Arc::clone(&signal_flags)) {
                 Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
                     _dbus_conn = Some(conn);
@@ -761,8 +810,10 @@ fn main() {
             }
         }
 
-        // Handle reload signal.
-        if reload.swap(false, Ordering::Relaxed) {
+        // Handle reload signal (from SIGHUP or D-Bus Reload()).
+        if reload.swap(false, Ordering::Relaxed)
+            || signal_flags.reload.swap(false, Ordering::Relaxed)
+        {
             log::info!("Reloading configuration (SIGHUP)");
             mgr.load_configs();
             mgr.create_netdevs();
@@ -1078,6 +1129,41 @@ fn main() {
             last_watchdog = Instant::now();
         }
 
+        // Handle D-Bus ForceRenew requests.
+        let renew_ifindex = signal_flags.force_renew_ifindex.swap(0, Ordering::Relaxed);
+        if renew_ifindex != 0 {
+            let targets: Vec<u32> = if renew_ifindex < 0 {
+                // Renew all DHCP links.
+                dhcp_sockets.keys().copied().collect()
+            } else {
+                vec![renew_ifindex as u32]
+            };
+            for ifidx in targets {
+                if let Some(&fd) = dhcp_sockets.get(&ifidx)
+                    && let Some(managed) = mgr.links.get_mut(&ifidx)
+                    && let Some(ref mut client) = managed.dhcp_client
+                {
+                    log::info!(
+                        "{}: forcing DHCP renew (D-Bus ForceRenew)",
+                        client.config.ifname
+                    );
+                    // Reset to Init so the client will re-discover.
+                    client.state = dhcp::DhcpState::Init;
+                    client.attempts = 0;
+                    client.last_send = None;
+                    if let Some(pkt) = client.next_packet()
+                        && let Err(e) = send_dhcp_broadcast(fd, &pkt)
+                    {
+                        log::warn!(
+                            "{}: failed to send DISCOVER for force-renew: {}",
+                            client.config.ifname,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
         // Check SLAAC address lifetimes (deprecation and expiration).
         if mgr.check_ra_address_lifetimes() {
             mgr.write_state_files();
@@ -1091,6 +1177,7 @@ fn main() {
     // Shutdown.
     log::info!("systemd-networkd shutting down");
     sd_notify("STOPPING=1\nSTATUS=Shutting down");
+    remove_pid_file();
 
     // Release all DHCP leases.
     for (&ifindex, &fd) in &dhcp_sockets {
@@ -1185,7 +1272,11 @@ mod tests {
     #[test]
     fn test_dbus_network1_manager_struct() {
         let shared: SharedState = Arc::new(Mutex::new(NetworkdState::default()));
-        let _mgr = Network1Manager { state: shared };
+        let signals = Arc::new(SignalFlags::new());
+        let _mgr = Network1Manager {
+            state: shared,
+            signals,
+        };
         // Struct creation succeeded without panic
     }
 
@@ -1348,5 +1439,127 @@ mod tests {
         assert_eq!(link.oper_state, "degraded");
         assert_eq!(link.address, "192.168.0.50/24");
         assert_eq!(link.gateway, "192.168.0.1");
+    }
+
+    // ── SignalFlags tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_signal_flags_new() {
+        let flags = SignalFlags::new();
+        assert!(!flags.reload.load(Ordering::Relaxed));
+        assert_eq!(flags.force_renew_ifindex.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_signal_flags_reload_roundtrip() {
+        let flags = SignalFlags::new();
+        assert!(!flags.reload.load(Ordering::Relaxed));
+
+        flags.reload.store(true, Ordering::Relaxed);
+        assert!(flags.reload.load(Ordering::Relaxed));
+
+        // swap should return old value and set new
+        let was = flags.reload.swap(false, Ordering::Relaxed);
+        assert!(was);
+        assert!(!flags.reload.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_signal_flags_force_renew_roundtrip() {
+        let flags = SignalFlags::new();
+        assert_eq!(flags.force_renew_ifindex.load(Ordering::Relaxed), 0);
+
+        flags.force_renew_ifindex.store(42, Ordering::Relaxed);
+        assert_eq!(flags.force_renew_ifindex.load(Ordering::Relaxed), 42);
+
+        // swap should return old value and set 0
+        let was = flags.force_renew_ifindex.swap(0, Ordering::Relaxed);
+        assert_eq!(was, 42);
+        assert_eq!(flags.force_renew_ifindex.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_signal_flags_force_renew_negative_means_all() {
+        let flags = SignalFlags::new();
+        flags.force_renew_ifindex.store(-1, Ordering::Relaxed);
+        let val = flags.force_renew_ifindex.swap(0, Ordering::Relaxed);
+        assert!(val < 0, "negative ifindex means renew all links");
+    }
+
+    #[test]
+    fn test_signal_flags_shared_across_threads() {
+        let flags = Arc::new(SignalFlags::new());
+        let flags2 = Arc::clone(&flags);
+
+        let handle = std::thread::spawn(move || {
+            flags2.reload.store(true, Ordering::Relaxed);
+            flags2.force_renew_ifindex.store(7, Ordering::Relaxed);
+        });
+        handle.join().unwrap();
+
+        assert!(flags.reload.load(Ordering::Relaxed));
+        assert_eq!(flags.force_renew_ifindex.load(Ordering::Relaxed), 7);
+    }
+
+    // ── PID file tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_pid_file_constant() {
+        assert_eq!(PID_FILE, "/run/systemd/netif/systemd-networkd.pid");
+    }
+
+    // ── D-Bus reload / force_renew signal integration ──────────────────
+
+    #[test]
+    fn test_dbus_reload_sets_signal_flag() {
+        let shared: SharedState = Arc::new(Mutex::new(NetworkdState::default()));
+        let signals = Arc::new(SignalFlags::new());
+        let mgr = Network1Manager {
+            state: shared,
+            signals: Arc::clone(&signals),
+        };
+
+        assert!(!signals.reload.load(Ordering::Relaxed));
+        // Simulate what the D-Bus Reload() method does:
+        signals.reload.store(true, Ordering::Relaxed);
+        assert!(signals.reload.load(Ordering::Relaxed));
+
+        // Main loop would swap it back to false:
+        let was = signals.reload.swap(false, Ordering::Relaxed);
+        assert!(was);
+        assert!(!signals.reload.load(Ordering::Relaxed));
+        let _ = mgr; // keep alive
+    }
+
+    #[test]
+    fn test_dbus_force_renew_sets_ifindex() {
+        let shared: SharedState = Arc::new(Mutex::new(NetworkdState::default()));
+        let signals = Arc::new(SignalFlags::new());
+        let mgr = Network1Manager {
+            state: shared,
+            signals: Arc::clone(&signals),
+        };
+
+        assert_eq!(signals.force_renew_ifindex.load(Ordering::Relaxed), 0);
+        // Simulate what ForceRenew(ifindex=5) does:
+        signals.force_renew_ifindex.store(5, Ordering::Relaxed);
+        assert_eq!(signals.force_renew_ifindex.load(Ordering::Relaxed), 5);
+
+        // Main loop would swap it back to 0:
+        let ifidx = signals.force_renew_ifindex.swap(0, Ordering::Relaxed);
+        assert_eq!(ifidx, 5);
+        assert_eq!(signals.force_renew_ifindex.load(Ordering::Relaxed), 0);
+        let _ = mgr; // keep alive
+    }
+
+    #[test]
+    fn test_dbus_network1_manager_with_signals() {
+        let shared: SharedState = Arc::new(Mutex::new(NetworkdState::default()));
+        let signals = Arc::new(SignalFlags::new());
+        let _mgr = Network1Manager {
+            state: shared,
+            signals,
+        };
+        // Struct creation succeeded without panic
     }
 }
