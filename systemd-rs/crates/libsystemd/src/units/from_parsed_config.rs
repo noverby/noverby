@@ -551,11 +551,11 @@ pub fn parse_timespan(input: &str) -> Option<std::time::Duration> {
         }
 
         let multiplier_us: u64 = match unit.as_str() {
-            "" | "s" | "sec" | "second" | "seconds" => 1_000_000,
             "us" | "usec" => 1,
             "ms" | "msec" => 1_000,
+            "" | "s" | "sec" | "second" | "seconds" | "secs" => 1_000_000,
             "min" | "minute" | "minutes" | "m" => 60 * 1_000_000,
-            "h" | "hr" | "hour" | "hours" => 3600 * 1_000_000,
+            "h" | "hr" | "hrs" | "hour" | "hours" => 3600 * 1_000_000,
             "d" | "day" | "days" => 86400 * 1_000_000,
             "w" | "week" | "weeks" => 7 * 86400 * 1_000_000,
             "month" | "months" => 30 * 86400 * 1_000_000, // approximate

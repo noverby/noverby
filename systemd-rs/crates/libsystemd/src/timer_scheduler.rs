@@ -752,6 +752,9 @@ mod tests {
         assert_eq!(parse_timespan("500ms"), Some(Duration::from_millis(500)));
         assert_eq!(parse_timespan("100min"), Some(Duration::from_secs(6000)));
         assert_eq!(parse_timespan("2s"), Some(Duration::from_secs(2)));
+        assert_eq!(parse_timespan("2secs"), Some(Duration::from_secs(2)));
+        assert_eq!(parse_timespan("2hrs"), Some(Duration::from_secs(7200)));
+        assert_eq!(parse_timespan("1hr"), Some(Duration::from_secs(3600)));
         assert_eq!(parse_timespan(""), None);
         assert_eq!(parse_timespan("30"), Some(Duration::from_secs(30)));
     }
