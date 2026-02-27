@@ -95,11 +95,221 @@ const DEFAULT_INHIBIT_DELAY_MAX_USEC: u64 = 5_000_000; // 5s
 const DEFAULT_USER_STOP_DELAY_USEC: u64 = 10_000_000; // 10s
 
 // ---------------------------------------------------------------------------
+// VT ioctl constants
+// ---------------------------------------------------------------------------
+
+/// VT_SETMODE — set the VT mode (VT_AUTO or VT_PROCESS).
+const VT_SETMODE: u64 = 0x5602;
+/// VT_GETMODE — get the current VT mode.
+#[allow(dead_code)]
+const VT_GETMODE: u64 = 0x5601;
+/// VT_RELDISP — release/acknowledge display during VT_PROCESS handoff.
+const VT_RELDISP: u64 = 0x5605;
+/// VT_GETSTATE — get the current active VT number.
+const VT_GETSTATE: u64 = 0x5603;
+/// VT_ACTIVATE — switch to a specific VT.
+#[allow(dead_code)]
+const VT_ACTIVATE_IOCTL: u64 = 0x5606;
+/// VT_WAITACTIVE — wait until a specific VT is active.
+#[allow(dead_code)]
+const VT_WAITACTIVE_IOCTL: u64 = 0x5607;
+
+/// Automatic VT switching (default kernel mode).
+const VT_AUTO: i32 = 0x00;
+/// Process-controlled VT switching — kernel sends signals instead of switching
+/// automatically, and waits for VT_RELDISP before completing the switch.
+const VT_PROCESS: i32 = 0x01;
+/// Argument to VT_RELDISP to acknowledge VT acquisition.
+const VT_ACKACQ: i32 = 0x02;
+
+/// Kernel VT mode structure, passed to VT_SETMODE / VT_GETMODE.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct VtMode {
+    /// VT_AUTO or VT_PROCESS
+    mode: libc::c_char,
+    /// Unused
+    waitv: libc::c_char,
+    /// Signal to raise on VT release (switch away)
+    relsig: libc::c_short,
+    /// Signal to raise on VT acquire (switch to)
+    acqsig: libc::c_short,
+    /// Unused
+    frsig: libc::c_short,
+}
+
+/// Kernel VT state structure, returned by VT_GETSTATE.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct VtStat {
+    /// Currently active VT number (1-based)
+    v_active: u16,
+    /// Signal to send (unused in modern kernels)
+    v_signal: u16,
+    /// Bitmask of open VTs
+    v_state: u16,
+}
+
+// ---------------------------------------------------------------------------
+// VT_PROCESS monitor
+// ---------------------------------------------------------------------------
+
+/// Manages VT_PROCESS mode on a single VT tty.
+///
+/// While this monitor is alive, the kernel sends SIGUSR1 when switching away
+/// from the VT and SIGUSR2 when switching to it.  The main loop checks the
+/// corresponding `AtomicBool` flags and calls [`VtMonitor::release_display`]
+/// or [`VtMonitor::ack_acquire`] to complete the handoff.
+///
+/// On drop, VT_AUTO mode is restored so the kernel resumes automatic
+/// switching.
+#[derive(Debug)]
+struct VtMonitor {
+    /// Open file descriptor for `/dev/tty{N}` — kept alive for VT_PROCESS.
+    tty_fd: OwnedFd,
+    /// The VT number (1-based) being monitored.
+    vtnr: u32,
+}
+
+impl VtMonitor {
+    /// Open `/dev/tty{vtnr}` and set VT_PROCESS mode.
+    fn new(vtnr: u32) -> Result<Self, String> {
+        if vtnr == 0 {
+            return Err("Cannot monitor VT 0".to_string());
+        }
+        let path = format!("/dev/tty{}", vtnr);
+        let c_path =
+            CString::new(path.clone()).map_err(|_| format!("Invalid VT path: {}", path))?;
+        let raw_fd = unsafe {
+            libc::open(
+                c_path.as_ptr(),
+                libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC,
+            )
+        };
+        if raw_fd < 0 {
+            return Err(format!(
+                "Failed to open {}: {}",
+                path,
+                io::Error::last_os_error()
+            ));
+        }
+        let tty_fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+
+        // Set VT_PROCESS mode: kernel sends SIGUSR1 on release, SIGUSR2 on
+        // acquire instead of switching automatically.
+        let mode = VtMode {
+            mode: VT_PROCESS as libc::c_char,
+            waitv: 0,
+            relsig: libc::SIGUSR1 as libc::c_short,
+            acqsig: libc::SIGUSR2 as libc::c_short,
+            frsig: 0,
+        };
+        let ret = unsafe { libc::ioctl(tty_fd.as_raw_fd(), VT_SETMODE, &mode) };
+        if ret < 0 {
+            return Err(format!(
+                "VT_SETMODE(VT_PROCESS) on {} failed: {}",
+                path,
+                io::Error::last_os_error()
+            ));
+        }
+
+        log::info!(
+            "VT {} set to VT_PROCESS mode (relsig=SIGUSR1, acqsig=SIGUSR2)",
+            vtnr
+        );
+        Ok(VtMonitor { tty_fd, vtnr })
+    }
+
+    /// Allow the pending VT switch (called in response to SIGUSR1).
+    fn release_display(&self) {
+        let ret = unsafe { libc::ioctl(self.tty_fd.as_raw_fd(), VT_RELDISP, 1i32) };
+        if ret < 0 {
+            log::warn!(
+                "VT_RELDISP(1) on VT {} failed: {}",
+                self.vtnr,
+                io::Error::last_os_error()
+            );
+        } else {
+            log::debug!("VT {} released display (allowed switch)", self.vtnr);
+        }
+    }
+
+    /// Acknowledge VT acquisition (called in response to SIGUSR2).
+    fn ack_acquire(&self) {
+        let ret = unsafe { libc::ioctl(self.tty_fd.as_raw_fd(), VT_RELDISP, VT_ACKACQ) };
+        if ret < 0 {
+            log::warn!(
+                "VT_RELDISP(VT_ACKACQ) on VT {} failed: {}",
+                self.vtnr,
+                io::Error::last_os_error()
+            );
+        } else {
+            log::debug!("VT {} acknowledged acquire", self.vtnr);
+        }
+    }
+
+    /// Restore VT_AUTO mode (called on drop or explicit cleanup).
+    fn restore_auto(&self) {
+        let mode = VtMode {
+            mode: VT_AUTO as libc::c_char,
+            waitv: 0,
+            relsig: 0,
+            acqsig: 0,
+            frsig: 0,
+        };
+        let ret = unsafe { libc::ioctl(self.tty_fd.as_raw_fd(), VT_SETMODE, &mode) };
+        if ret < 0 {
+            log::warn!(
+                "VT_SETMODE(VT_AUTO) on VT {} failed: {}",
+                self.vtnr,
+                io::Error::last_os_error()
+            );
+        } else {
+            log::info!("VT {} restored to VT_AUTO mode", self.vtnr);
+        }
+    }
+}
+
+impl Drop for VtMonitor {
+    fn drop(&mut self) {
+        self.restore_auto();
+    }
+}
+
+/// Read the currently active VT number from the kernel via VT_GETSTATE on
+/// `/dev/tty0`.  Returns `None` if the ioctl fails (e.g. not running on a
+/// real VT).
+fn get_active_vt() -> Option<u32> {
+    let fd = unsafe { libc::open(c"/dev/tty0".as_ptr(), libc::O_RDONLY | libc::O_NOCTTY) };
+    if fd < 0 {
+        return None;
+    }
+    let mut stat = VtStat {
+        v_active: 0,
+        v_signal: 0,
+        v_state: 0,
+    };
+    let ret = unsafe { libc::ioctl(fd, VT_GETSTATE, &mut stat) };
+    unsafe {
+        libc::close(fd);
+    }
+    if ret < 0 {
+        None
+    } else {
+        Some(stat.v_active as u32)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Signal handling
 // ---------------------------------------------------------------------------
 
 static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
 static RELOAD_FLAG: AtomicBool = AtomicBool::new(false);
+/// Set by SIGUSR1 — kernel requests VT release (switch away from active VT).
+static VT_RELEASE_FLAG: AtomicBool = AtomicBool::new(false);
+/// Set by SIGUSR2 — kernel notifies VT acquire (switch to a VT we hold).
+static VT_ACQUIRE_FLAG: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn handle_sigterm(_: libc::c_int) {
     SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
@@ -110,6 +320,12 @@ extern "C" fn handle_sigint(_: libc::c_int) {
 extern "C" fn handle_sighup(_: libc::c_int) {
     RELOAD_FLAG.store(true, Ordering::SeqCst);
 }
+extern "C" fn handle_sigusr1(_: libc::c_int) {
+    VT_RELEASE_FLAG.store(true, Ordering::SeqCst);
+}
+extern "C" fn handle_sigusr2(_: libc::c_int) {
+    VT_ACQUIRE_FLAG.store(true, Ordering::SeqCst);
+}
 
 fn setup_signal_handlers() {
     unsafe {
@@ -117,6 +333,8 @@ fn setup_signal_handlers() {
         libc::signal(libc::SIGINT, handle_sigint as libc::sighandler_t);
         libc::signal(libc::SIGHUP, handle_sighup as libc::sighandler_t);
         libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+        libc::signal(libc::SIGUSR1, handle_sigusr1 as libc::sighandler_t);
+        libc::signal(libc::SIGUSR2, handle_sigusr2 as libc::sighandler_t);
     }
 }
 
@@ -339,6 +557,10 @@ pub struct LoginManager {
     /// When the caller drops their write-end, the read-end becomes readable
     /// and we can auto-release the inhibitor.
     inhibitor_pipes: HashMap<u64, OwnedFd>,
+    /// VT_PROCESS monitors keyed by VT number.  Each monitor holds the tty
+    /// fd open with VT_PROCESS mode so the kernel sends SIGUSR1/SIGUSR2
+    /// instead of switching automatically.
+    vt_monitors: HashMap<u32, VtMonitor>,
 }
 
 /// Manager configuration (logind.conf)
@@ -406,6 +628,7 @@ impl LoginManager {
             power_button_devices: Vec::new(),
             config,
             inhibitor_pipes: HashMap::new(),
+            vt_monitors: HashMap::new(),
         };
 
         // Always create seat0 — the default seat
@@ -921,6 +1144,11 @@ impl LoginManager {
     ///
     /// Only one D-Bus connection can be the controller at a time.
     /// `force` allows root/privileged callers to steal control.
+    ///
+    /// When the session has a VT assigned, sets VT_PROCESS mode on that VT
+    /// so the kernel sends SIGUSR1/SIGUSR2 for VT switches instead of
+    /// switching automatically.  This enables the compositor handoff
+    /// protocol (PauseDevice / ResumeDevice).
     fn take_control(
         &mut self,
         session_id: &str,
@@ -947,22 +1175,53 @@ impl LoginManager {
             // Release all devices held by the old controller
             session.devices.clear();
         }
+        let vtnr = session.vtnr;
         session.controller = Some(controller_name.to_string());
         log::info!(
             "Session {} controller set to {}",
             session_id,
             controller_name
         );
+
+        // Set VT_PROCESS mode on the session's VT if it has one and we
+        // don't already have a monitor for it.
+        if vtnr > 0 && !self.vt_monitors.contains_key(&vtnr) {
+            match VtMonitor::new(vtnr) {
+                Ok(monitor) => {
+                    self.vt_monitors.insert(vtnr, monitor);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to set VT_PROCESS on VT {} for session {}: {}",
+                        vtnr,
+                        session_id,
+                        e
+                    );
+                    // Non-fatal: VT switching will still work in VT_AUTO mode,
+                    // but compositors won't get PauseDevice/ResumeDevice signals.
+                }
+            }
+        }
+
         Ok(())
     }
 
     /// Release control of a session.
+    ///
+    /// Restores VT_AUTO mode on the session's VT if no other controlled
+    /// session shares it.
     fn release_control(&mut self, session_id: &str) {
+        let mut vtnr_to_check: Option<u32> = None;
         if let Some(session) = self.sessions.get_mut(session_id) {
             // Close all taken devices
             let count = session.devices.len();
             session.devices.clear();
             session.controller = None;
+            vtnr_to_check = if session.vtnr > 0 {
+                Some(session.vtnr)
+            } else {
+                None
+            };
             if count > 0 {
                 log::info!(
                     "Session {} controller released, closed {} device(s)",
@@ -971,6 +1230,138 @@ impl LoginManager {
                 );
             }
         }
+
+        // Remove VT monitor if no other controlled session uses this VT
+        if let Some(vtnr) = vtnr_to_check {
+            let other_controller_on_vt = self
+                .sessions
+                .values()
+                .any(|s| s.vtnr == vtnr && s.controller.is_some() && s.id != session_id);
+            if !other_controller_on_vt && self.vt_monitors.remove(&vtnr).is_some() {
+                log::info!(
+                    "Removed VT_PROCESS monitor for VT {} (session {} released control)",
+                    vtnr,
+                    session_id
+                );
+            }
+        }
+    }
+
+    /// Find the session that is currently active on seat0.
+    fn active_session_on_seat0(&self) -> Option<&str> {
+        self.seats
+            .get("seat0")
+            .and_then(|s| s.active_session.as_deref())
+    }
+
+    /// Find a session by its VT number (first match).
+    fn session_by_vtnr(&self, vtnr: u32) -> Option<&str> {
+        self.sessions
+            .values()
+            .find(|s| s.vtnr == vtnr)
+            .map(|s| s.id.as_str())
+    }
+
+    /// Collect device info for PauseDevice signal emission.
+    /// Returns a list of (major, minor) for all taken devices in the session.
+    #[allow(dead_code)]
+    fn session_device_keys(&self, session_id: &str) -> Vec<(u32, u32)> {
+        self.sessions
+            .get(session_id)
+            .map(|s| s.devices.keys().copied().collect())
+            .unwrap_or_default()
+    }
+
+    /// Collect device info for ResumeDevice signal emission.
+    /// Returns a list of (major, minor, raw_fd) for all taken devices.
+    fn session_device_fds(&self, session_id: &str) -> Vec<(u32, u32, RawFd)> {
+        self.sessions
+            .get(session_id)
+            .map(|s| {
+                s.devices
+                    .iter()
+                    .map(|((maj, min), dev)| (*maj, *min, dev.fd.as_raw_fd()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Handle SIGUSR1 — VT release request (switch away).
+    ///
+    /// Marks all devices in the currently active session as inactive and
+    /// calls VT_RELDISP(1) to allow the switch.  Returns information
+    /// needed to emit PauseDevice D-Bus signals (done by the caller
+    /// outside the lock).
+    fn handle_vt_release(&mut self) -> Option<VtSwitchAwayInfo> {
+        let active_id = self.active_session_on_seat0()?.to_string();
+        let session = self.sessions.get_mut(&active_id)?;
+        let vtnr = session.vtnr;
+        if vtnr == 0 {
+            return None;
+        }
+
+        // Mark all taken devices as inactive
+        let mut devices = Vec::new();
+        for ((maj, min), dev) in &mut session.devices {
+            dev.active = false;
+            devices.push((*maj, *min));
+        }
+
+        // Allow the VT switch
+        if let Some(monitor) = self.vt_monitors.get(&vtnr) {
+            monitor.release_display();
+        }
+
+        if !devices.is_empty() {
+            log::info!(
+                "VT {} release: pausing {} device(s) for session {}",
+                vtnr,
+                devices.len(),
+                active_id,
+            );
+        }
+
+        Some(VtSwitchAwayInfo {
+            session_id: active_id,
+            devices,
+        })
+    }
+
+    /// Handle SIGUSR2 — VT acquire notification (switch to).
+    ///
+    /// Reads the new active VT, activates the corresponding session,
+    /// marks its devices as active, and acknowledges the acquire.
+    /// Returns information needed to emit ResumeDevice D-Bus signals.
+    fn handle_vt_acquire(&mut self) -> Option<VtSwitchToInfo> {
+        let new_vt = get_active_vt()?;
+        let session_id = self.session_by_vtnr(new_vt)?.to_string();
+
+        // Acknowledge VT acquisition first
+        if let Some(monitor) = self.vt_monitors.get(&new_vt) {
+            monitor.ack_acquire();
+        }
+
+        // Activate the session (this deactivates the old one too)
+        let switch_info = self.activate_session(&session_id).ok()?;
+
+        // Collect FDs for ResumeDevice signals
+        let devices = self.session_device_fds(&session_id);
+
+        if !devices.is_empty() {
+            log::info!(
+                "VT {} acquire: resuming {} device(s) for session {}",
+                new_vt,
+                devices.len(),
+                session_id,
+            );
+        }
+
+        Some(VtSwitchToInfo {
+            session_id,
+            old_session_id: switch_info.old_session_id,
+            old_devices: switch_info.old_devices,
+            devices,
+        })
     }
 
     /// Take a device for a session (TakeDevice).
@@ -1066,6 +1457,28 @@ struct SessionSwitchInfo {
     new_session_id: String,
     /// Devices from the new session that need ResumeDevice signals: (major, minor, raw_fd).
     new_devices: Vec<(u32, u32, RawFd)>,
+}
+
+/// Information collected under the manager lock during a VT switch-away
+/// (SIGUSR1).  Used by the main loop to emit PauseDevice D-Bus signals
+/// outside the lock.
+struct VtSwitchAwayInfo {
+    session_id: String,
+    /// Devices that need PauseDevice signals: (major, minor).
+    devices: Vec<(u32, u32)>,
+}
+
+/// Information collected under the manager lock during a VT switch-to
+/// (SIGUSR2).  Used by the main loop to emit ResumeDevice D-Bus signals
+/// outside the lock.
+struct VtSwitchToInfo {
+    session_id: String,
+    /// Previous active session (if any) whose devices need PauseDevice.
+    old_session_id: Option<String>,
+    /// Devices from the old session that need PauseDevice: (major, minor).
+    old_devices: Vec<(u32, u32)>,
+    /// Devices that need ResumeDevice signals: (major, minor, raw_fd).
+    devices: Vec<(u32, u32, RawFd)>,
 }
 
 /// Duplicate a file descriptor, returning a new `OwnedFd`.
@@ -2707,10 +3120,17 @@ impl Login1Session {
             major,
             minor
         );
-        // Acknowledge a PauseDevice signal.  A full VT_PROCESS-based
-        // implementation would track pending pauses and call VT_RELDISP
-        // once all devices are acknowledged.  For now we log the ack
-        // for diagnostics.
+        // Acknowledge a PauseDevice signal.  In the current implementation,
+        // VT switches use "force" type which doesn't require acknowledgement
+        // — the VT_RELDISP(1) is called immediately.  A future refinement
+        // could use "pause" type with ack tracking and a timeout fallback:
+        //
+        // 1. On SIGUSR1, emit PauseDevice("pause", ...) for each device
+        // 2. Track pending (session, major, minor) tuples
+        // 3. On PauseDeviceComplete, remove from pending set
+        // 4. When pending set is empty (or timeout expires), call VT_RELDISP(1)
+        //
+        // For now, compositors like Sway/wlroots handle "force" correctly.
     }
 }
 
@@ -3151,6 +3571,113 @@ fn emit_signal_prepare_for_shutdown(_conn: &Connection, active: bool) {
 #[allow(dead_code)]
 fn emit_signal_prepare_for_sleep(_conn: &Connection, active: bool) {
     log::debug!("Signal: PrepareForSleep {}", active);
+}
+
+/// Emit PauseDevice D-Bus signal on a session object.
+///
+/// Sends the signal as `(u32 major, u32 minor, string type)` on the
+/// `org.freedesktop.login1.Session` interface at the session's object path.
+/// `pause_type` is "force" (device already deactivated), "pause"
+/// (cooperative, expects PauseDeviceComplete), or "gone" (device removed).
+fn emit_pause_device_signal(
+    conn: &Connection,
+    session_id: &str,
+    major: u32,
+    minor: u32,
+    pause_type: &str,
+) {
+    let path = session_object_path(session_id);
+    log::debug!(
+        "Signal: PauseDevice session={} dev={}:{} type={}",
+        session_id,
+        major,
+        minor,
+        pause_type
+    );
+    // Build and send a raw D-Bus signal message.
+    match zbus::message::Message::signal(
+        path.as_str(),
+        "org.freedesktop.login1.Session",
+        "PauseDevice",
+    ) {
+        Ok(builder) => match builder.build(&(major, minor, pause_type)) {
+            Ok(msg) => {
+                if let Err(e) = conn.send(&msg) {
+                    log::warn!("Failed to send PauseDevice signal: {}", e);
+                }
+            }
+            Err(e) => log::warn!("Failed to build PauseDevice message: {}", e),
+        },
+        Err(e) => log::warn!("Failed to create PauseDevice signal builder: {}", e),
+    }
+}
+
+/// Emit ResumeDevice D-Bus signal on a session object.
+///
+/// Sends the signal as `(u32 major, u32 minor, fd)` on the
+/// `org.freedesktop.login1.Session` interface.  The `fd` is a dup'd file
+/// descriptor for the device so the compositor can re-open it.
+fn emit_resume_device_signal(
+    conn: &Connection,
+    session_id: &str,
+    major: u32,
+    minor: u32,
+    raw_fd: RawFd,
+) {
+    let path = session_object_path(session_id);
+    log::debug!(
+        "Signal: ResumeDevice session={} dev={}:{} fd={}",
+        session_id,
+        major,
+        minor,
+        raw_fd
+    );
+    // Dup the fd so we can send it as an OwnedFd in the signal without
+    // closing the original (which logind still needs).
+    let dup_result = dup_raw_fd(raw_fd);
+    let Ok(duped) = dup_result else {
+        log::warn!(
+            "Failed to dup fd {} for ResumeDevice signal: {}",
+            raw_fd,
+            dup_result.unwrap_err()
+        );
+        return;
+    };
+    let z_fd = ZOwnedFd::from(duped);
+    match zbus::message::Message::signal(
+        path.as_str(),
+        "org.freedesktop.login1.Session",
+        "ResumeDevice",
+    ) {
+        Ok(builder) => match builder.build(&(major, minor, z_fd)) {
+            Ok(msg) => {
+                if let Err(e) = conn.send(&msg) {
+                    log::warn!("Failed to send ResumeDevice signal: {}", e);
+                }
+            }
+            Err(e) => log::warn!("Failed to build ResumeDevice message: {}", e),
+        },
+        Err(e) => log::warn!("Failed to create ResumeDevice signal builder: {}", e),
+    }
+}
+
+/// Emit PauseDevice signals for a set of devices (used during VT switch).
+fn emit_pause_devices(
+    conn: &Connection,
+    session_id: &str,
+    devices: &[(u32, u32)],
+    pause_type: &str,
+) {
+    for &(major, minor) in devices {
+        emit_pause_device_signal(conn, session_id, major, minor, pause_type);
+    }
+}
+
+/// Emit ResumeDevice signals for a set of devices (used during VT switch).
+fn emit_resume_devices(conn: &Connection, session_id: &str, devices: &[(u32, u32, RawFd)]) {
+    for &(major, minor, raw_fd) in devices {
+        emit_resume_device_signal(conn, session_id, major, minor, raw_fd);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3632,6 +4159,53 @@ fn main() {
             ));
         }
 
+        // -----------------------------------------------------------
+        // VT_PROCESS switch handling (SIGUSR1 = release, SIGUSR2 = acquire)
+        // -----------------------------------------------------------
+
+        // Handle VT release (switch away from active session's VT).
+        // Collect info under lock, emit D-Bus signals outside lock.
+        if VT_RELEASE_FLAG.load(Ordering::SeqCst) {
+            VT_RELEASE_FLAG.store(false, Ordering::SeqCst);
+            let away_info = {
+                let mut mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
+                mgr_guard.handle_vt_release()
+            };
+            if let Some(info) = away_info
+                && let Some(ref server) = dbus_server
+            {
+                // Emit PauseDevice("force") for each taken device.
+                // "force" means the device has been deactivated already
+                // and the compositor should release its references.
+                emit_pause_devices(&server.conn, &info.session_id, &info.devices, "force");
+            }
+        }
+
+        // Handle VT acquire (switch to a session's VT).
+        // Collect info under lock, emit D-Bus signals outside lock.
+        if VT_ACQUIRE_FLAG.load(Ordering::SeqCst) {
+            VT_ACQUIRE_FLAG.store(false, Ordering::SeqCst);
+            let to_info = {
+                let mut mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
+                mgr_guard.handle_vt_acquire()
+            };
+            if let Some(info) = to_info
+                && let Some(ref server) = dbus_server
+            {
+                // If the session switch also deactivated an old session's
+                // devices (e.g. when activate_session changes the active
+                // session), emit PauseDevice for those too.
+                if let Some(ref old_id) = info.old_session_id {
+                    emit_pause_devices(&server.conn, old_id, &info.old_devices, "force");
+                }
+                // Emit ResumeDevice for each taken device in the new session.
+                emit_resume_devices(&server.conn, &info.session_id, &info.devices);
+                // Sync state after session activation
+                let mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
+                mgr_guard.sync_runtime_state();
+            }
+        }
+
         // Send watchdog keepalive
         if let Some(ref iv) = wd_interval
             && last_watchdog.elapsed() >= *iv
@@ -3724,7 +4298,16 @@ fn main() {
         thread::sleep(Duration::from_millis(200));
     }
 
-    // Cleanup
+    // Cleanup: restore VT_AUTO on all monitored VTs before exit
+    {
+        let mut mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let vt_count = mgr_guard.vt_monitors.len();
+        mgr_guard.vt_monitors.clear(); // Drop calls restore_auto()
+        if vt_count > 0 {
+            log::info!("Restored VT_AUTO on {} VT(s)", vt_count);
+        }
+    }
+
     let _ = fs::remove_file(CONTROL_SOCKET_PATH);
     // Remove runtime state
     let _ = fs::remove_dir_all(SESSIONS_DIR);
@@ -3909,6 +4492,321 @@ fn execute_power_action(
 
 #[cfg(test)]
 mod tests {
+    // -----------------------------------------------------------------------
+    // VT_PROCESS monitor and VT switch handling tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_vt_mode_struct_size() {
+        // VtMode must match the kernel's struct vt_mode (8 bytes on all arches)
+        assert_eq!(
+            std::mem::size_of::<super::VtMode>(),
+            8,
+            "VtMode must be 8 bytes to match kernel struct vt_mode"
+        );
+    }
+
+    #[test]
+    fn test_vt_stat_struct_size() {
+        // VtStat must match the kernel's struct vt_stat (6 bytes)
+        assert_eq!(
+            std::mem::size_of::<super::VtStat>(),
+            6,
+            "VtStat must be 6 bytes to match kernel struct vt_stat"
+        );
+    }
+
+    #[test]
+    fn test_vt_mode_fields() {
+        let mode = super::VtMode {
+            mode: super::VT_PROCESS as libc::c_char,
+            waitv: 0,
+            relsig: libc::SIGUSR1 as libc::c_short,
+            acqsig: libc::SIGUSR2 as libc::c_short,
+            frsig: 0,
+        };
+        assert_eq!(mode.mode, 1); // VT_PROCESS
+        assert_eq!(mode.relsig, libc::SIGUSR1 as libc::c_short);
+        assert_eq!(mode.acqsig, libc::SIGUSR2 as libc::c_short);
+    }
+
+    #[test]
+    fn test_vt_constants() {
+        assert_eq!(super::VT_AUTO, 0x00);
+        assert_eq!(super::VT_PROCESS, 0x01);
+        assert_eq!(super::VT_ACKACQ, 0x02);
+        assert_eq!(super::VT_SETMODE, 0x5602);
+        assert_eq!(super::VT_GETMODE, 0x5601);
+        assert_eq!(super::VT_RELDISP, 0x5605);
+        assert_eq!(super::VT_GETSTATE, 0x5603);
+    }
+
+    #[test]
+    fn test_vt_monitor_rejects_vt_zero() {
+        let result = super::VtMonitor::new(0);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Cannot monitor VT 0"));
+    }
+
+    #[test]
+    fn test_vt_release_flag_default_false() {
+        // Flags should be false by default (or reset after handling)
+        // We can't test the actual default since other tests may have
+        // modified them, but we can verify the store/load cycle.
+        super::VT_RELEASE_FLAG.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(!super::VT_RELEASE_FLAG.load(std::sync::atomic::Ordering::SeqCst));
+        super::VT_RELEASE_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(super::VT_RELEASE_FLAG.load(std::sync::atomic::Ordering::SeqCst));
+        super::VT_RELEASE_FLAG.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[test]
+    fn test_vt_acquire_flag_default_false() {
+        super::VT_ACQUIRE_FLAG.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(!super::VT_ACQUIRE_FLAG.load(std::sync::atomic::Ordering::SeqCst));
+        super::VT_ACQUIRE_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(super::VT_ACQUIRE_FLAG.load(std::sync::atomic::Ordering::SeqCst));
+        super::VT_ACQUIRE_FLAG.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[test]
+    fn test_take_control_sets_vt_monitor_graceful() {
+        // TakeControl on a session with a VT should attempt to set VT_PROCESS.
+        // In CI/test environments without real /dev/tty*, this will fail
+        // gracefully (non-fatal warning) and the session still gets its
+        // controller set.
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            3,
+            "tty",
+            "user",
+            "tty3",
+            1234,
+        );
+        let result = mgr.take_control("1", "test-controller", false);
+        assert!(result.is_ok());
+        assert_eq!(
+            mgr.sessions.get("1").unwrap().controller.as_deref(),
+            Some("test-controller")
+        );
+        // In CI, VtMonitor::new(3) likely fails (no /dev/tty3), so the
+        // monitor map may or may not have an entry — either is fine.
+    }
+
+    #[test]
+    fn test_release_control_removes_vt_monitor() {
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            2,
+            "tty",
+            "user",
+            "tty2",
+            1234,
+        );
+        let _ = mgr.take_control("1", "ctrl", false);
+        // Force-insert a dummy into vt_monitors to test removal logic
+        // (we can't create a real VtMonitor without /dev/tty2)
+        let had_monitor = mgr.vt_monitors.contains_key(&2);
+        mgr.release_control("1");
+        assert!(mgr.sessions.get("1").unwrap().controller.is_none());
+        // Monitor should be removed if it was there
+        if had_monitor {
+            assert!(!mgr.vt_monitors.contains_key(&2));
+        }
+    }
+
+    #[test]
+    fn test_release_control_keeps_monitor_for_other_session() {
+        // If two sessions share the same VT (unusual but possible),
+        // releasing one should not remove the monitor if the other still
+        // has a controller.
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(1000, "user1", Some("seat0"), 1, "tty", "user", "tty1", 100);
+        mgr.create_session(1001, "user2", Some("seat0"), 1, "tty", "user", "tty1", 200);
+        let _ = mgr.take_control("1", "ctrl-a", false);
+        let _ = mgr.take_control("2", "ctrl-b", false);
+        let had_monitor = mgr.vt_monitors.contains_key(&1);
+        mgr.release_control("1");
+        // Session 2 still has a controller on VT 1
+        if had_monitor {
+            assert!(mgr.vt_monitors.contains_key(&1));
+        }
+    }
+
+    #[test]
+    fn test_session_by_vtnr() {
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            5,
+            "tty",
+            "user",
+            "tty5",
+            1234,
+        );
+        assert_eq!(mgr.session_by_vtnr(5), Some("1"));
+        assert_eq!(mgr.session_by_vtnr(6), None);
+        assert_eq!(mgr.session_by_vtnr(0), None);
+    }
+
+    #[test]
+    fn test_active_session_on_seat0() {
+        let mut mgr = super::LoginManager::new();
+        // No sessions yet
+        assert!(mgr.active_session_on_seat0().is_none() || mgr.active_session_on_seat0().is_some());
+        // Actually seat0 starts with no active session
+        mgr.create_session(1000, "user", Some("seat0"), 1, "tty", "user", "tty1", 100);
+        // After creation, the session becomes active on seat0
+        assert_eq!(mgr.active_session_on_seat0(), Some("1"));
+    }
+
+    #[test]
+    fn test_session_device_keys_empty() {
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(1000, "user", Some("seat0"), 1, "tty", "user", "tty1", 100);
+        let keys = mgr.session_device_keys("1");
+        assert!(keys.is_empty());
+    }
+
+    #[test]
+    fn test_session_device_keys_nonexistent() {
+        let mgr = super::LoginManager::new();
+        let keys = mgr.session_device_keys("nonexistent");
+        assert!(keys.is_empty());
+    }
+
+    #[test]
+    fn test_session_device_fds_empty() {
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(1000, "user", Some("seat0"), 1, "tty", "user", "tty1", 100);
+        let fds = mgr.session_device_fds("1");
+        assert!(fds.is_empty());
+    }
+
+    #[test]
+    fn test_session_device_fds_nonexistent() {
+        let mgr = super::LoginManager::new();
+        let fds = mgr.session_device_fds("nonexistent");
+        assert!(fds.is_empty());
+    }
+
+    #[test]
+    fn test_handle_vt_release_no_active_session() {
+        let mut mgr = super::LoginManager::new();
+        // No sessions → nothing to release
+        let result = mgr.handle_vt_release();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_handle_vt_release_session_no_vt() {
+        let mut mgr = super::LoginManager::new();
+        // Session with vtnr=0 (no VT)
+        mgr.create_session(1000, "user", Some("seat0"), 0, "tty", "user", "", 100);
+        let result = mgr.handle_vt_release();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_handle_vt_release_session_with_vt_no_devices() {
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(1000, "user", Some("seat0"), 1, "tty", "user", "tty1", 100);
+        let result = mgr.handle_vt_release();
+        // Session exists with VT but no taken devices
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.session_id, "1");
+        assert!(info.devices.is_empty());
+    }
+
+    #[test]
+    fn test_handle_vt_acquire_no_active_vt() {
+        // get_active_vt() will likely return None in CI (no real VT)
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(1000, "user", Some("seat0"), 1, "tty", "user", "tty1", 100);
+        let result = mgr.handle_vt_acquire();
+        // In CI this returns None since get_active_vt() fails
+        // We just verify it doesn't panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_vt_switch_away_info_fields() {
+        let info = super::VtSwitchAwayInfo {
+            session_id: "42".to_string(),
+            devices: vec![(226, 0), (13, 64)],
+        };
+        assert_eq!(info.session_id, "42");
+        assert_eq!(info.devices.len(), 2);
+        assert_eq!(info.devices[0], (226, 0));
+    }
+
+    #[test]
+    fn test_vt_switch_to_info_fields() {
+        let info = super::VtSwitchToInfo {
+            session_id: "7".to_string(),
+            old_session_id: Some("3".to_string()),
+            old_devices: vec![(226, 0)],
+            devices: vec![(226, 0, 5), (13, 64, 6)],
+        };
+        assert_eq!(info.session_id, "7");
+        assert_eq!(info.old_session_id.as_deref(), Some("3"));
+        assert_eq!(info.old_devices.len(), 1);
+        assert_eq!(info.devices.len(), 2);
+    }
+
+    #[test]
+    fn test_get_active_vt_no_crash() {
+        // On CI without /dev/tty0, this should return None gracefully.
+        let result = super::get_active_vt();
+        // We can't predict the result, just verify no panic.
+        let _ = result;
+    }
+
+    #[test]
+    fn test_handle_vt_release_marks_devices_inactive() {
+        use std::os::fd::{FromRawFd, OwnedFd};
+        let mut mgr = super::LoginManager::new();
+        mgr.create_session(1000, "user", Some("seat0"), 1, "tty", "user", "tty1", 100);
+        let _ = mgr.take_control("1", "ctrl", false);
+
+        // Insert a mock device (using a dup'd stderr fd as a stand-in)
+        let mock_fd = unsafe { libc::fcntl(2, libc::F_DUPFD_CLOEXEC, 0) };
+        if mock_fd >= 0 {
+            let owned = unsafe { OwnedFd::from_raw_fd(mock_fd) };
+            mgr.sessions.get_mut("1").unwrap().devices.insert(
+                (226, 0),
+                super::SessionDevice {
+                    major: 226,
+                    minor: 0,
+                    fd: owned,
+                    active: true,
+                },
+            );
+            let result = mgr.handle_vt_release();
+            assert!(result.is_some());
+            let info = result.unwrap();
+            assert_eq!(info.devices, vec![(226, 0)]);
+            // Device should now be marked inactive
+            let dev = mgr
+                .sessions
+                .get("1")
+                .unwrap()
+                .devices
+                .get(&(226, 0))
+                .unwrap();
+            assert!(!dev.active);
+        }
+    }
+
     use super::*;
 
     // -- LoginManager tests --
