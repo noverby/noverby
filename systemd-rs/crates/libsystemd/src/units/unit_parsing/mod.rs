@@ -2735,6 +2735,22 @@ pub struct ParsedExecSection {
     /// directives accumulate; an empty assignment resets the list. Parsed and
     /// stored; no runtime enforcement yet. See systemd.exec(5).
     pub system_call_filter: Vec<String>,
+    /// SystemCallLog= — a list of syscall names or `@group` names for
+    /// seccomp-based system-call logging. Matching system calls are logged
+    /// to the audit log (if available) without blocking them. Same syntax
+    /// as `SystemCallFilter=`: entries prefixed with `~` exclude from
+    /// logging. Multiple directives accumulate; an empty assignment resets
+    /// the list. Parsed and stored; no runtime seccomp audit enforcement
+    /// yet. See systemd.exec(5).
+    pub system_call_log: Vec<String>,
+    /// RestrictFileSystems= — a list of Linux file system type names
+    /// (e.g. `ext4`, `tmpfs`, `proc`, `btrfs`) that processes of this
+    /// unit may access. If prefixed with `~`, the listed file systems
+    /// are denied instead. Requires BPF LSM support in the kernel.
+    /// Multiple directives accumulate; an empty assignment resets the
+    /// list. Parsed and stored; no runtime BPF LSM enforcement yet.
+    /// See systemd.exec(5).
+    pub restrict_file_systems: Vec<String>,
     /// ProtectSystem= — controls whether the service has read-only access to
     /// the OS file system hierarchy. Parsed and stored; no runtime enforcement
     /// yet (requires mount namespace support). See systemd.exec(5).

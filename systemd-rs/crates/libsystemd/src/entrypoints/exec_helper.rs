@@ -368,6 +368,18 @@ pub struct ExecHelperConfig {
     #[serde(default)]
     pub system_call_filter: Vec<String>,
 
+    /// SystemCallLog= — seccomp syscall audit logging.
+    /// Same syntax as SystemCallFilter= but logs rather than blocks.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub system_call_log: Vec<String>,
+
+    /// RestrictFileSystems= — filesystem type restriction.
+    /// Space-separated list of filesystem type names (e.g. ext4, tmpfs).
+    /// A leading `~` inverts the list (deny-list). See systemd.exec(5).
+    #[serde(default)]
+    pub restrict_file_systems: Vec<String>,
+
     /// ProtectProc= — hidepid= mount option for /proc.
     /// See systemd.exec(5).
     #[serde(default)]

@@ -51255,3 +51255,559 @@ fn test_timeout_sec_case_insensitive_infinity() {
         other => panic!("Expected Infinity, got {:?}", other),
     }
 }
+
+// ============================================================
+// SystemCallLog= parsing tests
+// ============================================================
+
+#[test]
+fn test_system_call_log_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.system_call_log.is_empty(),
+        "SystemCallLog should default to empty"
+    );
+}
+
+#[test]
+fn test_system_call_log_single_syscall() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = write
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "write");
+}
+
+#[test]
+fn test_system_call_log_multiple_syscalls_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = write read open close
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 4);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "write");
+    assert_eq!(service.srvc.exec_section.system_call_log[1], "read");
+    assert_eq!(service.srvc.exec_section.system_call_log[2], "open");
+    assert_eq!(service.srvc.exec_section.system_call_log[3], "close");
+}
+
+#[test]
+fn test_system_call_log_group_name() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = @basic-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "@basic-io");
+}
+
+#[test]
+fn test_system_call_log_deny_list_with_tilde() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = ~@mount @clock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 2);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "~@mount");
+    assert_eq!(service.srvc.exec_section.system_call_log[1], "@clock");
+}
+
+#[test]
+fn test_system_call_log_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = @basic-io
+    SystemCallLog = @file-system
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 2);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "@basic-io");
+    assert_eq!(service.srvc.exec_section.system_call_log[1], "@file-system");
+}
+
+#[test]
+fn test_system_call_log_empty_resets_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = @basic-io
+    SystemCallLog =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.system_call_log.is_empty(),
+        "Empty SystemCallLog= should reset the list"
+    );
+}
+
+#[test]
+fn test_system_call_log_empty_then_new_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = @basic-io
+    SystemCallLog =
+    SystemCallLog = @network-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "@network-io");
+}
+
+#[test]
+fn test_system_call_log_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog =   @basic-io   write
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 2);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "@basic-io");
+    assert_eq!(service.srvc.exec_section.system_call_log[1], "write");
+}
+
+#[test]
+fn test_system_call_log_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = @basic-io
+    SystemCallLog = @network-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.exec_config.system_call_log.len(), 2);
+        assert_eq!(srvc.conf.exec_config.system_call_log[0], "@basic-io");
+        assert_eq!(srvc.conf.exec_config.system_call_log[1], "@network-io");
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_system_call_log_coexists_with_system_call_filter() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    SystemCallLog = @network-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@basic-io");
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "@network-io");
+}
+
+#[test]
+fn test_system_call_log_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with syscall log
+    [Socket]
+    ListenStream = /run/test.sock
+    SystemCallLog = @basic-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_section.system_call_log.len(), 1);
+    assert_eq!(socket.sock.exec_section.system_call_log[0], "@basic-io");
+}
+
+// ============================================================
+// RestrictFileSystems= parsing tests
+// ============================================================
+
+#[test]
+fn test_restrict_file_systems_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.restrict_file_systems.is_empty(),
+        "RestrictFileSystems should default to empty"
+    );
+}
+
+#[test]
+fn test_restrict_file_systems_single_type() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = ext4
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 1);
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[0], "ext4");
+}
+
+#[test]
+fn test_restrict_file_systems_multiple_types_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = ext4 tmpfs proc sysfs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 4);
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[0], "ext4");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[1], "tmpfs");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[2], "proc");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[3], "sysfs");
+}
+
+#[test]
+fn test_restrict_file_systems_deny_list_with_tilde() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = ~proc sysfs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 2);
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[0], "~proc");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[1], "sysfs");
+}
+
+#[test]
+fn test_restrict_file_systems_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = ext4
+    RestrictFileSystems = tmpfs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 2);
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[0], "ext4");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[1], "tmpfs");
+}
+
+#[test]
+fn test_restrict_file_systems_empty_resets_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = ext4
+    RestrictFileSystems =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.restrict_file_systems.is_empty(),
+        "Empty RestrictFileSystems= should reset the list"
+    );
+}
+
+#[test]
+fn test_restrict_file_systems_empty_then_new_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = ext4
+    RestrictFileSystems =
+    RestrictFileSystems = btrfs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 1);
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[0], "btrfs");
+}
+
+#[test]
+fn test_restrict_file_systems_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems =   ext4   tmpfs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 2);
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[0], "ext4");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[1], "tmpfs");
+}
+
+#[test]
+fn test_restrict_file_systems_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = ext4 tmpfs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.exec_config.restrict_file_systems.len(), 2);
+        assert_eq!(srvc.conf.exec_config.restrict_file_systems[0], "ext4");
+        assert_eq!(srvc.conf.exec_config.restrict_file_systems[1], "tmpfs");
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_restrict_file_systems_at_group_syntax() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = @common-block @basic-api
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.restrict_file_systems[0],
+        "@common-block"
+    );
+    assert_eq!(
+        service.srvc.exec_section.restrict_file_systems[1],
+        "@basic-api"
+    );
+}
+
+#[test]
+fn test_restrict_file_systems_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with filesystem restriction
+    [Socket]
+    ListenStream = /run/test.sock
+    RestrictFileSystems = ext4 tmpfs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_section.restrict_file_systems.len(), 2);
+    assert_eq!(socket.sock.exec_section.restrict_file_systems[0], "ext4");
+    assert_eq!(socket.sock.exec_section.restrict_file_systems[1], "tmpfs");
+}
+
+#[test]
+fn test_restrict_file_systems_coexists_with_other_restrict_directives() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictFileSystems = ext4 tmpfs
+    RestrictNamespaces = yes
+    RestrictAddressFamilies = AF_UNIX AF_INET
+    RestrictRealtime = yes
+    RestrictSUIDSGID = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 2);
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[0], "ext4");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[1], "tmpfs");
+    assert!(service.srvc.exec_section.restrict_realtime);
+    assert!(service.srvc.exec_section.restrict_suid_sgid);
+}
+
+#[test]
+fn test_system_call_log_and_restrict_file_systems_together() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallLog = @basic-io write
+    RestrictFileSystems = ext4 tmpfs
+    SystemCallFilter = @default
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_log.len(), 2);
+    assert_eq!(service.srvc.exec_section.system_call_log[0], "@basic-io");
+    assert_eq!(service.srvc.exec_section.system_call_log[1], "write");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems.len(), 2);
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[0], "ext4");
+    assert_eq!(service.srvc.exec_section.restrict_file_systems[1], "tmpfs");
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@default");
+}

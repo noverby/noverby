@@ -2182,6 +2182,13 @@ pub struct ExecConfig {
     /// directives accumulate; an empty assignment resets the list. Parsed and
     /// stored; no runtime enforcement yet. See systemd.exec(5).
     pub system_call_filter: Vec<String>,
+    /// SystemCallLog= — a list of syscall names or `@group` names for
+    /// seccomp-based system-call logging (audit). Same syntax as
+    /// `SystemCallFilter=`: entries prefixed with `~` exclude from logging;
+    /// without the prefix they are logged. Multiple directives accumulate;
+    /// an empty assignment resets the list. Parsed and stored; no runtime
+    /// seccomp audit enforcement yet. See systemd.exec(5).
+    pub system_call_log: Vec<String>,
     /// ProtectSystem= — controls whether the service has read-only access to
     /// the OS file system hierarchy. Parsed and stored; no runtime enforcement
     /// yet (requires mount namespace support). See systemd.exec(5).
@@ -2192,6 +2199,13 @@ pub struct ExecConfig {
     /// mnt, pid, user, uts). A `~` prefix inverts the list. Parsed and stored;
     /// no runtime seccomp enforcement yet. See systemd.exec(5).
     pub restrict_namespaces: RestrictNamespaces,
+    /// RestrictFileSystems= — a list of Linux file system type names (e.g.
+    /// `ext4`, `tmpfs`, `proc`, `btrfs`) for BPF LSM-based file system type
+    /// restriction. Entries prefixed with `~` form a deny-list; without the
+    /// prefix they form an allow-list. Multiple directives accumulate; an
+    /// empty assignment resets the list. Parsed and stored; no runtime BPF
+    /// LSM enforcement yet. See systemd.exec(5).
+    pub restrict_file_systems: Vec<String>,
     /// RestrictRealtime= — if true, any attempts to enable realtime scheduling
     /// in a process of the unit are refused via seccomp. Defaults to false.
     /// Parsed and stored; no runtime seccomp enforcement yet. See systemd.exec(5).
