@@ -81,12 +81,17 @@ pub fn run_service_manager() {
 
     let run_info = prepare_runtimeinfo(&conf, cli_args.dry_run);
 
-    let signals = match Signals::new([
+    // Build the set of signals to listen for: standard signals + SIGRTMIN+N
+    // real-time signals used for target switching, shutdown, reexec, etc.
+    let mut sig_list = vec![
         signal_hook::consts::SIGCHLD,
         signal_hook::consts::SIGTERM,
         signal_hook::consts::SIGINT,
         signal_hook::consts::SIGQUIT,
-    ]) {
+    ];
+    sig_list.extend(signal_handler::sigrtmin_signals());
+
+    let signals = match Signals::new(sig_list) {
         Ok(signals) => signals,
         Err(e) => {
             unrecoverable_error(format!("Couldnt setup listening to the signals: {e}"));
@@ -96,6 +101,13 @@ pub fn run_service_manager() {
     };
     // listen to signals
     let handle = start_signal_handler_thread(signals, run_info.clone());
+
+    // If this is a daemon-reexec, restore PID tracking for running services.
+    // This must happen after the signal handler is running (so SIGCHLD is
+    // caught) but before we start activating new units.
+    if signal_handler::check_and_restore_reexec_state(&run_info) {
+        info!("Resumed after daemon-reexec");
+    }
 
     // listen on user commands like listunits/kill/restart...
     control::open_all_sockets(run_info.clone(), &conf);

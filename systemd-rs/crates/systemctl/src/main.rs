@@ -261,8 +261,13 @@ fn main() {
             positional[0] = "shutdown".to_string();
             &positional[0]
         }
-        "daemon-reload" | "daemon-reexec" => {
+        "daemon-reload" => {
             positional[0] = "reload".to_string();
+            &positional[0]
+        }
+        "daemon-reexec" => {
+            // Pass through as-is — the control protocol handles it separately
+            // from daemon-reload, triggering a full re-execution of the binary.
             &positional[0]
         }
         "condrestart" => {

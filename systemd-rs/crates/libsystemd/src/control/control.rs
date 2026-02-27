@@ -85,6 +85,33 @@ pub enum Command {
     ListTimers,
     /// `set-property <unit> <property>=<value>...` — set runtime properties (no-op for now).
     SetProperty(String, Vec<String>),
+    /// `start-transient` — create and start a transient (in-memory) unit.
+    ///
+    /// Params is an object with:
+    ///   - `unit` (required): the unit name (e.g. `run-u42.service`)
+    ///   - `command` (optional): array of strings for ExecStart
+    ///   - `description` (optional): unit description
+    ///   - `user` (optional): run as this user
+    ///   - `group` (optional): run with this group
+    ///   - `working_directory` (optional): working directory
+    ///   - `type` (optional): service type (simple, oneshot, exec, …)
+    ///   - `remain_after_exit` (optional): bool
+    StartTransient(TransientUnitParams),
+    /// `daemon-reexec` — re-execute the service manager binary in-place.
+    DaemonReexec,
+}
+
+/// Parameters for creating a transient (in-memory) service unit.
+#[derive(Debug, Clone)]
+pub struct TransientUnitParams {
+    pub unit_name: String,
+    pub command: Option<Vec<String>>,
+    pub description: Option<String>,
+    pub user: Option<String>,
+    pub group: Option<String>,
+    pub working_directory: Option<String>,
+    pub service_type: Option<String>,
+    pub remain_after_exit: bool,
 }
 
 #[derive(Debug)]
@@ -300,7 +327,72 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
         "hibernate" => Command::Hibernate,
         "hybrid-sleep" => Command::HybridSleep,
         "suspend-then-hibernate" => Command::SuspendThenHibernate,
-        "reload" | "daemon-reload" | "daemon-reexec" => Command::LoadAllNew,
+        "reload" | "daemon-reload" => Command::LoadAllNew,
+        "daemon-reexec" => Command::DaemonReexec,
+        "start-transient" => {
+            // Params: JSON object with transient unit properties.
+            match &call.params {
+                Some(Value::Object(obj)) => {
+                    let unit_name = obj
+                        .get("unit")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            ParseError::ParamsInvalid(
+                                "start-transient requires a 'unit' property".to_string(),
+                            )
+                        })?
+                        .to_owned();
+                    let command = obj.get("command").and_then(|v| {
+                        v.as_array().map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+                                .collect()
+                        })
+                    });
+                    let description = obj
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_owned());
+                    let user = obj
+                        .get("user")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_owned());
+                    let group = obj
+                        .get("group")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_owned());
+                    let working_directory = obj
+                        .get("working_directory")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_owned());
+                    let service_type = obj
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_owned());
+                    let remain_after_exit = obj
+                        .get("remain_after_exit")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+
+                    Command::StartTransient(TransientUnitParams {
+                        unit_name,
+                        command,
+                        description,
+                        user,
+                        group,
+                        working_directory,
+                        service_type,
+                        remain_after_exit,
+                    })
+                }
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "start-transient requires a JSON object with at least a 'unit' property"
+                            .to_string(),
+                    ));
+                }
+            }
+        }
         "reload-dry" => Command::LoadAllNewDry,
         "enable" => {
             let names = match &call.params {
@@ -827,12 +919,419 @@ fn unit_status_marker(unit_name: &str, unit_table: &UnitTable) -> &'static str {
     }
 }
 
+/// Create a transient (in-memory) service unit and insert it into the unit table.
+///
+/// Transient units are not backed by a unit file on disk — they exist only in
+/// memory for the lifetime of the service manager (or until explicitly removed).
+/// This is the mechanism behind `systemd-run`.
+fn create_transient_unit(
+    params: &TransientUnitParams,
+    run_info: &ArcMutRuntimeInfo,
+) -> Result<crate::units::UnitId, String> {
+    use crate::units::{
+        Commandline, Common, CommonState, Delegate, Dependencies, ExecConfig, NotifyKind,
+        PlatformSpecificServiceFields, ServiceConfig, ServiceSpecific, ServiceState, ServiceType,
+        Specific, SuccessExitStatus, UnitConfig, UnitId, UnitIdKind, UnitStatus,
+    };
+    use std::sync::RwLock;
+
+    let unit_name = &params.unit_name;
+
+    // Determine the service type.
+    let srvc_type = match params.service_type.as_deref() {
+        Some("simple") | None => ServiceType::Simple,
+        Some("exec") => ServiceType::Exec,
+        Some("oneshot") => ServiceType::OneShot,
+        Some("forking") => ServiceType::Forking,
+        Some("notify") => ServiceType::Notify,
+        Some("notify-reload") => ServiceType::NotifyReload,
+        Some("dbus") => ServiceType::Dbus,
+        Some("idle") => ServiceType::Idle,
+        Some(other) => return Err(format!("Unknown service type: {other}")),
+    };
+
+    // Build ExecStart command line.
+    let exec: Option<Commandline> = params.command.as_ref().and_then(|cmd_parts| {
+        if cmd_parts.is_empty() {
+            return None;
+        }
+        Some(Commandline {
+            cmd: cmd_parts[0].clone(),
+            args: cmd_parts[1..].to_vec(),
+            prefixes: vec![],
+        })
+    });
+
+    // Build a minimal ExecConfig with the requested user/group/workdir.
+    // Use the correct concrete types for ExecConfig fields.
+    // Non-optional enums use their Default impl; bools use systemd defaults.
+    let exec_config = ExecConfig {
+        user: params.user.clone(),
+        group: params.group.clone(),
+        supplementary_groups: vec![],
+        stdin_option: crate::units::StandardInput::Null,
+        stdout_path: None,
+        stderr_path: None,
+        environment: None,
+        environment_files: vec![],
+        working_directory: params
+            .working_directory
+            .as_ref()
+            .map(std::path::PathBuf::from),
+        state_directory: vec![],
+        logs_directory: vec![],
+        logs_directory_mode: None,
+        runtime_directory: vec![],
+        runtime_directory_preserve: crate::units::RuntimeDirectoryPreserve::No,
+        tty_path: None,
+        tty_reset: false,
+        tty_vhangup: false,
+        tty_vt_disallocate: false,
+        ignore_sigpipe: true, // systemd default
+        utmp_identifier: None,
+        utmp_mode: crate::units::UtmpMode::Init,
+        import_credentials: vec![],
+        load_credentials: vec![],
+        load_credentials_encrypted: vec![],
+        set_credentials: vec![],
+        set_credentials_encrypted: vec![],
+        pass_environment: vec![],
+        unset_environment: vec![],
+        oom_score_adjust: None,
+        log_extra_fields: vec![],
+        dynamic_user: false,
+        system_call_filter: vec![],
+        system_call_log: vec![],
+        protect_system: crate::units::ProtectSystem::No,
+        restrict_namespaces: crate::units::RestrictNamespaces::No,
+        restrict_realtime: false,
+        restrict_address_families: vec![],
+        restrict_file_systems: vec![],
+        system_call_error_number: None,
+        no_new_privileges: false,
+        protect_control_groups: false,
+        protect_kernel_modules: false,
+        restrict_suid_sgid: false,
+        protect_kernel_logs: false,
+        protect_kernel_tunables: false,
+        protect_clock: false,
+        capability_bounding_set: vec![],
+        ambient_capabilities: vec![],
+        protect_home: crate::units::ProtectHome::No,
+        protect_hostname: false,
+        system_call_architectures: vec![],
+        read_write_paths: vec![],
+        memory_deny_write_execute: false,
+        lock_personality: false,
+        protect_proc: crate::units::ProtectProc::Default,
+        private_tmp: false,
+        private_devices: false,
+        private_network: false,
+        private_users: false,
+        private_mounts: false,
+        io_scheduling_class: crate::units::IOSchedulingClass::None,
+        io_scheduling_priority: None,
+        umask: None,
+        proc_subset: crate::units::ProcSubset::All,
+        nice: None,
+        remove_ipc: false,
+        pam_name: None,
+        limit_core: None,
+        limit_fsize: None,
+        limit_data: None,
+        limit_stack: None,
+        limit_rss: None,
+        limit_nproc: None,
+        limit_memlock: None,
+        limit_as: None,
+        limit_locks: None,
+        limit_sigpending: None,
+        limit_msgqueue: None,
+        limit_nice: None,
+        limit_rtprio: None,
+        limit_rttime: None,
+        cache_directory: vec![],
+        cache_directory_mode: None,
+        configuration_directory: vec![],
+        configuration_directory_mode: None,
+        state_directory_mode: None,
+        runtime_directory_mode: None,
+        read_only_paths: vec![],
+        inaccessible_paths: vec![],
+        bind_paths: vec![],
+        bind_read_only_paths: vec![],
+        temporary_file_system: vec![],
+        syslog_identifier: None,
+        syslog_facility: None,
+        syslog_level: None,
+        syslog_level_prefix: None,
+        log_level_max: None,
+        log_rate_limit_interval_sec: None,
+        log_rate_limit_burst: None,
+        log_filter_patterns: vec![],
+        log_namespace: None,
+        cpu_scheduling_policy: None,
+        cpu_scheduling_priority: None,
+        cpu_scheduling_reset_on_fork: None,
+        cpu_affinity: vec![],
+        numa_policy: None,
+        numa_mask: None,
+        root_directory: None,
+        root_image: None,
+        root_image_options: vec![],
+        root_hash: None,
+        root_hash_signature: None,
+        root_verity: None,
+        root_ephemeral: None,
+        mount_api_vfs: None,
+        extension_directories: vec![],
+        extension_images: vec![],
+        mount_images: vec![],
+        bind_log_sockets: None,
+        private_ipc: None,
+        private_pids: None,
+        ipc_namespace_path: None,
+        network_namespace_path: None,
+        secure_bits: vec![],
+        personality: None,
+        selinux_context: None,
+        apparmor_profile: None,
+        smack_process_label: None,
+        keyring_mode_exec: None,
+        no_exec_paths: vec![],
+        exec_paths: vec![],
+        coredump_filter: None,
+        timer_slack_nsec: None,
+        standard_input_text: vec![],
+        standard_input_data: vec![],
+        set_login_environment: None,
+    };
+
+    let platform_specific = PlatformSpecificServiceFields {
+        #[cfg(target_os = "linux")]
+        cgroup_path: std::path::PathBuf::from(format!("/sys/fs/cgroup/systemd-rs/{unit_name}")),
+    };
+
+    let service_conf = ServiceConfig {
+        restart: crate::units::ServiceRestart::No,
+        restart_sec: None,
+        kill_mode: crate::units::KillMode::ControlGroup,
+        delegate: Delegate::No,
+        tasks_max: None,
+        limit_nofile: None,
+        accept: false,
+        notifyaccess: NotifyKind::None,
+        exec,
+        reload: vec![],
+        stop: vec![],
+        stoppost: vec![],
+        startpre: vec![],
+        startpost: vec![],
+        srcv_type: srvc_type,
+        starttimeout: None,
+        stoptimeout: None,
+        generaltimeout: None,
+        exec_config,
+        platform_specific,
+        dbus_name: None,
+        pid_file: None,
+        sockets: vec![],
+        slice: None,
+        remain_after_exit: params.remain_after_exit,
+        success_exit_status: SuccessExitStatus::default(),
+        restart_force_exit_status: SuccessExitStatus::default(),
+        send_sighup: false,
+        memory_pressure_watch: crate::units::MemoryPressureWatch::Auto,
+        reload_signal: None,
+        kill_signal: None,
+        delegate_subgroup: None,
+        keyring_mode: crate::units::KeyringMode::Private,
+        device_allow: vec![],
+        device_policy: crate::units::DevicePolicy::Auto,
+        watchdog_sec: None,
+        ip_address_allow: vec![],
+        ip_address_deny: vec![],
+        file_descriptor_store_max: 0,
+        file_descriptor_store_preserve: crate::units::FileDescriptorStorePreserve::No,
+        memory_min: None,
+        memory_low: None,
+        memory_high: None,
+        memory_max: None,
+        memory_swap_max: None,
+        cpu_weight: None,
+        startup_cpu_weight: None,
+        cpu_quota: None,
+        io_weight: None,
+        startup_io_weight: None,
+        io_device_weight: vec![],
+        io_read_bandwidth_max: vec![],
+        io_write_bandwidth_max: vec![],
+        io_read_iops_max: vec![],
+        io_write_iops_max: vec![],
+        cpu_accounting: None,
+        memory_accounting: None,
+        io_accounting: None,
+        tasks_accounting: None,
+        runtime_max_sec: None,
+        coredump_receive: false,
+        send_sigkill: true, // systemd default
+        restart_kill_signal: None,
+        final_kill_signal: None,
+        watchdog_signal: None,
+        exit_type: crate::units::ExitType::Main,
+        oom_policy: crate::units::OOMPolicy::Stop,
+        timeout_abort_sec: None,
+        timeout_clean_sec: None,
+        restart_prevent_exit_status: SuccessExitStatus::default(),
+        restart_mode: crate::units::RestartMode::Direct,
+        restart_steps: 0,
+        restart_max_delay_sec: None,
+        exec_condition: vec![],
+        guess_main_pid: true,
+        timeout_start_failure_mode: crate::units::TimeoutFailureMode::Terminate,
+        timeout_stop_failure_mode: crate::units::TimeoutFailureMode::Terminate,
+        runtime_randomized_extra_sec: None,
+        root_directory_start_only: false,
+        non_blocking: false,
+        usb_function_descriptors: None,
+        usb_function_strings: None,
+        open_file: vec![],
+        cpu_quota_period_sec: None,
+        allowed_cpus: None,
+        startup_allowed_cpus: None,
+        allowed_memory_nodes: None,
+        startup_allowed_memory_nodes: None,
+        default_memory_min: None,
+        default_memory_low: None,
+        memory_zswap_max: None,
+        io_device_latency_target_sec: vec![],
+        disable_controllers: vec![],
+        memory_pressure_threshold_sec: None,
+        ip_ingress_filter_path: vec![],
+        ip_egress_filter_path: vec![],
+        bpf_program: vec![],
+        socket_bind_allow: vec![],
+        socket_bind_deny: vec![],
+        restrict_network_interfaces: vec![],
+        nft_set: vec![],
+    };
+
+    let unit_id = UnitId {
+        kind: UnitIdKind::Service,
+        name: unit_name.clone(),
+    };
+
+    let unit = crate::units::Unit {
+        id: unit_id.clone(),
+        common: Common {
+            unit: UnitConfig {
+                description: params
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| format!("Transient unit {unit_name}")),
+                documentation: vec![],
+                fragment_path: None, // transient — no file on disk
+                refs_by_name: vec![],
+                default_dependencies: false,
+                conditions: vec![],
+                assertions: vec![],
+                success_action: crate::units::UnitAction::None,
+                failure_action: crate::units::UnitAction::None,
+                aliases: vec![],
+                ignore_on_isolate: false,
+                default_instance: None,
+                allow_isolate: false,
+                job_timeout_sec: None,
+                job_timeout_action: crate::units::UnitAction::None,
+                refuse_manual_start: false,
+                refuse_manual_stop: false,
+                on_failure: vec![],
+                on_failure_job_mode: crate::units::OnFailureJobMode::default(),
+                start_limit_interval_sec: None,
+                start_limit_burst: None,
+                start_limit_action: crate::units::UnitAction::None,
+            },
+            dependencies: Dependencies {
+                wants: vec![],
+                wanted_by: vec![],
+                requires: vec![],
+                required_by: vec![],
+                conflicts: vec![],
+                conflicted_by: vec![],
+                before: vec![],
+                after: vec![],
+                part_of: vec![],
+                part_of_by: vec![],
+                binds_to: vec![],
+                bound_by: vec![],
+            },
+            status: RwLock::new(UnitStatus::NeverStarted),
+        },
+        specific: Specific::Service(ServiceSpecific {
+            conf: service_conf,
+            state: RwLock::new(ServiceState {
+                common: CommonState::default(),
+                srvc: crate::services::Service {
+                    pid: None,
+                    main_pid: None,
+                    status_msgs: Vec::new(),
+                    process_group: None,
+                    signaled_ready: false,
+                    reloading: false,
+                    stopping: false,
+                    watchdog_last_ping: None,
+                    notify_errno: None,
+                    notify_bus_error: None,
+                    notify_exit_status: None,
+                    notify_monotonic_usec: None,
+                    invocation_id: None,
+                    watchdog_usec_override: None,
+                    stored_fds: Vec::new(),
+                    notify_access_override: None,
+                    notifications: None,
+                    notifications_path: None,
+                    stdout: None,
+                    stderr: None,
+                    notifications_buffer: String::new(),
+                    stdout_buffer: Vec::new(),
+                    stderr_buffer: Vec::new(),
+                    watchdog_timeout_fired: false,
+                },
+            }),
+        }),
+    };
+
+    // Insert the transient unit into the unit table.
+    let mut ri = run_info.write_poisoned();
+    // Check for duplicate names.
+    if ri.unit_table.values().any(|u| u.id.name == *unit_name) {
+        return Err(format!("Unit {unit_name} already exists"));
+    }
+    crate::units::insert_new_unit_lenient(unit, &mut ri);
+    Ok(unit_id)
+}
+
 pub fn execute_command(
     cmd: Command,
     run_info: ArcMutRuntimeInfo,
 ) -> Result<serde_json::Value, String> {
     let mut result_vec = Value::Array(Vec::new());
     match cmd {
+        Command::DaemonReexec => {
+            info!("daemon-reexec: re-executing service manager");
+            crate::signal_handler::daemon_reexec(&run_info);
+            // If we get here, execve failed — daemon_reexec logs the error.
+            return Err("daemon-reexec failed".to_string());
+        }
+        Command::StartTransient(params) => {
+            let unit_name = params.unit_name.clone();
+            let id = create_transient_unit(&params, &run_info)?;
+            // Now start the unit.
+            let ri = run_info.read_poisoned();
+            crate::units::activate_unit(id, &ri, ActivationSource::Regular)
+                .map_err(|e| format!("Failed to start transient unit {unit_name}: {e}"))?;
+            return Ok(serde_json::json!({ "started": unit_name }));
+        }
         Command::Disable(names) => {
             // No-op for now — real systemd removes .wants/.requires symlinks.
             // We just silently succeed to prevent "Unknown method" errors when
@@ -3298,5 +3797,202 @@ mod tests {
             .collect();
 
         assert!(found.is_empty());
+    }
+
+    // ── Transient unit tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_start_transient_basic() {
+        let call = super::super::jsonrpc2::Call {
+            method: "start-transient".to_string(),
+            params: Some(serde_json::json!({
+                "unit": "run-test123.service",
+                "command": ["/bin/echo", "hello"],
+                "description": "Test transient unit"
+            })),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::StartTransient(params) => {
+                assert_eq!(params.unit_name, "run-test123.service");
+                assert_eq!(
+                    params.command,
+                    Some(vec!["/bin/echo".to_string(), "hello".to_string()])
+                );
+                assert_eq!(params.description, Some("Test transient unit".to_string()));
+                assert_eq!(params.user, None);
+                assert_eq!(params.group, None);
+                assert_eq!(params.working_directory, None);
+                assert_eq!(params.service_type, None);
+                assert!(!params.remain_after_exit);
+            }
+            other => panic!("Expected StartTransient, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_start_transient_with_all_options() {
+        let call = super::super::jsonrpc2::Call {
+            method: "start-transient".to_string(),
+            params: Some(serde_json::json!({
+                "unit": "run-u42.service",
+                "command": ["/usr/bin/sleep", "60"],
+                "description": "Sleep service",
+                "user": "nobody",
+                "group": "nogroup",
+                "working_directory": "/tmp",
+                "type": "oneshot",
+                "remain_after_exit": true
+            })),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::StartTransient(params) => {
+                assert_eq!(params.unit_name, "run-u42.service");
+                assert_eq!(
+                    params.command,
+                    Some(vec!["/usr/bin/sleep".to_string(), "60".to_string()])
+                );
+                assert_eq!(params.description, Some("Sleep service".to_string()));
+                assert_eq!(params.user, Some("nobody".to_string()));
+                assert_eq!(params.group, Some("nogroup".to_string()));
+                assert_eq!(params.working_directory, Some("/tmp".to_string()));
+                assert_eq!(params.service_type, Some("oneshot".to_string()));
+                assert!(params.remain_after_exit);
+            }
+            other => panic!("Expected StartTransient, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_start_transient_minimal() {
+        // Only the required "unit" field
+        let call = super::super::jsonrpc2::Call {
+            method: "start-transient".to_string(),
+            params: Some(serde_json::json!({
+                "unit": "run-minimal.service"
+            })),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::StartTransient(params) => {
+                assert_eq!(params.unit_name, "run-minimal.service");
+                assert_eq!(params.command, None);
+                assert_eq!(params.description, None);
+            }
+            other => panic!("Expected StartTransient, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_start_transient_missing_unit() {
+        let call = super::super::jsonrpc2::Call {
+            method: "start-transient".to_string(),
+            params: Some(serde_json::json!({
+                "command": ["/bin/echo"]
+            })),
+            id: None,
+        };
+        assert!(parse_command(&call).is_err());
+    }
+
+    #[test]
+    fn test_parse_start_transient_no_params() {
+        let call = super::super::jsonrpc2::Call {
+            method: "start-transient".to_string(),
+            params: None,
+            id: None,
+        };
+        assert!(parse_command(&call).is_err());
+    }
+
+    #[test]
+    fn test_parse_start_transient_string_params() {
+        // Params must be an object, not a string
+        let call = super::super::jsonrpc2::Call {
+            method: "start-transient".to_string(),
+            params: Some(serde_json::json!("run-test.service")),
+            id: None,
+        };
+        assert!(parse_command(&call).is_err());
+    }
+
+    // ── daemon-reexec tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_daemon_reexec() {
+        let call = super::super::jsonrpc2::Call {
+            method: "daemon-reexec".to_string(),
+            params: None,
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        assert!(matches!(cmd, Command::DaemonReexec));
+    }
+
+    #[test]
+    fn test_parse_daemon_reload_is_load_all_new() {
+        let call = super::super::jsonrpc2::Call {
+            method: "daemon-reload".to_string(),
+            params: None,
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        assert!(matches!(cmd, Command::LoadAllNew));
+    }
+
+    #[test]
+    fn test_parse_reload_is_load_all_new() {
+        let call = super::super::jsonrpc2::Call {
+            method: "reload".to_string(),
+            params: None,
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        assert!(matches!(cmd, Command::LoadAllNew));
+    }
+
+    // ── Transient unit creation tests ───────────────────────────────────
+
+    #[test]
+    fn test_transient_unit_params_debug() {
+        let params = TransientUnitParams {
+            unit_name: "run-test.service".to_string(),
+            command: Some(vec!["/bin/echo".to_string(), "hello".to_string()]),
+            description: Some("A test".to_string()),
+            user: None,
+            group: None,
+            working_directory: None,
+            service_type: None,
+            remain_after_exit: false,
+        };
+        let debug = format!("{params:?}");
+        assert!(debug.contains("run-test.service"));
+        assert!(debug.contains("/bin/echo"));
+    }
+
+    #[test]
+    fn test_transient_unit_params_clone() {
+        let params = TransientUnitParams {
+            unit_name: "run-clone.service".to_string(),
+            command: Some(vec!["/bin/true".to_string()]),
+            description: None,
+            user: Some("root".to_string()),
+            group: Some("root".to_string()),
+            working_directory: Some("/tmp".to_string()),
+            service_type: Some("oneshot".to_string()),
+            remain_after_exit: true,
+        };
+        let cloned = params.clone();
+        assert_eq!(cloned.unit_name, params.unit_name);
+        assert_eq!(cloned.command, params.command);
+        assert_eq!(cloned.user, params.user);
+        assert_eq!(cloned.group, params.group);
+        assert_eq!(cloned.working_directory, params.working_directory);
+        assert_eq!(cloned.service_type, params.service_type);
+        assert_eq!(cloned.remain_after_exit, params.remain_after_exit);
     }
 }
