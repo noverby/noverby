@@ -10,15 +10,25 @@
 //! - `decrypt`       — Decrypt an encrypted credential
 //! - `has-tpm2`      — Report whether TPM2 is available
 //!
-//! Encryption uses AES-256-GCM keyed by a SHA-256 hash of the host secret
+//! Encryption uses AES-256-GCM keyed by a SHA-256 hash of a secret
 //! concatenated with the credential name (matching systemd's approach).
 //! Encrypted credentials are Base64-encoded for safe embedding in unit files.
 //!
 //! The host key is stored at `/var/lib/systemd/credential.secret` (256 bytes
 //! of random data, readable only by root).
 //!
-//! TPM2 sealing is detected but not yet implemented — `--with-key=host` is
-//! the default when TPM2 is unavailable.
+//! Supported key modes (`--with-key=`):
+//! - `host`      — AES key derived from host secret + credential name
+//! - `tpm2`      — AES key derived from a TPM2-sealed random secret + credential name
+//! - `host+tpm2` — AES key derived from host secret + TPM2-sealed secret + credential name
+//! - `null`      — AES key derived from credential name only (no security, for testing)
+//! - `auto`      — prefer host, fall back to tpm2, then error
+//! - `auto-initrd` — prefer tpm2, fall back to null
+//!
+//! TPM2 sealing binds credentials to PCR values (default: PCR 7, Secure Boot
+//! policy) via direct communication with `/dev/tpmrm0`.
+
+mod tpm2;
 
 use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{AeadCore, Aes256Gcm, Nonce};
@@ -112,6 +122,11 @@ enum Command {
         #[arg(short = 'T', long)]
         tpm2: bool,
 
+        /// PCR indices to bind TPM2-sealed credentials to (comma-separated).
+        /// Default: 7 (Secure Boot policy).
+        #[arg(long, default_value = "7")]
+        tpm2_pcrs: String,
+
         /// Timestamp to embed (microseconds since epoch, or "now").
         #[arg(long)]
         timestamp: Option<String>,
@@ -182,7 +197,7 @@ const AES_TAG_SIZE: usize = 16;
 const SEAL_NULL: u32 = 0;
 const SEAL_HOST: u32 = 1;
 const SEAL_TPM2: u32 = 2;
-const _SEAL_HOST_TPM2: u32 = 3;
+const SEAL_HOST_TPM2: u32 = 3;
 
 // ---------------------------------------------------------------------------
 // Credential header wire format
@@ -230,12 +245,23 @@ fn read_host_key() -> Result<Vec<u8>, String> {
     })
 }
 
-/// Derive an AES-256 key from the host key and credential name.
+/// Derive an AES-256 key from a secret and credential name.
 ///
-/// key = SHA-256(host_key || credential_name_bytes)
-fn derive_key(host_key: &[u8], cred_name: &str) -> [u8; 32] {
+/// key = SHA-256(secret || credential_name_bytes)
+fn derive_key(secret: &[u8], cred_name: &str) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(secret);
+    hasher.update(cred_name.as_bytes());
+    hasher.finalize().into()
+}
+
+/// Derive an AES-256 key from host key, TPM2 secret, and credential name.
+///
+/// key = SHA-256(host_key || tpm2_secret || credential_name_bytes)
+fn derive_host_tpm2_key(host_key: &[u8], tpm2_secret: &[u8], cred_name: &str) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(host_key);
+    hasher.update(tpm2_secret);
     hasher.update(cred_name.as_bytes());
     hasher.finalize().into()
 }
@@ -314,7 +340,7 @@ fn security_state(path: &Path) -> &'static str {
 
 /// Check whether a TPM2 device is available.
 fn tpm2_available() -> bool {
-    Path::new("/dev/tpmrm0").exists() || Path::new("/dev/tpm0").exists()
+    tpm2::is_tpm2_available()
 }
 
 /// Check whether we're running in a container (simple heuristic).
@@ -372,13 +398,32 @@ fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
 // ---------------------------------------------------------------------------
 
 /// Encrypt plaintext into our credential wire format (before base64 encoding).
+///
+/// For `SEAL_TPM2` and `SEAL_HOST_TPM2`, a random 32-byte secret is generated,
+/// sealed to the TPM2, and the sealed blob is embedded in the credential. The
+/// AES key is derived from the TPM2 secret (and optionally the host key).
 fn encrypt_credential(
     plaintext: &[u8],
     cred_name: &str,
     seal_type: u32,
     timestamp: u64,
     not_after: u64,
+    pcr_mask: u32,
 ) -> Result<Vec<u8>, String> {
+    // For TPM2 modes, generate a random secret and seal it.
+    let tpm2_blob = if seal_type == SEAL_TPM2 || seal_type == SEAL_HOST_TPM2 {
+        let tpm2_secret = generate_random_bytes(32);
+        let blob = tpm2::tpm2_seal_secret(
+            &tpm2_secret,
+            pcr_mask,
+            tpm2::TPM2_ALG_SHA256,
+            tpm2::TPM2_ALG_ECC,
+        )?;
+        Some((tpm2_secret, blob))
+    } else {
+        None
+    };
+
     // Derive the encryption key.
     let aes_key = match seal_type {
         SEAL_NULL => derive_null_key(cred_name),
@@ -387,10 +432,13 @@ fn encrypt_credential(
             derive_key(&host_key, cred_name)
         }
         SEAL_TPM2 => {
-            return Err(
-                "TPM2 sealing is not yet implemented. Use --with-key=host or --with-key=null."
-                    .to_string(),
-            );
+            let (tpm2_secret, _) = tpm2_blob.as_ref().unwrap();
+            derive_key(tpm2_secret, cred_name)
+        }
+        SEAL_HOST_TPM2 => {
+            let host_key = read_host_key()?;
+            let (tpm2_secret, _) = tpm2_blob.as_ref().unwrap();
+            derive_host_tpm2_key(&host_key, tpm2_secret, cred_name)
         }
         _ => {
             return Err(format!("Unsupported seal type: {seal_type}"));
@@ -411,7 +459,11 @@ fn encrypt_credential(
     let name_bytes = cred_name.as_bytes();
     let name_len = name_bytes.len() as u32;
 
-    let total_size = HEADER_FIXED_SIZE + name_bytes.len() + AES_IV_SIZE + ciphertext.len();
+    let tpm2_data = tpm2_blob.as_ref().map(|(_, b)| b.serialize());
+    let tpm2_data_len = tpm2_data.as_ref().map_or(0, |d| d.len());
+
+    let total_size =
+        HEADER_FIXED_SIZE + name_bytes.len() + tpm2_data_len + AES_IV_SIZE + ciphertext.len();
     let mut blob = Vec::with_capacity(total_size);
 
     // Header
@@ -421,6 +473,11 @@ fn encrypt_credential(
     blob.extend_from_slice(&not_after.to_le_bytes());
     blob.extend_from_slice(&name_len.to_le_bytes());
     blob.extend_from_slice(name_bytes);
+
+    // TPM2 sealed blob (only for TPM2 and host+tpm2 modes)
+    if let Some(ref tpm2_data) = tpm2_data {
+        blob.extend_from_slice(tpm2_data);
+    }
 
     // IV
     blob.extend_from_slice(nonce.as_slice());
@@ -432,6 +489,10 @@ fn encrypt_credential(
 }
 
 /// Decrypt a credential blob (after base64 decoding).
+///
+/// For `SEAL_TPM2` and `SEAL_HOST_TPM2` credentials, the TPM2 sealed blob is
+/// read from the credential, unsealed via the TPM2, and used to derive the
+/// decryption key.
 fn decrypt_credential(
     blob: &[u8],
     expected_name: Option<&str>,
@@ -482,8 +543,23 @@ fn decrypt_credential(
         }
     }
 
+    // For TPM2 modes, extract and unseal the TPM2 blob before the IV.
+    let (tpm2_secret, data_start) = if seal_type == SEAL_TPM2 || seal_type == SEAL_HOST_TPM2 {
+        let tpm2_data = &blob[name_end..];
+        let (tpm2_blob, consumed) = tpm2::Tpm2SealedBlob::deserialize(tpm2_data)
+            .map_err(|e| format!("Failed to parse TPM2 blob: {e}"))?;
+        let secret =
+            tpm2::tpm2_unseal_secret(&tpm2_blob).map_err(|e| format!("TPM2 unseal failed: {e}"))?;
+        (Some(secret), name_end + consumed)
+    } else {
+        (None, name_end)
+    };
+
     // Extract IV and ciphertext.
-    let iv_start = name_end;
+    if blob.len() < data_start + AES_IV_SIZE {
+        return Err("Credential blob too short for IV".to_string());
+    }
+    let iv_start = data_start;
     let iv_end = iv_start + AES_IV_SIZE;
     let iv = &blob[iv_start..iv_end];
     let ciphertext = &blob[iv_end..];
@@ -509,10 +585,13 @@ fn decrypt_credential(
             derive_key(&host_key, &cred_name)
         }
         SEAL_TPM2 => {
-            return Err(
-                "TPM2-sealed credentials cannot be decrypted: TPM2 support not yet implemented."
-                    .to_string(),
-            );
+            let tpm2_secret = tpm2_secret.as_ref().unwrap();
+            derive_key(tpm2_secret, &cred_name)
+        }
+        SEAL_HOST_TPM2 => {
+            let host_key = read_host_key()?;
+            let tpm2_secret = tpm2_secret.as_ref().unwrap();
+            derive_host_tpm2_key(&host_key, tpm2_secret, &cred_name)
         }
         other => {
             return Err(format!("Unknown seal type: {other}"));
@@ -745,6 +824,28 @@ fn cmd_setup(quiet: bool) {
     }
 }
 
+/// Parse a comma-separated list of PCR indices into a bitmask.
+fn parse_pcr_mask(pcrs: &str) -> Result<u32, String> {
+    let mut mask = 0u32;
+    for part in pcrs.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let idx: u32 = part
+            .parse()
+            .map_err(|e| format!("Invalid PCR index {part:?}: {e}"))?;
+        if idx >= 24 {
+            return Err(format!("PCR index {idx} out of range (0-23)"));
+        }
+        mask |= 1 << idx;
+    }
+    if mask == 0 {
+        return Err("No PCR indices specified".into());
+    }
+    Ok(mask)
+}
+
 /// `systemd-creds encrypt`
 #[allow(clippy::too_many_arguments)]
 fn cmd_encrypt(
@@ -752,6 +853,7 @@ fn cmd_encrypt(
     output: &str,
     name: Option<&str>,
     with_key: &str,
+    tpm2_pcrs: &str,
     timestamp: Option<&str>,
     not_after: Option<&str>,
     pretty: bool,
@@ -802,8 +904,21 @@ fn cmd_encrypt(
         _ => 0,
     };
 
+    // Parse PCR mask for TPM2 modes (default is PCR 7 = Secure Boot policy).
+    let pcr_mask = if seal_type == SEAL_TPM2 || seal_type == SEAL_HOST_TPM2 {
+        match parse_pcr_mask(tpm2_pcrs) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("Invalid --tpm2-pcrs: {e}");
+                process::exit(1);
+            }
+        }
+    } else {
+        tpm2::DEFAULT_PCR_MASK // unused for non-TPM2 modes, but keeps a sensible default
+    };
+
     // Encrypt.
-    let blob = match encrypt_credential(&plaintext, &cred_name, seal_type, ts, na) {
+    let blob = match encrypt_credential(&plaintext, &cred_name, seal_type, ts, na, pcr_mask) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("Encryption failed: {e}");
@@ -991,8 +1106,13 @@ fn resolve_seal_type(with_key: &str) -> u32 {
             SEAL_TPM2
         }
         "host+tpm2" => {
-            eprintln!("host+tpm2 combined sealing is not yet implemented.");
-            process::exit(1);
+            if !tpm2_available() || in_container() {
+                eprintln!(
+                    "TPM2 not available for host+tpm2 mode. Use --with-key=host or --with-key=null instead."
+                );
+                process::exit(1);
+            }
+            SEAL_HOST_TPM2
         }
         "null" => SEAL_NULL,
         "auto" => {
@@ -1033,7 +1153,7 @@ fn seal_type_name(seal_type: u32) -> &'static str {
         SEAL_NULL => "null",
         SEAL_HOST => "host",
         SEAL_TPM2 => "tpm2",
-        3 => "host+tpm2",
+        SEAL_HOST_TPM2 => "host+tpm2",
         _ => "unknown",
     }
 }
@@ -1093,6 +1213,7 @@ fn main() {
             with_key,
             host,
             tpm2,
+            tpm2_pcrs,
             timestamp,
             not_after,
             pretty,
@@ -1109,6 +1230,7 @@ fn main() {
                 output,
                 name.as_deref(),
                 effective_key,
+                tpm2_pcrs,
                 timestamp.as_deref(),
                 not_after.as_deref(),
                 *pretty,
@@ -1200,7 +1322,7 @@ mod tests {
         let timestamp = 1_000_000u64;
         let not_after = 0u64;
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, timestamp, not_after)
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, timestamp, not_after, 0)
             .expect("encryption should succeed");
 
         let (decrypted, name) =
@@ -1215,7 +1337,7 @@ mod tests {
         let plaintext = b"";
         let cred_name = "empty";
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0)
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0)
             .expect("encryption should succeed");
 
         let (decrypted, name) =
@@ -1230,7 +1352,7 @@ mod tests {
         let plaintext: Vec<u8> = (0..10_000).map(|i| (i % 256) as u8).collect();
         let cred_name = "big-cred";
 
-        let blob = encrypt_credential(&plaintext, cred_name, SEAL_NULL, now_usec(), 0)
+        let blob = encrypt_credential(&plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0)
             .expect("encryption should succeed");
 
         let (decrypted, _name) =
@@ -1244,7 +1366,7 @@ mod tests {
         let plaintext = b"secret";
         let cred_name = "original-name";
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0)
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0)
             .expect("encryption should succeed");
 
         let result = decrypt_credential(&blob, Some("wrong-name"), true);
@@ -1257,7 +1379,7 @@ mod tests {
         let plaintext = b"secret";
         let cred_name = "some-name";
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0)
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0)
             .expect("encryption should succeed");
 
         // Empty expected name → no validation.
@@ -1271,7 +1393,7 @@ mod tests {
         let plaintext = b"secret";
         let cred_name = "expiring";
         // Set not_after to 1 µs in the past (epoch + 1).
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, 0, 1)
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, 0, 1, 0)
             .expect("encryption should succeed");
 
         let result = decrypt_credential(&blob, Some(cred_name), true);
@@ -1285,7 +1407,7 @@ mod tests {
         let cred_name = "future";
         // Set not_after far in the future.
         let not_after = now_usec() + 3_600_000_000; // 1 hour from now
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), not_after)
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), not_after, 0)
             .expect("encryption should succeed");
 
         let (decrypted, _) = decrypt_credential(&blob, Some(cred_name), true)
@@ -1298,7 +1420,7 @@ mod tests {
         let plaintext = b"password123";
         let cred_name = "db-password";
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0)
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0)
             .expect("encryption should succeed");
 
         // Base64 encode, then decode (simulating file storage).
@@ -1334,7 +1456,7 @@ mod tests {
         let plaintext = b"important data";
         let cred_name = "test";
 
-        let mut blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0)
+        let mut blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0)
             .expect("encryption should succeed");
 
         // Corrupt the last byte (part of the GCM tag).
@@ -1421,7 +1543,7 @@ mod tests {
         assert_eq!(seal_type_name(SEAL_NULL), "null");
         assert_eq!(seal_type_name(SEAL_HOST), "host");
         assert_eq!(seal_type_name(SEAL_TPM2), "tpm2");
-        assert_eq!(seal_type_name(3), "host+tpm2");
+        assert_eq!(seal_type_name(SEAL_HOST_TPM2), "host+tpm2");
         assert_eq!(seal_type_name(99), "unknown");
     }
 
@@ -1449,8 +1571,8 @@ mod tests {
         let cred_name = "test";
         let ts = now_usec();
 
-        let blob1 = encrypt_credential(plaintext, cred_name, SEAL_NULL, ts, 0).unwrap();
-        let blob2 = encrypt_credential(plaintext, cred_name, SEAL_NULL, ts, 0).unwrap();
+        let blob1 = encrypt_credential(plaintext, cred_name, SEAL_NULL, ts, 0, 0).unwrap();
+        let blob2 = encrypt_credential(plaintext, cred_name, SEAL_NULL, ts, 0, 0).unwrap();
 
         // The blobs should differ (different random nonce).
         assert_ne!(blob1, blob2);
@@ -1467,7 +1589,7 @@ mod tests {
         let plaintext = b"test";
         let cred_name = "my-cred";
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, 42, 100).unwrap();
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, 42, 100, 0).unwrap();
 
         // Verify magic.
         assert_eq!(&blob[0..4], &CRED_MAGIC);
@@ -1498,7 +1620,7 @@ mod tests {
         let plaintext = b"data";
         let cred_name = "cred-日本語";
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0).unwrap();
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0).unwrap();
         let (decrypted, name) = decrypt_credential(&blob, Some(cred_name), true).unwrap();
         assert_eq!(decrypted, plaintext);
         assert_eq!(name, cred_name);
@@ -1509,7 +1631,7 @@ mod tests {
         let plaintext: Vec<u8> = (0..=255).collect();
         let cred_name = "binary";
 
-        let blob = encrypt_credential(&plaintext, cred_name, SEAL_NULL, now_usec(), 0).unwrap();
+        let blob = encrypt_credential(&plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0).unwrap();
         let (decrypted, _) = decrypt_credential(&blob, Some(cred_name), true).unwrap();
         assert_eq!(decrypted, plaintext);
     }
@@ -1545,7 +1667,7 @@ mod tests {
         let plaintext = b"data";
         let cred_name = "original";
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0).unwrap();
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0).unwrap();
 
         // None expected name → no validation.
         let (decrypted, name) = decrypt_credential(&blob, None, true).unwrap();
@@ -1564,9 +1686,98 @@ mod tests {
         let plaintext = b"secret";
         let cred_name = "";
 
-        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0).unwrap();
+        let blob = encrypt_credential(plaintext, cred_name, SEAL_NULL, now_usec(), 0, 0).unwrap();
         let (decrypted, name) = decrypt_credential(&blob, Some(""), true).unwrap();
         assert_eq!(decrypted, plaintext);
         assert_eq!(name, "");
+    }
+
+    // ---- derive_host_tpm2_key tests ----
+
+    #[test]
+    fn test_derive_host_tpm2_key_deterministic() {
+        let host_key = vec![0xABu8; HOST_KEY_SIZE];
+        let tpm2_secret = vec![0xCDu8; 32];
+        let k1 = derive_host_tpm2_key(&host_key, &tpm2_secret, "cred");
+        let k2 = derive_host_tpm2_key(&host_key, &tpm2_secret, "cred");
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn test_derive_host_tpm2_key_differs_from_host_only() {
+        let host_key = vec![0xABu8; HOST_KEY_SIZE];
+        let tpm2_secret = vec![0xCDu8; 32];
+        let combined = derive_host_tpm2_key(&host_key, &tpm2_secret, "cred");
+        let host_only = derive_key(&host_key, "cred");
+        assert_ne!(combined, host_only);
+    }
+
+    #[test]
+    fn test_derive_host_tpm2_key_differs_from_tpm2_only() {
+        let host_key = vec![0xABu8; HOST_KEY_SIZE];
+        let tpm2_secret = vec![0xCDu8; 32];
+        let combined = derive_host_tpm2_key(&host_key, &tpm2_secret, "cred");
+        let tpm2_only = derive_key(&tpm2_secret, "cred");
+        assert_ne!(combined, tpm2_only);
+    }
+
+    #[test]
+    fn test_derive_host_tpm2_key_different_secrets_differ() {
+        let host_key = vec![0xABu8; HOST_KEY_SIZE];
+        let s1 = vec![0x01u8; 32];
+        let s2 = vec![0x02u8; 32];
+        let k1 = derive_host_tpm2_key(&host_key, &s1, "cred");
+        let k2 = derive_host_tpm2_key(&host_key, &s2, "cred");
+        assert_ne!(k1, k2);
+    }
+
+    // ---- parse_pcr_mask tests ----
+
+    #[test]
+    fn test_parse_pcr_mask_single() {
+        assert_eq!(parse_pcr_mask("7").unwrap(), 1 << 7);
+    }
+
+    #[test]
+    fn test_parse_pcr_mask_multiple() {
+        assert_eq!(
+            parse_pcr_mask("0,2,7").unwrap(),
+            (1 << 0) | (1 << 2) | (1 << 7)
+        );
+    }
+
+    #[test]
+    fn test_parse_pcr_mask_with_spaces() {
+        assert_eq!(parse_pcr_mask(" 7 , 11 ").unwrap(), (1 << 7) | (1 << 11));
+    }
+
+    #[test]
+    fn test_parse_pcr_mask_out_of_range() {
+        assert!(parse_pcr_mask("24").is_err());
+        assert!(parse_pcr_mask("99").is_err());
+    }
+
+    #[test]
+    fn test_parse_pcr_mask_invalid() {
+        assert!(parse_pcr_mask("abc").is_err());
+    }
+
+    #[test]
+    fn test_parse_pcr_mask_empty() {
+        assert!(parse_pcr_mask("").is_err());
+    }
+
+    #[test]
+    fn test_parse_pcr_mask_all_pcrs() {
+        let mask = parse_pcr_mask("0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23")
+            .unwrap();
+        assert_eq!(mask, 0x00FFFFFF);
+    }
+
+    // ---- SEAL_HOST_TPM2 constant ----
+
+    #[test]
+    fn test_seal_host_tpm2_constant() {
+        assert_eq!(SEAL_HOST_TPM2, 3);
     }
 }

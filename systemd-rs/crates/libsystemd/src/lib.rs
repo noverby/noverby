@@ -39,6 +39,7 @@ pub mod socket_activation;
 pub mod sockets;
 pub mod specifier;
 pub mod timer_scheduler;
+pub mod tpm2;
 pub mod unit_name;
 pub mod units;
 pub mod watchdog;

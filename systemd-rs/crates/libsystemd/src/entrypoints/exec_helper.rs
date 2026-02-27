@@ -2620,6 +2620,10 @@ const CRED_AES_IV_SIZE: usize = 12;
 const CRED_SEAL_NULL: u32 = 0;
 /// Seal type: host key (SHA-256 of host_key || credential_name).
 const CRED_SEAL_HOST: u32 = 1;
+/// Seal type: TPM2-sealed secret (SHA-256 of tpm2_secret || credential_name).
+const CRED_SEAL_TPM2: u32 = 2;
+/// Seal type: host key + TPM2 (SHA-256 of host_key || tpm2_secret || credential_name).
+const CRED_SEAL_HOST_TPM2: u32 = 3;
 
 /// Attempt to decrypt an encrypted credential blob.
 ///
@@ -2671,9 +2675,26 @@ fn try_decrypt_credential(data: &[u8], cred_name: &str) -> Result<Vec<u8>, Strin
         }
     }
 
+    // For TPM2 and host+tpm2 seal types, parse and unseal the TPM2 blob
+    // that sits between the name and the IV.
+    let (tpm2_secret, data_start) =
+        if seal_type == CRED_SEAL_TPM2 || seal_type == CRED_SEAL_HOST_TPM2 {
+            let tpm2_data = &blob[name_end..];
+            let (tpm2_blob, consumed) = crate::tpm2::Tpm2SealedBlob::deserialize(tpm2_data)
+                .map_err(|e| format!("failed to parse TPM2 blob: {e}"))?;
+            let secret = crate::tpm2::tpm2_unseal_secret(&tpm2_blob)
+                .map_err(|e| format!("TPM2 unseal failed: {e}"))?;
+            (Some(secret), name_end + consumed)
+        } else {
+            (None, name_end)
+        };
+
     // Extract IV and ciphertext.
-    let iv = &blob[name_end..name_end + CRED_AES_IV_SIZE];
-    let ciphertext = &blob[name_end + CRED_AES_IV_SIZE..];
+    if blob.len() < data_start + CRED_AES_IV_SIZE {
+        return Err("blob too short for IV".into());
+    }
+    let iv = &blob[data_start..data_start + CRED_AES_IV_SIZE];
+    let ciphertext = &blob[data_start + CRED_AES_IV_SIZE..];
 
     if ciphertext.len() < 16 {
         // AES-GCM tag is 16 bytes minimum
@@ -2695,10 +2716,18 @@ fn try_decrypt_credential(data: &[u8], cred_name: &str) -> Result<Vec<u8>, Strin
             h.update(cred_name.as_bytes());
             h.finalize().into()
         }
+        CRED_SEAL_TPM2 => {
+            let secret = tpm2_secret.as_ref().unwrap();
+            crate::tpm2::derive_tpm2_key(secret, cred_name)
+        }
+        CRED_SEAL_HOST_TPM2 => {
+            let host_key = std::fs::read(HOST_KEY_PATH)
+                .map_err(|e| format!("cannot read host key {HOST_KEY_PATH}: {e}"))?;
+            let secret = tpm2_secret.as_ref().unwrap();
+            crate::tpm2::derive_host_tpm2_key(&host_key, secret, cred_name)
+        }
         other => {
-            return Err(format!(
-                "unsupported seal type {other} (TPM2 not implemented)"
-            ));
+            return Err(format!("unsupported seal type {other}"));
         }
     };
 
