@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::net::Shutdown;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
@@ -47,6 +47,7 @@ use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 pub const CONTROL_SOCKET_PATH: &str = "/run/udev/control";
 pub const RUN_DIR: &str = "/run/udev";
 pub const DB_DIR: &str = "/run/udev/data";
+pub const DB_LOCK_FILE: &str = "/run/udev/data/.lock";
 pub const TAGS_DIR: &str = "/run/udev/tags";
 pub const QUEUE_FILE: &str = "/run/udev/queue";
 
@@ -3381,10 +3382,54 @@ pub fn device_db_path(event: &UEvent) -> PathBuf {
     }
 }
 
+/// Acquire an exclusive flock on the database lock file.
+///
+/// Returns the open `File` handle whose lifetime controls the lock — the lock
+/// is released automatically when the file is dropped.  This matches the
+/// approach used by real systemd-udevd to serialise database writes across
+/// concurrent worker threads and external readers (`udevadm info`).
+fn lock_db() -> io::Result<fs::File> {
+    let _ = fs::create_dir_all(DB_DIR);
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(DB_LOCK_FILE)?;
+    // LOCK_EX — block until we get the exclusive lock
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+    if rc != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(file)
+}
+
+/// Acquire a shared (read) flock on the database lock file.
+///
+/// Multiple readers can hold this simultaneously, but they will block while an
+/// exclusive (write) lock is held.
+fn lock_db_shared() -> io::Result<fs::File> {
+    let _ = fs::create_dir_all(DB_DIR);
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .open(DB_LOCK_FILE)?;
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_SH) };
+    if rc != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(file)
+}
+
 /// Write device database entry.
+///
+/// An exclusive flock on [`DB_LOCK_FILE`] is held for the duration of the
+/// write so that concurrent workers and external readers see consistent data.
 fn write_device_db(event: &UEvent, result: &RuleResult) -> io::Result<()> {
     let db_path = device_db_path(event);
-    let _ = fs::create_dir_all(DB_DIR);
+
+    // Acquire exclusive lock — released when `_lock` is dropped at scope exit.
+    let _lock = lock_db()?;
 
     let mut content = String::new();
 
@@ -3422,9 +3467,17 @@ fn write_device_db(event: &UEvent, result: &RuleResult) -> io::Result<()> {
 }
 
 /// Remove device database entry.
+///
+/// Acquires an exclusive flock so that concurrent readers do not see a
+/// partially-removed entry.
 fn remove_device_db(event: &UEvent) {
     let db_path = device_db_path(event);
-    let _ = fs::remove_file(db_path);
+    if let Ok(_lock) = lock_db() {
+        let _ = fs::remove_file(db_path);
+    } else {
+        // Best-effort if locking fails (e.g. read-only filesystem)
+        let _ = fs::remove_file(db_path);
+    }
 }
 
 /// Write tag symlinks in /run/udev/tags/.
@@ -4102,13 +4155,16 @@ fn process_event(rules: &RuleSet, event: &mut UEvent, hwdb: Option<&Hwdb>) {
             execute_run_programs(event, &result, hwdb);
         }
         "remove" | "unbind" | "offline" => {
-            // Remove symlinks (read from database first)
+            // Remove symlinks (read from database first, under shared lock)
             let db_path = device_db_path(event);
             let mut old_symlinks = Vec::new();
-            if let Ok(content) = fs::read_to_string(&db_path) {
-                for line in content.lines() {
-                    if let Some(link) = line.strip_prefix("S:") {
-                        old_symlinks.push(link.to_string());
+            {
+                let _lock = lock_db_shared();
+                if let Ok(content) = fs::read_to_string(&db_path) {
+                    for line in content.lines() {
+                        if let Some(link) = line.strip_prefix("S:") {
+                            old_symlinks.push(link.to_string());
+                        }
                     }
                 }
             }
