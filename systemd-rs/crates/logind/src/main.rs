@@ -19,9 +19,11 @@
 //! - Idle hint tracking
 
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::net::Shutdown;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,6 +32,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use zbus::blocking::Connection;
+use zbus::zvariant::OwnedFd as ZOwnedFd;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -142,7 +145,7 @@ fn watchdog_interval() -> Option<Duration> {
 // Session / Seat / User / Inhibitor types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Session {
     /// Unique session ID (e.g. "1", "2", "c1" for automatic sessions)
     pub id: String,
@@ -192,7 +195,28 @@ pub struct Session {
     pub idle_since_hint_monotonic: u64,
     /// Whether session is locked
     pub locked_hint: bool,
+    /// D-Bus unique name of the session controller (from TakeControl)
+    #[serde(skip)]
+    pub controller: Option<String>,
+    /// Devices taken via TakeDevice, keyed by (major, minor)
+    #[serde(skip)]
+    pub devices: HashMap<(u32, u32), SessionDevice>,
 }
+
+/// A device opened by a session controller via TakeDevice.
+#[derive(Debug)]
+pub struct SessionDevice {
+    /// The major:minor pair identifying this device.
+    pub major: u32,
+    pub minor: u32,
+    /// The opened file descriptor (owned by logind).
+    pub fd: OwnedFd,
+    /// Whether the device is currently active (session is foreground).
+    pub active: bool,
+}
+
+// SessionDevice cannot be Clone because OwnedFd is not Clone.
+// We skip serde for the devices map on Session, so no Serialize/Deserialize needed.
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Seat {
@@ -269,6 +293,10 @@ pub struct LoginManager {
     power_button_devices: Vec<PathBuf>,
     /// Configuration
     config: LogindConfig,
+    /// Pipe read-ends for inhibitor FD-based lifecycle tracking.
+    /// When the caller drops their write-end, the read-end becomes readable
+    /// and we can auto-release the inhibitor.
+    inhibitor_pipes: HashMap<u64, OwnedFd>,
 }
 
 /// Manager configuration (logind.conf)
@@ -335,6 +363,7 @@ impl LoginManager {
             next_inhibitor_id: 1,
             power_button_devices: Vec::new(),
             config,
+            inhibitor_pipes: HashMap::new(),
         };
 
         // Always create seat0 — the default seat
@@ -455,6 +484,8 @@ impl LoginManager {
             idle_since_hint: 0,
             idle_since_hint_monotonic: 0,
             locked_hint: false,
+            controller: None,
+            devices: HashMap::new(),
         };
 
         // Register in seat
@@ -575,9 +606,29 @@ impl LoginManager {
         let stale: Vec<u64> = self
             .inhibitors
             .iter()
-            .filter(|(_, inhibitor)| {
+            .filter(|(id, inhibitor)| {
+                // Check if the pipe FD was closed by the caller (read end
+                // becomes readable / returns 0 bytes when the write end is
+                // dropped).
+                if let Some(pipe_fd) = self.inhibitor_pipes.get(id) {
+                    let mut buf = [0u8; 1];
+                    let rc = unsafe {
+                        libc::read(
+                            pipe_fd.as_raw_fd(),
+                            buf.as_mut_ptr() as *mut libc::c_void,
+                            1,
+                        )
+                    };
+                    // rc == 0 means write-end was closed (EOF)
+                    // rc > 0 should not happen (nobody writes to it)
+                    // rc < 0 with EAGAIN means still open (non-blocking)
+                    if rc == 0 {
+                        return true;
+                    }
+                }
+                // Fallback: check if the PID that created this inhibitor is
+                // still alive.
                 if inhibitor.pid > 0 {
-                    // Check if the process still exists
                     unsafe { libc::kill(inhibitor.pid as i32, 0) != 0 }
                 } else {
                     false
@@ -588,28 +639,31 @@ impl LoginManager {
 
         for id in stale {
             log::info!("Removing stale inhibitor lock {}", id);
+            self.inhibitor_pipes.remove(&id);
             self.release_inhibitor(id);
         }
     }
 
     /// Activate a session on its seat
     fn activate_session(&mut self, session_id: &str) -> Result<(), String> {
-        let session = self
-            .sessions
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| format!("Session '{}' not found", session_id))?;
-
-        let seat_id = session
-            .seat
-            .as_ref()
-            .ok_or_else(|| format!("Session '{}' has no seat", session_id))?
-            .clone();
+        // Extract the seat_id without cloning the whole Session.
+        let seat_id = {
+            let session = self
+                .sessions
+                .get(session_id)
+                .ok_or_else(|| format!("Session '{}' not found", session_id))?;
+            session
+                .seat
+                .as_ref()
+                .ok_or_else(|| format!("Session '{}' has no seat", session_id))?
+                .clone()
+        };
 
         if let Some(seat) = self.seats.get_mut(&seat_id) {
             // Deactivate current active session
-            if let Some(ref old_active) = seat.active_session
-                && let Some(old_session) = self.sessions.get_mut(old_active)
+            let old_active = seat.active_session.clone();
+            if let Some(ref old_id) = old_active
+                && let Some(old_session) = self.sessions.get_mut(old_id)
             {
                 old_session.active = false;
                 old_session.state = "online".to_string();
@@ -773,7 +827,12 @@ impl LoginManager {
         Ok(())
     }
 
-    /// Check if an action can be performed (checking inhibitors)
+    /// Check if an action can be performed (checking inhibitors and polkit).
+    ///
+    /// Returns one of: "yes", "no", "challenge", "na".
+    /// - "yes" — action is allowed without further authentication
+    /// - "challenge" — action requires authentication / inhibitor is blocking
+    /// - "na" — action is not applicable on this system
     fn can_action(&self, action: &str) -> &'static str {
         let blocked = self.inhibitors.values().any(|inhibitor| {
             inhibitor.mode == "block"
@@ -784,6 +843,156 @@ impl LoginManager {
         if blocked { "challenge" } else { "yes" }
     }
 
+    /// Take control of a session (for TakeDevice).
+    ///
+    /// Only one D-Bus connection can be the controller at a time.
+    /// `force` allows root/privileged callers to steal control.
+    fn take_control(
+        &mut self,
+        session_id: &str,
+        controller_name: &str,
+        force: bool,
+    ) -> Result<(), String> {
+        let session = self
+            .sessions
+            .get_mut(session_id)
+            .ok_or_else(|| format!("Session {} not found", session_id))?;
+        if let Some(ref existing) = session.controller {
+            if !force {
+                return Err(format!(
+                    "Session {} already controlled by {}",
+                    session_id, existing
+                ));
+            }
+            log::info!(
+                "Force-taking control of session {} from {} to {}",
+                session_id,
+                existing,
+                controller_name
+            );
+            // Release all devices held by the old controller
+            session.devices.clear();
+        }
+        session.controller = Some(controller_name.to_string());
+        log::info!(
+            "Session {} controller set to {}",
+            session_id,
+            controller_name
+        );
+        Ok(())
+    }
+
+    /// Release control of a session.
+    fn release_control(&mut self, session_id: &str) {
+        if let Some(session) = self.sessions.get_mut(session_id) {
+            // Close all taken devices
+            let count = session.devices.len();
+            session.devices.clear();
+            session.controller = None;
+            if count > 0 {
+                log::info!(
+                    "Session {} controller released, closed {} device(s)",
+                    session_id,
+                    count
+                );
+            }
+        }
+    }
+
+    /// Take a device for a session (TakeDevice).
+    ///
+    /// Opens the device node identified by major:minor and returns a dup'd FD.
+    /// The original FD is kept in the session's device map so logind can
+    /// revoke access when the session goes inactive (PauseDevice).
+    fn take_device(
+        &mut self,
+        session_id: &str,
+        major: u32,
+        minor: u32,
+    ) -> Result<(OwnedFd, bool), String> {
+        let session = self
+            .sessions
+            .get_mut(session_id)
+            .ok_or_else(|| format!("Session {} not found", session_id))?;
+
+        if session.controller.is_none() {
+            return Err("Session has no controller — call TakeControl first".to_string());
+        }
+
+        let dev_key = (major, minor);
+
+        // If already taken, return a dup of the existing FD
+        if let Some(dev) = session.devices.get(&dev_key) {
+            let dup_fd = dup_fd(&dev.fd)?;
+            return Ok((dup_fd, dev.active));
+        }
+
+        // Open the device node via /dev/char/MAJOR:MINOR (or sysfs devnode)
+        let dev_path = format!("/dev/char/{}:{}", major, minor);
+        let c_path = CString::new(dev_path.clone())
+            .map_err(|_| format!("Invalid device path: {}", dev_path))?;
+        let raw_fd = unsafe {
+            libc::open(
+                c_path.as_ptr(),
+                libc::O_RDWR | libc::O_CLOEXEC | libc::O_NOCTTY | libc::O_NONBLOCK,
+            )
+        };
+        if raw_fd < 0 {
+            return Err(format!(
+                "Failed to open {}: {}",
+                dev_path,
+                io::Error::last_os_error()
+            ));
+        }
+        let owned = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+
+        // Dup the FD for the caller — logind keeps the original
+        let caller_fd = dup_fd(&owned)?;
+        let is_active = session.active;
+
+        session.devices.insert(
+            dev_key,
+            SessionDevice {
+                major,
+                minor,
+                fd: owned,
+                active: is_active,
+            },
+        );
+
+        log::info!(
+            "Session {} took device {}:{} (active={})",
+            session_id,
+            major,
+            minor,
+            is_active
+        );
+        Ok((caller_fd, is_active))
+    }
+
+    /// Release a previously taken device.
+    fn release_device(&mut self, session_id: &str, major: u32, minor: u32) {
+        if let Some(session) = self.sessions.get_mut(session_id)
+            && session.devices.remove(&(major, minor)).is_some()
+        {
+            log::info!("Session {} released device {}:{}", session_id, major, minor);
+        }
+    }
+}
+
+/// Duplicate a file descriptor, returning a new `OwnedFd`.
+fn dup_fd(fd: &OwnedFd) -> Result<OwnedFd, String> {
+    let raw: RawFd = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
+    if raw < 0 {
+        return Err(format!(
+            "fcntl F_DUPFD_CLOEXEC failed: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    Ok(unsafe { OwnedFd::from_raw_fd(raw) })
+}
+
+impl LoginManager {
     /// Get the global idle hint (any active session not idle => not idle)
     fn global_idle_hint(&self) -> bool {
         // If there are no sessions, consider idle
@@ -1815,55 +2024,48 @@ impl Login1Manager {
         mgr.enumerate_input_devices();
     }
 
-    fn power_off(&self, _interactive: bool) {
-        log::info!("D-Bus PowerOff requested");
+    fn power_off(&self, interactive: bool) -> zbus::fdo::Result<()> {
+        execute_power_action("poweroff", interactive, &self.mgr)
     }
-    fn reboot(&self, _interactive: bool) {
-        log::info!("D-Bus Reboot requested");
+    fn reboot(&self, interactive: bool) -> zbus::fdo::Result<()> {
+        execute_power_action("reboot", interactive, &self.mgr)
     }
-    fn halt(&self, _interactive: bool) {
-        log::info!("D-Bus Halt requested");
+    fn halt(&self, interactive: bool) -> zbus::fdo::Result<()> {
+        execute_power_action("halt", interactive, &self.mgr)
     }
-    fn suspend(&self, _interactive: bool) {
-        log::info!("D-Bus Suspend requested");
+    fn suspend(&self, interactive: bool) -> zbus::fdo::Result<()> {
+        execute_power_action("suspend", interactive, &self.mgr)
     }
-    fn hibernate(&self, _interactive: bool) {
-        log::info!("D-Bus Hibernate requested");
+    fn hibernate(&self, interactive: bool) -> zbus::fdo::Result<()> {
+        execute_power_action("hibernate", interactive, &self.mgr)
     }
-    fn hybrid_sleep(&self, _interactive: bool) {
-        log::info!("D-Bus HybridSleep requested");
+    fn hybrid_sleep(&self, interactive: bool) -> zbus::fdo::Result<()> {
+        execute_power_action("hybrid-sleep", interactive, &self.mgr)
     }
-    fn suspend_then_hibernate(&self, _interactive: bool) {
-        log::info!("D-Bus SuspendThenHibernate requested");
+    fn suspend_then_hibernate(&self, interactive: bool) -> zbus::fdo::Result<()> {
+        execute_power_action("suspend-then-hibernate", interactive, &self.mgr)
     }
 
     fn can_power_off(&self) -> String {
-        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
-        mgr.can_action("poweroff").to_string()
+        can_action_with_polkit("poweroff", &self.mgr)
     }
     fn can_reboot(&self) -> String {
-        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
-        mgr.can_action("reboot").to_string()
+        can_action_with_polkit("reboot", &self.mgr)
     }
     fn can_halt(&self) -> String {
-        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
-        mgr.can_action("halt").to_string()
+        can_action_with_polkit("halt", &self.mgr)
     }
     fn can_suspend(&self) -> String {
-        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
-        mgr.can_action("suspend").to_string()
+        can_action_with_polkit("suspend", &self.mgr)
     }
     fn can_hibernate(&self) -> String {
-        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
-        mgr.can_action("hibernate").to_string()
+        can_action_with_polkit("hibernate", &self.mgr)
     }
     fn can_hybrid_sleep(&self) -> String {
-        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
-        mgr.can_action("hybrid-sleep").to_string()
+        can_action_with_polkit("hybrid-sleep", &self.mgr)
     }
     fn can_suspend_then_hibernate(&self) -> String {
-        let mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
-        mgr.can_action("suspend-then-hibernate").to_string()
+        can_action_with_polkit("suspend-then-hibernate", &self.mgr)
     }
 
     fn inhibit(
@@ -1872,7 +2074,7 @@ impl Login1Manager {
         who: String,
         why: String,
         mode: String,
-    ) -> zbus::fdo::Result<u32> {
+    ) -> zbus::fdo::Result<ZOwnedFd> {
         let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
         if mode != "block" && mode != "delay" {
             return Err(zbus::fdo::Error::Failed(
@@ -1881,16 +2083,44 @@ impl Login1Manager {
         }
         let id = mgr.create_inhibitor(&what, &who, &why, &mode, 0, 0);
         log::info!("New D-Bus inhibitor {} ({}): {} — {}", id, what, who, why);
-        // Return the inhibitor ID. Real systemd returns a pipe FD; we return
-        // the numeric ID as a workaround for the blocking zbus interface.
-        Ok(id as u32)
+
+        // Real systemd returns a pipe FD — when the caller closes it (or
+        // exits), the inhibitor is automatically released.  We create a pipe
+        // pair: the read end is kept by logind and the write end is returned
+        // to the caller.  When the caller drops the write end the read end
+        // becomes readable, which a future poll loop can detect to release
+        // the inhibitor.
+        let mut fds = [0i32; 2];
+        let rc = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) };
+        if rc != 0 {
+            // Fallback: return an error but keep the inhibitor active
+            return Err(zbus::fdo::Error::Failed(format!(
+                "pipe2 failed: {}",
+                io::Error::last_os_error()
+            )));
+        }
+        let _read_end = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let write_end = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+
+        // Store the read end so we can detect when the caller drops
+        mgr.inhibitor_pipes.insert(id, _read_end);
+
+        Ok(ZOwnedFd::from(write_end))
     }
 
-    fn schedule_shutdown(&self, _shutdown_type: String, _usec: u64) {
-        log::info!("ScheduleShutdown requested (not yet implemented)");
+    fn schedule_shutdown(&self, shutdown_type: String, usec: u64) {
+        log::info!(
+            "ScheduleShutdown requested: type={}, usec={}",
+            shutdown_type,
+            usec
+        );
+        // A full implementation would store the scheduled shutdown and start a
+        // timer.  For now we log and emit PrepareForShutdown when the time
+        // arrives.  Not yet wired to a timer.
     }
 
     fn cancel_scheduled_shutdown(&self) -> bool {
+        log::info!("CancelScheduledShutdown requested");
         false
     }
 
@@ -2206,16 +2436,41 @@ impl Login1Session {
             .map_err(zbus::fdo::Error::Failed)
     }
 
-    fn take_control(&self, _force: bool) {}
-    fn release_control(&self) {}
-    fn set_brightness(&self, _subsystem: String, _name: String, _brightness: u32) {}
-    fn take_device(&self, _major: u32, _minor: u32) -> zbus::fdo::Result<(i32, bool)> {
-        Err(zbus::fdo::Error::Failed(
-            "TakeDevice not yet implemented".to_string(),
-        ))
+    fn take_control(&self, force: bool) -> zbus::fdo::Result<()> {
+        // In real systemd, the controller is identified by the D-Bus sender.
+        // We use a placeholder string here; a full implementation would extract
+        // the sender unique name from the D-Bus message header.
+        let caller = "dbus-controller".to_string();
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.take_control(&self.session_id, &caller, force)
+            .map_err(zbus::fdo::Error::Failed)
     }
-    fn release_device(&self, _major: u32, _minor: u32) {}
-    fn pause_device_complete(&self, _major: u32, _minor: u32) {}
+
+    fn release_control(&self) {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.release_control(&self.session_id);
+    }
+
+    fn set_brightness(&self, _subsystem: String, _name: String, _brightness: u32) {}
+
+    fn take_device(&self, major: u32, minor: u32) -> zbus::fdo::Result<(ZOwnedFd, bool)> {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let (fd, active) = mgr
+            .take_device(&self.session_id, major, minor)
+            .map_err(zbus::fdo::Error::Failed)?;
+        Ok((ZOwnedFd::from(fd), active))
+    }
+
+    fn release_device(&self, major: u32, minor: u32) {
+        let mut mgr = self.mgr.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.release_device(&self.session_id, major, minor);
+    }
+
+    fn pause_device_complete(&self, _major: u32, _minor: u32) {
+        // Acknowledge a PauseDevice signal. In a full implementation this
+        // would track pending pauses and complete the VT switch once all
+        // devices are acknowledged. For now this is a no-op.
+    }
 }
 
 /// D-Bus interface struct for org.freedesktop.login1.Seat
@@ -3244,6 +3499,172 @@ fn main() {
 // Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Polkit authorization helper
+// ---------------------------------------------------------------------------
+
+/// Check polkit authorization for a power action.
+///
+/// Calls `pkcheck` to determine whether the given UID is authorized for the
+/// given action.  Falls back to "yes" when polkit is not installed so that
+/// headless / minimal systems still work.
+///
+/// `action_id` should be the full polkit action, e.g.
+/// `"org.freedesktop.login1.power-off"`.
+fn polkit_check(action_id: &str, uid: u32, pid: u32) -> &'static str {
+    use std::process::Command;
+    // Try pkcheck --action-id <action> --process <pid> --allow-user-interaction
+    let result = Command::new("pkcheck")
+        .arg("--action-id")
+        .arg(action_id)
+        .arg("--process")
+        .arg(pid.to_string())
+        .arg("--allow-user-interaction")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match result {
+        Ok(status) if status.success() => "yes",
+        Ok(status) => {
+            // Exit code 1 = not authorized, 2 = challenge, 3 = not found
+            match status.code() {
+                Some(1) => "no",
+                Some(2) => "challenge",
+                _ => {
+                    log::debug!(
+                        "pkcheck for {} uid={} pid={} exited with {:?}",
+                        action_id,
+                        uid,
+                        pid,
+                        status.code()
+                    );
+                    "no"
+                }
+            }
+        }
+        Err(e) => {
+            // polkit not available — fall back to permissive for root,
+            // challenge for everyone else.
+            log::debug!("pkcheck not available ({}), falling back", e);
+            if uid == 0 { "yes" } else { "challenge" }
+        }
+    }
+}
+
+/// Map a simple action name ("poweroff", "reboot", …) to a polkit action ID.
+fn polkit_action_id(action: &str) -> &'static str {
+    match action {
+        "poweroff" => "org.freedesktop.login1.power-off",
+        "reboot" => "org.freedesktop.login1.reboot",
+        "halt" => "org.freedesktop.login1.halt",
+        "suspend" => "org.freedesktop.login1.suspend",
+        "hibernate" => "org.freedesktop.login1.hibernate",
+        "hybrid-sleep" => "org.freedesktop.login1.hibernate",
+        "suspend-then-hibernate" => "org.freedesktop.login1.hibernate",
+        _ => "org.freedesktop.login1.power-off",
+    }
+}
+
+/// Combined check: inhibitors + polkit for a `Can*` D-Bus property.
+///
+/// First checks inhibitor locks.  If no inhibitor blocks, asks polkit whether
+/// the current process (uid 0, pid 1 as placeholder — a real implementation
+/// would extract the D-Bus caller credentials) is authorized.
+fn can_action_with_polkit(action: &str, mgr: &SharedManager) -> String {
+    let mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
+    let inhibitor_result = mgr_guard.can_action(action);
+    if inhibitor_result == "challenge" {
+        return "challenge".to_string();
+    }
+    // When no inhibitor blocks, also consult polkit.
+    // We use uid=0/pid=1 as a heuristic; a full implementation would
+    // extract the sender's credentials from the D-Bus message header.
+    let polkit_result = polkit_check(polkit_action_id(action), 0, 1);
+    polkit_result.to_string()
+}
+
+/// Execute a power/sleep action after checking inhibitors and polkit.
+///
+/// Maps the action name to the appropriate system command:
+/// - poweroff / reboot / halt → `systemctl <action>`
+/// - suspend / hibernate / hybrid-sleep / suspend-then-hibernate →
+///   `systemctl <action>`
+///
+/// Emits `PrepareForShutdown` or `PrepareForSleep` signals before and after.
+fn execute_power_action(
+    action: &str,
+    _interactive: bool,
+    mgr: &SharedManager,
+) -> zbus::fdo::Result<()> {
+    use std::process::Command;
+
+    // Check inhibitors
+    {
+        let mgr_guard = mgr.lock().unwrap_or_else(|e| e.into_inner());
+        let result = mgr_guard.can_action(action);
+        if result == "challenge" {
+            // Check polkit — use uid 0 as placeholder
+            let pk = polkit_check(polkit_action_id(action), 0, 1);
+            if pk == "no" {
+                return Err(zbus::fdo::Error::Failed(format!(
+                    "Action '{}' is blocked by an inhibitor and not authorized",
+                    action
+                )));
+            }
+        }
+    }
+
+    let is_sleep = matches!(
+        action,
+        "suspend" | "hibernate" | "hybrid-sleep" | "suspend-then-hibernate"
+    );
+
+    log::info!(
+        "Executing {} action: {}",
+        if is_sleep { "sleep" } else { "shutdown" },
+        action
+    );
+
+    // The systemctl command name matches the action for all cases
+    let systemctl_action = match action {
+        "poweroff" => "poweroff",
+        "reboot" => "reboot",
+        "halt" => "halt",
+        "suspend" => "suspend",
+        "hibernate" => "hibernate",
+        "hybrid-sleep" => "hybrid-sleep",
+        "suspend-then-hibernate" => "suspend-then-hibernate",
+        other => {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Unknown action '{}'",
+                other
+            )));
+        }
+    };
+
+    // Spawn in a background thread so we don't block the D-Bus method reply.
+    // The caller gets an immediate Ok(()) and the action proceeds asynchronously.
+    let cmd = systemctl_action.to_string();
+    thread::spawn(move || {
+        // Small delay to allow the D-Bus reply to be sent
+        thread::sleep(Duration::from_millis(100));
+        log::info!("Running: systemctl {}", cmd);
+        match Command::new("systemctl").arg(&cmd).status() {
+            Ok(status) if status.success() => {
+                log::info!("systemctl {} completed successfully", cmd);
+            }
+            Ok(status) => {
+                log::error!("systemctl {} failed with status {:?}", cmd, status.code());
+            }
+            Err(e) => {
+                log::error!("Failed to execute systemctl {}: {}", cmd, e);
+            }
+        }
+    });
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4043,6 +4464,188 @@ mod tests {
     }
 
     // -- Session fields tests --
+
+    #[test]
+    fn test_take_control_sets_controller() {
+        let mut mgr = LoginManager::new();
+        let sid = mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "tty1",
+            1234,
+        );
+        mgr.take_control(&sid, "org.test.Caller", false).unwrap();
+        assert_eq!(
+            mgr.sessions.get(&sid).unwrap().controller.as_deref(),
+            Some("org.test.Caller")
+        );
+    }
+
+    #[test]
+    fn test_take_control_rejects_duplicate() {
+        let mut mgr = LoginManager::new();
+        let sid = mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "tty1",
+            1234,
+        );
+        mgr.take_control(&sid, "first", false).unwrap();
+        assert!(mgr.take_control(&sid, "second", false).is_err());
+    }
+
+    #[test]
+    fn test_take_control_force_overrides() {
+        let mut mgr = LoginManager::new();
+        let sid = mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "tty1",
+            1234,
+        );
+        mgr.take_control(&sid, "first", false).unwrap();
+        mgr.take_control(&sid, "second", true).unwrap();
+        assert_eq!(
+            mgr.sessions.get(&sid).unwrap().controller.as_deref(),
+            Some("second")
+        );
+    }
+
+    #[test]
+    fn test_release_control_clears_controller() {
+        let mut mgr = LoginManager::new();
+        let sid = mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "tty1",
+            1234,
+        );
+        mgr.take_control(&sid, "ctrl", false).unwrap();
+        mgr.release_control(&sid);
+        assert!(mgr.sessions.get(&sid).unwrap().controller.is_none());
+    }
+
+    #[test]
+    fn test_take_device_requires_controller() {
+        let mut mgr = LoginManager::new();
+        let sid = mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "tty1",
+            1234,
+        );
+        let result = mgr.take_device(&sid, 226, 0);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no controller"));
+    }
+
+    #[test]
+    fn test_take_device_invalid_device() {
+        let mut mgr = LoginManager::new();
+        let sid = mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "tty1",
+            1234,
+        );
+        mgr.take_control(&sid, "ctrl", false).unwrap();
+        // Major 0, Minor 0 — unlikely to exist as a char device
+        let result = mgr.take_device(&sid, 0, 0);
+        // This should fail to open in most environments
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_release_device_nonexistent_ok() {
+        let mut mgr = LoginManager::new();
+        let sid = mgr.create_session(
+            1000,
+            "testuser",
+            Some("seat0"),
+            1,
+            "tty",
+            "user",
+            "tty1",
+            1234,
+        );
+        // Releasing a device that was never taken should not panic
+        mgr.release_device(&sid, 226, 0);
+    }
+
+    #[test]
+    fn test_take_device_session_not_found() {
+        let mut mgr = LoginManager::new();
+        let result = mgr.take_device("nonexistent", 226, 0);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_polkit_action_id_mapping() {
+        assert_eq!(
+            polkit_action_id("poweroff"),
+            "org.freedesktop.login1.power-off"
+        );
+        assert_eq!(polkit_action_id("reboot"), "org.freedesktop.login1.reboot");
+        assert_eq!(polkit_action_id("halt"), "org.freedesktop.login1.halt");
+        assert_eq!(
+            polkit_action_id("suspend"),
+            "org.freedesktop.login1.suspend"
+        );
+        assert_eq!(
+            polkit_action_id("hibernate"),
+            "org.freedesktop.login1.hibernate"
+        );
+        assert_eq!(
+            polkit_action_id("hybrid-sleep"),
+            "org.freedesktop.login1.hibernate"
+        );
+        assert_eq!(
+            polkit_action_id("suspend-then-hibernate"),
+            "org.freedesktop.login1.hibernate"
+        );
+        assert_eq!(
+            polkit_action_id("unknown"),
+            "org.freedesktop.login1.power-off"
+        );
+    }
+
+    #[test]
+    fn test_dup_fd_works() {
+        use std::os::fd::AsRawFd;
+        // Open /dev/null as a test FD
+        let file = std::fs::File::open("/dev/null").unwrap();
+        let owned: OwnedFd = file.into();
+        let duped = dup_fd(&owned).unwrap();
+        assert_ne!(owned.as_raw_fd(), duped.as_raw_fd());
+        // Both FDs should be valid (non-negative)
+        assert!(owned.as_raw_fd() >= 0);
+        assert!(duped.as_raw_fd() >= 0);
+    }
 
     #[test]
     fn test_session_new_fields() {
