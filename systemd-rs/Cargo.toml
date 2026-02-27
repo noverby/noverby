@@ -48,6 +48,7 @@ members = [
   "crates/logind",
   "crates/loginctl",
   "crates/networkd",
+  "crates/network-generator",
   "crates/networkctl",
   "crates/resolved",
   "crates/resolvectl",

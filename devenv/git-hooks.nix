@@ -11,7 +11,10 @@
       ripsecrets.enable = true;
       statix.enable = true;
       taplo.enable = true;
-      typos.enable = true;
+      typos = {
+        enable = true;
+        settings.configPath = "./devenv/configs/typos.toml";
+      };
       nickel-format = {
         enable = true;
         name = "nickel-format";

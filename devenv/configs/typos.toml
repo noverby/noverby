@@ -7,6 +7,8 @@ clonable = "clonable"
 nin = "nin"
 # Linux keycode ALS_TOGGLE (Ambient Light Sensor)
 als = "als"
+# Linux kernel bond option num_grat_arp (gratuitous ARP)
+grat = "grat"
 
 [default]
 extend-ignore-re = [

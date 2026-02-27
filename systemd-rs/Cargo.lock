@@ -1499,6 +1499,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-network-generator"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-networkd"
 version = "0.1.0"
 dependencies = [
