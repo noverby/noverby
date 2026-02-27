@@ -71,6 +71,11 @@ pub struct ManagedLink {
 
     /// IPv6 search domains collected from RA DNSSL and/or DHCPv6.
     pub search6_domains: Vec<String>,
+
+    /// Addresses assigned to this downstream interface by DHCPv6-PD
+    /// distribution from an upstream interface's delegated prefix.
+    /// Each entry is `(address, prefix_len)`.
+    pub pd_assigned_addresses: Vec<(Ipv6Addr, u8)>,
 }
 
 /// Desired administrative state of a link.
@@ -270,6 +275,7 @@ impl NetworkManager {
                 ra_state: None,
                 dns6_servers: Vec::new(),
                 search6_domains: Vec::new(),
+                pd_assigned_addresses: Vec::new(),
             };
 
             if matched_config.is_some() {
@@ -1404,11 +1410,20 @@ impl NetworkManager {
             log::warn!("Failed to write resolv.conf: {e}");
         }
 
+        // Distribute /64 subnets to downstream interfaces.
+        if use_delegated_prefix && lease.has_prefix_delegation() {
+            self.distribute_delegated_prefixes(ifindex);
+        }
+
         Ok(())
     }
 
     /// Remove a DHCPv6 lease from an interface.
     pub fn remove_dhcpv6_lease(&mut self, ifindex: u32) -> Result<(), String> {
+        // First, remove any downstream PD-assigned addresses before we drop
+        // the lease (we need the delegated prefixes to know what to clean up).
+        self.remove_distributed_prefixes(ifindex);
+
         let managed = match self.links.get_mut(&ifindex) {
             Some(m) => m,
             None => return Err(format!("unknown ifindex {ifindex}")),
@@ -1469,6 +1484,221 @@ impl NetworkManager {
 
         self.update_global_dns();
         Ok(())
+    }
+
+    /// Distribute /64 subnets from an upstream interface's delegated prefixes
+    /// to downstream interfaces that have `[DHCPv6PrefixDelegation] Assign=yes`.
+    ///
+    /// For each delegated prefix (e.g. 2001:db8:abcd::/48) and each downstream
+    /// interface, a /64 subnet is carved out and an address is assigned.  The
+    /// subnet selection uses the `SubnetId=` config (or auto-assigns
+    /// sequentially) and the host part uses `Token=` (default `::1`).
+    pub fn distribute_delegated_prefixes(&mut self, upstream_ifindex: u32) {
+        // Collect delegated prefixes from the upstream lease.
+        let prefixes: Vec<(Ipv6Addr, u8)> = match self.links.get(&upstream_ifindex) {
+            Some(m) => match m.dhcpv6_lease {
+                Some(ref lease) => lease
+                    .delegated_prefixes()
+                    .iter()
+                    .map(|p| (p.prefix, p.prefix_length))
+                    .collect(),
+                None => return,
+            },
+            None => return,
+        };
+
+        if prefixes.is_empty() {
+            return;
+        }
+
+        let upstream_name = self
+            .links
+            .get(&upstream_ifindex)
+            .map(|m| m.link.name.clone())
+            .unwrap_or_default();
+
+        // Collect downstream interfaces that want PD assignment.
+        // Each entry: (ifindex, link_name, subnet_id_option, token).
+        let downstream: Vec<(u32, String, Option<u64>, Ipv6Addr)> = self
+            .links
+            .iter()
+            .filter(|&(idx, _)| *idx != upstream_ifindex)
+            .filter_map(|(&idx, m)| {
+                let cfg = m.config.as_ref()?;
+                if cfg.dhcpv6_pd.assign {
+                    Some((
+                        idx,
+                        m.link.name.clone(),
+                        cfg.dhcpv6_pd.subnet_id,
+                        cfg.dhcpv6_pd.token,
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if downstream.is_empty() {
+            return;
+        }
+
+        log::info!(
+            "{}: distributing {} delegated prefix(es) to {} downstream interface(s)",
+            upstream_name,
+            prefixes.len(),
+            downstream.len()
+        );
+
+        // For each delegated prefix, assign /64 subnets to downstream interfaces.
+        for (prefix, prefix_len) in &prefixes {
+            if *prefix_len >= 64 {
+                log::warn!(
+                    "{}: delegated prefix {}/{} is too long to carve /64 subnets",
+                    upstream_name,
+                    prefix,
+                    prefix_len
+                );
+                continue;
+            }
+
+            let mut auto_subnet_counter: u64 = 0;
+
+            for (ds_ifindex, ds_name, subnet_id_opt, token) in &downstream {
+                let subnet_id = match subnet_id_opt {
+                    Some(id) => *id,
+                    None => {
+                        let id = auto_subnet_counter;
+                        auto_subnet_counter += 1;
+                        id
+                    }
+                };
+
+                // Compute the /64 subnet: place subnet_id in the bits between
+                // prefix_len and 64.
+                let max_subnet_bits = 64 - *prefix_len as u32;
+                let max_subnets = 1u64 << max_subnet_bits;
+                if subnet_id >= max_subnets {
+                    log::warn!(
+                        "{}: subnet_id {} exceeds maximum {} for prefix {}/{}",
+                        ds_name,
+                        subnet_id,
+                        max_subnets - 1,
+                        prefix,
+                        prefix_len
+                    );
+                    continue;
+                }
+
+                let subnet_addr =
+                    compute_pd_subnet_address(*prefix, *prefix_len, subnet_id, *token);
+
+                log::info!(
+                    "{}: assigning PD address {}/64 from {}/{} (subnet_id={})",
+                    ds_name,
+                    subnet_addr,
+                    prefix,
+                    prefix_len,
+                    subnet_id
+                );
+
+                // Add the /64 address on the downstream interface.
+                if let Err(e) = ipv6_ra::add_ipv6_address(*ds_ifindex, subnet_addr, 64) {
+                    let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                    if !is_exists {
+                        log::warn!(
+                            "{}: failed to add PD address {}/64: {}",
+                            ds_name,
+                            subnet_addr,
+                            e
+                        );
+                    }
+                }
+
+                // Add on-link route for the /64 subnet on the downstream interface.
+                let subnet_prefix = compute_pd_subnet(*prefix, *prefix_len, subnet_id);
+                if let Err(e) = ipv6_ra::add_ipv6_pd_route(subnet_prefix, 64, *ds_ifindex, None) {
+                    let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                    if !is_exists {
+                        log::warn!(
+                            "{}: failed to add PD route {}/64: {}",
+                            ds_name,
+                            subnet_prefix,
+                            e
+                        );
+                    }
+                }
+
+                // Track the assigned address for later cleanup.
+                if let Some(ds_managed) = self.links.get_mut(ds_ifindex) {
+                    ds_managed.pd_assigned_addresses.push((subnet_addr, 64));
+                }
+            }
+        }
+    }
+
+    /// Remove all PD-distributed addresses from downstream interfaces that
+    /// were assigned from the given upstream interface's delegated prefixes.
+    pub fn remove_distributed_prefixes(&mut self, _upstream_ifindex: u32) {
+        // Collect all downstream ifindexes that have PD-assigned addresses.
+        let downstream_indices: Vec<u32> = self
+            .links
+            .iter()
+            .filter(|(_, m)| !m.pd_assigned_addresses.is_empty())
+            .map(|(&idx, _)| idx)
+            .collect();
+
+        for ds_ifindex in downstream_indices {
+            let managed = match self.links.get_mut(&ds_ifindex) {
+                Some(m) => m,
+                None => continue,
+            };
+
+            let link_name = managed.link.name.clone();
+            let addrs: Vec<(Ipv6Addr, u8)> = managed.pd_assigned_addresses.drain(..).collect();
+
+            for (addr, prefix_len) in &addrs {
+                log::info!(
+                    "{}: removing PD-assigned address {}/{}",
+                    link_name,
+                    addr,
+                    prefix_len
+                );
+                if let Err(e) = ipv6_ra::remove_ipv6_address(ds_ifindex, *addr, *prefix_len) {
+                    log::debug!(
+                        "{}: failed to remove PD address {}/{}: {} (best-effort)",
+                        link_name,
+                        addr,
+                        prefix_len,
+                        e
+                    );
+                }
+
+                // Remove the on-link /64 route.
+                // Zero out the host part to get the subnet prefix.
+                let octets = addr.octets();
+                let subnet_prefix = Ipv6Addr::new(
+                    u16::from_be_bytes([octets[0], octets[1]]),
+                    u16::from_be_bytes([octets[2], octets[3]]),
+                    u16::from_be_bytes([octets[4], octets[5]]),
+                    u16::from_be_bytes([octets[6], octets[7]]),
+                    0,
+                    0,
+                    0,
+                    0,
+                );
+                if let Err(e) =
+                    ipv6_ra::remove_ipv6_route(subnet_prefix, *prefix_len, None, ds_ifindex)
+                {
+                    log::debug!(
+                        "{}: failed to remove PD route {}/{}: {} (best-effort)",
+                        link_name,
+                        subnet_prefix,
+                        prefix_len,
+                        e
+                    );
+                }
+            }
+        }
     }
 
     /// Start a DHCPv6 client on a link in response to RA M/O flags.
@@ -1572,6 +1802,65 @@ fn parse_prefix_delegation_hint(hint: &Option<String>) -> (bool, u8, Ipv6Addr) {
         }
         _ => (false, 0, Ipv6Addr::UNSPECIFIED),
     }
+}
+
+/// Compute the /64 subnet prefix from a delegated prefix and subnet ID.
+///
+/// Given a delegated prefix (e.g. `2001:db8:abcd::/48`) and a `subnet_id`
+/// (e.g. `1`), returns the /64 subnet prefix: `2001:db8:abcd:0001::`.
+///
+/// The `subnet_id` fills the bits between `prefix_len` and bit 64.  The
+/// first 64 bits of the address are treated as a big-endian u64 where the
+/// top `prefix_len` bits are the network prefix and the remaining
+/// `(64 - prefix_len)` bits hold the subnet ID right-aligned.
+pub fn compute_pd_subnet(prefix: Ipv6Addr, prefix_len: u8, subnet_id: u64) -> Ipv6Addr {
+    let octets = prefix.octets();
+    let mut first64 = u64::from_be_bytes([
+        octets[0], octets[1], octets[2], octets[3], octets[4], octets[5], octets[6], octets[7],
+    ]);
+    // Clear the subnet field (bits [prefix_len..64)).
+    let subnet_bits = 64u32.saturating_sub(prefix_len as u32);
+    let mask = if subnet_bits >= 64 {
+        0u64
+    } else {
+        !((1u64 << subnet_bits) - 1)
+    };
+    first64 &= mask;
+    // Place subnet_id into the cleared field.
+    first64 |= subnet_id & ((1u64 << subnet_bits) - 1);
+    let bytes = first64.to_be_bytes();
+    Ipv6Addr::new(
+        u16::from_be_bytes([bytes[0], bytes[1]]),
+        u16::from_be_bytes([bytes[2], bytes[3]]),
+        u16::from_be_bytes([bytes[4], bytes[5]]),
+        u16::from_be_bytes([bytes[6], bytes[7]]),
+        0,
+        0,
+        0,
+        0,
+    )
+}
+
+/// Compute the full address for a downstream interface from a delegated prefix,
+/// subnet ID, and token (host part).
+///
+/// Combines the /64 subnet prefix with the token's interface identifier.
+/// For example: prefix `2001:db8:abcd::/48`, subnet_id `1`, token `::1`
+/// → `2001:db8:abcd:1::1`.
+pub fn compute_pd_subnet_address(
+    prefix: Ipv6Addr,
+    prefix_len: u8,
+    subnet_id: u64,
+    token: Ipv6Addr,
+) -> Ipv6Addr {
+    let subnet = compute_pd_subnet(prefix, prefix_len, subnet_id);
+    let s = subnet.octets();
+    let t = token.octets();
+    // First 8 bytes from subnet, last 8 bytes from token (host part / IID).
+    Ipv6Addr::from([
+        s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], t[8], t[9], t[10], t[11], t[12], t[13],
+        t[14], t[15],
+    ])
 }
 
 /// Summary status of a managed link (for display by `networkctl`).
@@ -1711,6 +2000,7 @@ mod tests {
             routing_policy_rules: Vec::new(),
             dhcpv4: config::DhcpV4Section::default(),
             dhcpv6: config::DhcpV6Section::default(),
+            dhcpv6_pd: config::Dhcpv6PrefixDelegationSection::default(),
             link: LinkSection::default(),
         }
     }
@@ -1752,6 +2042,7 @@ mod tests {
             ra_state: None,
             dns6_servers: Vec::new(),
             search6_domains: Vec::new(),
+            pd_assigned_addresses: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::Unmanaged);
     }
@@ -1773,6 +2064,7 @@ mod tests {
             ra_state: None,
             dns6_servers: Vec::new(),
             search6_domains: Vec::new(),
+            pd_assigned_addresses: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::Pending);
     }
@@ -1794,6 +2086,7 @@ mod tests {
             ra_state: None,
             dns6_servers: Vec::new(),
             search6_domains: Vec::new(),
+            pd_assigned_addresses: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::Configured);
     }
@@ -1817,6 +2110,7 @@ mod tests {
             ra_state: None,
             dns6_servers: Vec::new(),
             search6_domains: Vec::new(),
+            pd_assigned_addresses: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::NoCarrier);
     }
@@ -1838,6 +2132,7 @@ mod tests {
             ra_state: None,
             dns6_servers: Vec::new(),
             search6_domains: Vec::new(),
+            pd_assigned_addresses: Vec::new(),
         };
         assert_eq!(managed.oper_state(), OperState::Configuring);
     }
@@ -1893,6 +2188,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: Vec::new(),
                 search6_domains: Vec::new(),
+                pd_assigned_addresses: Vec::new(),
             },
         );
         assert_eq!(mgr.overall_state(), "configured");
@@ -1925,6 +2221,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: Vec::new(),
                 search6_domains: Vec::new(),
+                pd_assigned_addresses: Vec::new(),
             },
         );
 
@@ -1980,6 +2277,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: Vec::new(),
                 search6_domains: Vec::new(),
+                pd_assigned_addresses: Vec::new(),
             },
         );
 
@@ -2007,6 +2305,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: Vec::new(),
                 search6_domains: Vec::new(),
+                pd_assigned_addresses: Vec::new(),
             },
         );
 
@@ -2047,6 +2346,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: Vec::new(),
                 search6_domains: Vec::new(),
+                pd_assigned_addresses: Vec::new(),
             },
         );
 
@@ -2471,6 +2771,7 @@ mod tests {
                 rapid_commit: false,
                 ..Default::default()
             },
+            dhcpv6_pd: config::Dhcpv6PrefixDelegationSection::default(),
             link: LinkSection::default(),
         }
     }
@@ -2606,6 +2907,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2646,6 +2948,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2687,6 +2990,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2730,6 +3034,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2781,6 +3086,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2810,6 +3116,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2840,6 +3147,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2873,6 +3181,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2911,6 +3220,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2947,6 +3257,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -2984,6 +3295,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -3023,6 +3335,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![dns_existing],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -3062,6 +3375,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![pre_existing_dns],
                 search6_domains: vec!["local.lan".to_string()],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -3118,6 +3432,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -3147,6 +3462,7 @@ mod tests {
                 ra_state: None,
                 dns6_servers: vec![],
                 search6_domains: vec![],
+                pd_assigned_addresses: vec![],
             },
         );
 
@@ -3171,5 +3487,701 @@ mod tests {
             stored.primary_address(),
             Some("2001:db8::100".parse().unwrap())
         );
+    }
+
+    // ── compute_pd_subnet tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_compute_pd_subnet_slash48_id0() {
+        let prefix: Ipv6Addr = "2001:db8:abcd::".parse().unwrap();
+        let result = compute_pd_subnet(prefix, 48, 0);
+        assert_eq!(result, "2001:db8:abcd::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_slash48_id1() {
+        let prefix: Ipv6Addr = "2001:db8:abcd::".parse().unwrap();
+        let result = compute_pd_subnet(prefix, 48, 1);
+        assert_eq!(result, "2001:db8:abcd:1::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_slash48_id255() {
+        let prefix: Ipv6Addr = "2001:db8:abcd::".parse().unwrap();
+        let result = compute_pd_subnet(prefix, 48, 255);
+        assert_eq!(result, "2001:db8:abcd:ff::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_slash48_id_max() {
+        let prefix: Ipv6Addr = "2001:db8:abcd::".parse().unwrap();
+        // /48 has 16 bits for subnets → max subnet_id = 65535
+        let result = compute_pd_subnet(prefix, 48, 65535);
+        assert_eq!(result, "2001:db8:abcd:ffff::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_slash56_id0() {
+        let prefix: Ipv6Addr = "2001:db8:abcd:ab00::".parse().unwrap();
+        let result = compute_pd_subnet(prefix, 56, 0);
+        assert_eq!(result, "2001:db8:abcd:ab00::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_slash56_id1() {
+        let prefix: Ipv6Addr = "2001:db8:abcd:ab00::".parse().unwrap();
+        let result = compute_pd_subnet(prefix, 56, 1);
+        assert_eq!(result, "2001:db8:abcd:ab01::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_slash56_id_max() {
+        let prefix: Ipv6Addr = "2001:db8:abcd:ab00::".parse().unwrap();
+        // /56 has 8 bits for subnets → max subnet_id = 255
+        let result = compute_pd_subnet(prefix, 56, 255);
+        assert_eq!(result, "2001:db8:abcd:abff::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_slash60_id1() {
+        let prefix: Ipv6Addr = "2001:db8:abcd:abc0::".parse().unwrap();
+        // /60 has 4 bits for subnets
+        let result = compute_pd_subnet(prefix, 60, 1);
+        assert_eq!(result, "2001:db8:abcd:abc1::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_preserves_prefix_bits() {
+        // Ensure the top prefix_len bits are untouched.
+        let prefix: Ipv6Addr = "fd12:3456:7890::".parse().unwrap();
+        let result = compute_pd_subnet(prefix, 48, 42);
+        assert_eq!(result, "fd12:3456:7890:2a::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    // ── compute_pd_subnet_address tests ────────────────────────────────────
+
+    #[test]
+    fn test_compute_pd_subnet_address_default_token() {
+        let prefix: Ipv6Addr = "2001:db8:abcd::".parse().unwrap();
+        let token: Ipv6Addr = "::1".parse().unwrap();
+        let result = compute_pd_subnet_address(prefix, 48, 1, token);
+        assert_eq!(result, "2001:db8:abcd:1::1".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_address_custom_token() {
+        let prefix: Ipv6Addr = "2001:db8:abcd::".parse().unwrap();
+        let token: Ipv6Addr = "::dead:beef".parse().unwrap();
+        let result = compute_pd_subnet_address(prefix, 48, 0, token);
+        assert_eq!(
+            result,
+            "2001:db8:abcd::dead:beef".parse::<Ipv6Addr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_address_slash56() {
+        let prefix: Ipv6Addr = "2001:db8:abcd:ab00::".parse().unwrap();
+        let token: Ipv6Addr = "::1".parse().unwrap();
+        let result = compute_pd_subnet_address(prefix, 56, 3, token);
+        assert_eq!(result, "2001:db8:abcd:ab03::1".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_compute_pd_subnet_address_token_full_iid() {
+        let prefix: Ipv6Addr = "2001:db8:abcd::".parse().unwrap();
+        let token: Ipv6Addr = "::cafe:babe:dead:beef".parse().unwrap();
+        let result = compute_pd_subnet_address(prefix, 48, 5, token);
+        assert_eq!(
+            result,
+            "2001:db8:abcd:5:cafe:babe:dead:beef"
+                .parse::<Ipv6Addr>()
+                .unwrap()
+        );
+    }
+
+    // ── distribute / remove delegated prefixes tests ───────────────────────
+
+    fn make_pd_downstream_config(name: &str, subnet_id: Option<u64>) -> NetworkConfig {
+        NetworkConfig {
+            path: std::path::PathBuf::from(format!("20-{name}.network")),
+            match_section: MatchSection {
+                names: vec![name.to_string()],
+                ..Default::default()
+            },
+            network_section: NetworkSection::default(),
+            addresses: vec![],
+            routes: vec![],
+            routing_policy_rules: vec![],
+            dhcpv4: config::DhcpV4Section::default(),
+            dhcpv6: config::DhcpV6Section::default(),
+            dhcpv6_pd: config::Dhcpv6PrefixDelegationSection {
+                assign: true,
+                subnet_id,
+                token: "::1".parse().unwrap(),
+            },
+            link: LinkSection::default(),
+        }
+    }
+
+    #[test]
+    fn test_distribute_no_downstream() {
+        // Upstream has PD but no downstream interfaces want it.
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(1, "wan0");
+        let config = make_dhcpv6_test_config("wan0", Some("::/48"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_with_pd()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+        // No downstream — should not panic.
+        mgr.distribute_delegated_prefixes(1);
+    }
+
+    #[test]
+    fn test_distribute_to_downstream_auto_subnet() {
+        let mut mgr = NetworkManager::new();
+
+        // Upstream WAN with PD lease.
+        let wan_link = make_test_link(1, "wan0");
+        let wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_with_pd()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        // Downstream LAN with auto subnet_id.
+        let lan_link = make_test_link(2, "br0");
+        let lan_config = make_pd_downstream_config("br0", None);
+        mgr.links.insert(
+            2,
+            ManagedLink {
+                link: lan_link,
+                config: Some(lan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        mgr.distribute_delegated_prefixes(1);
+
+        // br0 should have one PD-assigned address (auto subnet_id=0).
+        let br0 = mgr.links.get(&2).unwrap();
+        assert_eq!(br0.pd_assigned_addresses.len(), 1);
+        let (addr, plen) = br0.pd_assigned_addresses[0];
+        assert_eq!(plen, 64);
+        // Prefix 2001:db8:abcd::/56, subnet_id=0, token=::1
+        // → 2001:db8:abcd:0000::1 = 2001:db8:abcd::1
+        assert_eq!(addr, "2001:db8:abcd::1".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_distribute_to_downstream_explicit_subnet_id() {
+        let mut mgr = NetworkManager::new();
+
+        let wan_link = make_test_link(1, "wan0");
+        let wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_with_pd()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        // Downstream with explicit SubnetId=0x05.
+        let lan_link = make_test_link(2, "br0");
+        let lan_config = make_pd_downstream_config("br0", Some(5));
+        mgr.links.insert(
+            2,
+            ManagedLink {
+                link: lan_link,
+                config: Some(lan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        mgr.distribute_delegated_prefixes(1);
+
+        let br0 = mgr.links.get(&2).unwrap();
+        assert_eq!(br0.pd_assigned_addresses.len(), 1);
+        let (addr, plen) = br0.pd_assigned_addresses[0];
+        assert_eq!(plen, 64);
+        // Prefix 2001:db8:abcd::/56, subnet_id=5, token=::1
+        // → 2001:db8:abcd:05::1
+        assert_eq!(addr, "2001:db8:abcd:5::1".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_distribute_multiple_downstream_auto() {
+        let mut mgr = NetworkManager::new();
+
+        let wan_link = make_test_link(1, "wan0");
+        let wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_with_pd()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        // Two downstream interfaces, both with auto subnet_id.
+        for (idx, name) in [(2u32, "br0"), (3u32, "br1")] {
+            let link = make_test_link(idx, name);
+            let config = make_pd_downstream_config(name, None);
+            mgr.links.insert(
+                idx,
+                ManagedLink {
+                    link,
+                    config: Some(config),
+                    dhcp_client: None,
+                    lease: None,
+                    dhcpv6_client: None,
+                    dhcpv6_lease: None,
+                    admin_state: AdminState::Up,
+                    static_configured: true,
+                    has_carrier: true,
+                    dns_servers: vec![],
+                    search_domains: vec![],
+                    ra_state: None,
+                    dns6_servers: vec![],
+                    search6_domains: vec![],
+                    pd_assigned_addresses: vec![],
+                },
+            );
+        }
+
+        mgr.distribute_delegated_prefixes(1);
+
+        // Both should have gotten addresses; subnet_ids 0 and 1 in some order.
+        let br0 = mgr.links.get(&2).unwrap();
+        let br1 = mgr.links.get(&3).unwrap();
+        assert_eq!(br0.pd_assigned_addresses.len(), 1);
+        assert_eq!(br1.pd_assigned_addresses.len(), 1);
+
+        let (addr0, _) = br0.pd_assigned_addresses[0];
+        let (addr1, _) = br1.pd_assigned_addresses[0];
+        // They should be different addresses.
+        assert_ne!(addr0, addr1);
+    }
+
+    #[test]
+    fn test_distribute_skips_non_pd_interfaces() {
+        let mut mgr = NetworkManager::new();
+
+        let wan_link = make_test_link(1, "wan0");
+        let wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_with_pd()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        // Interface without PD config (default Assign=false).
+        let eth_link = make_test_link(2, "eth1");
+        let eth_config = make_test_config("eth1", DhcpMode::No);
+        mgr.links.insert(
+            2,
+            ManagedLink {
+                link: eth_link,
+                config: Some(eth_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        mgr.distribute_delegated_prefixes(1);
+
+        // eth1 should NOT have any PD-assigned addresses.
+        let eth1 = mgr.links.get(&2).unwrap();
+        assert!(eth1.pd_assigned_addresses.is_empty());
+    }
+
+    #[test]
+    fn test_distribute_no_lease_is_noop() {
+        let mut mgr = NetworkManager::new();
+
+        // Upstream without a lease.
+        let wan_link = make_test_link(1, "wan0");
+        let wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None, // No lease
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        let lan_link = make_test_link(2, "br0");
+        let lan_config = make_pd_downstream_config("br0", None);
+        mgr.links.insert(
+            2,
+            ManagedLink {
+                link: lan_link,
+                config: Some(lan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        // Should not panic or assign anything.
+        mgr.distribute_delegated_prefixes(1);
+        let br0 = mgr.links.get(&2).unwrap();
+        assert!(br0.pd_assigned_addresses.is_empty());
+    }
+
+    #[test]
+    fn test_distribute_unknown_upstream_is_noop() {
+        let mut mgr = NetworkManager::new();
+        // Calling with a non-existent ifindex should not panic.
+        mgr.distribute_delegated_prefixes(999);
+    }
+
+    #[test]
+    fn test_remove_distributed_prefixes_clears_tracking() {
+        let mut mgr = NetworkManager::new();
+
+        // Upstream.
+        let wan_link = make_test_link(1, "wan0");
+        let wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_with_pd()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        // Downstream.
+        let lan_link = make_test_link(2, "br0");
+        let lan_config = make_pd_downstream_config("br0", None);
+        mgr.links.insert(
+            2,
+            ManagedLink {
+                link: lan_link,
+                config: Some(lan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        // Distribute, then remove.
+        mgr.distribute_delegated_prefixes(1);
+        assert!(!mgr.links.get(&2).unwrap().pd_assigned_addresses.is_empty());
+
+        mgr.remove_distributed_prefixes(1);
+        assert!(mgr.links.get(&2).unwrap().pd_assigned_addresses.is_empty());
+    }
+
+    #[test]
+    fn test_distribute_does_not_assign_to_upstream() {
+        // Upstream interface should not assign PD to itself even if it
+        // happens to have Assign=yes (unlikely but check).
+        let mut mgr = NetworkManager::new();
+
+        let wan_link = make_test_link(1, "wan0");
+        let mut wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        wan_config.dhcpv6_pd.assign = true; // Unusual but test it.
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_with_pd()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        mgr.distribute_delegated_prefixes(1);
+
+        // Upstream should NOT have gotten a PD-assigned address on itself.
+        let wan = mgr.links.get(&1).unwrap();
+        assert!(wan.pd_assigned_addresses.is_empty());
+    }
+
+    #[test]
+    fn test_distribute_custom_token() {
+        let mut mgr = NetworkManager::new();
+
+        let wan_link = make_test_link(1, "wan0");
+        let wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_with_pd()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        // Downstream with custom token.
+        let lan_link = make_test_link(2, "br0");
+        let mut lan_config = make_pd_downstream_config("br0", Some(0));
+        lan_config.dhcpv6_pd.token = "::cafe".parse().unwrap();
+        mgr.links.insert(
+            2,
+            ManagedLink {
+                link: lan_link,
+                config: Some(lan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        mgr.distribute_delegated_prefixes(1);
+
+        let br0 = mgr.links.get(&2).unwrap();
+        assert_eq!(br0.pd_assigned_addresses.len(), 1);
+        let (addr, _) = br0.pd_assigned_addresses[0];
+        // Prefix 2001:db8:abcd::/56, subnet_id=0, token=::cafe
+        assert_eq!(addr, "2001:db8:abcd::cafe".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_distribute_pd_only_lease() {
+        // Use a lease that has PD but no IA_NA addresses.
+        let mut mgr = NetworkManager::new();
+
+        let wan_link = make_test_link(1, "wan0");
+        let wan_config = make_dhcpv6_test_config("wan0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link: wan_link,
+                config: Some(wan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: Some(make_test_dhcpv6_lease_pd_only()),
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        let lan_link = make_test_link(2, "br0");
+        let lan_config = make_pd_downstream_config("br0", None);
+        mgr.links.insert(
+            2,
+            ManagedLink {
+                link: lan_link,
+                config: Some(lan_config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: true,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+                pd_assigned_addresses: vec![],
+            },
+        );
+
+        mgr.distribute_delegated_prefixes(1);
+
+        let br0 = mgr.links.get(&2).unwrap();
+        // PD-only lease has 2 delegated prefixes, so 2 addresses assigned.
+        assert_eq!(br0.pd_assigned_addresses.len(), 2);
     }
 }
