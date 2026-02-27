@@ -1,6 +1,6 @@
 # Current Status
 
-**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~6 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **7,522 unit tests passing** across 75 crates.
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~6 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **7,588 unit tests passing** across 75 crates.
 
 | Phase | Status |
 |-------|--------|

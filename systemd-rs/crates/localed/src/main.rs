@@ -33,6 +33,16 @@ const X11_KEYBOARD_DIR: &str = "/etc/X11/xorg.conf.d";
 const X11_KEYBOARD_CONF: &str = "/etc/X11/xorg.conf.d/00-keyboard.conf";
 const CONTROL_SOCKET_PATH: &str = "/run/systemd/localed.sock";
 
+/// Search paths for the kbd-model-map file (console keymap ↔ X11 mapping).
+const KBD_MODEL_MAP_PATHS: &[&str] = &[
+    "/etc/systemd/kbd-model-map",
+    "/run/systemd/kbd-model-map",
+    "/usr/share/systemd/kbd-model-map",
+    "/usr/lib/systemd/kbd-model-map",
+    // NixOS
+    "/run/current-system/sw/share/systemd/kbd-model-map",
+];
+
 const DBUS_NAME: &str = "org.freedesktop.locale1";
 const DBUS_PATH: &str = "/org/freedesktop/locale1";
 
@@ -311,6 +321,192 @@ fn set_or_remove(map: &mut BTreeMap<String, String>, key: &str, value: &str) {
     } else {
         map.insert(key.to_string(), value.to_string());
     }
+}
+
+// ---------------------------------------------------------------------------
+// kbd-model-map: console keymap ↔ X11 keyboard mapping
+// ---------------------------------------------------------------------------
+
+/// A single entry from the kbd-model-map file.
+///
+/// Maps a console keymap name to its corresponding X11 keyboard parameters.
+/// File format (tab/space-separated, `-` means empty):
+/// ```text
+/// # consolelayout    xlayout    xmodel    xvariant    xoptions
+/// us                 us         pc105+inet -          terminate:ctrl_alt_bksp
+/// de-latin1          de         pc105      -          terminate:ctrl_alt_bksp
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct KbdModelMapEntry {
+    /// Console keymap name (e.g. "us", "de-latin1")
+    pub console_keymap: String,
+    /// X11 layout (e.g. "us", "de", "ch")
+    pub x11_layout: String,
+    /// X11 model (e.g. "pc105", "pc105+inet")
+    pub x11_model: String,
+    /// X11 variant (e.g. "nodeadkeys", "dvorak"); empty if `-`
+    pub x11_variant: String,
+    /// X11 options (e.g. "terminate:ctrl_alt_bksp"); empty if `-`
+    pub x11_options: String,
+}
+
+/// Load the kbd-model-map from the first available system path.
+pub fn load_kbd_model_map() -> Vec<KbdModelMapEntry> {
+    for path in KBD_MODEL_MAP_PATHS {
+        if let Ok(entries) = load_kbd_model_map_from(path)
+            && !entries.is_empty()
+        {
+            return entries;
+        }
+    }
+    Vec::new()
+}
+
+/// Load and parse a kbd-model-map file from a specific path.
+pub fn load_kbd_model_map_from(path: &str) -> io::Result<Vec<KbdModelMapEntry>> {
+    let content = fs::read_to_string(path)?;
+    Ok(parse_kbd_model_map(&content))
+}
+
+/// Parse kbd-model-map content into entries.
+pub fn parse_kbd_model_map(content: &str) -> Vec<KbdModelMapEntry> {
+    let mut entries = Vec::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 5 {
+            continue; // Malformed line, skip
+        }
+
+        let dash_to_empty = |s: &str| -> String {
+            if s == "-" {
+                String::new()
+            } else {
+                s.to_string()
+            }
+        };
+
+        entries.push(KbdModelMapEntry {
+            console_keymap: fields[0].to_string(),
+            x11_layout: fields[1].to_string(),
+            x11_model: dash_to_empty(fields[2]),
+            x11_variant: dash_to_empty(fields[3]),
+            x11_options: dash_to_empty(fields[4]),
+        });
+    }
+
+    entries
+}
+
+/// Result of a keymap-to-X11 conversion.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct X11KeymapResult {
+    pub layout: String,
+    pub model: String,
+    pub variant: String,
+    pub options: String,
+}
+
+/// Convert a console keymap name to X11 keyboard parameters.
+///
+/// Searches the kbd-model-map for the first entry whose `console_keymap`
+/// matches the given keymap name. Returns `None` if no match is found.
+pub fn keymap_to_x11(keymap: &str) -> Option<X11KeymapResult> {
+    let entries = load_kbd_model_map();
+    keymap_to_x11_from(&entries, keymap)
+}
+
+/// Convert a console keymap to X11 parameters using a pre-loaded map.
+pub fn keymap_to_x11_from(entries: &[KbdModelMapEntry], keymap: &str) -> Option<X11KeymapResult> {
+    if keymap.is_empty() {
+        return None;
+    }
+
+    for entry in entries {
+        if entry.console_keymap == keymap {
+            return Some(X11KeymapResult {
+                layout: entry.x11_layout.clone(),
+                model: entry.x11_model.clone(),
+                variant: entry.x11_variant.clone(),
+                options: entry.x11_options.clone(),
+            });
+        }
+    }
+
+    None
+}
+
+/// Convert X11 keyboard parameters to a console keymap name.
+///
+/// Matching strategy (following real systemd's `vconsole-util.c`):
+/// 1. Try exact match on layout + variant (ignoring model and options).
+/// 2. If no exact match, try matching layout only (with empty variant in the map).
+/// 3. For multi-layout entries like "de,us", match the first layout component.
+///
+/// Returns `None` if no match is found.
+pub fn x11_to_keymap(layout: &str, _model: &str, variant: &str) -> Option<String> {
+    let entries = load_kbd_model_map();
+    x11_to_keymap_from(&entries, layout, _model, variant)
+}
+
+/// Convert X11 parameters to a console keymap using a pre-loaded map.
+pub fn x11_to_keymap_from(
+    entries: &[KbdModelMapEntry],
+    layout: &str,
+    _model: &str,
+    variant: &str,
+) -> Option<String> {
+    if layout.is_empty() {
+        return None;
+    }
+
+    // Phase 1: Exact match on layout + variant
+    for entry in entries {
+        // The map may have multi-layout entries like "ch" matching layout "ch"
+        // and variant matching too.
+        if entry.x11_layout == layout && entry.x11_variant == variant {
+            return Some(entry.console_keymap.clone());
+        }
+    }
+
+    // Phase 2: Match layout only, preferring entries with empty variant
+    if !variant.is_empty() {
+        for entry in entries {
+            if entry.x11_layout == layout && entry.x11_variant.is_empty() {
+                return Some(entry.console_keymap.clone());
+            }
+        }
+    }
+
+    // Phase 3: For multi-layout X11 entries (e.g. "mk,us"), match the
+    // first component of the entry's layout against our layout.
+    for entry in entries {
+        if let Some(first) = entry.x11_layout.split(',').next()
+            && first == layout
+            && entry.x11_variant == variant
+        {
+            return Some(entry.console_keymap.clone());
+        }
+    }
+
+    // Phase 4: Multi-layout first component with empty variant fallback
+    if !variant.is_empty() {
+        for entry in entries {
+            if let Some(first) = entry.x11_layout.split(',').next()
+                && first == layout
+                && entry.x11_variant.is_empty()
+            {
+                return Some(entry.console_keymap.clone());
+            }
+        }
+    }
+
+    None
 }
 
 /// Generate and write the X11 keyboard configuration file for xorg.
@@ -625,7 +821,7 @@ impl Locale1Manager {
         &self,
         keymap: String,
         keymap_toggle: String,
-        _convert: bool,
+        convert: bool,
         _interactive: bool,
     ) -> zbus::fdo::Result<()> {
         if let Err(e) = set_vconsole_keymap(&keymap, &keymap_toggle) {
@@ -635,8 +831,44 @@ impl Locale1Manager {
             )));
         }
         let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        s.vconsole_keymap = keymap;
+        s.vconsole_keymap = keymap.clone();
         s.vconsole_keymap_toggle = keymap_toggle;
+
+        // Automatic conversion: keymap → X11
+        if convert {
+            if let Some(x11) = keymap_to_x11(&keymap) {
+                log::info!(
+                    "Converting keymap '{}' → X11 layout='{}' model='{}' variant='{}' options='{}'",
+                    keymap,
+                    x11.layout,
+                    x11.model,
+                    x11.variant,
+                    x11.options
+                );
+                if let Err(e) = set_x11_keymap(&x11.layout, &x11.model, &x11.variant, &x11.options)
+                {
+                    log::warn!("Failed to convert keymap to X11: {}", e);
+                } else {
+                    s.x11_layout = x11.layout;
+                    s.x11_model = x11.model;
+                    s.x11_variant = x11.variant;
+                    s.x11_options = x11.options;
+                }
+            } else if keymap.is_empty() {
+                // Clear X11 settings when keymap is cleared
+                let _ = set_x11_keymap("", "", "", "");
+                s.x11_layout.clear();
+                s.x11_model.clear();
+                s.x11_variant.clear();
+                s.x11_options.clear();
+            } else {
+                log::debug!(
+                    "No kbd-model-map entry found for keymap '{}', skipping X11 conversion",
+                    keymap
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -647,7 +879,7 @@ impl Locale1Manager {
         model: String,
         variant: String,
         options: String,
-        _convert: bool,
+        convert: bool,
         _interactive: bool,
     ) -> zbus::fdo::Result<()> {
         if let Err(e) = set_x11_keymap(&layout, &model, &variant, &options) {
@@ -657,10 +889,40 @@ impl Locale1Manager {
             )));
         }
         let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        s.x11_layout = layout;
-        s.x11_model = model;
-        s.x11_variant = variant;
+        s.x11_layout = layout.clone();
+        s.x11_model = model.clone();
+        s.x11_variant = variant.clone();
         s.x11_options = options;
+
+        // Automatic conversion: X11 → keymap
+        if convert {
+            if let Some(km) = x11_to_keymap(&layout, &model, &variant) {
+                log::info!(
+                    "Converting X11 layout='{}' variant='{}' → keymap '{}'",
+                    layout,
+                    variant,
+                    km
+                );
+                if let Err(e) = set_vconsole_keymap(&km, "") {
+                    log::warn!("Failed to convert X11 to keymap: {}", e);
+                } else {
+                    s.vconsole_keymap = km;
+                    s.vconsole_keymap_toggle.clear();
+                }
+            } else if layout.is_empty() {
+                // Clear keymap when X11 layout is cleared
+                let _ = set_vconsole_keymap("", "");
+                s.vconsole_keymap.clear();
+                s.vconsole_keymap_toggle.clear();
+            } else {
+                log::debug!(
+                    "No kbd-model-map entry found for X11 layout='{}' variant='{}', skipping keymap conversion",
+                    layout,
+                    variant
+                );
+            }
+        }
+
         Ok(())
     }
 }
@@ -727,30 +989,59 @@ fn handle_control_command(line: &str) -> String {
             }
         }
         "SET-KEYMAP" | "set-keymap" => {
-            // Expects: SET-KEYMAP <keymap> [toggle-keymap]
-            let keymap = parts.get(1).unwrap_or(&"");
-            let toggle = parts.get(2).unwrap_or(&"");
-
-            match set_vconsole_keymap(keymap, toggle) {
-                Ok(()) => "OK\n".to_string(),
-                Err(e) => format!("ERROR: {}\n", e),
-            }
-        }
-        "SET-X11-KEYMAP" | "set-x11-keymap" => {
-            // Expects: SET-X11-KEYMAP <layout> [model [variant [options]]]
+            // Expects: SET-KEYMAP <keymap> [toggle-keymap] [--convert]
             let rest = if parts.len() >= 2 {
                 line.trim().split_once(' ').map(|x| x.1).unwrap_or("")
             } else {
                 ""
             };
             let args: Vec<&str> = rest.split_whitespace().collect();
-            let layout = args.first().unwrap_or(&"");
-            let model = args.get(1).unwrap_or(&"");
-            let variant = args.get(2).unwrap_or(&"");
-            let options = args.get(3).unwrap_or(&"");
+            let convert = args.contains(&"--convert");
+            let positional: Vec<&&str> = args.iter().filter(|a| !a.starts_with("--")).collect();
+            let keymap = positional.first().map(|s| **s).unwrap_or("");
+            let toggle = positional.get(1).map(|s| **s).unwrap_or("");
+
+            match set_vconsole_keymap(keymap, toggle) {
+                Ok(()) => {
+                    if convert {
+                        if let Some(x11) = keymap_to_x11(keymap) {
+                            let _ =
+                                set_x11_keymap(&x11.layout, &x11.model, &x11.variant, &x11.options);
+                        } else if keymap.is_empty() {
+                            let _ = set_x11_keymap("", "", "", "");
+                        }
+                    }
+                    "OK\n".to_string()
+                }
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+        "SET-X11-KEYMAP" | "set-x11-keymap" => {
+            // Expects: SET-X11-KEYMAP <layout> [model [variant [options]]] [--convert]
+            let rest = if parts.len() >= 2 {
+                line.trim().split_once(' ').map(|x| x.1).unwrap_or("")
+            } else {
+                ""
+            };
+            let args: Vec<&str> = rest.split_whitespace().collect();
+            let convert = args.contains(&"--convert");
+            let positional: Vec<&&str> = args.iter().filter(|a| !a.starts_with("--")).collect();
+            let layout = positional.first().map(|s| **s).unwrap_or("");
+            let model = positional.get(1).map(|s| **s).unwrap_or("");
+            let variant = positional.get(2).map(|s| **s).unwrap_or("");
+            let options = positional.get(3).map(|s| **s).unwrap_or("");
 
             match set_x11_keymap(layout, model, variant, options) {
-                Ok(()) => "OK\n".to_string(),
+                Ok(()) => {
+                    if convert {
+                        if let Some(km) = x11_to_keymap(layout, model, variant) {
+                            let _ = set_vconsole_keymap(&km, "");
+                        } else if layout.is_empty() {
+                            let _ = set_vconsole_keymap("", "");
+                        }
+                    }
+                    "OK\n".to_string()
+                }
                 Err(e) => format!("ERROR: {}\n", e),
             }
         }
@@ -1065,6 +1356,289 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         f.write_all(content.as_bytes()).unwrap();
         path
+    }
+
+    // Sample kbd-model-map content for testing
+    const SAMPLE_KBD_MODEL_MAP: &str = "\
+# consolelayout\t\txlayout\txmodel\t\txvariant\txoptions
+us\t\t\tus\tpc105+inet\t-\t\tterminate:ctrl_alt_bksp
+de\t\t\tde\tpc105\t\t-\t\tterminate:ctrl_alt_bksp
+de-latin1\t\tde\tpc105\t\t-\t\tterminate:ctrl_alt_bksp
+de-latin1-nodeadkeys\tde\tpc105\t\tnodeadkeys\tterminate:ctrl_alt_bksp
+uk\t\t\tgb\tpc105\t\t-\t\tterminate:ctrl_alt_bksp
+fr\t\t\tfr\tpc105\t\t-\t\tterminate:ctrl_alt_bksp
+dvorak\t\t\tus\tpc105\t\tdvorak\t\tterminate:ctrl_alt_bksp
+jp106\t\t\tjp\tjp106\t\t-\t\tterminate:ctrl_alt_bksp
+br-abnt2\t\tbr\tabnt2\t\t-\t\tterminate:ctrl_alt_bksp
+ru\t\t\tru,us\tpc105\t\t-\t\tterminate:ctrl_alt_bksp,grp:shifts_toggle,grp_led:scroll
+sg\t\t\tch\tpc105\t\tde_nodeadkeys\tterminate:ctrl_alt_bksp
+fr_CH\t\t\tch\tpc105\t\tfr\t\tterminate:ctrl_alt_bksp
+hu101\t\t\thu\tpc105\t\tqwerty\t\tterminate:ctrl_alt_bksp
+hu\t\t\thu\tpc105\t\t-\t\tterminate:ctrl_alt_bksp
+";
+
+    // -- kbd-model-map parsing tests --
+
+    #[test]
+    fn test_parse_kbd_model_map_basic() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        assert_eq!(entries.len(), 14);
+        assert_eq!(entries[0].console_keymap, "us");
+        assert_eq!(entries[0].x11_layout, "us");
+        assert_eq!(entries[0].x11_model, "pc105+inet");
+        assert!(entries[0].x11_variant.is_empty());
+        assert_eq!(entries[0].x11_options, "terminate:ctrl_alt_bksp");
+    }
+
+    #[test]
+    fn test_parse_kbd_model_map_dash_is_empty() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let de = entries.iter().find(|e| e.console_keymap == "de").unwrap();
+        assert!(de.x11_variant.is_empty(), "dash should become empty string");
+    }
+
+    #[test]
+    fn test_parse_kbd_model_map_with_variant() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let nodeadkeys = entries
+            .iter()
+            .find(|e| e.console_keymap == "de-latin1-nodeadkeys")
+            .unwrap();
+        assert_eq!(nodeadkeys.x11_layout, "de");
+        assert_eq!(nodeadkeys.x11_variant, "nodeadkeys");
+    }
+
+    #[test]
+    fn test_parse_kbd_model_map_empty_content() {
+        let entries = parse_kbd_model_map("");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_parse_kbd_model_map_comments_only() {
+        let entries = parse_kbd_model_map("# This is a comment\n# Another comment\n");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_parse_kbd_model_map_malformed_line_skipped() {
+        let content = "us us\nde de pc105 - terminate:ctrl_alt_bksp\n";
+        let entries = parse_kbd_model_map(content);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].console_keymap, "de");
+    }
+
+    #[test]
+    fn test_parse_kbd_model_map_multi_layout() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let ru = entries.iter().find(|e| e.console_keymap == "ru").unwrap();
+        assert_eq!(ru.x11_layout, "ru,us");
+        assert_eq!(
+            ru.x11_options,
+            "terminate:ctrl_alt_bksp,grp:shifts_toggle,grp_led:scroll"
+        );
+    }
+
+    // -- keymap_to_x11 tests --
+
+    #[test]
+    fn test_keymap_to_x11_us() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = keymap_to_x11_from(&entries, "us").unwrap();
+        assert_eq!(result.layout, "us");
+        assert_eq!(result.model, "pc105+inet");
+        assert!(result.variant.is_empty());
+    }
+
+    #[test]
+    fn test_keymap_to_x11_de_nodeadkeys() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = keymap_to_x11_from(&entries, "de-latin1-nodeadkeys").unwrap();
+        assert_eq!(result.layout, "de");
+        assert_eq!(result.variant, "nodeadkeys");
+    }
+
+    #[test]
+    fn test_keymap_to_x11_not_found() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        assert!(keymap_to_x11_from(&entries, "nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_keymap_to_x11_empty() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        assert!(keymap_to_x11_from(&entries, "").is_none());
+    }
+
+    #[test]
+    fn test_keymap_to_x11_jp106() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = keymap_to_x11_from(&entries, "jp106").unwrap();
+        assert_eq!(result.layout, "jp");
+        assert_eq!(result.model, "jp106");
+    }
+
+    #[test]
+    fn test_keymap_to_x11_dvorak() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = keymap_to_x11_from(&entries, "dvorak").unwrap();
+        assert_eq!(result.layout, "us");
+        assert_eq!(result.variant, "dvorak");
+    }
+
+    #[test]
+    fn test_keymap_to_x11_br_abnt2() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = keymap_to_x11_from(&entries, "br-abnt2").unwrap();
+        assert_eq!(result.layout, "br");
+        assert_eq!(result.model, "abnt2");
+    }
+
+    // -- x11_to_keymap tests --
+
+    #[test]
+    fn test_x11_to_keymap_us() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "us", "", "").unwrap();
+        assert_eq!(result, "us");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_de() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "de", "", "").unwrap();
+        assert_eq!(result, "de");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_de_nodeadkeys() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "de", "", "nodeadkeys").unwrap();
+        assert_eq!(result, "de-latin1-nodeadkeys");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_gb() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "gb", "", "").unwrap();
+        assert_eq!(result, "uk");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_not_found() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        assert!(x11_to_keymap_from(&entries, "nonexistent", "", "").is_none());
+    }
+
+    #[test]
+    fn test_x11_to_keymap_empty() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        assert!(x11_to_keymap_from(&entries, "", "", "").is_none());
+    }
+
+    #[test]
+    fn test_x11_to_keymap_dvorak() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "us", "", "dvorak").unwrap();
+        assert_eq!(result, "dvorak");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_variant_fallback_to_no_variant() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        // "fr" with a variant that doesn't exist should fall back to the no-variant entry
+        let result = x11_to_keymap_from(&entries, "fr", "", "nonexistent_variant").unwrap();
+        assert_eq!(result, "fr");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_multi_layout_ru() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        // "ru" is mapped as "ru,us" in the map — match via first component
+        let result = x11_to_keymap_from(&entries, "ru", "", "").unwrap();
+        assert_eq!(result, "ru");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_hu_qwerty() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "hu", "", "qwerty").unwrap();
+        assert_eq!(result, "hu101");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_hu_no_variant() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "hu", "", "").unwrap();
+        assert_eq!(result, "hu");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_ch_de_nodeadkeys() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "ch", "", "de_nodeadkeys").unwrap();
+        assert_eq!(result, "sg");
+    }
+
+    #[test]
+    fn test_x11_to_keymap_ch_fr() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let result = x11_to_keymap_from(&entries, "ch", "", "fr").unwrap();
+        assert_eq!(result, "fr_CH");
+    }
+
+    // -- load_kbd_model_map_from tests --
+
+    #[test]
+    fn test_load_kbd_model_map_from_file() {
+        let dir = TempDir::new().unwrap();
+        let path = write_file(
+            &dir,
+            "kbd-model-map",
+            "us us pc105 - terminate:ctrl_alt_bksp\nde de pc105 - terminate:ctrl_alt_bksp\n",
+        );
+        let entries = load_kbd_model_map_from(path.to_str().unwrap()).unwrap();
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn test_load_kbd_model_map_from_missing_file() {
+        let result = load_kbd_model_map_from("/nonexistent/kbd-model-map");
+        assert!(result.is_err());
+    }
+
+    // -- roundtrip tests (keymap→x11→keymap) --
+
+    #[test]
+    fn test_roundtrip_us() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let x11 = keymap_to_x11_from(&entries, "us").unwrap();
+        let km = x11_to_keymap_from(&entries, &x11.layout, &x11.model, &x11.variant).unwrap();
+        assert_eq!(km, "us");
+    }
+
+    #[test]
+    fn test_roundtrip_de_nodeadkeys() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let x11 = keymap_to_x11_from(&entries, "de-latin1-nodeadkeys").unwrap();
+        let km = x11_to_keymap_from(&entries, &x11.layout, &x11.model, &x11.variant).unwrap();
+        assert_eq!(km, "de-latin1-nodeadkeys");
+    }
+
+    #[test]
+    fn test_roundtrip_dvorak() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let x11 = keymap_to_x11_from(&entries, "dvorak").unwrap();
+        let km = x11_to_keymap_from(&entries, &x11.layout, &x11.model, &x11.variant).unwrap();
+        assert_eq!(km, "dvorak");
+    }
+
+    #[test]
+    fn test_roundtrip_uk() {
+        let entries = parse_kbd_model_map(SAMPLE_KBD_MODEL_MAP);
+        let x11 = keymap_to_x11_from(&entries, "uk").unwrap();
+        let km = x11_to_keymap_from(&entries, &x11.layout, &x11.model, &x11.variant).unwrap();
+        assert_eq!(km, "uk");
     }
 
     // -- parse_env_file_content tests --
