@@ -255,6 +255,17 @@ fn main() {
         }
     });
 
+    // Extract --full flag for edit
+    let mut full = false;
+    positional.retain(|arg| {
+        if arg == "--full" {
+            full = true;
+            false
+        } else {
+            true
+        }
+    });
+
     // Map command aliases.
     let command = match positional[0].as_str() {
         "poweroff" | "reboot" | "halt" | "kexec" => {
@@ -280,10 +291,216 @@ fn main() {
         }
         // Sleep commands — pass through as-is to PID 1
         "suspend" | "hibernate" | "hybrid-sleep" | "suspend-then-hibernate" => &positional[0],
-        // Timer and property commands — pass through
-        "list-timers" | "set-property" => &positional[0],
+        // Timer, property, edit, revert commands — pass through
+        "list-timers" | "set-property" | "edit" | "revert" => &positional[0],
         _ => &positional[0],
     };
+
+    // Handle `edit` client-side: query PID 1 for unit info, open editor, then daemon-reload.
+    if positional[0] == "edit" {
+        if positional.len() < 2 {
+            if !quiet {
+                eprintln!("Error: edit requires a unit name.");
+            }
+            std::process::exit(1);
+        }
+        let unit_name = &positional[1];
+
+        // Query PID 1 for the unit's fragment path and existing override content.
+        let mut query_arr = vec![Value::String(unit_name.clone())];
+        if full {
+            query_arr.push(Value::String("--full".to_owned()));
+        }
+        let query_call = Call {
+            method: "edit".to_string(),
+            params: Some(Value::Array(query_arr)),
+            id: None,
+        };
+        let query_str = serde_json::to_string(&query_call.to_json()).unwrap();
+        let query_result = if addr.starts_with('/') {
+            send_unix(&addr, &query_str)
+        } else {
+            send_tcp(&addr, &query_str)
+        };
+
+        let info = match query_result {
+            Ok(resp) => {
+                if let Some(error) = resp.get("error") {
+                    let message = error
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown error");
+                    if !quiet {
+                        eprintln!("{}", message);
+                    }
+                    std::process::exit(1);
+                }
+                resp.get("result").cloned().unwrap_or(Value::Null)
+            }
+            Err(e) => {
+                if !quiet {
+                    eprintln!("Error communicating with systemd-rs: {e}");
+                }
+                std::process::exit(1);
+            }
+        };
+
+        // Determine the editor.
+        let editor = std::env::var("SYSTEMD_EDITOR")
+            .or_else(|_| std::env::var("EDITOR"))
+            .or_else(|_| std::env::var("VISUAL"))
+            .unwrap_or_else(|_| "vi".to_owned());
+
+        let is_full = info.get("full").and_then(|v| v.as_bool()).unwrap_or(false);
+
+        if is_full {
+            // --full mode: edit a full copy of the unit file in /etc/systemd/system/.
+            let original = info
+                .get("original_content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let etc_path = std::path::Path::new("/etc/systemd/system").join(unit_name);
+
+            // Write existing content (or original) as starting point.
+            if !etc_path.exists()
+                && !original.is_empty()
+                && let Err(e) = std::fs::write(&etc_path, original)
+            {
+                if !quiet {
+                    eprintln!("Failed to write {}: {e}", etc_path.display());
+                }
+                std::process::exit(1);
+            }
+
+            let status = std::process::Command::new(&editor).arg(&etc_path).status();
+            match status {
+                Ok(s) if s.success() => {}
+                Ok(s) => {
+                    if !quiet {
+                        eprintln!("Editor exited with status {}", s.code().unwrap_or(-1));
+                    }
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    if !quiet {
+                        eprintln!("Failed to run editor '{}': {e}", editor);
+                    }
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            // Drop-in mode: edit /etc/systemd/system/<unit>.d/override.conf.
+            let default_dropin_dir = format!("/etc/systemd/system/{unit_name}.d");
+            let dropin_dir = info
+                .get("dropin_dir")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&default_dropin_dir);
+            let default_override_path = format!("/etc/systemd/system/{unit_name}.d/override.conf");
+            let override_path = info
+                .get("override_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&default_override_path);
+            let existing = info
+                .get("existing_override")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Ensure the drop-in directory exists.
+            if let Err(e) = std::fs::create_dir_all(dropin_dir) {
+                if !quiet {
+                    eprintln!("Failed to create {dropin_dir}: {e}");
+                }
+                std::process::exit(1);
+            }
+
+            // Write a temp file with existing content for the editor.
+            let tmp_path = format!("{override_path}.tmp");
+            let initial_content = if existing.is_empty() {
+                "### Editing drop-in override for {}\n### Anything between here and the comment below will become the contents of the drop-in file\n\n[Service]\n\n### Lines below this comment will be discarded\n".replace("{}", unit_name)
+            } else {
+                existing.to_owned()
+            };
+            if let Err(e) = std::fs::write(&tmp_path, &initial_content) {
+                if !quiet {
+                    eprintln!("Failed to write {tmp_path}: {e}");
+                }
+                std::process::exit(1);
+            }
+
+            let status = std::process::Command::new(&editor).arg(&tmp_path).status();
+
+            match status {
+                Ok(s) if s.success() => {
+                    // Read the edited content and write to the override path.
+                    match std::fs::read_to_string(&tmp_path) {
+                        Ok(edited) => {
+                            // Strip comment lines starting with ### for the template.
+                            let clean: String = edited
+                                .lines()
+                                .filter(|l| !l.starts_with("### "))
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            let trimmed = clean.trim();
+                            if trimmed.is_empty() {
+                                // Empty content — remove the override if it existed.
+                                let _ = std::fs::remove_file(override_path);
+                                if !quiet {
+                                    eprintln!("Removed empty override for {unit_name}.");
+                                }
+                            } else {
+                                let mut final_content = trimmed.to_owned();
+                                if !final_content.ends_with('\n') {
+                                    final_content.push('\n');
+                                }
+                                if let Err(e) = std::fs::write(override_path, &final_content) {
+                                    if !quiet {
+                                        eprintln!("Failed to write {override_path}: {e}");
+                                    }
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if !quiet {
+                                eprintln!("Failed to read {tmp_path}: {e}");
+                            }
+                            std::process::exit(1);
+                        }
+                    }
+                    // Clean up temp file.
+                    let _ = std::fs::remove_file(&tmp_path);
+                }
+                Ok(s) => {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    if !quiet {
+                        eprintln!("Editor exited with status {}", s.code().unwrap_or(-1));
+                    }
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    if !quiet {
+                        eprintln!("Failed to run editor '{}': {e}", editor);
+                    }
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        // Trigger daemon-reload after editing.
+        let reload_call = Call {
+            method: "reload".to_string(),
+            params: None,
+            id: None,
+        };
+        let reload_str = serde_json::to_string(&reload_call.to_json()).unwrap();
+        let _ = if addr.starts_with('/') {
+            send_unix(&addr, &reload_str)
+        } else {
+            send_tcp(&addr, &reload_str)
+        };
+        return;
+    }
 
     let method = command.clone();
     let params = if method == "list-timers" {
@@ -297,8 +514,25 @@ fn main() {
             }
             std::process::exit(1);
         }
+        if positional.len() < 3 {
+            if !quiet {
+                eprintln!(
+                    "Error: set-property requires at least one property assignment (e.g. CPUWeight=200)."
+                );
+            }
+            std::process::exit(1);
+        }
         let arr: Vec<Value> = positional[1..].iter().cloned().map(Value::String).collect();
         Some(Value::Array(arr))
+    } else if method == "revert" {
+        // revert <unit>
+        if positional.len() < 2 {
+            if !quiet {
+                eprintln!("Error: revert requires a unit name.");
+            }
+            std::process::exit(1);
+        }
+        Some(Value::String(positional[1].clone()))
     } else if method == "list-unit-files" {
         // list-unit-files [--type=TYPE] — optional type filter extracted from -t flag
         // Check if there's a type filter passed as a positional argument
@@ -560,9 +794,33 @@ fn handle_response(
         | "suspend"
         | "hibernate"
         | "hybrid-sleep"
-        | "suspend-then-hibernate"
-        | "set-property" => {
+        | "suspend-then-hibernate" => {
             // These return null on success — nothing to print.
+        }
+        "set-property" => {
+            if let Some(result) = result
+                && !quiet
+                && let Some(dropin) = result.get("dropin").and_then(|v| v.as_str())
+            {
+                println!("Created drop-in file: {dropin}");
+            }
+        }
+        "revert" => {
+            if let Some(result) = result
+                && !quiet
+                && let Some(unit) = result.get("reverted").and_then(|v| v.as_str())
+                && let Some(arr) = result.get("removed").and_then(|v| v.as_array())
+            {
+                if arr.is_empty() {
+                    println!("No overrides found for {unit}.");
+                } else {
+                    for path in arr {
+                        if let Some(s) = path.as_str() {
+                            println!("Removed {s}.");
+                        }
+                    }
+                }
+            }
         }
         "list-timers" => {
             if let Some(result) = result
@@ -665,6 +923,9 @@ Commands:
     status <unit>               Show status of a unit
     show <unit>                 Show properties of a unit (key=value format)
     cat <unit>                  Show the unit file source
+    edit <unit>                 Edit a unit file drop-in override (or --full for full copy)
+    set-property <unit> <P=V>   Set runtime properties on a unit (creates drop-in)
+    revert <unit>               Revert a unit to its vendor configuration
     start <unit>                Start a unit
     stop <unit>                 Stop a unit
     restart <unit>              Restart a unit
@@ -691,7 +952,7 @@ Options:
     --no-ask-password           Do not ask for password
     --no-legend                 Do not print legend (column headers)
     --system                    Connect to system manager (default)
-    --full, -l                  Show full unit names and descriptions
+    --full                      Edit full unit file instead of drop-in (for edit)
     --all, -a                   Show all units, including inactive
     --reverse                   Show reverse dependencies (for list-dependencies)
     -s, --signal <SIG>          Signal to send (for kill, default: SIGTERM)
@@ -708,6 +969,10 @@ Examples:
     systemctl show -p MainPID,ActiveState sshd.service
     systemctl show --value -p MainPID sshd.service
     systemctl cat sshd.service
+    systemctl edit sshd.service
+    systemctl edit --full sshd.service
+    systemctl set-property sshd.service CPUWeight=200
+    systemctl revert sshd.service
     systemctl restart nginx.service
     systemctl --no-block try-restart nscd.service
     systemctl is-active sshd.service
