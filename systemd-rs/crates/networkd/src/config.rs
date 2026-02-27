@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,9 @@ pub struct NetworkConfig {
 
     /// `[DHCPv6]` section — DHCPv6 client tunables.
     pub dhcpv6: DhcpV6Section,
+
+    /// `[DHCPv6PrefixDelegation]` section — downstream prefix delegation settings.
+    pub dhcpv6_pd: Dhcpv6PrefixDelegationSection,
 
     /// `[Link]` section — link-layer tunables.
     pub link: LinkSection,
@@ -534,6 +537,47 @@ impl Default for DhcpV6Section {
 }
 
 // ---------------------------------------------------------------------------
+// [DHCPv6PrefixDelegation]
+// ---------------------------------------------------------------------------
+
+/// Parsed `[DHCPv6PrefixDelegation]` section of a `.network` file.
+///
+/// Controls how delegated prefixes from an upstream DHCPv6-PD lease are
+/// distributed to this (downstream) interface.  When an upstream interface
+/// obtains a delegated prefix (e.g. a /48 or /56), networkd carves /64
+/// subnets from it and assigns them to downstream interfaces that have
+/// `Assign=yes`.
+#[derive(Debug, Clone)]
+pub struct Dhcpv6PrefixDelegationSection {
+    /// Whether to assign a /64 subnet from a delegated prefix to this
+    /// interface.  Defaults to `false` — only interfaces that explicitly
+    /// opt-in receive a delegated subnet.
+    pub assign: bool,
+
+    /// Which /64 subnet to pick from the delegated prefix.
+    ///
+    /// `None` means auto-assign (sequential, starting from 0).
+    /// A specific value (e.g. `0x01`) selects that subnet index.
+    /// The subnet ID fills the bits between `prefix_len` and 64.
+    pub subnet_id: Option<u64>,
+
+    /// Host part (interface identifier) of the address assigned on this
+    /// link.  For example `::1` gives the router address `prefix::1`.
+    /// Defaults to `::1`.
+    pub token: Ipv6Addr,
+}
+
+impl Default for Dhcpv6PrefixDelegationSection {
+    fn default() -> Self {
+        Self {
+            assign: false,
+            subnet_id: None,
+            token: Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // [DHCPv4]
 // ---------------------------------------------------------------------------
 
@@ -753,6 +797,7 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
         routing_policy_rules: Vec::new(),
         dhcpv4: DhcpV4Section::default(),
         dhcpv6: DhcpV6Section::default(),
+        dhcpv6_pd: Dhcpv6PrefixDelegationSection::default(),
         link: LinkSection::default(),
     };
 
@@ -843,6 +888,9 @@ pub fn parse_network_content(content: &str, path: &Path) -> Result<NetworkConfig
             }
             "DHCPv4" | "DHCP" => parse_dhcpv4_entry(key, value, &mut cfg.dhcpv4),
             "DHCPv6" => parse_dhcpv6_entry(key, value, &mut cfg.dhcpv6),
+            "DHCPv6PrefixDelegation" => {
+                parse_dhcpv6_pd_entry(key, value, &mut cfg.dhcpv6_pd);
+            }
             "Link" => parse_link_entry(key, value, &mut cfg.link),
             section => {
                 // Silently skip unknown sections (vendor extensions, etc.)
@@ -1096,8 +1144,42 @@ fn parse_dhcpv6_entry(key: &str, value: &str, section: &mut DhcpV6Section) {
     }
 }
 
-fn parse_dhcp_mode(s: &str) -> DhcpMode {
-    match s.to_lowercase().as_str() {
+fn parse_dhcpv6_pd_entry(key: &str, value: &str, section: &mut Dhcpv6PrefixDelegationSection) {
+    match key {
+        "Assign" => section.assign = parse_bool(value),
+        "SubnetId" => {
+            if value.eq_ignore_ascii_case("auto") || value.is_empty() {
+                section.subnet_id = None;
+            } else {
+                let parsed = if let Some(hex) = value
+                    .strip_prefix("0x")
+                    .or_else(|| value.strip_prefix("0X"))
+                {
+                    u64::from_str_radix(hex, 16).ok()
+                } else {
+                    value.parse::<u64>().ok()
+                };
+                match parsed {
+                    Some(id) => section.subnet_id = Some(id),
+                    None => log::warn!("Invalid SubnetId value: {value}"),
+                }
+            }
+        }
+        "Token" => {
+            // Parse as an IPv6 address — typically just the host part like "::1".
+            match value.parse::<Ipv6Addr>() {
+                Ok(addr) => section.token = addr,
+                Err(_) => log::warn!("Invalid Token value (expected IPv6 address): {value}"),
+            }
+        }
+        _ => {
+            log::trace!("Ignoring unknown [DHCPv6PrefixDelegation] key: {key}={value}");
+        }
+    }
+}
+
+fn parse_dhcp_mode(value: &str) -> DhcpMode {
+    match value.to_lowercase().as_str() {
         "yes" | "true" | "1" | "both" => DhcpMode::Yes,
         "ipv4" | "v4" => DhcpMode::Ipv4,
         "ipv6" | "v6" => DhcpMode::Ipv6,
@@ -3028,5 +3110,158 @@ NamePolicy=kernel bogus path
             cfg.link_section.name_policy,
             vec![NamePolicy::Kernel, NamePolicy::Path]
         );
+    }
+
+    // ── [DHCPv6PrefixDelegation] parsing ───────────────────────────────────
+
+    #[test]
+    fn test_parse_dhcpv6_pd_section_defaults() {
+        let content = "[Match]\nName=br0\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert!(!cfg.dhcpv6_pd.assign);
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, None);
+        assert_eq!(
+            cfg.dhcpv6_pd.token,
+            "::1".parse::<std::net::Ipv6Addr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_assign_yes() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert!(cfg.dhcpv6_pd.assign);
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_assign_no() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=no\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert!(!cfg.dhcpv6_pd.assign);
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_subnet_id_hex() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nSubnetId=0x0a\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, Some(10));
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_subnet_id_hex_upper() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nSubnetId=0XFF\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, Some(255));
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_subnet_id_decimal() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nSubnetId=42\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, Some(42));
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_subnet_id_auto() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nSubnetId=auto\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, None);
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_subnet_id_empty() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nSubnetId=\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, None);
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_subnet_id_zero() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nSubnetId=0\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, Some(0));
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_token() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nToken=::2\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert_eq!(
+            cfg.dhcpv6_pd.token,
+            "::2".parse::<std::net::Ipv6Addr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_token_full_address() {
+        let content =
+            "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nToken=::dead:beef\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert_eq!(
+            cfg.dhcpv6_pd.token,
+            "::dead:beef".parse::<std::net::Ipv6Addr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_token_invalid_keeps_default() {
+        let content =
+            "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nToken=not-valid\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        // Invalid token doesn't change the default.
+        assert_eq!(
+            cfg.dhcpv6_pd.token,
+            "::1".parse::<std::net::Ipv6Addr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_all_fields() {
+        let content = "\
+[Match]
+Name=br0
+
+[DHCPv6PrefixDelegation]
+Assign=yes
+SubnetId=0x01
+Token=::cafe
+";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert!(cfg.dhcpv6_pd.assign);
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, Some(1));
+        assert_eq!(
+            cfg.dhcpv6_pd.token,
+            "::cafe".parse::<std::net::Ipv6Addr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_unknown_keys_ignored() {
+        let content = "[Match]\nName=br0\n\n[DHCPv6PrefixDelegation]\nAssign=yes\nBogusKey=stuff\n";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        assert!(cfg.dhcpv6_pd.assign);
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_pd_coexists_with_dhcpv6() {
+        let content = "\
+[Match]
+Name=wan0
+
+[DHCPv6]
+PrefixDelegationHint=::/56
+RapidCommit=yes
+
+[DHCPv6PrefixDelegation]
+Assign=yes
+SubnetId=0x03
+";
+        let cfg = parse_network_content(content, Path::new("test.network")).unwrap();
+        // DHCPv6 section parsed correctly.
+        assert_eq!(cfg.dhcpv6.prefix_delegation_hint, Some("::/56".to_string()));
+        assert!(cfg.dhcpv6.rapid_commit);
+        // PD section also parsed correctly.
+        assert!(cfg.dhcpv6_pd.assign);
+        assert_eq!(cfg.dhcpv6_pd.subnet_id, Some(3));
     }
 }
