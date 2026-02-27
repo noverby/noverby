@@ -622,17 +622,32 @@ impl NetworkManager {
                 mac_arr.copy_from_slice(&mac[..6]);
             }
 
+            // Parse prefix delegation hint from [DHCPv6] PrefixDelegationHint=.
+            // Format: "address/prefix_len" e.g. "::1/56" or "::/48".
+            let (pd_enabled, pd_hint_len, pd_hint_addr) =
+                parse_prefix_delegation_hint(&config.dhcpv6.prefix_delegation_hint);
+
             let dhcpv6_config = Dhcpv6ClientConfig {
                 ifindex,
                 ifname: link_name.clone(),
                 mac: mac_arr,
-                request_addresses: true, // Stateful by default; RA M/O flags may override.
-                rapid_commit: false,
+                request_addresses: config.dhcpv6.use_address,
+                request_prefix_delegation: pd_enabled,
+                prefix_hint: pd_hint_len,
+                prefix_hint_address: pd_hint_addr,
+                rapid_commit: config.dhcpv6.rapid_commit,
                 max_attempts: 0,
                 ..Default::default()
             };
 
-            log::info!("Starting DHCPv6 client on {link_name}");
+            if pd_enabled {
+                log::info!(
+                    "Starting DHCPv6 client on {link_name} (PD hint=/{pd_hint_len}, rapid_commit={})",
+                    config.dhcpv6.rapid_commit
+                );
+            } else {
+                log::info!("Starting DHCPv6 client on {link_name}");
+            }
             let client = Dhcpv6Client::new(dhcpv6_config);
             let managed = self.links.get_mut(&ifindex).unwrap();
             managed.dhcpv6_client = Some(client);
@@ -1142,6 +1157,24 @@ impl NetworkManager {
             for domain in &managed.search_domains {
                 content.push_str(&format!("DOMAINS={domain}\n"));
             }
+            // Include IPv6 DNS from DHCPv6/RA.
+            for dns6 in &managed.dns6_servers {
+                content.push_str(&format!("DNS={dns6}\n"));
+            }
+            for domain6 in &managed.search6_domains {
+                content.push_str(&format!("DOMAINS={domain6}\n"));
+            }
+            // Include delegated prefixes from DHCPv6-PD.
+            if let Some(ref dhcpv6_lease) = managed.dhcpv6_lease
+                && let Some(ref ia_pd) = dhcpv6_lease.ia_pd
+            {
+                for prefix in &ia_pd.prefixes {
+                    content.push_str(&format!(
+                        "DELEGATED_PREFIX={}/{}\n",
+                        prefix.prefix, prefix.prefix_length
+                    ));
+                }
+            }
             let _ = std::fs::write(&link_file, &content);
 
             // Write lease state file if we have a lease.
@@ -1253,13 +1286,18 @@ impl NetworkManager {
             .collect()
     }
 
-    /// Apply a DHCPv6 lease to an interface: add address, update DNS.
+    /// Apply a DHCPv6 lease to an interface: add addresses, delegated prefix routes, update DNS.
     pub fn apply_dhcpv6_lease(&mut self, ifindex: u32, lease: &Dhcpv6Lease) -> Result<(), String> {
         let managed = match self.links.get(&ifindex) {
             Some(m) => m,
             None => return Err(format!("unknown ifindex {ifindex}")),
         };
         let link_name = managed.link.name.clone();
+        let use_delegated_prefix = managed
+            .config
+            .as_ref()
+            .map(|c| c.dhcpv6.use_delegated_prefix)
+            .unwrap_or(true);
 
         // Add assigned IPv6 addresses.
         for addr in &lease.ia_na.addresses {
@@ -1279,6 +1317,34 @@ impl NetworkManager {
                         addr.address,
                         e
                     );
+                }
+            }
+        }
+
+        // Apply delegated prefixes (IA_PD) — add on-link routes.
+        if use_delegated_prefix && let Some(ref ia_pd) = lease.ia_pd {
+            for prefix in &ia_pd.prefixes {
+                log::info!(
+                    "{}: adding delegated prefix route {}/{} (preferred={}s valid={}s)",
+                    link_name,
+                    prefix.prefix,
+                    prefix.prefix_length,
+                    prefix.preferred_lifetime,
+                    prefix.valid_lifetime
+                );
+                if let Err(e) =
+                    ipv6_ra::add_ipv6_pd_route(prefix.prefix, prefix.prefix_length, ifindex, None)
+                {
+                    let is_exists = e.raw_os_error() == Some(libc::EEXIST);
+                    if !is_exists {
+                        log::warn!(
+                            "{}: failed to add delegated prefix route {}/{}: {}",
+                            link_name,
+                            prefix.prefix,
+                            prefix.prefix_length,
+                            e
+                        );
+                    }
                 }
             }
         }
@@ -1348,15 +1414,46 @@ impl NetworkManager {
             None => return Err(format!("unknown ifindex {ifindex}")),
         };
 
-        // Remove assigned addresses.
+        let link_name = managed.link.name.clone();
+
+        // Remove assigned addresses and delegated prefix routes.
         if let Some(ref lease) = managed.dhcpv6_lease {
             for addr in &lease.ia_na.addresses {
-                log::info!(
-                    "{}: removing DHCPv6 address {}",
-                    managed.link.name,
-                    addr.address
-                );
-                // Best-effort address removal; failure is not fatal.
+                log::info!("{}: removing DHCPv6 address {}", link_name, addr.address);
+                if let Err(e) = ipv6_ra::remove_ipv6_address(ifindex, addr.address, 128) {
+                    log::debug!(
+                        "{}: failed to remove DHCPv6 address {}: {} (best-effort)",
+                        link_name,
+                        addr.address,
+                        e
+                    );
+                }
+            }
+
+            // Remove delegated prefix routes.
+            if let Some(ref ia_pd) = lease.ia_pd {
+                for prefix in &ia_pd.prefixes {
+                    log::info!(
+                        "{}: removing delegated prefix route {}/{}",
+                        link_name,
+                        prefix.prefix,
+                        prefix.prefix_length
+                    );
+                    if let Err(e) = ipv6_ra::remove_ipv6_route(
+                        prefix.prefix,
+                        prefix.prefix_length,
+                        None,
+                        ifindex,
+                    ) {
+                        log::debug!(
+                            "{}: failed to remove delegated prefix route {}/{}: {} (best-effort)",
+                            link_name,
+                            prefix.prefix,
+                            prefix.prefix_length,
+                            e
+                        );
+                    }
+                }
             }
 
             // Clear DHCPv6-contributed DNS.
@@ -1410,18 +1507,31 @@ impl NetworkManager {
 
         let request_addresses = managed_flag; // M flag = stateful, O only = stateless.
 
+        // Propagate PD config from the network file if available.
+        let (pd_enabled, pd_hint_len, pd_hint_addr, rapid_commit) =
+            if let Some(ref cfg) = managed.config {
+                let (enabled, hint_len, hint_addr) =
+                    parse_prefix_delegation_hint(&cfg.dhcpv6.prefix_delegation_hint);
+                (enabled, hint_len, hint_addr, cfg.dhcpv6.rapid_commit)
+            } else {
+                (false, 0u8, Ipv6Addr::UNSPECIFIED, false)
+            };
+
         let dhcpv6_config = Dhcpv6ClientConfig {
             ifindex,
             ifname: link_name.clone(),
             mac: mac_arr,
             request_addresses,
-            rapid_commit: false,
+            request_prefix_delegation: pd_enabled,
+            prefix_hint: pd_hint_len,
+            prefix_hint_address: pd_hint_addr,
+            rapid_commit,
             max_attempts: 0,
             ..Default::default()
         };
 
         log::info!(
-            "{}: starting DHCPv6 client from RA (M={} O={}, mode={})",
+            "{}: starting DHCPv6 client from RA (M={} O={}, mode={}, PD={})",
             link_name,
             managed_flag,
             other_flag,
@@ -1429,13 +1539,38 @@ impl NetworkManager {
                 "stateful"
             } else {
                 "stateless"
-            }
+            },
+            pd_enabled
         );
 
         let client = Dhcpv6Client::new(dhcpv6_config);
         let managed = self.links.get_mut(&ifindex).unwrap();
         managed.dhcpv6_client = Some(client);
         true
+    }
+}
+
+/// Parse a `PrefixDelegationHint=` value into (enabled, prefix_len, prefix_address).
+///
+/// Format: `"address/prefix_len"` e.g. `"::1/56"`, `"::/48"`, or just `"::/60"`.
+/// Returns `(true, prefix_len, address)` if a valid hint is given,
+/// or `(false, 0, UNSPECIFIED)` if `None`.
+fn parse_prefix_delegation_hint(hint: &Option<String>) -> (bool, u8, Ipv6Addr) {
+    match hint {
+        Some(h) if !h.is_empty() => {
+            if let Some((addr_str, len_str)) = h.rsplit_once('/') {
+                let prefix_len = len_str.parse::<u8>().unwrap_or(0);
+                let prefix_addr = addr_str
+                    .parse::<Ipv6Addr>()
+                    .unwrap_or(Ipv6Addr::UNSPECIFIED);
+                (true, prefix_len, prefix_addr)
+            } else {
+                // No slash — treat as just enabling PD with no specific hint.
+                log::warn!("Invalid PrefixDelegationHint format (expected addr/len): {h}");
+                (true, 0, Ipv6Addr::UNSPECIFIED)
+            }
+        }
+        _ => (false, 0, Ipv6Addr::UNSPECIFIED),
     }
 }
 
@@ -2227,5 +2362,814 @@ mod tests {
         mgr.load_configs_from(&[dir.path().to_path_buf()]);
         assert_eq!(mgr.configs.len(), 1);
         assert_eq!(mgr.configs[0].match_section.names, vec!["eth*"]);
+    }
+
+    // -----------------------------------------------------------------------
+    // DHCPv6-PD integration tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_none() {
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&None);
+        assert!(!enabled);
+        assert_eq!(len, 0);
+        assert_eq!(addr, Ipv6Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_empty() {
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&Some(String::new()));
+        assert!(!enabled);
+        assert_eq!(len, 0);
+        assert_eq!(addr, Ipv6Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_slash_56() {
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&Some("::/56".to_string()));
+        assert!(enabled);
+        assert_eq!(len, 56);
+        assert_eq!(addr, Ipv6Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_slash_48() {
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&Some("::/48".to_string()));
+        assert!(enabled);
+        assert_eq!(len, 48);
+        assert_eq!(addr, Ipv6Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_with_address() {
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&Some("2001:db8::/48".to_string()));
+        assert!(enabled);
+        assert_eq!(len, 48);
+        assert_eq!(addr, "2001:db8::".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_slash_60() {
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&Some("::1/60".to_string()));
+        assert!(enabled);
+        assert_eq!(len, 60);
+        assert_eq!(addr, "::1".parse::<Ipv6Addr>().unwrap());
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_slash_64() {
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&Some("::/64".to_string()));
+        assert!(enabled);
+        assert_eq!(len, 64);
+        assert_eq!(addr, Ipv6Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_no_slash() {
+        // No slash — treated as enabling PD with no specific hint.
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&Some("yes".to_string()));
+        assert!(enabled);
+        assert_eq!(len, 0);
+        assert_eq!(addr, Ipv6Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_invalid_prefix_len() {
+        let (enabled, len, addr) = parse_prefix_delegation_hint(&Some("::/abc".to_string()));
+        assert!(enabled);
+        assert_eq!(len, 0); // parse fails, falls back to 0
+        assert_eq!(addr, Ipv6Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_parse_prefix_delegation_hint_invalid_address() {
+        let (enabled, len, addr) =
+            parse_prefix_delegation_hint(&Some("not-an-addr/56".to_string()));
+        assert!(enabled);
+        assert_eq!(len, 56);
+        assert_eq!(addr, Ipv6Addr::UNSPECIFIED); // invalid addr falls back
+    }
+
+    fn make_dhcpv6_test_config(name: &str, pd_hint: Option<&str>) -> NetworkConfig {
+        NetworkConfig {
+            path: std::path::PathBuf::from(format!("10-{name}.network")),
+            match_section: MatchSection {
+                names: vec![name.to_string()],
+                ..Default::default()
+            },
+            network_section: NetworkSection {
+                dhcp: DhcpMode::Ipv6,
+                ..Default::default()
+            },
+            addresses: vec![],
+            routes: vec![],
+            routing_policy_rules: vec![],
+            dhcpv4: DhcpV4Section::default(),
+            dhcpv6: DhcpV6Section {
+                prefix_delegation_hint: pd_hint.map(|s| s.to_string()),
+                use_delegated_prefix: true,
+                rapid_commit: false,
+                ..Default::default()
+            },
+            link: LinkSection::default(),
+        }
+    }
+
+    fn make_test_dhcpv6_lease_with_pd() -> Dhcpv6Lease {
+        use crate::dhcpv6::{IaAddress, IaNa, IaPd, IaPrefix};
+        use std::time::Instant;
+        Dhcpv6Lease {
+            ia_na: IaNa {
+                iaid: 1,
+                t1: 1800,
+                t2: 2700,
+                addresses: vec![IaAddress {
+                    address: "2001:db8::100".parse().unwrap(),
+                    preferred_lifetime: 3600,
+                    valid_lifetime: 7200,
+                }],
+                status: None,
+            },
+            ia_pd: Some(IaPd {
+                iaid: 2,
+                t1: 1800,
+                t2: 2700,
+                prefixes: vec![IaPrefix {
+                    preferred_lifetime: 3600,
+                    valid_lifetime: 7200,
+                    prefix_length: 56,
+                    prefix: "2001:db8:abcd::/56"
+                        .parse::<Ipv6Addr>()
+                        .unwrap_or("2001:db8:abcd::".parse().unwrap()),
+                }],
+                status: None,
+            }),
+            server_id: crate::dhcpv6::Duid::from_bytes(vec![
+                0, 1, 0, 1, 0, 0, 0, 0, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+            ]),
+            dns_servers: vec!["2001:4860:4860::8888".parse().unwrap()],
+            domains: vec!["example.com".to_string()],
+            preference: 0,
+            obtained_at: Instant::now(),
+        }
+    }
+
+    fn make_test_dhcpv6_lease_no_pd() -> Dhcpv6Lease {
+        use crate::dhcpv6::{IaAddress, IaNa};
+        use std::time::Instant;
+        Dhcpv6Lease {
+            ia_na: IaNa {
+                iaid: 1,
+                t1: 1800,
+                t2: 2700,
+                addresses: vec![IaAddress {
+                    address: "2001:db8::200".parse().unwrap(),
+                    preferred_lifetime: 3600,
+                    valid_lifetime: 7200,
+                }],
+                status: None,
+            },
+            ia_pd: None,
+            server_id: crate::dhcpv6::Duid::from_bytes(vec![
+                0, 1, 0, 1, 0, 0, 0, 0, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+            ]),
+            dns_servers: vec!["2001:4860:4860::8844".parse().unwrap()],
+            domains: vec![],
+            preference: 0,
+            obtained_at: Instant::now(),
+        }
+    }
+
+    fn make_test_dhcpv6_lease_pd_only() -> Dhcpv6Lease {
+        use crate::dhcpv6::{IaNa, IaPd, IaPrefix};
+        use std::time::Instant;
+        Dhcpv6Lease {
+            ia_na: IaNa::new(1),
+            ia_pd: Some(IaPd {
+                iaid: 2,
+                t1: 1800,
+                t2: 2700,
+                prefixes: vec![
+                    IaPrefix {
+                        preferred_lifetime: 3600,
+                        valid_lifetime: 7200,
+                        prefix_length: 48,
+                        prefix: "2001:db8:1234::".parse().unwrap(),
+                    },
+                    IaPrefix {
+                        preferred_lifetime: 1800,
+                        valid_lifetime: 3600,
+                        prefix_length: 60,
+                        prefix: "2001:db8:5678::".parse().unwrap(),
+                    },
+                ],
+                status: None,
+            }),
+            server_id: crate::dhcpv6::Duid::from_bytes(vec![
+                0, 3, 0, 1, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+            ]),
+            dns_servers: vec![],
+            domains: vec![],
+            preference: 0,
+            obtained_at: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn test_apply_dhcpv6_lease_unknown_ifindex() {
+        let mut mgr = NetworkManager::new();
+        let lease = make_test_dhcpv6_lease_with_pd();
+        let result = mgr.apply_dhcpv6_lease(999, &lease);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown ifindex"));
+    }
+
+    #[test]
+    fn test_apply_dhcpv6_lease_stores_lease() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(1, "eth0");
+        let config = make_dhcpv6_test_config("eth0", Some("::/56"));
+        mgr.links.insert(
+            1,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        let lease = make_test_dhcpv6_lease_with_pd();
+        // apply_dhcpv6_lease will fail on netlink calls in test env,
+        // but that's OK — we check the DNS/domain/lease state updates.
+        let _ = mgr.apply_dhcpv6_lease(1, &lease);
+
+        let managed = mgr.links.get(&1).unwrap();
+        assert!(managed.dhcpv6_lease.is_some());
+        assert!(
+            managed
+                .dns6_servers
+                .contains(&"2001:4860:4860::8888".parse().unwrap())
+        );
+        assert!(managed.search6_domains.contains(&"example.com".to_string()));
+    }
+
+    #[test]
+    fn test_apply_dhcpv6_lease_no_pd_no_prefix_routes() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(2, "eth1");
+        let config = make_dhcpv6_test_config("eth1", None);
+        mgr.links.insert(
+            2,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        let lease = make_test_dhcpv6_lease_no_pd();
+        let _ = mgr.apply_dhcpv6_lease(2, &lease);
+
+        let managed = mgr.links.get(&2).unwrap();
+        assert!(managed.dhcpv6_lease.is_some());
+        // No PD in lease — delegated_prefixes should be empty.
+        assert!(
+            !managed
+                .dhcpv6_lease
+                .as_ref()
+                .unwrap()
+                .has_prefix_delegation()
+        );
+    }
+
+    #[test]
+    fn test_apply_dhcpv6_lease_use_delegated_prefix_false() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(3, "eth2");
+        let mut config = make_dhcpv6_test_config("eth2", Some("::/56"));
+        config.dhcpv6.use_delegated_prefix = false;
+        mgr.links.insert(
+            3,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        let lease = make_test_dhcpv6_lease_with_pd();
+        // Even though the lease has PD, use_delegated_prefix=false so routes
+        // should NOT be installed. The lease is still stored, but we
+        // skip the add_ipv6_pd_route calls.
+        let _ = mgr.apply_dhcpv6_lease(3, &lease);
+
+        let managed = mgr.links.get(&3).unwrap();
+        assert!(managed.dhcpv6_lease.is_some());
+        // The lease itself still has PD info stored.
+        assert!(
+            managed
+                .dhcpv6_lease
+                .as_ref()
+                .unwrap()
+                .has_prefix_delegation()
+        );
+    }
+
+    #[test]
+    fn test_remove_dhcpv6_lease_clears_state() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(4, "eth3");
+        let config = make_dhcpv6_test_config("eth3", Some("::/56"));
+        mgr.links.insert(
+            4,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        // First apply lease so we have state to clear.
+        let lease = make_test_dhcpv6_lease_with_pd();
+        let _ = mgr.apply_dhcpv6_lease(4, &lease);
+
+        let managed = mgr.links.get(&4).unwrap();
+        assert!(managed.dhcpv6_lease.is_some());
+        assert!(!managed.dns6_servers.is_empty());
+
+        // Now remove it.
+        let result = mgr.remove_dhcpv6_lease(4);
+        assert!(result.is_ok());
+
+        let managed = mgr.links.get(&4).unwrap();
+        assert!(managed.dhcpv6_lease.is_none());
+        // DNS from the lease should be cleared.
+        assert!(managed.dns6_servers.is_empty());
+        assert!(managed.search6_domains.is_empty());
+    }
+
+    #[test]
+    fn test_remove_dhcpv6_lease_unknown_ifindex() {
+        let mut mgr = NetworkManager::new();
+        let result = mgr.remove_dhcpv6_lease(999);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown ifindex"));
+    }
+
+    #[test]
+    fn test_remove_dhcpv6_lease_no_lease_is_ok() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(5, "eth4");
+        mgr.links.insert(
+            5,
+            ManagedLink {
+                link,
+                config: None,
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        // Remove with no lease — should succeed with nothing to clean up.
+        let result = mgr.remove_dhcpv6_lease(5);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_start_dhcpv6_from_ra_no_flags() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(6, "eth5");
+        mgr.links.insert(
+            6,
+            ManagedLink {
+                link,
+                config: None,
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        // Neither M nor O → should not start.
+        assert!(!mgr.start_dhcpv6_from_ra(6, false, false));
+        assert!(mgr.links.get(&6).unwrap().dhcpv6_client.is_none());
+    }
+
+    #[test]
+    fn test_start_dhcpv6_from_ra_managed_flag() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(7, "eth6");
+        let config = make_dhcpv6_test_config("eth6", Some("::/56"));
+        mgr.links.insert(
+            7,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        // M flag set → stateful DHCPv6 with PD from config.
+        assert!(mgr.start_dhcpv6_from_ra(7, true, false));
+        let managed = mgr.links.get(&7).unwrap();
+        let client = managed.dhcpv6_client.as_ref().unwrap();
+        assert!(client.config.request_addresses);
+        assert!(client.config.request_prefix_delegation);
+        assert_eq!(client.config.prefix_hint, 56);
+    }
+
+    #[test]
+    fn test_start_dhcpv6_from_ra_other_flag_only() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(8, "eth7");
+        mgr.links.insert(
+            8,
+            ManagedLink {
+                link,
+                config: None,
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        // O flag only → stateless, no PD (no config).
+        assert!(mgr.start_dhcpv6_from_ra(8, false, true));
+        let managed = mgr.links.get(&8).unwrap();
+        let client = managed.dhcpv6_client.as_ref().unwrap();
+        assert!(!client.config.request_addresses);
+        assert!(!client.config.request_prefix_delegation);
+    }
+
+    #[test]
+    fn test_start_dhcpv6_from_ra_already_has_client() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(9, "eth8");
+        let config = make_dhcpv6_test_config("eth8", None);
+        let existing_client = Dhcpv6Client::new(Dhcpv6ClientConfig {
+            ifindex: 9,
+            ifname: "eth8".to_string(),
+            ..Default::default()
+        });
+        mgr.links.insert(
+            9,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: Some(existing_client),
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        // Already has a client → should not start a new one.
+        assert!(!mgr.start_dhcpv6_from_ra(9, true, true));
+    }
+
+    #[test]
+    fn test_start_dhcpv6_from_ra_unknown_ifindex() {
+        let mut mgr = NetworkManager::new();
+        assert!(!mgr.start_dhcpv6_from_ra(999, true, true));
+    }
+
+    #[test]
+    fn test_start_dhcpv6_from_ra_pd_config_propagated() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(10, "wan0");
+        let mut config = make_dhcpv6_test_config("wan0", Some("2001:db8::/48"));
+        config.dhcpv6.rapid_commit = true;
+        mgr.links.insert(
+            10,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        assert!(mgr.start_dhcpv6_from_ra(10, true, true));
+        let client = mgr.links.get(&10).unwrap().dhcpv6_client.as_ref().unwrap();
+        assert!(client.config.request_prefix_delegation);
+        assert_eq!(client.config.prefix_hint, 48);
+        assert_eq!(
+            client.config.prefix_hint_address,
+            "2001:db8::".parse::<Ipv6Addr>().unwrap()
+        );
+        assert!(client.config.rapid_commit);
+        assert!(client.config.request_addresses); // M flag set
+    }
+
+    #[test]
+    fn test_apply_dhcpv6_lease_multiple_prefixes() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(11, "wan1");
+        let config = make_dhcpv6_test_config("wan1", Some("::/48"));
+        mgr.links.insert(
+            11,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        let lease = make_test_dhcpv6_lease_pd_only();
+        let _ = mgr.apply_dhcpv6_lease(11, &lease);
+
+        let managed = mgr.links.get(&11).unwrap();
+        assert!(managed.dhcpv6_lease.is_some());
+        let stored_lease = managed.dhcpv6_lease.as_ref().unwrap();
+        assert!(stored_lease.has_prefix_delegation());
+        let prefixes = stored_lease.delegated_prefixes();
+        assert_eq!(prefixes.len(), 2);
+        assert_eq!(prefixes[0].prefix_length, 48);
+        assert_eq!(prefixes[1].prefix_length, 60);
+    }
+
+    #[test]
+    fn test_apply_dhcpv6_lease_dns_merge_no_duplicates() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(12, "eth9");
+        let config = make_dhcpv6_test_config("eth9", None);
+        let dns_existing: Ipv6Addr = "2001:4860:4860::8888".parse().unwrap();
+        mgr.links.insert(
+            12,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![dns_existing],
+                search6_domains: vec![],
+            },
+        );
+
+        // Lease has the same DNS server — should not duplicate.
+        let lease = make_test_dhcpv6_lease_with_pd();
+        let _ = mgr.apply_dhcpv6_lease(12, &lease);
+
+        let managed = mgr.links.get(&12).unwrap();
+        let count = managed
+            .dns6_servers
+            .iter()
+            .filter(|&&d| d == dns_existing)
+            .count();
+        assert_eq!(count, 1, "DNS server should not be duplicated");
+    }
+
+    #[test]
+    fn test_remove_dhcpv6_lease_clears_pd_dns() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(13, "wan2");
+        let config = make_dhcpv6_test_config("wan2", Some("::/56"));
+        let pre_existing_dns: Ipv6Addr = "fe80::1".parse().unwrap();
+        mgr.links.insert(
+            13,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![pre_existing_dns],
+                search6_domains: vec!["local.lan".to_string()],
+            },
+        );
+
+        // Apply and then remove.
+        let lease = make_test_dhcpv6_lease_with_pd();
+        let _ = mgr.apply_dhcpv6_lease(13, &lease);
+
+        let managed = mgr.links.get(&13).unwrap();
+        assert!(managed.dns6_servers.len() >= 2); // pre-existing + lease DNS
+        assert!(managed.search6_domains.contains(&"example.com".to_string()));
+
+        let _ = mgr.remove_dhcpv6_lease(13);
+
+        let managed = mgr.links.get(&13).unwrap();
+        assert!(managed.dhcpv6_lease.is_none());
+        // Lease DNS should be gone, pre-existing should remain.
+        assert!(managed.dns6_servers.contains(&pre_existing_dns));
+        assert!(
+            !managed
+                .dns6_servers
+                .contains(&"2001:4860:4860::8888".parse().unwrap())
+        );
+        // Lease domains should be gone, pre-existing should remain.
+        assert!(managed.search6_domains.contains(&"local.lan".to_string()));
+        assert!(!managed.search6_domains.contains(&"example.com".to_string()));
+    }
+
+    #[test]
+    fn test_dhcpv6_active_links_includes_pd_clients() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(14, "wan3");
+        let config = make_dhcpv6_test_config("wan3", Some("::/56"));
+        let client = Dhcpv6Client::new(Dhcpv6ClientConfig {
+            ifindex: 14,
+            ifname: "wan3".to_string(),
+            request_prefix_delegation: true,
+            prefix_hint: 56,
+            ..Default::default()
+        });
+        mgr.links.insert(
+            14,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: Some(client),
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        let active = mgr.dhcpv6_active_links();
+        assert!(active.contains(&14));
+    }
+
+    #[test]
+    fn test_lease_pd_fields_accessible_after_apply() {
+        let mut mgr = NetworkManager::new();
+        let link = make_test_link(15, "wan4");
+        let config = make_dhcpv6_test_config("wan4", Some("::/48"));
+        mgr.links.insert(
+            15,
+            ManagedLink {
+                link,
+                config: Some(config),
+                dhcp_client: None,
+                lease: None,
+                dhcpv6_client: None,
+                dhcpv6_lease: None,
+                admin_state: AdminState::Up,
+                static_configured: false,
+                has_carrier: true,
+                dns_servers: vec![],
+                search_domains: vec![],
+                ra_state: None,
+                dns6_servers: vec![],
+                search6_domains: vec![],
+            },
+        );
+
+        let lease = make_test_dhcpv6_lease_with_pd();
+        let _ = mgr.apply_dhcpv6_lease(15, &lease);
+
+        let managed = mgr.links.get(&15).unwrap();
+        let stored = managed.dhcpv6_lease.as_ref().unwrap();
+
+        // Verify PD fields are preserved.
+        assert!(stored.has_prefix_delegation());
+        let prefixes = stored.delegated_prefixes();
+        assert_eq!(prefixes.len(), 1);
+        assert_eq!(prefixes[0].prefix_length, 56);
+        assert_eq!(
+            prefixes[0].prefix,
+            "2001:db8:abcd::".parse::<Ipv6Addr>().unwrap()
+        );
+
+        // Also verify IA_NA address is in lease.
+        assert_eq!(
+            stored.primary_address(),
+            Some("2001:db8::100".parse().unwrap())
+        );
     }
 }
