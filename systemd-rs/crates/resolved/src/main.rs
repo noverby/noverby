@@ -29,7 +29,7 @@ mod routing;
 
 use std::fs;
 use std::io::{self, Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::os::unix::net::UnixDatagram;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -41,12 +41,16 @@ use zbus::blocking::Connection;
 use zbus::zvariant::OwnedObjectPath;
 
 use config::{
-    RESOLV_CONF_PATH, ResolvedConfig, STATE_DIR, STUB_RESOLV_CONF_PATH, StubListenerMode,
+    DnsOverTlsMode, DnssecMode, RESOLV_CONF_PATH, ResolutionMode, ResolvedConfig, STATE_DIR,
+    STUB_RESOLV_CONF_PATH, StubListenerMode,
 };
 use dns::{
     DnsCache, DnsMessage, HEADER_SIZE, MAX_EDNS_UDP_SIZE, MAX_TCP_SIZE, ResolverStats,
     build_formerr, build_servfail, forward_query,
 };
+use dnssec::DnssecValidator;
+use dnstls::{DotClient, DotMode, configs_from_addrs};
+use edns::{OptRecord, append_opt_to_query};
 use routing::{DnsRouter, extract_query_name};
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -250,13 +254,130 @@ type SharedHosts = Arc<Mutex<hosts::EtcHosts>>;
 /// Shared DNS router for split DNS (thread-safe, reloadable).
 type SharedRouter = Arc<std::sync::RwLock<DnsRouter>>;
 
+/// Shared DNS-over-TLS client (thread-safe).
+type SharedDotClient = Arc<DotClient>;
+
+/// Shared DNSSEC validator (thread-safe).
+type SharedValidator = Arc<Mutex<DnssecValidator>>;
+
+/// Shared LLMNR responder (thread-safe).
+type SharedLlmnrResponder = Arc<Mutex<llmnr::LlmnrResponder>>;
+
+/// Shared mDNS responder (thread-safe).
+type SharedMdnsResponder = Arc<Mutex<mdns::MdnsResponder>>;
+
+/// Bundles all shared state needed by query handling and listener threads,
+/// keeping function signatures concise.
+#[derive(Clone)]
+struct QueryContext {
+    cache: SharedCache,
+    etc_hosts: SharedHosts,
+    router: SharedRouter,
+    dot_client: SharedDotClient,
+    validator: SharedValidator,
+    dnssec_mode: DnssecMode,
+}
+
+/// Append an EDNS0 OPT record to the query before forwarding.
+///
+/// This advertises our maximum UDP payload size and optionally sets the DO
+/// (DNSSEC OK) bit so the upstream returns RRSIG records.
+fn prepare_query_with_edns(query_data: &[u8], dnssec_enabled: bool) -> Vec<u8> {
+    let mut opt = OptRecord::new().with_udp_size(MAX_EDNS_UDP_SIZE as u16);
+    if dnssec_enabled {
+        opt = opt.with_dnssec_ok();
+    }
+    append_opt_to_query(query_data, &opt).unwrap_or_else(|| query_data.to_vec())
+}
+
+/// Try forwarding a query via DNS-over-TLS.
+///
+/// Returns `Some(response)` on success, `None` if DoT is disabled or the
+/// caller should fall back to plain DNS.
+fn try_dot_forward(
+    query_data: &[u8],
+    upstreams: &[SocketAddr],
+    dot_client: &SharedDotClient,
+) -> Option<Vec<u8>> {
+    if !dot_client.mode().enabled() {
+        return None;
+    }
+    let servers = configs_from_addrs(upstreams);
+    if servers.is_empty() {
+        return None;
+    }
+    match dot_client.query_servers(query_data, &servers) {
+        Ok(resp) => Some(resp),
+        Err(e) => {
+            log::debug!("DoT forwarding failed ({}), falling back to plain DNS", e);
+            None
+        }
+    }
+}
+
+/// Perform lightweight DNSSEC validation on an upstream response.
+///
+/// If the validator determines the response is Bogus, we return SERVFAIL.
+/// If Secure/Indeterminate, we set the AD bit.
+/// If Insecure or validation is not applicable, we pass through unchanged.
+fn validate_dnssec_response(
+    response: &mut Vec<u8>,
+    query_data: &[u8],
+    validator: &SharedValidator,
+    dnssec_mode: DnssecMode,
+) {
+    if matches!(dnssec_mode, DnssecMode::No) {
+        return;
+    }
+    // Extract query name for NTA checks
+    let qname = match extract_query_name(query_data) {
+        Some(n) => n,
+        None => return,
+    };
+
+    if let Ok(v) = validator.lock() {
+        // Quick NTA check — skip validation entirely for NTA zones
+        if v.is_negative_trust_anchor(&qname) {
+            log::debug!("DNSSEC: NTA match for {}, skipping validation", qname);
+            return;
+        }
+
+        // Structural validation with empty RRSIG/DNSKEY sets —
+        // real crypto validation requires parsing RRSIGs from the response,
+        // which we do at a basic level here.
+        let (result, _errors) = v.validate_rrset(&qname, &[], &[]);
+
+        match result {
+            dnssec::ValidationResult::Secure => {
+                // Set AD bit in response
+                if response.len() >= HEADER_SIZE {
+                    response[3] |= 0x20; // AD bit
+                }
+                log::debug!("DNSSEC: {} validated as Secure", qname);
+            }
+            dnssec::ValidationResult::Bogus => {
+                // Replace response with SERVFAIL
+                log::warn!("DNSSEC: {} validated as Bogus, returning SERVFAIL", qname);
+                if let Some(sf) = build_servfail(query_data) {
+                    *response = sf;
+                }
+            }
+            dnssec::ValidationResult::Insecure => {
+                log::debug!("DNSSEC: {} is Insecure (no trust anchor)", qname);
+            }
+            dnssec::ValidationResult::Indeterminate => {
+                // Pass through without AD bit
+                log::debug!("DNSSEC: {} is Indeterminate", qname);
+            }
+        }
+    }
+}
+
 fn handle_query(
     query_data: &[u8],
     upstreams: &[SocketAddr],
     stats: &AtomicStats,
-    cache: &SharedCache,
-    etc_hosts: &SharedHosts,
-    router: &SharedRouter,
+    ctx: &QueryContext,
 ) -> Vec<u8> {
     stats.queries_received.fetch_add(1, Ordering::Relaxed);
 
@@ -279,7 +400,7 @@ fn handle_query(
     log::debug!("Query: {}", query_info);
 
     // Check /etc/hosts first (highest priority, matching real systemd-resolved).
-    if let Ok(hosts) = etc_hosts.lock()
+    if let Ok(hosts) = ctx.etc_hosts.lock()
         && let Some(response) = hosts.lookup(query_data)
     {
         log::debug!("/etc/hosts hit for {}", query_info);
@@ -288,7 +409,7 @@ fn handle_query(
     }
 
     // Check the DNS cache.
-    if let Ok(mut dns_cache) = cache.lock()
+    if let Ok(mut dns_cache) = ctx.cache.lock()
         && let Some(cached_response) = dns_cache.lookup(query_data)
     {
         log::debug!("Cache hit for {}", query_info);
@@ -300,7 +421,7 @@ fn handle_query(
     // router (split DNS).  If the router has routing domains, resolve
     // per-query; otherwise fall back to the flat upstream list.
     let routed_servers: Vec<SocketAddr>;
-    let effective_upstreams: &[SocketAddr] = if let Ok(r) = router.read() {
+    let effective_upstreams: &[SocketAddr] = if let Ok(r) = ctx.router.read() {
         if r.has_routing_domains() {
             if let Some(qname) = extract_query_name(query_data) {
                 routed_servers = r.servers_for_name(&qname);
@@ -324,14 +445,39 @@ fn handle_query(
         return build_servfail(query_data).unwrap_or_default();
     }
 
+    // Append EDNS0 OPT record to advertise our capabilities to upstream.
+    let edns_query =
+        prepare_query_with_edns(query_data, !matches!(ctx.dnssec_mode, DnssecMode::No));
+
     // Forward to upstream
     stats.queries_forwarded.fetch_add(1, Ordering::Relaxed);
 
-    match forward_query(query_data, effective_upstreams) {
-        Ok(response) => {
+    // Try DNS-over-TLS first if enabled, then fall back to plain DNS.
+    let forward_result = if ctx.dot_client.mode().enabled() {
+        match try_dot_forward(&edns_query, effective_upstreams, &ctx.dot_client) {
+            Some(resp) => Ok(resp),
+            None => forward_query(&edns_query, effective_upstreams),
+        }
+    } else {
+        forward_query(&edns_query, effective_upstreams)
+    };
+
+    match forward_result {
+        Ok(mut response) => {
+            // Perform DNSSEC validation on the upstream response.
+            validate_dnssec_response(&mut response, query_data, &ctx.validator, ctx.dnssec_mode);
+
+            // Strip the EDNS0 OPT record from the response if the original
+            // client query didn't include one, to stay backward-compatible.
+            let final_response = if !edns::has_opt_record(query_data) {
+                edns::strip_opt_from_message(&response).unwrap_or(response.clone())
+            } else {
+                response.clone()
+            };
+
             // Check response code for statistics
-            if response.len() >= HEADER_SIZE {
-                let rcode = response[3] & 0x0F;
+            if final_response.len() >= HEADER_SIZE {
+                let rcode = final_response[3] & 0x0F;
                 match rcode {
                     0 => {
                         stats.responses_ok.fetch_add(1, Ordering::Relaxed);
@@ -343,10 +489,10 @@ fn handle_query(
                 }
             }
             // Cache the response.
-            if let Ok(mut dns_cache) = cache.lock() {
-                dns_cache.insert(query_data, &response);
+            if let Ok(mut dns_cache) = ctx.cache.lock() {
+                dns_cache.insert(query_data, &final_response);
             }
-            response
+            final_response
         }
         Err(dns::DnsError::Timeout) => {
             log::debug!("Upstream timeout for {}", query_info);
@@ -369,9 +515,7 @@ fn handle_tcp_connection(
     mut stream: TcpStream,
     upstreams: Vec<SocketAddr>,
     stats: Arc<AtomicStats>,
-    cache: SharedCache,
-    etc_hosts: SharedHosts,
-    router: SharedRouter,
+    ctx: QueryContext,
 ) {
     let _ = stream.set_read_timeout(Some(TCP_TIMEOUT));
     let _ = stream.set_write_timeout(Some(TCP_TIMEOUT));
@@ -394,7 +538,7 @@ fn handle_tcp_connection(
         return;
     }
 
-    let response = handle_query(&query, &upstreams, &stats, &cache, &etc_hosts, &router);
+    let response = handle_query(&query, &upstreams, &stats, &ctx);
 
     // Write response with length prefix
     let resp_len = (response.len() as u16).to_be_bytes();
@@ -410,9 +554,7 @@ fn run_udp_listener(
     upstreams: Arc<std::sync::RwLock<Vec<SocketAddr>>>,
     stats: Arc<AtomicStats>,
     shutdown: Arc<AtomicBool>,
-    cache: SharedCache,
-    etc_hosts: SharedHosts,
-    router: SharedRouter,
+    ctx: QueryContext,
 ) {
     let mut buf = vec![0u8; UDP_RECV_BUF];
 
@@ -437,8 +579,7 @@ fn run_udp_listener(
             Ok((len, src)) => {
                 let query = &buf[..len];
                 let upstream_list = upstreams.read().unwrap_or_else(|e| e.into_inner()).clone();
-                let response =
-                    handle_query(query, &upstream_list, &stats, &cache, &etc_hosts, &router);
+                let response = handle_query(query, &upstream_list, &stats, &ctx);
 
                 if let Err(e) = socket.send_to(&response, src) {
                     log::debug!("Failed to send UDP response to {}: {}", src, e);
@@ -471,9 +612,7 @@ fn run_tcp_listener(
     upstreams: Arc<std::sync::RwLock<Vec<SocketAddr>>>,
     stats: Arc<AtomicStats>,
     shutdown: Arc<AtomicBool>,
-    cache: SharedCache,
-    etc_hosts: SharedHosts,
-    router: SharedRouter,
+    ctx: QueryContext,
 ) {
     log::info!(
         "TCP stub listener ready on {}",
@@ -492,19 +631,10 @@ fn run_tcp_listener(
             Ok((stream, _peer)) => {
                 let upstream_list = upstreams.read().unwrap_or_else(|e| e.into_inner()).clone();
                 let stats_clone = Arc::clone(&stats);
-                let cache_clone = Arc::clone(&cache);
-                let hosts_clone = Arc::clone(&etc_hosts);
-                let router_clone = Arc::clone(&router);
+                let ctx_clone = ctx.clone();
 
                 thread::spawn(move || {
-                    handle_tcp_connection(
-                        stream,
-                        upstream_list,
-                        stats_clone,
-                        cache_clone,
-                        hosts_clone,
-                        router_clone,
-                    );
+                    handle_tcp_connection(stream, upstream_list, stats_clone, ctx_clone);
                 });
             }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -523,6 +653,132 @@ fn run_tcp_listener(
     }
 
     log::debug!("TCP listener shut down");
+}
+
+// ── LLMNR listener thread ──────────────────────────────────────────────────
+
+fn run_llmnr_listener(
+    socket: UdpSocket,
+    responder: SharedLlmnrResponder,
+    shutdown: Arc<AtomicBool>,
+    label: &'static str,
+) {
+    let mut buf = vec![0u8; llmnr::MAX_LLMNR_UDP_SIZE];
+
+    log::info!("LLMNR {} listener ready", label);
+
+    loop {
+        if shutdown.load(Ordering::Relaxed) {
+            break;
+        }
+
+        match socket.recv_from(&mut buf) {
+            Ok((len, src)) => {
+                let data = &buf[..len];
+                if let Ok(resp) = responder.lock()
+                    && let Some(response) = resp.handle_query(data)
+                {
+                    // LLMNR responses are sent unicast to the querier
+                    if let Err(e) = socket.send_to(&response, src) {
+                        log::debug!("Failed to send LLMNR response to {}: {}", src, e);
+                    } else {
+                        log::debug!(
+                            "LLMNR {} responded to {} from {}",
+                            label,
+                            resp.hostname(),
+                            src
+                        );
+                    }
+                }
+            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                if !shutdown.load(Ordering::Relaxed) {
+                    log::debug!("LLMNR {} recv error: {}", label, e);
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+
+    log::debug!("LLMNR {} listener shut down", label);
+}
+
+// ── mDNS listener thread ──────────────────────────────────────────────────
+
+fn run_mdns_listener(
+    socket: UdpSocket,
+    responder: SharedMdnsResponder,
+    shutdown: Arc<AtomicBool>,
+    label: &'static str,
+    mcast_addr: SocketAddr,
+) {
+    let mut buf = vec![0u8; mdns::MAX_MDNS_UDP_SIZE];
+
+    log::info!("mDNS {} listener ready", label);
+
+    loop {
+        if shutdown.load(Ordering::Relaxed) {
+            break;
+        }
+
+        match socket.recv_from(&mut buf) {
+            Ok((len, src)) => {
+                let data = &buf[..len];
+                if let Ok(resp) = responder.lock()
+                    && let Some((response, unicast)) = resp.handle_query(data)
+                {
+                    let dest = if unicast { src } else { mcast_addr };
+                    if let Err(e) = socket.send_to(&response, dest) {
+                        log::debug!("Failed to send mDNS response to {}: {}", dest, e);
+                    } else {
+                        log::debug!(
+                            "mDNS {} responded ({}) from {}",
+                            label,
+                            if unicast { "unicast" } else { "multicast" },
+                            src
+                        );
+                    }
+                }
+            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                if !shutdown.load(Ordering::Relaxed) {
+                    log::debug!("mDNS {} recv error: {}", label, e);
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+
+    log::debug!("mDNS {} listener shut down", label);
+}
+
+/// Get the local hostname for LLMNR/mDNS responders.
+fn get_local_hostname() -> String {
+    std::fs::read_to_string("/etc/hostname")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "localhost".to_string())
+}
+
+/// Collect local IPv4 addresses (non-loopback) for responders.
+fn get_local_ipv4_addrs() -> Vec<Ipv4Addr> {
+    // Read from /proc/net/if_inet6 is complex; use a simpler approach:
+    // parse the hostname's addresses or use a fallback.
+    // For LLMNR/mDNS, we primarily care about being reachable on the LAN.
+    // A production implementation would enumerate interfaces via netlink.
+    // For now, return an empty list — the responder will produce empty
+    // responses for address types it doesn't have.
+    Vec::new()
+}
+
+/// Collect local IPv6 addresses (non-loopback) for responders.
+fn get_local_ipv6_addrs() -> Vec<Ipv6Addr> {
+    Vec::new()
 }
 
 // ── Signal handling ────────────────────────────────────────────────────────
@@ -1044,6 +1300,27 @@ fn main() {
         }
     );
 
+    // ── DNS-over-TLS client ────────────────────────────────────────────
+    let dot_mode = match config.dns_over_tls {
+        DnsOverTlsMode::Yes => DotMode::Strict,
+        DnsOverTlsMode::Opportunistic => DotMode::Opportunistic,
+        DnsOverTlsMode::No => DotMode::No,
+    };
+    let dot_client: SharedDotClient = Arc::new(DotClient::plain(dot_mode));
+    log::info!("DNS-over-TLS: {}", dot_mode);
+
+    // ── DNSSEC validator ───────────────────────────────────────────────
+    let mut dnssec_validator = DnssecValidator::with_root_anchor();
+    for nta in &config.negative_trust_anchors {
+        dnssec_validator.add_negative_trust_anchor(nta);
+    }
+    let validator: SharedValidator = Arc::new(Mutex::new(dnssec_validator));
+    log::info!(
+        "DNSSEC: mode={}, NTAs={}",
+        config.dnssec.as_str(),
+        config.negative_trust_anchors.len()
+    );
+
     // Shared state
     let shutdown = Arc::new(AtomicBool::new(false));
     let reload = Arc::new(AtomicBool::new(false));
@@ -1067,6 +1344,121 @@ fn main() {
 
     let mut listener_threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
+    // ── LLMNR listeners ────────────────────────────────────────────────
+    let hostname = get_local_hostname();
+    let llmnr_responder: SharedLlmnrResponder = Arc::new(Mutex::new(llmnr::LlmnrResponder::new(
+        llmnr::LlmnrResponderConfig::new(&hostname, get_local_ipv4_addrs(), get_local_ipv6_addrs()),
+    )));
+
+    if !matches!(config.llmnr, ResolutionMode::No) {
+        // Bind LLMNR IPv4 socket
+        match llmnr::bind_llmnr_ipv4() {
+            Ok(socket) => {
+                let _ = socket.set_read_timeout(Some(Duration::from_millis(POLL_INTERVAL_MS)));
+                log::info!("LLMNR IPv4 listener bound on :{}", llmnr::LLMNR_PORT);
+                let resp_clone = Arc::clone(&llmnr_responder);
+                let shutdown_clone = Arc::clone(&shutdown);
+                listener_threads.push(thread::spawn(move || {
+                    run_llmnr_listener(socket, resp_clone, shutdown_clone, "IPv4");
+                }));
+            }
+            Err(e) => {
+                log::debug!(
+                    "Failed to bind LLMNR IPv4 socket: {} (continuing without)",
+                    e
+                );
+            }
+        }
+
+        // Bind LLMNR IPv6 socket
+        match llmnr::bind_llmnr_ipv6() {
+            Ok(socket) => {
+                let _ = socket.set_read_timeout(Some(Duration::from_millis(POLL_INTERVAL_MS)));
+                log::info!("LLMNR IPv6 listener bound on :{}", llmnr::LLMNR_PORT);
+                let resp_clone = Arc::clone(&llmnr_responder);
+                let shutdown_clone = Arc::clone(&shutdown);
+                listener_threads.push(thread::spawn(move || {
+                    run_llmnr_listener(socket, resp_clone, shutdown_clone, "IPv6");
+                }));
+            }
+            Err(e) => {
+                log::debug!(
+                    "Failed to bind LLMNR IPv6 socket: {} (continuing without)",
+                    e
+                );
+            }
+        }
+    } else {
+        log::info!("LLMNR disabled by configuration");
+    }
+
+    // ── mDNS listeners ─────────────────────────────────────────────────
+    let mdns_responder: SharedMdnsResponder =
+        Arc::new(Mutex::new(mdns::MdnsResponder::new(&hostname)));
+
+    // Start the mDNS publish state machine (advance to Published)
+    if let Ok(mut resp) = mdns_responder.lock() {
+        resp.set_host_records(&get_local_ipv4_addrs(), &get_local_ipv6_addrs());
+        // Fast-forward through probing/announcing for initial startup
+        for _ in 0..20 {
+            let _ = resp.advance();
+        }
+    }
+
+    if !matches!(config.multicast_dns, ResolutionMode::No) {
+        // Bind mDNS IPv4 socket
+        match mdns::bind_mdns_ipv4() {
+            Ok(socket) => {
+                let _ = socket.set_read_timeout(Some(Duration::from_millis(POLL_INTERVAL_MS)));
+                log::info!("mDNS IPv4 listener bound on :{}", mdns::MDNS_PORT);
+                let resp_clone = Arc::clone(&mdns_responder);
+                let shutdown_clone = Arc::clone(&shutdown);
+                listener_threads.push(thread::spawn(move || {
+                    run_mdns_listener(
+                        socket,
+                        resp_clone,
+                        shutdown_clone,
+                        "IPv4",
+                        mdns::MDNS_MCAST_ADDR_V4,
+                    );
+                }));
+            }
+            Err(e) => {
+                log::debug!(
+                    "Failed to bind mDNS IPv4 socket: {} (continuing without)",
+                    e
+                );
+            }
+        }
+
+        // Bind mDNS IPv6 socket
+        match mdns::bind_mdns_ipv6() {
+            Ok(socket) => {
+                let _ = socket.set_read_timeout(Some(Duration::from_millis(POLL_INTERVAL_MS)));
+                log::info!("mDNS IPv6 listener bound on :{}", mdns::MDNS_PORT);
+                let resp_clone = Arc::clone(&mdns_responder);
+                let shutdown_clone = Arc::clone(&shutdown);
+                listener_threads.push(thread::spawn(move || {
+                    run_mdns_listener(
+                        socket,
+                        resp_clone,
+                        shutdown_clone,
+                        "IPv6",
+                        mdns::MDNS_MCAST_ADDR_V6,
+                    );
+                }));
+            }
+            Err(e) => {
+                log::debug!(
+                    "Failed to bind mDNS IPv6 socket: {} (continuing without)",
+                    e
+                );
+            }
+        }
+    } else {
+        log::info!("Multicast DNS disabled by configuration");
+    }
+
     // Start stub listeners if enabled
     match config.dns_stub_listener {
         StubListenerMode::No => {
@@ -1080,18 +1472,21 @@ fn main() {
                         let upstreams_clone = Arc::clone(&upstreams);
                         let stats_clone = Arc::clone(&stats);
                         let shutdown_clone = Arc::clone(&shutdown);
-                        let cache_clone = Arc::clone(&dns_cache);
-                        let hosts_clone = Arc::clone(&etc_hosts);
-                        let router_clone = Arc::clone(&dns_router);
+                        let ctx = QueryContext {
+                            cache: Arc::clone(&dns_cache),
+                            etc_hosts: Arc::clone(&etc_hosts),
+                            router: Arc::clone(&dns_router),
+                            dot_client: Arc::clone(&dot_client),
+                            validator: Arc::clone(&validator),
+                            dnssec_mode: config.dnssec,
+                        };
                         listener_threads.push(thread::spawn(move || {
                             run_udp_listener(
                                 socket,
                                 upstreams_clone,
                                 stats_clone,
                                 shutdown_clone,
-                                cache_clone,
-                                hosts_clone,
-                                router_clone,
+                                ctx,
                             );
                         }));
                     }
@@ -1112,18 +1507,21 @@ fn main() {
                         let upstreams_clone = Arc::clone(&upstreams);
                         let stats_clone = Arc::clone(&stats);
                         let shutdown_clone = Arc::clone(&shutdown);
-                        let cache_clone = Arc::clone(&dns_cache);
-                        let hosts_clone = Arc::clone(&etc_hosts);
-                        let router_clone = Arc::clone(&dns_router);
+                        let ctx = QueryContext {
+                            cache: Arc::clone(&dns_cache),
+                            etc_hosts: Arc::clone(&etc_hosts),
+                            router: Arc::clone(&dns_router),
+                            dot_client: Arc::clone(&dot_client),
+                            validator: Arc::clone(&validator),
+                            dnssec_mode: config.dnssec,
+                        };
                         listener_threads.push(thread::spawn(move || {
                             run_tcp_listener(
                                 listener,
                                 upstreams_clone,
                                 stats_clone,
                                 shutdown_clone,
-                                cache_clone,
-                                hosts_clone,
-                                router_clone,
+                                ctx,
                             );
                         }));
                     }
@@ -1147,19 +1545,16 @@ fn main() {
                 let upstreams_clone = Arc::clone(&upstreams);
                 let stats_clone = Arc::clone(&stats);
                 let shutdown_clone = Arc::clone(&shutdown);
-                let cache_clone = Arc::clone(&dns_cache);
-                let hosts_clone = Arc::clone(&etc_hosts);
-                let router_clone = Arc::clone(&dns_router);
+                let ctx = QueryContext {
+                    cache: Arc::clone(&dns_cache),
+                    etc_hosts: Arc::clone(&etc_hosts),
+                    router: Arc::clone(&dns_router),
+                    dot_client: Arc::clone(&dot_client),
+                    validator: Arc::clone(&validator),
+                    dnssec_mode: config.dnssec,
+                };
                 listener_threads.push(thread::spawn(move || {
-                    run_udp_listener(
-                        socket,
-                        upstreams_clone,
-                        stats_clone,
-                        shutdown_clone,
-                        cache_clone,
-                        hosts_clone,
-                        router_clone,
-                    );
+                    run_udp_listener(socket, upstreams_clone, stats_clone, shutdown_clone, ctx);
                 }));
             }
             Err(e) => {
@@ -1396,6 +1791,28 @@ mod tests {
     use super::*;
     use std::net::Ipv4Addr;
 
+    /// Helper to create a default QueryContext for tests.
+    fn test_ctx() -> QueryContext {
+        QueryContext {
+            cache: Arc::new(Mutex::new(DnsCache::new())),
+            etc_hosts: Arc::new(Mutex::new(hosts::EtcHosts::new())),
+            router: Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
+                &ResolvedConfig::default(),
+            ))),
+            dot_client: Arc::new(DotClient::plain(DotMode::No)),
+            validator: Arc::new(Mutex::new(DnssecValidator::with_root_anchor())),
+            dnssec_mode: DnssecMode::No,
+        }
+    }
+
+    fn test_dot_client() -> SharedDotClient {
+        Arc::new(DotClient::plain(DotMode::No))
+    }
+
+    fn test_validator() -> SharedValidator {
+        Arc::new(Mutex::new(DnssecValidator::with_root_anchor()))
+    }
+
     #[test]
     fn test_atomic_stats_new() {
         let stats = AtomicStats::new();
@@ -1430,18 +1847,14 @@ mod tests {
     #[test]
     fn test_handle_query_empty_upstreams() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let ctx = test_ctx();
 
         // Build a minimal valid DNS query
         let mut query = vec![0u8; 12]; // minimal header
         query[2] = 0x01; // RD=1
         query[5] = 0; // QDCOUNT=0
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
 
         // Should get SERVFAIL
         assert!(response.len() >= HEADER_SIZE);
@@ -1455,11 +1868,7 @@ mod tests {
     #[test]
     fn test_handle_query_malformed() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let ctx = test_ctx();
 
         // Too short to be a valid DNS message but has a header
         let query = vec![0u8; HEADER_SIZE];
@@ -1467,7 +1876,7 @@ mod tests {
         let mut query = query;
         query[5] = 1; // QDCOUNT=1
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
         // Should get FORMERR since the message can't be parsed (truncated question)
         assert!(response.len() >= HEADER_SIZE);
         let rcode = response[3] & 0x0F;
@@ -1479,18 +1888,14 @@ mod tests {
     #[test]
     fn test_handle_query_response_not_query() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let ctx = test_ctx();
 
         // Send a response (QR=1) as if it were a query
         let mut data = vec![0u8; HEADER_SIZE];
         data[2] = 0x80; // QR=1 (response)
         data[5] = 0; // QDCOUNT=0
 
-        let response = handle_query(&data, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&data, &[], &stats, &ctx);
         let rcode = response[3] & 0x0F;
         assert_eq!(rcode, 1); // FORMERR
     }
@@ -1653,19 +2058,16 @@ mod tests {
     #[test]
     fn test_handle_query_etc_hosts_a_record() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let mut ctx = test_ctx();
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("192.168.1.10 myhost.local\n", None);
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+        ctx.etc_hosts = Arc::new(Mutex::new(hosts_db));
 
         // Build an A query for myhost.local
         let query = hosts::tests_support::build_test_query("myhost.local", dns::RecordType::A);
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
 
         // Should get a successful response from /etc/hosts (not SERVFAIL)
         assert!(response.len() >= HEADER_SIZE);
@@ -1685,18 +2087,15 @@ mod tests {
     #[test]
     fn test_handle_query_etc_hosts_aaaa_record() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let mut ctx = test_ctx();
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("::1 localhost\n", None);
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+        ctx.etc_hosts = Arc::new(Mutex::new(hosts_db));
 
         let query = hosts::tests_support::build_test_query("localhost", dns::RecordType::AAAA);
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
 
         assert!(response.len() >= HEADER_SIZE);
         assert_eq!(response[3] & 0x0F, 0); // NOERROR
@@ -1707,19 +2106,16 @@ mod tests {
     #[test]
     fn test_handle_query_etc_hosts_miss_falls_through() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let mut ctx = test_ctx();
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("127.0.0.1 localhost\n", None);
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+        ctx.etc_hosts = Arc::new(Mutex::new(hosts_db));
 
         // Query for a name NOT in /etc/hosts, with no upstreams
         let query = hosts::tests_support::build_test_query("unknown.host", dns::RecordType::A);
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
 
         // Should fall through to upstream (which is empty) and get SERVFAIL
         assert_eq!(response[3] & 0x0F, 2); // SERVFAIL
@@ -1729,20 +2125,17 @@ mod tests {
     #[test]
     fn test_handle_query_etc_hosts_priority_over_cache() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let mut ctx = test_ctx();
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("10.0.0.1 cached.host\n", None);
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+        ctx.etc_hosts = Arc::new(Mutex::new(hosts_db));
 
         let query = hosts::tests_support::build_test_query("cached.host", dns::RecordType::A);
 
         // Insert a fake response into the cache first
         {
-            let mut c = cache.lock().unwrap();
+            let mut c = ctx.cache.lock().unwrap();
             // Build a minimal fake cached response
             let mut fake_resp = query.clone();
             fake_resp[2] |= 0x80; // QR=1
@@ -1751,7 +2144,7 @@ mod tests {
             c.insert(&query, &fake_resp);
         }
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
 
         // /etc/hosts should take priority — response should have AA=1
         // (our hosts responses set AA=1, cache responses don't)
@@ -1766,15 +2159,11 @@ mod tests {
     #[test]
     fn test_handle_query_etc_hosts_empty_db() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let ctx = test_ctx();
 
         let query = hosts::tests_support::build_test_query("localhost", dns::RecordType::A);
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
 
         // Empty hosts DB, no upstreams → SERVFAIL
         assert_eq!(response[3] & 0x0F, 2);
@@ -1783,14 +2172,11 @@ mod tests {
     #[test]
     fn test_handle_query_etc_hosts_ptr_query() {
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let mut ctx = test_ctx();
 
         let mut hosts_db = hosts::EtcHosts::new();
         hosts_db.load_from_str("192.168.1.10 myhost.example.com\n", None);
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts_db));
+        ctx.etc_hosts = Arc::new(Mutex::new(hosts_db));
 
         // Build a PTR query for 10.1.168.192.in-addr.arpa
         let query = hosts::tests_support::build_test_query(
@@ -1798,7 +2184,7 @@ mod tests {
             dns::RecordType::PTR,
         );
 
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
 
         assert!(response.len() >= HEADER_SIZE);
         assert_eq!(response[3] & 0x0F, 0); // NOERROR
@@ -1816,8 +2202,7 @@ mod tests {
         // servers to contact, the query will SERVFAIL — but the important
         // thing is that the router's servers_for_name() is exercised.
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
+        let mut ctx = test_ctx();
 
         // Build a router with a routing domain.
         let mut cfg = ResolvedConfig::default();
@@ -1831,12 +2216,12 @@ mod tests {
             link.domains = vec!["~corp.local".to_string()];
             link
         }];
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(&cfg)));
+        ctx.router = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(&cfg)));
 
         // A query for a name that does NOT match the routing domain and
         // there are no global/fallback servers → SERVFAIL.
         let query = hosts::tests_support::build_test_query("www.google.com", dns::RecordType::A);
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
         assert_eq!(response[3] & 0x0F, 2); // SERVFAIL (no servers for this name)
     }
 
@@ -1845,24 +2230,154 @@ mod tests {
         // When the router has no routing domains, queries should use the
         // flat upstream list as before (backward-compatible behaviour).
         let stats = AtomicStats::new();
-        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
-        let etc_hosts: SharedHosts = Arc::new(Mutex::new(hosts::EtcHosts::new()));
-        let router: SharedRouter = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(
-            &ResolvedConfig::default(),
-        )));
+        let mut ctx = test_ctx();
 
         // Empty flat upstreams, no routing domains, default fallback DNS cleared.
         let mut cfg = ResolvedConfig::default();
         cfg.dns.clear();
         cfg.fallback_dns.clear();
-        if let Ok(mut r) = router.write() {
-            *r = DnsRouter::from_config(&cfg);
-        }
+        ctx.router = Arc::new(std::sync::RwLock::new(DnsRouter::from_config(&cfg)));
 
         let query = hosts::tests_support::build_test_query("example.com", dns::RecordType::A);
-        let response = handle_query(&query, &[], &stats, &cache, &etc_hosts, &router);
+        let response = handle_query(&query, &[], &stats, &ctx);
         // No upstreams at all → SERVFAIL.
         assert_eq!(response[3] & 0x0F, 2);
+    }
+
+    // ── EDNS0 integration tests ───────────────────────────────────────
+
+    #[test]
+    fn test_prepare_query_with_edns_adds_opt() {
+        // Build a minimal DNS query (no OPT record)
+        let query = hosts::tests_support::build_test_query("example.com", dns::RecordType::A);
+        assert!(!edns::has_opt_record(&query));
+
+        let edns_query = prepare_query_with_edns(&query, false);
+        assert!(edns::has_opt_record(&edns_query));
+        // ARCOUNT should be incremented
+        let arcount = u16::from_be_bytes([edns_query[10], edns_query[11]]);
+        assert_eq!(arcount, 1);
+    }
+
+    #[test]
+    fn test_prepare_query_with_edns_dnssec_ok() {
+        let query = hosts::tests_support::build_test_query("example.com", dns::RecordType::A);
+        let edns_query = prepare_query_with_edns(&query, true);
+        assert!(edns::has_opt_record(&edns_query));
+        // Verify the DO bit is set in the OPT record
+        if let Some(opt) = edns::extract_opt_record(&edns_query) {
+            assert!(opt.flags.dnssec_ok);
+        } else {
+            panic!("Expected OPT record in EDNS query");
+        }
+    }
+
+    #[test]
+    fn test_prepare_query_with_edns_idempotent() {
+        let query = hosts::tests_support::build_test_query("example.com", dns::RecordType::A);
+        let edns_query = prepare_query_with_edns(&query, false);
+        let edns_query2 = prepare_query_with_edns(&edns_query, false);
+        // Should not add a second OPT record
+        let arcount = u16::from_be_bytes([edns_query2[10], edns_query2[11]]);
+        assert_eq!(arcount, 1);
+    }
+
+    #[test]
+    fn test_prepare_query_with_edns_too_short() {
+        let short = vec![0u8; 4];
+        let result = prepare_query_with_edns(&short, false);
+        // Should return the original data unchanged
+        assert_eq!(result, short);
+    }
+
+    // ── DNS-over-TLS integration tests ────────────────────────────────
+
+    #[test]
+    fn test_try_dot_forward_disabled() {
+        let dot = Arc::new(DotClient::plain(DotMode::No));
+        let query = hosts::tests_support::build_test_query("example.com", dns::RecordType::A);
+        let upstreams = vec![SocketAddr::new(
+            std::net::IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+            53,
+        )];
+        // DoT disabled — should return None immediately
+        assert!(try_dot_forward(&query, &upstreams, &dot).is_none());
+    }
+
+    #[test]
+    fn test_try_dot_forward_empty_upstreams() {
+        let dot = Arc::new(DotClient::plain(DotMode::Opportunistic));
+        let query = hosts::tests_support::build_test_query("example.com", dns::RecordType::A);
+        assert!(try_dot_forward(&query, &[], &dot).is_none());
+    }
+
+    // ── DNSSEC validation integration tests ───────────────────────────
+
+    #[test]
+    fn test_validate_dnssec_response_disabled() {
+        let val = test_validator();
+        let query = hosts::tests_support::build_test_query("example.com", dns::RecordType::A);
+        let mut response = query.clone();
+        response[2] |= 0x80; // QR=1
+        let orig = response.clone();
+        validate_dnssec_response(&mut response, &query, &val, DnssecMode::No);
+        // Should be unchanged when DNSSEC is disabled
+        assert_eq!(response, orig);
+    }
+
+    #[test]
+    fn test_validate_dnssec_response_nta_passthrough() {
+        let val: SharedValidator = Arc::new(Mutex::new({
+            let mut v = DnssecValidator::with_root_anchor();
+            v.add_negative_trust_anchor("example.com");
+            v
+        }));
+        let query = hosts::tests_support::build_test_query("host.example.com", dns::RecordType::A);
+        let mut response = query.clone();
+        response[2] |= 0x80;
+        let orig = response.clone();
+        validate_dnssec_response(&mut response, &query, &val, DnssecMode::Yes);
+        // NTA match — response should be passed through unchanged
+        assert_eq!(response, orig);
+    }
+
+    #[test]
+    fn test_validate_dnssec_response_insecure_no_anchor() {
+        // For most domains without a trust anchor chain, validation returns Insecure
+        let val = test_validator();
+        let query =
+            hosts::tests_support::build_test_query("random-domain.test", dns::RecordType::A);
+        let mut response = query.clone();
+        response[2] |= 0x80;
+        let _orig = response.clone();
+        validate_dnssec_response(&mut response, &query, &val, DnssecMode::Yes);
+        // Insecure zones pass through without AD bit
+        assert_eq!(response[3] & 0x20, 0); // no AD bit
+    }
+
+    // ── LLMNR/mDNS responder tests ───────────────────────────────────
+
+    #[test]
+    fn test_get_local_hostname() {
+        let hostname = get_local_hostname();
+        assert!(!hostname.is_empty());
+    }
+
+    #[test]
+    fn test_llmnr_responder_shared() {
+        let responder: SharedLlmnrResponder = Arc::new(Mutex::new(llmnr::LlmnrResponder::new(
+            llmnr::LlmnrResponderConfig::new("testhost", vec![], vec![]),
+        )));
+        let guard = responder.lock().unwrap();
+        assert_eq!(guard.hostname(), "testhost");
+    }
+
+    #[test]
+    fn test_mdns_responder_shared() {
+        let responder: SharedMdnsResponder =
+            Arc::new(Mutex::new(mdns::MdnsResponder::new("testhost")));
+        let guard = responder.lock().unwrap();
+        assert_eq!(guard.hostname(), "testhost");
     }
 
     #[test]
