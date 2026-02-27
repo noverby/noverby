@@ -618,6 +618,10 @@ fn insert_exec_config(props: &mut BTreeMap<String, String>, conf: &ExecConfig) {
             &conf.system_call_filter.join(" "),
         );
     }
+    // System call log
+    if !conf.system_call_log.is_empty() {
+        insert(props, "SystemCallLog", &conf.system_call_log.join(" "));
+    }
     if !conf.system_call_architectures.is_empty() {
         insert(
             props,
@@ -637,6 +641,15 @@ fn insert_exec_config(props: &mut BTreeMap<String, String>, conf: &ExecConfig) {
             props,
             "RestrictAddressFamilies",
             &conf.restrict_address_families.join(" "),
+        );
+    }
+
+    // Restrict file systems
+    if !conf.restrict_file_systems.is_empty() {
+        insert(
+            props,
+            "RestrictFileSystems",
+            &conf.restrict_file_systems.join(" "),
         );
     }
 

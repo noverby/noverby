@@ -1,6 +1,6 @@
 # Current Status
 
-**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~6 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **7,599 unit tests passing** across 75 crates.
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~6 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **8,445 unit tests passing** across 75 crates.
 
 | Phase | Status |
 |-------|--------|
@@ -13,13 +13,13 @@
 
 ## Unit File Directive Coverage
 
-412 of 429 upstream systemd directives supported (96%). Per-section breakdown:
+414 of 429 upstream systemd directives supported (97%). Per-section breakdown:
 
 | Section | Supported | Partial | Unsupported | Total | Coverage |
 |---------|-----------|---------|-------------|-------|----------|
 | systemd.unit | 87 | 0 | 1 | 88 | 99% |
 | systemd.service | 34 | 0 | 0 | 34 | 100% |
-| systemd.exec | 143 | 2 | 2 | 147 | 97% |
+| systemd.exec | 145 | 2 | 0 | 147 | 99% |
 | systemd.socket | 58 | 0 | 2 | 60 | 97% |
 | systemd.resource-control | 46 | 0 | 2 | 48 | 96% |
 | sd_notify | 15 | 0 | 0 | 15 | 100% |

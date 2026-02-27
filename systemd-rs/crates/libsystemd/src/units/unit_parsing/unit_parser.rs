@@ -1290,10 +1290,12 @@ pub fn parse_exec_section(
     let log_extra_fields = section.remove("LOGEXTRAFIELDS");
     let dynamic_user = section.remove("DYNAMICUSER");
     let system_call_filter = section.remove("SYSTEMCALLFILTER");
+    let system_call_log = section.remove("SYSTEMCALLLOG");
     let protect_system = section.remove("PROTECTSYSTEM");
     let restrict_namespaces = section.remove("RESTRICTNAMESPACES");
     let restrict_realtime = section.remove("RESTRICTREALTIME");
     let restrict_address_families = section.remove("RESTRICTADDRESSFAMILIES");
+    let restrict_file_systems = section.remove("RESTRICTFILESYSTEMS");
     let system_call_error_number = section.remove("SYSTEMCALLERRORNUMBER");
     let no_new_privileges = section.remove("NONEWPRIVILEGES");
     let protect_control_groups = section.remove("PROTECTCONTROLGROUPS");
@@ -2556,6 +2558,78 @@ pub fn parse_exec_section(
                 entries
             }
             None => Vec::new(),
+        },
+        system_call_log: match system_call_log {
+            Some(vec) => {
+                // Same syntax as SystemCallFilter=: space-separated syscall
+                // names or @group names. A leading ~ means "log everything
+                // except these". Multiple directives accumulate; an empty
+                // assignment resets the list. See systemd.exec(5).
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    let mut chars = trimmed.chars().peekable();
+                    while chars.peek().is_some() {
+                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                            chars.next();
+                        }
+                        if chars.peek().is_none() {
+                            break;
+                        }
+                        let mut token = String::new();
+                        if chars.peek() == Some(&'"') {
+                            chars.next();
+                            while let Some(&c) = chars.peek() {
+                                if c == '"' {
+                                    chars.next();
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        } else {
+                            while let Some(&c) = chars.peek() {
+                                if c.is_whitespace() {
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        }
+                        if !token.is_empty() {
+                            entries.push(token);
+                        }
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        restrict_file_systems: {
+            // Space-separated list of filesystem type names (e.g. ext4,
+            // tmpfs, proc). A leading ~ means deny-list mode. Multiple
+            // directives accumulate; an empty assignment resets the list.
+            // Requires BPF LSM for runtime enforcement. See systemd.exec(5).
+            let mut entries = Vec::new();
+            if let Some(vec) = restrict_file_systems {
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    for token in trimmed.split_whitespace() {
+                        if !token.is_empty() {
+                            entries.push(token.to_owned());
+                        }
+                    }
+                }
+            }
+            entries
         },
         protect_home: match protect_home {
             Some(vec) => {
