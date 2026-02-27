@@ -72,5 +72,6 @@ members = [
   "crates/veritysetup",
   "crates/integritysetup",
   "crates/repart",
+  "crates/pam-systemd",
 ]
 resolver = "2"
