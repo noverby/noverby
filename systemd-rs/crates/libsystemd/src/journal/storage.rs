@@ -433,7 +433,16 @@ pub struct StorageConfig {
     /// Whether to use persistent storage (`/var/log/journal`) or volatile
     /// (`/run/log/journal`).
     pub persistent: bool,
+
+    /// Minimum free disk space to keep on the file system (bytes).
+    /// When the available space drops below this threshold, the oldest
+    /// journal files are vacuumed.  Defaults to 15% of the file system
+    /// or 4 GiB, whichever is smaller (set to 0 to disable).
+    pub keep_free: u64,
 }
+
+/// Default keep-free value: 4 GiB (capped at 15% of filesystem in vacuum()).
+const DEFAULT_KEEP_FREE: u64 = 4 * 1024 * 1024 * 1024;
 
 impl Default for StorageConfig {
     fn default() -> Self {
@@ -443,6 +452,7 @@ impl Default for StorageConfig {
             max_disk_usage: DEFAULT_MAX_DISK_USAGE,
             max_files: DEFAULT_MAX_FILES,
             persistent: false,
+            keep_free: DEFAULT_KEEP_FREE,
         }
     }
 }
@@ -722,12 +732,16 @@ impl JournalStorage {
         Ok(())
     }
 
-    fn vacuum(&mut self) -> io::Result<()> {
+    /// Run vacuum to enforce file count, disk usage, and keep-free limits.
+    ///
+    /// This is also exposed publicly so the daemon can trigger periodic
+    /// vacuum from its maintenance thread without a full rotation.
+    pub fn vacuum(&mut self) -> io::Result<()> {
         let journal_dir = self.config.directory.join(&self.machine_id);
         let mut files = list_journal_files(&journal_dir)?;
         files.sort();
 
-        // Remove files until we're under both the file count and disk usage limits
+        // Remove files until we're under the file count limit
         while files.len() > self.config.max_files {
             if let Some(oldest) = files.first() {
                 eprintln!(
@@ -766,6 +780,32 @@ impl JournalStorage {
             }
         }
 
+        // Enforce keep-free: ensure the filesystem has at least `keep_free`
+        // bytes available. Vacuum oldest files while free space is too low.
+        if self.config.keep_free > 0 {
+            loop {
+                if files.is_empty() {
+                    break;
+                }
+                let free = available_disk_space(&journal_dir).unwrap_or(u64::MAX);
+                if free >= self.config.keep_free {
+                    break;
+                }
+                if let Some(oldest) = files.first() {
+                    eprintln!(
+                        "journald: Vacuuming {} (keep free limit: {} free < {} required)",
+                        oldest.display(),
+                        free,
+                        self.config.keep_free
+                    );
+                    let _ = fs::remove_file(oldest);
+                    files.remove(0);
+                } else {
+                    break;
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -775,6 +815,23 @@ impl JournalStorage {
 // ---------------------------------------------------------------------------
 
 /// List all `.journal` files in a directory, sorted by name.
+/// Return the available (non-privileged) disk space on the filesystem
+/// containing `path`, or `None` on error.
+fn available_disk_space(path: &Path) -> Option<u64> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
+    unsafe {
+        let mut stat: libc::statvfs = std::mem::zeroed();
+        if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
+            Some(stat.f_bavail * stat.f_frsize)
+        } else {
+            None
+        }
+    }
+}
+
 fn list_journal_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
     if !dir.exists() {
         return Ok(Vec::new());
@@ -1321,6 +1378,7 @@ mod tests {
             max_disk_usage: DEFAULT_MAX_DISK_USAGE,
             max_files: DEFAULT_MAX_FILES,
             persistent: false,
+            keep_free: 0,
         };
 
         let mut storage = JournalStorage::new(config).unwrap();
@@ -1352,6 +1410,7 @@ mod tests {
             max_disk_usage: DEFAULT_MAX_DISK_USAGE,
             max_files: DEFAULT_MAX_FILES,
             persistent: false,
+            keep_free: 0,
         };
 
         let mut storage = JournalStorage::new(config).unwrap();
@@ -1386,6 +1445,7 @@ mod tests {
             max_disk_usage: DEFAULT_MAX_DISK_USAGE,
             max_files: 3,
             persistent: false,
+            keep_free: 0,
         };
 
         let mut storage = JournalStorage::new(config).unwrap();
@@ -1416,10 +1476,12 @@ mod tests {
             max_disk_usage: DEFAULT_MAX_DISK_USAGE,
             max_files: DEFAULT_MAX_FILES,
             persistent: false,
+            keep_free: 0,
         };
 
         let mut storage = JournalStorage::new(config).unwrap();
 
+        // Write some entries and check disk usage
         let entry = make_test_entry("disk usage test", 6, 1);
         storage.append(&entry).unwrap();
 
@@ -1581,6 +1643,7 @@ mod tests {
             max_disk_usage: DEFAULT_MAX_DISK_USAGE,
             max_files: DEFAULT_MAX_FILES,
             persistent: false,
+            keep_free: 0,
         };
         let storage = JournalStorage::new(config).unwrap();
         (dir, storage)

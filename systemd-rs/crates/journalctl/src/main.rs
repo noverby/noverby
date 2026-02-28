@@ -697,6 +697,7 @@ fn open_storage(cli: &Cli) -> Result<JournalStorage, String> {
         max_disk_usage: u64::MAX,
         max_files: usize::MAX,
         persistent: false,
+        keep_free: 0,
     };
 
     JournalStorage::new(config).map_err(|e| format!("Failed to open journal: {}", e))
