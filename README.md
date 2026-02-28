@@ -1,6 +1,7 @@
+<a id="top"></a>
+
 # [@overby.me](https://tangled.org/overby.me/overby.me)
 
-<a id="toc"></a>
 <!-- BEGIN mktoc {"min_depth": 2, "max_depth": 3} -->
 
 - [📁 Repository](#-repository)
@@ -47,11 +48,11 @@
 
 <a id="-repository"></a>
 
-## 📁 Repository [⬆](#toc)
+## 📁 Repository [⬆](#top)
 
 <a id="-projects"></a>
 
-### 🚀 Projects [⬆](#toc)
+### 🚀 Projects [⬆](#top)
 
 <details open>
 
@@ -74,7 +75,7 @@
 
 <a id="-packages"></a>
 
-### 📦 Packages [⬆](#toc)
+### 📦 Packages [⬆](#top)
 
 <details open>
 
@@ -142,7 +143,7 @@
 
 <a id="-configurations"></a>
 
-### 📋 Configurations [⬆](#toc)
+### 📋 Configurations [⬆](#top)
 
 <details open>
 
@@ -156,7 +157,7 @@
 
 <a id="-modules"></a>
 
-### 🧩 Modules [⬆](#toc)
+### 🧩 Modules [⬆](#top)
 
 <details open>
 
@@ -171,11 +172,11 @@
 
 <a id="-standards"></a>
 
-## 📏 Standards [⬆](#toc)
+## 📏 Standards [⬆](#top)
 
 <a id="-hardware"></a>
 
-### 🔌 Hardware [⬆](#toc)
+### 🔌 Hardware [⬆](#top)
 
 <details open>
 
@@ -206,7 +207,7 @@
 
 <a id="-software"></a>
 
-### 🔗 Software [⬆](#toc)
+### 🔗 Software [⬆](#top)
 
 <details open>
 
@@ -226,7 +227,7 @@
 
 <a id="-data"></a>
 
-### 📝 Data [⬆](#toc)
+### 📝 Data [⬆](#top)
 
 <details open>
 
@@ -251,7 +252,7 @@
 
 <a id="-network"></a>
 
-### 📡 Network [⬆](#toc)
+### 📡 Network [⬆](#top)
 
 <details open>
 
@@ -268,11 +269,11 @@
 
 <a id="-system"></a>
 
-## 🖥️ System [⬆](#toc)
+## 🖥️ System [⬆](#top)
 
 <a id="-hardware-1"></a>
 
-### 💻 Hardware [⬆](#toc)
+### 💻 Hardware [⬆](#top)
 
 <details open>
 
@@ -293,7 +294,7 @@
 
 <a id="-core"></a>
 
-### ⚙️ Core [⬆](#toc)
+### ⚙️ Core [⬆](#top)
 
 <details open>
 
@@ -313,7 +314,7 @@
 
 <a id="-frameworks--libraries"></a>
 
-### 📚 Frameworks & Libraries [⬆](#toc)
+### 📚 Frameworks & Libraries [⬆](#top)
 
 <details open>
 
@@ -338,7 +339,7 @@
 
 <a id="-platform"></a>
 
-### 🧱 Platform [⬆](#toc)
+### 🧱 Platform [⬆](#top)
 
 <details open>
 
@@ -360,11 +361,11 @@
 
 <a id="-development"></a>
 
-## 🛠️ Development [⬆](#toc)
+## 🛠️ Development [⬆](#top)
 
 <a id="-tooling"></a>
 
-### 🔧 Tooling [⬆](#toc)
+### 🔧 Tooling [⬆](#top)
 
 <details open>
 
@@ -398,7 +399,7 @@
 
 <a id="-configuration"></a>
 
-### ❄️ Configuration [⬆](#toc)
+### ❄️ Configuration [⬆](#top)
 
 <details open>
 
@@ -427,7 +428,7 @@
 
 <a id="-systems"></a>
 
-### 🦀 Systems [⬆](#toc)
+### 🦀 Systems [⬆](#top)
 
 <details open>
 
@@ -443,7 +444,7 @@
 
 <a id="-web"></a>
 
-### 🌐 Web [⬆](#toc)
+### 🌐 Web [⬆](#top)
 
 <details open>
 
@@ -460,7 +461,7 @@
 
 <a id="-scripting"></a>
 
-### 🐍 Scripting [⬆](#toc)
+### 🐍 Scripting [⬆](#top)
 
 <details open>
 
@@ -478,11 +479,11 @@
 
 <a id="-services"></a>
 
-## 🌐 Services [⬆](#toc)
+## 🌐 Services [⬆](#top)
 
 <a id="-personal"></a>
 
-### 🔒 Personal [⬆](#toc)
+### 🔒 Personal [⬆](#top)
 
 <details open>
 
@@ -536,7 +537,7 @@
 
 <a id="-social-platforms"></a>
 
-### 👥 Social Platforms [⬆](#toc)
+### 👥 Social Platforms [⬆](#top)
 
 <details open>
 
@@ -591,7 +592,7 @@
 
 <a id="-cloud"></a>
 
-### ☁️ Cloud [⬆](#toc)
+### ☁️ Cloud [⬆](#top)
 
 <details open>
 
@@ -610,11 +611,11 @@
 
 <a id="-applications"></a>
 
-## 📱 Applications [⬆](#toc)
+## 📱 Applications [⬆](#top)
 
 <a id="-command-line"></a>
 
-### 💻 Command Line [⬆](#toc)
+### 💻 Command Line [⬆](#top)
 
 <details open>
 
@@ -669,7 +670,7 @@
 
 <a id="-desktop-environment"></a>
 
-### 🖥️ Desktop Environment [⬆](#toc)
+### 🖥️ Desktop Environment [⬆](#top)
 
 <details open>
 
@@ -685,7 +686,7 @@
 
 <a id="-productivity"></a>
 
-### 🚀 Productivity [⬆](#toc)
+### 🚀 Productivity [⬆](#top)
 
 <details open>
 
@@ -703,7 +704,7 @@
 
 <a id="-media"></a>
 
-### 🎨 Media [⬆](#toc)
+### 🎨 Media [⬆](#top)
 
 <details open>
 
@@ -722,7 +723,7 @@
 
 <a id="-browser-extensions"></a>
 
-### 🌐 Browser Extensions [⬆](#toc)
+### 🌐 Browser Extensions [⬆](#top)
 
 <details open>
 
@@ -737,7 +738,7 @@
 
 <a id="-mobile"></a>
 
-### 📱 Mobile [⬆](#toc)
+### 📱 Mobile [⬆](#top)
 
 <details open>
 
