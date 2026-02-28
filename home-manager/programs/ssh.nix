@@ -2,9 +2,11 @@
   lib,
   config,
   inputs,
+  nixosConfig ? {},
   ...
 }: let
   inherit (inputs.self) secrets;
+  hasSecrets = nixosConfig.hasSecrets or true;
 in {
   programs.ssh = {
     enable = true;
@@ -36,14 +38,14 @@ in {
     '';
   };
 
-  home.file = let
+  home.file = lib.mkIf hasSecrets (let
     inherit (secrets) publicKeys;
   in {
     ".ssh/id_ed25519.pub".text = publicKeys.noverby-ssh-ed25519;
     ".ssh/id_rsa.pub".text = publicKeys.noverby-ssh-rsa;
-  };
+  });
 
-  age = {
+  age = lib.mkIf hasSecrets {
     identityPaths = ["${config.home.homeDirectory}/.age/id_fido2"];
     secrets = {
       id_ed25519 = {

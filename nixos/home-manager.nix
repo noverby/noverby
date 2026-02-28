@@ -3,6 +3,7 @@
   inputs,
   stateVersion,
   src,
+  hasSecrets ? true,
   ...
 }: {
   home-manager = {
@@ -11,6 +12,7 @@
     useUserPackages = true;
     extraSpecialArgs = {
       inherit inputs pkgs stateVersion src;
+      nixosConfig = {inherit hasSecrets;};
     };
   };
 }

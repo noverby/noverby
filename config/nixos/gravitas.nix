@@ -9,6 +9,7 @@
   specialArgs = {
     inherit src inputs lib;
     stateVersion = "24.05";
+    hasSecrets = true;
   };
 
   modules = with inputs.self.nixosModules; [
