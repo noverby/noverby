@@ -24,6 +24,8 @@
 //! - `set-limit <name> <size>` — set image size limit
 //! - `copy-to <machine> <host_path> <container_path>` — copy files into container
 //! - `copy-from <machine> <container_path> <host_path>` — copy files from container
+//! - `bind <machine> <source> [destination]` — bind-mount host path into container
+//! - `bind --read-only --mkdir <machine> <source> [destination]` — read-only bind mount
 //! - `import-tar <file> <name>` — import tar as image
 //! - `import-raw <file> <name>` — import raw disk image
 //! - `export-tar <name> <file>` — export image as tar
@@ -34,7 +36,6 @@
 //!
 //! ## Missing
 //!
-//! - bind/bind-user mount operations
 //! - enable/disable image management
 
 use std::collections::BTreeMap;
@@ -72,6 +73,7 @@ struct Args {
     full: bool,
     max_addresses: Option<usize>,
     read_only: bool,
+    mkdir: bool,
     extra_args: Vec<String>,
     uid: Option<String>,
     verify: String,
@@ -88,6 +90,7 @@ enum Command {
     Kill,
     Login,
     Shell,
+    Bind,
     ImageList,
     ShowImage,
     Clone,
@@ -123,6 +126,7 @@ impl Default for Args {
             full: false,
             max_addresses: None,
             read_only: false,
+            mkdir: false,
             extra_args: Vec::new(),
             uid: None,
             verify: "no".to_string(),
@@ -226,8 +230,9 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
                 }
                 args.verify = argv[i].clone();
             }
+            "--mkdir" => args.mkdir = true,
             // Skip known but unused flags
-            "--quiet" | "-q" | "--mkdir" => {}
+            "--quiet" | "-q" => {}
             _ if arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1 => {
                 // Unknown short option — ignore
             }
@@ -335,6 +340,11 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
         }
         "copy-from" => {
             args.command = Command::CopyFrom;
+            args.machine = positional.get(1).cloned();
+            args.extra_args = positional.get(2..).unwrap_or(&[]).to_vec();
+        }
+        "bind" => {
+            args.command = Command::Bind;
             args.machine = positional.get(1).cloned();
             args.extra_args = positional.get(2..).unwrap_or(&[]).to_vec();
         }
@@ -1167,6 +1177,67 @@ fn cmd_set_limit(args: &Args) -> i32 {
     }
 }
 
+fn cmd_bind(args: &Args) -> i32 {
+    let machine = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Machine name required");
+            return 1;
+        }
+    };
+
+    if args.extra_args.is_empty() {
+        eprintln!("Usage: bind MACHINE SOURCE [DESTINATION] [--read-only] [--mkdir]");
+        return 1;
+    }
+
+    let source = &args.extra_args[0];
+    let destination = args.extra_args.get(1).unwrap_or(source);
+    let read_only_flag = if args.read_only { " true" } else { " false" };
+    let mkdir_flag = if args.mkdir { " true" } else { " false" };
+
+    // If --uid is set, use BIND-USER instead
+    if let Some(user) = &args.uid {
+        let cmd = format!(
+            "BIND-USER {} {} {} {}{}",
+            machine, source, user, destination, read_only_flag
+        );
+        match send_command(&cmd) {
+            Ok(resp) => {
+                if resp.starts_with("ERROR") {
+                    eprintln!("{}", resp.trim());
+                    1
+                } else {
+                    0
+                }
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                1
+            }
+        }
+    } else {
+        let cmd = format!(
+            "BIND {} {} {}{}{}",
+            machine, source, destination, read_only_flag, mkdir_flag
+        );
+        match send_command(&cmd) {
+            Ok(resp) => {
+                if resp.starts_with("ERROR") {
+                    eprintln!("{}", resp.trim());
+                    1
+                } else {
+                    0
+                }
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                1
+            }
+        }
+    }
+}
+
 fn cmd_copy_to(args: &Args) -> i32 {
     let machine = match &args.machine {
         Some(n) => n,
@@ -1665,6 +1736,7 @@ fn print_usage() {
     println!("  reboot NAME...              Reboot one or more machines");
     println!("  login [NAME]                Get a login prompt in a container");
     println!("  shell [[USER@]NAME [CMD]]   Invoke a shell (or CMD) in a container");
+    println!("  bind NAME SRC [DEST]        Bind mount host path into container");
     println!("  copy-to NAME HOST CONT      Copy files from host to container");
     println!("  copy-from NAME CONT HOST    Copy files from container to host");
     println!("  clean                       Clean up stale machine state");
@@ -1696,8 +1768,9 @@ fn print_usage() {
     println!("     --no-ask-password        Do not ask for system passwords");
     println!("  -s --signal=SIGNAL          Signal to send with kill (default: SIGTERM)");
     println!("  -H --host=[USER@]HOST       Operate on remote host");
-    println!("     --read-only              Clone/import as read-only");
-    println!("     --uid=USER               User for shell command");
+    println!("     --read-only              Clone/import/bind as read-only");
+    println!("     --mkdir                  Create destination directory for bind mount");
+    println!("     --uid=USER               User for shell/bind-user command");
     println!("     --verify=MODE            Verification mode for pull (no/checksum/signature)");
 }
 
@@ -1727,6 +1800,7 @@ fn run(argv: &[String]) -> i32 {
         Command::Rename => cmd_rename(&args),
         Command::Remove => cmd_remove(&args),
         Command::SetLimit => cmd_set_limit(&args),
+        Command::Bind => cmd_bind(&args),
         Command::CopyTo => cmd_copy_to(&args),
         Command::CopyFrom => cmd_copy_from(&args),
         Command::Login => cmd_login(&args),
@@ -1854,6 +1928,43 @@ mod tests {
     fn test_parse_args_kill_with_signal_short() {
         let a = parse_args(&args("kill myvm -s SIGHUP")).unwrap();
         assert_eq!(a.signal, "SIGHUP");
+    }
+
+    #[test]
+    fn test_parse_args_bind() {
+        let a = parse_args(&args("bind myvm /host/path /container/path")).unwrap();
+        assert_eq!(a.command, Command::Bind);
+        assert_eq!(a.machine.as_deref(), Some("myvm"));
+        assert_eq!(a.extra_args, vec!["/host/path", "/container/path"]);
+    }
+
+    #[test]
+    fn test_parse_args_bind_no_dest() {
+        let a = parse_args(&args("bind myvm /shared")).unwrap();
+        assert_eq!(a.command, Command::Bind);
+        assert_eq!(a.machine.as_deref(), Some("myvm"));
+        assert_eq!(a.extra_args, vec!["/shared"]);
+    }
+
+    #[test]
+    fn test_parse_args_bind_read_only() {
+        let a = parse_args(&args("--read-only bind myvm /src /dst")).unwrap();
+        assert_eq!(a.command, Command::Bind);
+        assert!(a.read_only);
+    }
+
+    #[test]
+    fn test_parse_args_bind_mkdir() {
+        let a = parse_args(&args("--mkdir bind myvm /src /dst")).unwrap();
+        assert_eq!(a.command, Command::Bind);
+        assert!(a.mkdir);
+    }
+
+    #[test]
+    fn test_parse_args_bind_with_uid() {
+        let a = parse_args(&args("--uid=testuser bind myvm /src /dst")).unwrap();
+        assert_eq!(a.command, Command::Bind);
+        assert_eq!(a.uid.as_deref(), Some("testuser"));
     }
 
     #[test]
@@ -2389,8 +2500,53 @@ mod tests {
     fn test_default_args_new_fields() {
         let a = Args::default();
         assert!(!a.read_only);
+        assert!(!a.mkdir);
         assert!(a.extra_args.is_empty());
         assert!(a.uid.is_none());
         assert_eq!(a.verify, "no");
+    }
+
+    // -- bind command integration -------------------------------------------
+
+    #[test]
+    fn test_run_bind_no_machine() {
+        assert_eq!(run(&args("bind")), 1);
+    }
+
+    #[test]
+    fn test_run_bind_no_source() {
+        assert_eq!(run(&args("bind myvm")), 1);
+    }
+
+    #[test]
+    fn test_run_bind_no_daemon() {
+        // Should fail gracefully when daemon is not running
+        let a = Args {
+            command: Command::Bind,
+            machine: Some("myvm".to_string()),
+            extra_args: vec!["/tmp".to_string(), "/mnt".to_string()],
+            ..Args::default()
+        };
+        let code = cmd_bind(&a);
+        assert_ne!(code, 0);
+    }
+
+    #[test]
+    fn test_run_bind_user_no_daemon() {
+        let a = Args {
+            command: Command::Bind,
+            machine: Some("myvm".to_string()),
+            extra_args: vec!["/tmp".to_string(), "/mnt".to_string()],
+            uid: Some("testuser".to_string()),
+            ..Args::default()
+        };
+        let code = cmd_bind(&a);
+        assert_ne!(code, 0);
+    }
+
+    #[test]
+    fn test_parse_args_mkdir_flag() {
+        let a = parse_args(&args("--mkdir clone src dst")).unwrap();
+        assert!(a.mkdir);
     }
 }
