@@ -68,23 +68,24 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::fmt::Write as _;
 use core::time::Duration;
+use uefi::cstr16;
 use uefi::prelude::*;
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::file::{File, FileAttribute, FileInfo, FileMode, FileType};
 use uefi::proto::media::fs::SimpleFileSystem;
-use uefi::runtime::VariableAttributes;
-use uefi::{cstr16, CStr16};
+use uefi::runtime::{VariableAttributes, VariableVendor};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// The Boot Loader Interface vendor GUID for Loader* variables.
-const LOADER_GUID: uefi::Guid = uefi::guid!("4a67b082-0a4c-41cf-b6c7-440b29bb8c4f");
+const LOADER_GUID: VariableVendor =
+    VariableVendor(uefi::guid!("4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"));
 
 /// Stub version string published via the StubInfo EFI variable.
 const STUB_VERSION: &str = "systemd-stub 256.0-rs";
@@ -759,7 +760,8 @@ fn discover_credentials(image: &LoadedImage, _sections: &UkiSections) -> Vec<(St
                     match dir.read_entry(&mut buf) {
                         Ok(Some(info)) => {
                             let name_chars = info.file_name().as_slice_with_nul();
-                            let name = String::from_utf16_lossy(name_chars)
+                            let u16s: Vec<u16> = name_chars.iter().map(|c| u16::from(*c)).collect();
+                            let name = String::from_utf16_lossy(&u16s)
                                 .trim_end_matches('\0')
                                 .to_string();
                             if name == "." || name == ".." {
@@ -836,7 +838,8 @@ fn discover_sysexts(image: &LoadedImage) -> Vec<(String, Vec<u8>)> {
                     match dir.read_entry(&mut buf) {
                         Ok(Some(info)) => {
                             let name_chars = info.file_name().as_slice_with_nul();
-                            let name = String::from_utf16_lossy(name_chars)
+                            let u16s: Vec<u16> = name_chars.iter().map(|c| u16::from(*c)).collect();
+                            let name = String::from_utf16_lossy(&u16s)
                                 .trim_end_matches('\0')
                                 .to_string();
                             if name == "." || name == ".." {
@@ -1180,7 +1183,7 @@ fn efi_main() -> Status {
         Ok(child_handle) => {
             // Set the kernel command line as load options.
             if !cmdline.is_empty() {
-                if let Ok(child_image) =
+                if let Ok(mut child_image) =
                     uefi::boot::open_protocol_exclusive::<LoadedImage>(child_handle)
                 {
                     let opts_bytes = str_to_utf16le_bytes(&cmdline);

@@ -2,6 +2,10 @@
   devShells.systemd-rs = pkgs: {
     packages = with pkgs; [
       just
+      (rust-bin.stable.latest.default.override {
+        extensions = ["rust-src"];
+        targets = ["x86_64-unknown-linux-gnu" "x86_64-unknown-uefi"];
+      })
     ];
   };
 

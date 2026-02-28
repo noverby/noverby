@@ -60,20 +60,20 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::fmt::Write as _;
 use core::time::Duration;
 use uefi::prelude::*;
 use uefi::proto::console::text::{Key, ScanCode};
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::file::{Directory, File, FileAttribute, FileInfo, FileMode, FileType};
 use uefi::proto::media::fs::SimpleFileSystem;
-use uefi::runtime::VariableAttributes;
+use uefi::runtime::{VariableAttributes, VariableVendor};
 use uefi::{cstr16, CStr16};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// The Boot Loader Interface vendor GUID used for LoaderInfo, LoaderEntryDefault, etc.
-const LOADER_GUID: uefi::Guid = uefi::guid!("4a67b082-0a4c-41cf-b6c7-440b29bb8c4f");
+const LOADER_GUID: VariableVendor =
+    VariableVendor(uefi::guid!("4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"));
 
 /// Version string embedded in the binary (used by bootctl to identify the installed version).
 const LOADER_VERSION: &str = "systemd-boot 256.0-rs";
@@ -232,6 +232,13 @@ fn str_to_ucs2(s: &str) -> Vec<u16> {
 }
 
 /// Convert a slice of UTF-16LE code units (without trailing NUL) to a String.
+fn char16_to_string(data: &[uefi::Char16]) -> String {
+    let u16s: Vec<u16> = data.iter().map(|c| u16::from(*c)).collect();
+    String::from_utf16_lossy(&u16s)
+        .trim_end_matches('\0')
+        .to_string()
+}
+
 fn ucs2_to_string(data: &[u16]) -> String {
     String::from_utf16_lossy(data)
         .trim_end_matches('\0')
@@ -369,7 +376,7 @@ fn list_directory(root: &mut Directory, dir_path: &str) -> Vec<String> {
         match dir.read_entry(&mut buf) {
             Ok(Some(info)) => {
                 let name_slice = info.file_name();
-                let name = ucs2_to_string(name_slice.as_slice_with_nul());
+                let name = char16_to_string(name_slice.as_slice_with_nul());
                 let name = name.trim_end_matches('\0').to_string();
                 // Skip "." and ".."
                 if name == "." || name == ".." {
@@ -830,7 +837,7 @@ fn mark_defaults(
         .unwrap_or(&config.default_pattern);
 
     // Mark oneshot.
-    if let Some(ref oid) = oneshot_id {
+    if let Some(oid) = oneshot_id {
         for e in entries.iter_mut() {
             if entry_matches(&e.id, oid) {
                 e.is_oneshot = true;
@@ -861,7 +868,7 @@ fn mark_defaults(
 
 /// Decrement the boot count for the selected entry. If tries_left reaches 0,
 /// rename the file to reflect that.
-fn update_boot_count(root: &mut Directory, entry: &mut BootEntry) {
+fn update_boot_count(_root: &mut Directory, entry: &mut BootEntry) {
     if entry.tries_left.is_none() {
         return;
     }
@@ -950,13 +957,6 @@ fn process_random_seed(root: &mut Directory) {
 
 /// Print a string to the console.
 fn print(s: &str) {
-    let mut stdout = uefi::system::with_stdout(|_| {});
-    // Use UEFI boot services to write to stdout.
-    // Since we can't easily get a mutable reference from with_stdout,
-    // we use the system table directly.
-    let _ = s;
-    // In the UEFI environment, we use the output protocol.
-    // For simplicity, we format to a UCS-2 buffer and write it.
     let ucs2 = str_to_ucs2(s);
     if let Ok(cstr) = uefi::CStr16::from_u16_with_nul(&ucs2) {
         uefi::system::with_stdout(|stdout| {
@@ -1204,7 +1204,7 @@ fn boot_efi_image(root: &mut Directory, entry: &BootEntry, image_handle: Handle)
         Ok(child_handle) => {
             // Set load options (command line) if we have them.
             if !entry.options.is_empty() {
-                if let Ok(loaded_image) =
+                if let Ok(mut loaded_image) =
                     uefi::boot::open_protocol_exclusive::<LoadedImage>(child_handle)
                 {
                     let opts_ucs2 = str_to_ucs2(&entry.options);
