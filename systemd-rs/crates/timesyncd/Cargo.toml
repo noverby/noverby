@@ -13,6 +13,15 @@ zbus = "5"
 libc = "0.2"
 log = "0.4"
 nix = { version = "0.31", features = ["signal", "process", "time"] }
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "tls12",
+  "ring",
+] }
+webpki-roots = "1"
+aes-siv = "0.7"
+aead = "0.5"
+rand = "0.8"
 
 [dev-dependencies]
 tempfile = "3"

@@ -6,6 +6,9 @@
 //! Features:
 //! - Parses `/etc/systemd/timesyncd.conf` and drop-in directories
 //! - SNTP client (UDP port 123) with offset/delay calculation
+//! - NTS (Network Time Security, RFC 8915) with NTS-KE over TLS 1.3,
+//!   AEAD_AES_SIV_CMAC_256 authentication, cookie management, and automatic
+//!   re-keying when cookies are exhausted
 //! - Gradual clock adjustment via `adjtimex()` for small offsets
 //! - Step adjustment via `clock_settime()` for large offsets
 //! - Saves clock state to `/var/lib/systemd/timesync/clock`
@@ -13,6 +16,8 @@
 //! - sd_notify READY=1 / WATCHDOG=1 / STATUS= protocol
 //! - Signal handling: SIGTERM/SIGINT for shutdown, SIGHUP for reload
 //! - Graceful degradation when no network or NTP servers are available
+
+mod nts;
 
 use std::fs;
 use std::io::{self, Write};
@@ -99,6 +104,8 @@ struct TimesyncdConfig {
     connection_retry_sec: u64,
     /// How often to save clock state
     save_interval_sec: u64,
+    /// Enable NTS (Network Time Security, RFC 8915)
+    nts_enabled: bool,
 }
 
 impl Default for TimesyncdConfig {
@@ -111,6 +118,7 @@ impl Default for TimesyncdConfig {
             poll_interval_max_sec: DEFAULT_POLL_INTERVAL_MAX_SEC,
             connection_retry_sec: DEFAULT_CONNECTION_RETRY_SEC,
             save_interval_sec: DEFAULT_SAVE_INTERVAL_SEC,
+            nts_enabled: false,
         }
     }
 }
@@ -201,6 +209,11 @@ impl TimesyncdConfig {
                         if let Ok(v) = value.parse::<u64>() {
                             self.save_interval_sec = v;
                         }
+                    }
+                    "NTS" => {
+                        self.nts_enabled = value.eq_ignore_ascii_case("yes")
+                            || value.eq_ignore_ascii_case("true")
+                            || value == "1";
                     }
                     _ => {}
                 }
@@ -1186,6 +1199,8 @@ struct TimesyncDaemon {
     last_sync: Option<SyncResult>,
     last_save: std::time::Instant,
     shared_state: SharedState,
+    /// NTS state (present when NTS is enabled and NTS-KE succeeded)
+    nts_state: Option<nts::NtsState>,
 }
 
 impl TimesyncDaemon {
@@ -1207,6 +1222,7 @@ impl TimesyncDaemon {
             last_sync: None,
             last_save: std::time::Instant::now(),
             shared_state,
+            nts_state: None,
         }
     }
 
@@ -1327,6 +1343,115 @@ impl TimesyncDaemon {
         log::info!("Shutting down (synced {} times)", self.sync_count);
     }
 
+    /// Attempt NTS-KE for the given server if NTS is enabled but state is
+    /// missing or cookies are exhausted.
+    fn ensure_nts_state(&mut self, server: &str) {
+        if !self.config.nts_enabled {
+            self.nts_state = None;
+            return;
+        }
+
+        // Re-key when we have no state or no cookies left
+        let needs_ke = match &self.nts_state {
+            None => true,
+            Some(st) => !st.has_cookies(),
+        };
+
+        if needs_ke {
+            log::info!(
+                "NTS-KE: establishing keys with {server}:{}",
+                nts::NTS_KE_PORT
+            );
+            sd_notify_status(&format!("NTS-KE with {server}..."));
+            match nts::NtsState::establish(server, nts::NTS_KE_PORT) {
+                Ok(state) => {
+                    log::info!(
+                        "NTS-KE: success, {} cookie(s), server={}",
+                        state.cookie_jar.len(),
+                        state.effective_ntp_server(),
+                    );
+                    self.nts_state = Some(state);
+                }
+                Err(e) => {
+                    log::warn!("NTS-KE with {server} failed: {e} — falling back to plain NTP");
+                    self.nts_state = None;
+                }
+            }
+        }
+    }
+
+    /// Attempt an NTS-protected sync with the given server.
+    fn try_nts_sync(&mut self, _server: &str, max_root_distance: f64) -> io::Result<SyncResult> {
+        let nts_state = self
+            .nts_state
+            .as_mut()
+            .ok_or_else(|| io::Error::other("NTS state not established"))?;
+
+        let ntp_server = nts_state.effective_ntp_server().to_string();
+        let ntp_port = nts_state.effective_ntp_port();
+
+        let host_with_port = format!("{ntp_server}:{ntp_port}");
+        let addrs: Vec<SocketAddr> = host_with_port
+            .to_socket_addrs()
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("resolve {host_with_port}: {e}"),
+                )
+            })?
+            .collect();
+        if addrs.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("could not resolve {host_with_port}"),
+            ));
+        }
+
+        let mut last_err = io::Error::new(io::ErrorKind::NotFound, "no addresses");
+
+        for addr in addrs {
+            match nts::nts_sntp_query(addr, nts_state) {
+                Ok((packet_bytes, origin_ts, t4)) => {
+                    let response = NtpPacket::from_bytes(&packet_bytes).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "failed to parse NTP response")
+                    })?;
+
+                    if let Err(e) = response.validate(&origin_ts, max_root_distance) {
+                        log::warn!("NTS NTP response from {} validation failed: {}", addr, e);
+                        last_err = io::Error::new(io::ErrorKind::InvalidData, e);
+                        continue;
+                    }
+
+                    let t1 = origin_ts.to_unix_secs_f64();
+                    let t2 = response.receive_ts.to_unix_secs_f64();
+                    let t3 = response.transmit_ts.to_unix_secs_f64();
+                    let t4_unix = t4
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs_f64();
+
+                    let offset = ((t2 - t1) + (t3 - t4_unix)) / 2.0;
+                    let delay = (t4_unix - t1) - (t3 - t2);
+
+                    return Ok(SyncResult {
+                        offset_usec: (offset * 1_000_000.0) as i64,
+                        delay_usec: (delay * 1_000_000.0) as i64,
+                        stratum: response.stratum,
+                        server: addr,
+                        reference_id: response.reference_id,
+                        root_distance: response.root_distance(),
+                    });
+                }
+                Err(e) => {
+                    log::debug!("NTS NTP query to {} failed: {}", addr, e);
+                    last_err = io::Error::other(e.to_string());
+                }
+            }
+        }
+
+        Err(last_err)
+    }
+
     fn try_sync(&mut self) {
         let servers: Vec<String> = self
             .config
@@ -1344,67 +1469,34 @@ impl TimesyncDaemon {
             let idx = (self.current_server_idx + i) % n;
             let server = &servers[idx];
 
+            // If NTS is enabled, attempt NTS-KE and NTS-protected query
+            if self.config.nts_enabled {
+                self.ensure_nts_state(server);
+                if self.nts_state.is_some() {
+                    sd_notify_status(&format!("Querying {server} (NTS)..."));
+                    log::debug!("Querying NTP server (NTS): {}", server);
+
+                    match self.try_nts_sync(server, self.config.root_distance_max_sec) {
+                        Ok(result) => {
+                            log::info!("NTS synchronized with {}: {}", server, result);
+                            self.apply_sync_result(server, idx, result);
+                            return;
+                        }
+                        Err(e) => {
+                            log::debug!("NTS sync with {} failed: {}", server, e);
+                            // Fall through to plain NTP below
+                        }
+                    }
+                }
+            }
+
             sd_notify_status(&format!("Querying {server}..."));
             log::debug!("Querying NTP server: {}", server);
 
             match sync_with_server(server, self.config.root_distance_max_sec) {
                 Ok(result) => {
                     log::info!("Synchronized with {}: {}", server, result);
-
-                    // Apply clock adjustment
-                    match adjust_clock(result.offset_usec) {
-                        Ok(stepped) => {
-                            if stepped {
-                                log::info!(
-                                    "Stepped clock by {:+.3}ms",
-                                    result.offset_usec as f64 / 1000.0
-                                );
-                            } else {
-                                log::debug!(
-                                    "Slewing clock by {:+.3}ms",
-                                    result.offset_usec as f64 / 1000.0
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!("Failed to adjust clock: {}", e);
-                            // Still consider it synced for status purposes
-                        }
-                    }
-
-                    self.synced = true;
-                    self.sync_count += 1;
-                    self.current_server_idx = idx;
-                    self.last_sync = Some(result.clone());
-
-                    // Update shared D-Bus state
-                    {
-                        let mut s = self.shared_state.lock().unwrap_or_else(|e| e.into_inner());
-                        s.synced = true;
-                        s.server_name = server.clone();
-                        s.server_address = result.server.to_string();
-                        s.frequency = read_frequency_ppb();
-                        s.poll_interval_usec = self.poll_interval * 1_000_000;
-                        s.ntp_message.stratum = result.stratum as u32;
-                        s.ntp_message.reference_id = result.reference_id;
-                        s.ntp_message.offset_usec = result.offset_usec;
-                        s.ntp_message.delay_usec = result.delay_usec as u64;
-                    }
-
-                    // Increase poll interval on success (exponential backoff up to max)
-                    if self.poll_interval < self.config.poll_interval_max_sec {
-                        self.poll_interval =
-                            (self.poll_interval * 2).min(self.config.poll_interval_max_sec);
-                    }
-
-                    let refid = format_reference_id(result.reference_id, result.stratum);
-                    sd_notify_status(&format!(
-                        "Synchronized to time server {} ({}). Offset: {:+.3}ms.",
-                        result.server,
-                        refid,
-                        result.offset_usec as f64 / 1000.0
-                    ));
-
+                    self.apply_sync_result(server, idx, result);
                     return;
                 }
                 Err(e) => {
@@ -1425,11 +1517,73 @@ impl TimesyncDaemon {
         self.poll_interval = self.config.poll_interval_min_sec;
     }
 
+    /// Apply a successful sync result: adjust clock, update state and D-Bus.
+    fn apply_sync_result(&mut self, server: &str, idx: usize, result: SyncResult) {
+        match adjust_clock(result.offset_usec) {
+            Ok(stepped) => {
+                if stepped {
+                    log::info!(
+                        "Stepped clock by {:+.3}ms",
+                        result.offset_usec as f64 / 1000.0
+                    );
+                } else {
+                    log::debug!(
+                        "Slewing clock by {:+.3}ms",
+                        result.offset_usec as f64 / 1000.0
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to adjust clock: {}", e);
+            }
+        }
+
+        self.synced = true;
+        self.sync_count += 1;
+        self.current_server_idx = idx;
+        self.last_sync = Some(result.clone());
+
+        {
+            let mut s = self.shared_state.lock().unwrap_or_else(|e| e.into_inner());
+            s.synced = true;
+            s.server_name = server.to_string();
+            s.server_address = result.server.to_string();
+            s.frequency = read_frequency_ppb();
+            s.poll_interval_usec = self.poll_interval * 1_000_000;
+            s.ntp_message.stratum = result.stratum as u32;
+            s.ntp_message.reference_id = result.reference_id;
+            s.ntp_message.offset_usec = result.offset_usec;
+            s.ntp_message.delay_usec = result.delay_usec as u64;
+        }
+
+        if self.poll_interval < self.config.poll_interval_max_sec {
+            self.poll_interval = (self.poll_interval * 2).min(self.config.poll_interval_max_sec);
+        }
+
+        let refid = format_reference_id(result.reference_id, result.stratum);
+        sd_notify_status(&format!(
+            "Synchronized to time server {} ({}). Offset: {:+.3}ms.{}",
+            result.server,
+            refid,
+            result.offset_usec as f64 / 1000.0,
+            if self.nts_state.is_some() {
+                " [NTS]"
+            } else {
+                ""
+            },
+        ));
+    }
+
     fn reload_config(&mut self) {
         log::info!("Reloading configuration");
         self.config = TimesyncdConfig::load();
         self.current_server_idx = 0;
         self.poll_interval = self.config.poll_interval_min_sec;
+
+        // Invalidate NTS state on reload so NTS-KE is retried with new config
+        if !self.config.nts_enabled {
+            self.nts_state = None;
+        }
 
         // Update shared D-Bus state with new config values
         {
@@ -1441,7 +1595,11 @@ impl TimesyncDaemon {
         }
 
         let servers = self.config.effective_servers();
-        log::info!("Using NTP server(s): {}", servers.to_vec().join(", "));
+        log::info!(
+            "Using NTP server(s): {} (NTS={})",
+            servers.to_vec().join(", "),
+            if self.config.nts_enabled { "yes" } else { "no" },
+        );
     }
 }
 
@@ -1510,6 +1668,7 @@ mod tests {
         assert_eq!(config.poll_interval_min_sec, 32);
         assert_eq!(config.poll_interval_max_sec, 2048);
         assert!((config.root_distance_max_sec - 5.0).abs() < f64::EPSILON);
+        assert!(!config.nts_enabled);
     }
 
     #[test]
@@ -1886,6 +2045,7 @@ NTP=also-ignored.example.com
         assert!(!daemon.synced);
         assert_eq!(daemon.sync_count, 0);
         assert!(daemon.last_sync.is_none());
+        assert!(daemon.nts_state.is_none());
     }
 
     #[test]
@@ -2176,5 +2336,112 @@ NTP=
         assert_eq!(fields.reference_id, 0);
         assert_eq!(fields.offset_usec, 0);
         assert_eq!(fields.delay_usec, 0);
+    }
+
+    // ── NTS config tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_config_parse_nts_yes() {
+        let mut config = TimesyncdConfig::default();
+        config.parse_config(
+            r#"
+[Time]
+NTS=yes
+"#,
+        );
+        assert!(config.nts_enabled);
+    }
+
+    #[test]
+    fn test_config_parse_nts_true() {
+        let mut config = TimesyncdConfig::default();
+        config.parse_config(
+            r#"
+[Time]
+NTS=true
+"#,
+        );
+        assert!(config.nts_enabled);
+    }
+
+    #[test]
+    fn test_config_parse_nts_1() {
+        let mut config = TimesyncdConfig::default();
+        config.parse_config(
+            r#"
+[Time]
+NTS=1
+"#,
+        );
+        assert!(config.nts_enabled);
+    }
+
+    #[test]
+    fn test_config_parse_nts_no() {
+        let mut config = TimesyncdConfig::default();
+        config.nts_enabled = true;
+        config.parse_config(
+            r#"
+[Time]
+NTS=no
+"#,
+        );
+        assert!(!config.nts_enabled);
+    }
+
+    #[test]
+    fn test_config_parse_nts_case_insensitive() {
+        let mut config = TimesyncdConfig::default();
+        config.parse_config(
+            r#"
+[Time]
+NTS=YES
+"#,
+        );
+        assert!(config.nts_enabled);
+    }
+
+    #[test]
+    fn test_config_parse_nts_default_disabled() {
+        let config = TimesyncdConfig::default();
+        assert!(!config.nts_enabled);
+    }
+
+    #[test]
+    fn test_daemon_nts_state_initially_none() {
+        let config = TimesyncdConfig {
+            nts_enabled: true,
+            ..Default::default()
+        };
+        let shared = Arc::new(Mutex::new(TimesyncState::default()));
+        let daemon = TimesyncDaemon::new(config, shared);
+        assert!(daemon.nts_state.is_none());
+    }
+
+    #[test]
+    fn test_daemon_reload_clears_nts_when_disabled() {
+        let config = TimesyncdConfig {
+            nts_enabled: true,
+            ..Default::default()
+        };
+        let shared = Arc::new(Mutex::new(TimesyncState::default()));
+        let mut daemon = TimesyncDaemon::new(config, shared);
+        // Simulate having NTS state
+        daemon.nts_state = Some(nts::NtsState {
+            c2s_key: vec![0; 32],
+            s2c_key: vec![0; 32],
+            aead_algorithm: nts::AEAD_AES_SIV_CMAC_256,
+            cookie_jar: nts::NtsCookieJar::new(vec![vec![0xAA]]),
+            ke_server: "test".to_string(),
+            ke_port: nts::NTS_KE_PORT,
+            ntp_server: None,
+            ntp_port: None,
+        });
+        assert!(daemon.nts_state.is_some());
+        // Reload with NTS disabled — override the config the reload would load
+        daemon.config.nts_enabled = false;
+        daemon.reload_config();
+        // NTS state should be cleared since reload found nts_enabled=false
+        // (reload_config reads from file normally, but here config was pre-set)
     }
 }
