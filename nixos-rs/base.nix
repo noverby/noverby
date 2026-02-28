@@ -60,6 +60,11 @@
       # (connection refused), so it doesn't block boot, but keeping it disabled
       # avoids a spurious failure in the activation graph.
       systemd-networkd-wait-online.enable = lib.mkForce false;
+
+      # Disable lvm-devices-import.service — this VM does not use LVM and the
+      # lvm binary is not included in the system closure, so the service fails
+      # with CannotFindBinaryPath at every boot.
+      lvm-devices-import.enable = lib.mkForce false;
     };
   };
 

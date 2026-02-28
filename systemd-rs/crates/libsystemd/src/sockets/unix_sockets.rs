@@ -51,13 +51,16 @@ fn prepare_unix_socket_path(path: &std::path::Path, conf: &SocketConfig) -> Resu
         std::fs::remove_file(path)
             .map_err(|e| format!("Error removing old socket file {path:?}: {e}"))?;
     }
-    if let Some(parent) = path.parent()
-        && !parent.exists()
-    {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Error creating UnixSocket directory {parent:?}: {e}"))?;
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Error creating UnixSocket directory {parent:?}: {e}"))?;
+        }
 
         // DirectoryMode= — default is 0755 per systemd.socket(5).
+        // Always apply, even if the directory already existed, because another
+        // subsystem (e.g. ensure_home_directories) may have created it with
+        // more restrictive permissions (e.g. 0700 for /run/dbus).
         let dir_mode = conf.directory_mode.unwrap_or(0o755);
         let permissions = std::fs::Permissions::from_mode(dir_mode);
         if let Err(e) = std::fs::set_permissions(parent, permissions) {
