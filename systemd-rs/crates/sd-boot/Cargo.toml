@@ -5,6 +5,5 @@ authors = ["Niclas Overby <niclas@overby.me>"]
 edition = "2024"
 
 [dependencies]
-uefi = "0.33"
-uefi-raw = "0.9"
+uefi = "0.36"
 log = "0.4"

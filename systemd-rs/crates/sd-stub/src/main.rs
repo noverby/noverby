@@ -73,24 +73,18 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt::Write as _;
+use core::time::Duration;
 use uefi::prelude::*;
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::file::{File, FileAttribute, FileInfo, FileMode, FileType};
 use uefi::proto::media::fs::SimpleFileSystem;
-use uefi::table::runtime::VariableAttributes;
+use uefi::runtime::VariableAttributes;
 use uefi::{cstr16, CStr16};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// The Boot Loader Interface vendor GUID for Loader* variables.
-const LOADER_GUID: uefi::Guid = uefi::Guid::from_values(
-    0x4a67b082,
-    0x0a4c,
-    0x41cf,
-    0xb6,
-    0xc7,
-    [0x44, 0x0b, 0x29, 0xbb, 0x8c, 0x4f],
-);
+const LOADER_GUID: uefi::Guid = uefi::guid!("4a67b082-0a4c-41cf-b6c7-440b29bb8c4f");
 
 /// Stub version string published via the StubInfo EFI variable.
 const STUB_VERSION: &str = "systemd-stub 256.0-rs";
@@ -114,14 +108,7 @@ const STUB_FEATURES: u64 = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 4);
 /// The Linux EFI initrd media device path vendor GUID.
 /// This is the well-known GUID that the Linux EFI stub recognizes
 /// for loading initrd via EFI_LOAD_FILE2_PROTOCOL.
-const LINUX_INITRD_MEDIA_GUID: uefi::Guid = uefi::Guid::from_values(
-    0x5568e427,
-    0x68fc,
-    0x4f3d,
-    0xac,
-    0x74,
-    [0xca, 0x55, 0x52, 0x31, 0xcc, 0x68],
-);
+const LINUX_INITRD_MEDIA_GUID: uefi::Guid = uefi::guid!("5568e427-68fc-4f3d-ac74-ca555231cc68");
 
 /// TPM2 PCR indices for measuring UKI sections, following the
 /// systemd-stub specification:
@@ -502,14 +489,7 @@ fn println(s: &str) {
 /// was measured.
 fn measure_to_pcr(pcr_index: u32, data: &[u8], description: &str) {
     // The TCG2 protocol GUID.
-    let tcg2_guid = uefi::Guid::from_values(
-        0x607f766c,
-        0x7455,
-        0x42be,
-        0x93,
-        0x0b,
-        [0xe4, 0xd7, 0x6d, 0xb2, 0x72, 0x0f],
-    );
+    let tcg2_guid = uefi::guid!("607f766c-7455-42be-930b-e4d76db2720f");
 
     // Try to locate the TCG2 protocol. If it's not available (no TPM2),
     // silently skip measurement.
@@ -1058,7 +1038,7 @@ fn efi_main() -> Status {
         Ok(li) => li,
         Err(_) => {
             println("sd-stub: Error: Could not open LoadedImage protocol.");
-            uefi::boot::stall(5_000_000);
+            uefi::boot::stall(Duration::from_secs(5));
             return Status::LOAD_ERROR;
         }
     };
@@ -1071,7 +1051,7 @@ fn efi_main() -> Status {
         Some(d) => d,
         None => {
             println("sd-stub: Error: Could not read own PE image.");
-            uefi::boot::stall(5_000_000);
+            uefi::boot::stall(Duration::from_secs(5));
             return Status::LOAD_ERROR;
         }
     };
@@ -1081,7 +1061,7 @@ fn efi_main() -> Status {
         Some(s) => s,
         None => {
             println("sd-stub: Error: Could not parse PE sections.");
-            uefi::boot::stall(5_000_000);
+            uefi::boot::stall(Duration::from_secs(5));
             return Status::LOAD_ERROR;
         }
     };
@@ -1090,7 +1070,7 @@ fn efi_main() -> Status {
     if sections.linux.is_none() {
         println("sd-stub: Error: No .linux section found in UKI.");
         println("sd-stub: This stub must be combined with a kernel image.");
-        uefi::boot::stall(5_000_000);
+        uefi::boot::stall(Duration::from_secs(5));
         return Status::LOAD_ERROR;
     }
 
@@ -1238,7 +1218,7 @@ fn efi_main() -> Status {
                     let mut msg = String::from("sd-stub: Error starting kernel: ");
                     let _ = core::fmt::write(&mut msg, format_args!("{:?}", e.status()));
                     println(&msg);
-                    uefi::boot::stall(5_000_000);
+                    uefi::boot::stall(Duration::from_secs(5));
                     e.status()
                 }
             }
@@ -1249,7 +1229,7 @@ fn efi_main() -> Status {
             println(&msg);
             println("sd-stub: The .linux section may not be a valid EFI binary.");
             println("sd-stub: Ensure the kernel was built with CONFIG_EFI_STUB=y.");
-            uefi::boot::stall(5_000_000);
+            uefi::boot::stall(Duration::from_secs(5));
             e.status()
         }
     }
