@@ -1585,6 +1585,36 @@ pub fn run_exec_helper() {
         unsafe { std::env::set_var("LISTEN_PID", format!("{}", nix::unistd::getpid())) };
     }
 
+    // Reset the signal mask so the child starts with all signals unblocked.
+    // The service manager (PID 1) may block signals via sigprocmask (e.g.
+    // signal-hook blocks SIGCHLD, SIGTERM, etc. for its iterator thread),
+    // and children inherit the blocked mask across fork+exec.  Real systemd
+    // calls reset_signal_mask() in exec_child() for the same reason.
+    unsafe {
+        let mut all_signals: libc::sigset_t = std::mem::zeroed();
+        libc::sigfillset(&mut all_signals);
+        libc::sigprocmask(libc::SIG_UNBLOCK, &all_signals, std::ptr::null_mut());
+    }
+
+    // Reset all signal handlers to their default dispositions.  After fork
+    // the child inherits the parent's handlers, and after the first exec
+    // (into this exec-helper) custom handlers are reset to SIG_DFL by the
+    // kernel.  However, signals set to SIG_IGN survive exec.  Explicitly
+    // restoring SIG_DFL for commonly-inherited ignored signals ensures
+    // services see the expected default behaviour.  (SIGPIPE is handled
+    // separately below via IgnoreSIGPIPE=.)
+    unsafe {
+        for sig in [
+            libc::SIGHUP,
+            libc::SIGUSR1,
+            libc::SIGUSR2,
+            libc::SIGTERM,
+            libc::SIGINT,
+        ] {
+            libc::signal(sig, libc::SIG_DFL);
+        }
+    }
+
     // Apply IgnoreSIGPIPE= setting. When true (the default), set SIGPIPE to
     // SIG_IGN so that writes to broken pipes produce EPIPE errors instead of
     // killing the process. When false, restore the default disposition.

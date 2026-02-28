@@ -1780,6 +1780,24 @@ fn maintenance_thread(state: Arc<JournaldState>) {
 // ---------------------------------------------------------------------------
 
 fn main() {
+    // Register signal handlers as the very first thing, before any
+    // initialization.  The default disposition for SIGUSR1/SIGUSR2 is to
+    // terminate the process.  If `systemd-journal-flush.service` (which runs
+    // `journalctl --flush` → sends SIGUSR1) discovers our PID via /proc
+    // scanning before we finish initialising, the signal would kill us
+    // before we ever send READY=1.
+    //
+    // The handlers check the GLOBAL_* atomic pointers and gracefully no-op
+    // when they are still zero, so registering them early is safe — signals
+    // that arrive before `setup_signal_handlers()` stores the real pointers
+    // are simply swallowed instead of being fatal.
+    unsafe {
+        libc::signal(libc::SIGTERM, signal_handler_shutdown as libc::sighandler_t);
+        libc::signal(libc::SIGINT, signal_handler_shutdown as libc::sighandler_t);
+        libc::signal(libc::SIGUSR1, signal_handler_flush as libc::sighandler_t);
+        libc::signal(libc::SIGUSR2, signal_handler_rotate as libc::sighandler_t);
+    }
+
     eprintln!("systemd-journald starting...");
 
     // Load configuration
@@ -1833,7 +1851,8 @@ fn main() {
 
     let state = Arc::new(JournaldState::new(config, storage));
 
-    // Set up signal handlers
+    // Store the global atomic pointers so the signal handlers (registered at
+    // the top of main) can actually set the shutdown/flush/rotate flags.
     setup_signal_handlers(Arc::clone(&state));
 
     // Ensure runtime directory exists
