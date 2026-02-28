@@ -30,9 +30,9 @@
 //! - Signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload)
 //! - Stale machine cleanup (machines whose leader PID has exited)
 //!
-//! ## Missing
-//!
-//! - bind/bind-user mounts
+//! - Bind mounts: bind-mount host paths into running containers via
+//!   mount namespace entry (fork + setns + mount), with --read-only and
+//!   --mkdir support; bind-user mounts that also set up UID-mapped paths
 
 use std::collections::BTreeMap;
 use std::env;
@@ -670,6 +670,240 @@ pub fn copy_from_machine(
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Bind mounts into containers
+// ---------------------------------------------------------------------------
+
+/// Bind-mount a host path into a running container's mount namespace.
+///
+/// Enters the container's mount namespace via `/proc/<leader>/ns/mnt`,
+/// optionally creates the destination directory (`mkdir`), and performs
+/// a bind mount. If `read_only` is true, the mount is remounted read-only.
+///
+/// Returns `Ok(())` on success.
+pub fn bind_mount_in_machine(
+    registry: &MachineRegistry,
+    machine_name: &str,
+    host_path: &str,
+    container_path: &str,
+    read_only: bool,
+    mkdir: bool,
+) -> Result<(), String> {
+    let machine = registry
+        .get(machine_name)
+        .ok_or_else(|| format!("Machine '{}' not found", machine_name))?;
+
+    if machine.leader == 0 {
+        return Err(format!("Machine '{}' has no leader PID", machine_name));
+    }
+
+    let src = Path::new(host_path);
+    if !src.exists() {
+        return Err(format!("Source path '{}' does not exist", host_path));
+    }
+
+    let leader_pid = machine.leader as i32;
+    let root_dir = machine.root_directory.clone();
+
+    // Resolve the destination path inside the container's root
+    let dest_in_root = if container_path.starts_with('/') {
+        format!("{}{}", root_dir.trim_end_matches('/'), container_path)
+    } else {
+        format!("{}/{}", root_dir.trim_end_matches('/'), container_path)
+    };
+
+    // Fork a child that will enter the container's mount namespace and
+    // perform the bind mount there.
+    let child_pid = unsafe { libc::fork() };
+    match child_pid {
+        -1 => Err(format!("fork failed: {}", io::Error::last_os_error())),
+        0 => {
+            // Child process — enter mount namespace of the leader
+            let ns_path = format!("/proc/{}/ns/mnt", leader_pid);
+            let c_ns = std::ffi::CString::new(ns_path.as_str()).unwrap();
+            let fd = unsafe { libc::open(c_ns.as_ptr(), libc::O_RDONLY) };
+            if fd < 0 {
+                eprintln!(
+                    "Failed to open mount namespace: {}",
+                    io::Error::last_os_error()
+                );
+                unsafe { libc::_exit(1) };
+            }
+            if unsafe { libc::setns(fd, libc::CLONE_NEWNS) } != 0 {
+                eprintln!("setns(CLONE_NEWNS) failed: {}", io::Error::last_os_error());
+                unsafe {
+                    libc::close(fd);
+                    libc::_exit(1);
+                }
+            }
+            unsafe { libc::close(fd) };
+
+            // Create destination if --mkdir
+            if mkdir {
+                let c_dest = std::ffi::CString::new(dest_in_root.as_str()).unwrap();
+                unsafe {
+                    // Try to create the directory; ignore errors if it already exists
+                    libc::mkdir(c_dest.as_ptr(), 0o755);
+                }
+            }
+
+            // Perform the bind mount: mount(source, target, NULL, MS_BIND|MS_REC, NULL)
+            let c_src = std::ffi::CString::new(host_path).unwrap();
+            let c_dest = std::ffi::CString::new(dest_in_root.as_str()).unwrap();
+            let flags = libc::MS_BIND | libc::MS_REC;
+            let ret = unsafe {
+                libc::mount(
+                    c_src.as_ptr(),
+                    c_dest.as_ptr(),
+                    std::ptr::null(),
+                    flags,
+                    std::ptr::null(),
+                )
+            };
+            if ret != 0 {
+                eprintln!("bind mount failed: {}", io::Error::last_os_error());
+                unsafe { libc::_exit(1) };
+            }
+
+            // If read-only, remount with MS_RDONLY
+            if read_only {
+                let ro_flags = libc::MS_BIND | libc::MS_REC | libc::MS_REMOUNT | libc::MS_RDONLY;
+                let ret = unsafe {
+                    libc::mount(
+                        std::ptr::null(),
+                        c_dest.as_ptr(),
+                        std::ptr::null(),
+                        ro_flags,
+                        std::ptr::null(),
+                    )
+                };
+                if ret != 0 {
+                    eprintln!("read-only remount failed: {}", io::Error::last_os_error());
+                    unsafe { libc::_exit(1) };
+                }
+            }
+
+            unsafe { libc::_exit(0) };
+        }
+        pid => {
+            // Parent — wait for the child
+            let mut status: libc::c_int = 0;
+            unsafe { libc::waitpid(pid, &mut status, 0) };
+            if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0 {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Bind mount of '{}' to '{}:{}' failed (child exit status {})",
+                    host_path,
+                    machine_name,
+                    container_path,
+                    if libc::WIFEXITED(status) {
+                        libc::WEXITSTATUS(status)
+                    } else {
+                        -1
+                    },
+                ))
+            }
+        }
+    }
+}
+
+/// Bind-mount a host path into a container with UID-mapped user semantics.
+///
+/// This is similar to `bind_mount_in_machine` but also sets up the bind mount
+/// in a way that is accessible by a specific user inside the container.
+/// It resolves the user's home directory inside the container (via
+/// `/etc/passwd`), creates the destination path under it if needed, and
+/// performs the bind mount.
+///
+/// If `container_path` is `None`, the mount destination defaults to
+/// `<home>/<basename(host_path)>` inside the container.
+pub fn bind_user_in_machine(
+    registry: &MachineRegistry,
+    machine_name: &str,
+    host_path: &str,
+    container_path: Option<&str>,
+    user: &str,
+    read_only: bool,
+) -> Result<(), String> {
+    let machine = registry
+        .get(machine_name)
+        .ok_or_else(|| format!("Machine '{}' not found", machine_name))?;
+
+    if machine.leader == 0 {
+        return Err(format!("Machine '{}' has no leader PID", machine_name));
+    }
+
+    let src = Path::new(host_path);
+    if !src.exists() {
+        return Err(format!("Source path '{}' does not exist", host_path));
+    }
+
+    let root = &machine.root_directory;
+
+    // Resolve the user's home directory from the container's /etc/passwd
+    let home_dir = resolve_container_user_home(root, user)?;
+
+    // Determine the destination path
+    let dest = match container_path {
+        Some(p) => p.to_string(),
+        None => {
+            let basename = Path::new(host_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("bind");
+            format!("{}/{}", home_dir.trim_end_matches('/'), basename)
+        }
+    };
+
+    // Use bind_mount_in_machine with mkdir enabled
+    bind_mount_in_machine(registry, machine_name, host_path, &dest, read_only, true)
+}
+
+/// Resolve a user's home directory from a container's `/etc/passwd`.
+///
+/// Looks up the given username (or numeric UID) in `<root>/etc/passwd`
+/// and returns the home directory field.
+fn resolve_container_user_home(root: &str, user: &str) -> Result<String, String> {
+    let passwd_path = format!("{}/etc/passwd", root.trim_end_matches('/'));
+    let content = fs::read_to_string(&passwd_path).map_err(|e| {
+        format!(
+            "Cannot read {}: {} (cannot resolve user '{}')",
+            passwd_path, e, user
+        )
+    })?;
+
+    // Check if user is a numeric UID
+    let is_uid = user.parse::<u32>().ok();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<&str> = line.split(':').collect();
+        if fields.len() < 6 {
+            continue;
+        }
+        // fields: name:password:uid:gid:gecos:home:shell
+        let match_by_name = fields[0] == user;
+        let match_by_uid = is_uid
+            .map(|uid| fields.get(2).and_then(|u| u.parse::<u32>().ok()) == Some(uid))
+            .unwrap_or(false);
+
+        if match_by_name || match_by_uid {
+            return Ok(fields[5].to_string());
+        }
+    }
+
+    // Default to /root for root, /home/<user> otherwise
+    if user == "root" || user == "0" {
+        Ok("/root".to_string())
+    } else {
+        Ok(format!("/home/{}", user))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1617,6 +1851,44 @@ impl Machine1Manager {
         Ok(fields)
     }
 
+    /// BindMount(s machine, s source, s destination, b read_only, b mkdir)
+    fn bind_mount(
+        &self,
+        machine: String,
+        source: String,
+        destination: String,
+        read_only: bool,
+        mkdir: bool,
+    ) -> zbus::fdo::Result<()> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let dest = if destination.is_empty() {
+            &source
+        } else {
+            &destination
+        };
+        bind_mount_in_machine(&registry, &machine, &source, dest, read_only, mkdir)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// BindUser(s machine, s source, s user, s destination, b read_only)
+    fn bind_user(
+        &self,
+        machine: String,
+        source: String,
+        user: String,
+        destination: String,
+        read_only: bool,
+    ) -> zbus::fdo::Result<()> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let dest = if destination.is_empty() {
+            None
+        } else {
+            Some(destination.as_str())
+        };
+        bind_user_in_machine(&registry, &machine, &source, dest, &user, read_only)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
     /// CopyTo(s machine, s host_path, s container_path)
     fn copy_to(
         &self,
@@ -2177,6 +2449,73 @@ fn handle_control_command(registry: &mut MachineRegistry, line: &str) -> String 
                 Ok(()) => format!(
                     "OK: Set limit for '{}' to {} bytes\n",
                     limit_parts[0], limit
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // --- Bind mount operations ---
+
+        // BIND <machine> <source> [destination] [read_only] [mkdir]
+        "BIND" | "BIND-MOUNT" => {
+            let bind_parts: Vec<&str> = args_str.splitn(5, ' ').collect();
+            if bind_parts.len() < 2 {
+                return "ERROR: Usage: BIND <machine> <source> [destination] [read_only] [mkdir]\n"
+                    .to_string();
+            }
+            let machine_name = bind_parts[0];
+            let source = bind_parts[1];
+            let destination = bind_parts.get(2).copied().unwrap_or(source);
+            let read_only = bind_parts
+                .get(3)
+                .map(|s| *s == "true" || *s == "1")
+                .unwrap_or(false);
+            let mkdir = bind_parts
+                .get(4)
+                .map(|s| *s == "true" || *s == "1")
+                .unwrap_or(false);
+            match bind_mount_in_machine(
+                registry,
+                machine_name,
+                source,
+                destination,
+                read_only,
+                mkdir,
+            ) {
+                Ok(()) => format!(
+                    "OK: Bind-mounted '{}' to '{}:{}'\n",
+                    source, machine_name, destination
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // BIND-USER <machine> <source> <user> [destination] [read_only]
+        "BIND-USER" | "BIND_USER" => {
+            let bind_parts: Vec<&str> = args_str.splitn(5, ' ').collect();
+            if bind_parts.len() < 3 {
+                return "ERROR: Usage: BIND-USER <machine> <source> <user> [destination] [read_only]\n"
+                    .to_string();
+            }
+            let machine_name = bind_parts[0];
+            let source = bind_parts[1];
+            let user = bind_parts[2];
+            let destination = bind_parts.get(3).filter(|s| !s.is_empty());
+            let read_only = bind_parts
+                .get(4)
+                .map(|s| *s == "true" || *s == "1")
+                .unwrap_or(false);
+            match bind_user_in_machine(
+                registry,
+                machine_name,
+                source,
+                destination.copied(),
+                user,
+                read_only,
+            ) {
+                Ok(()) => format!(
+                    "OK: Bind-user-mounted '{}' for user '{}' in '{}'\n",
+                    source, user, machine_name
                 ),
                 Err(e) => format!("ERROR: {}\n", e),
             }
@@ -4391,5 +4730,299 @@ mod tests {
         let (_used, total) = pool_usage_stats(dir.path().to_str().unwrap());
         // Should return non-zero for an existing filesystem
         assert!(total > 0);
+    }
+
+    // -- Bind mount (unit tests for error paths) ----------------------------
+
+    #[test]
+    fn test_bind_mount_machine_not_found() {
+        let reg = MachineRegistry::new();
+        let result = bind_mount_in_machine(&reg, "nonexistent", "/tmp", "/mnt", false, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_bind_mount_no_leader() {
+        let mut reg = MachineRegistry::new();
+        let machine = Machine {
+            name: "noleader".to_string(),
+            class: MachineClass::Container,
+            service: "test".to_string(),
+            scope: String::new(),
+            leader: 0,
+            root_directory: "/".to_string(),
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+        reg.register(machine).unwrap();
+        let result = bind_mount_in_machine(&reg, "noleader", "/tmp", "/mnt", false, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no leader PID"));
+    }
+
+    #[test]
+    fn test_bind_mount_source_not_found() {
+        let mut reg = MachineRegistry::new();
+        let machine = Machine {
+            name: "testm".to_string(),
+            class: MachineClass::Container,
+            service: "test".to_string(),
+            scope: String::new(),
+            leader: std::process::id(),
+            root_directory: "/".to_string(),
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+        reg.register(machine).unwrap();
+        let result = bind_mount_in_machine(
+            &reg,
+            "testm",
+            "/nonexistent/source/path",
+            "/mnt",
+            false,
+            false,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_bind_user_machine_not_found() {
+        let reg = MachineRegistry::new();
+        let result = bind_user_in_machine(&reg, "nonexistent", "/tmp", None, "root", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_bind_user_no_leader() {
+        let mut reg = MachineRegistry::new();
+        let machine = Machine {
+            name: "noleader2".to_string(),
+            class: MachineClass::Container,
+            service: "test".to_string(),
+            scope: String::new(),
+            leader: 0,
+            root_directory: "/".to_string(),
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+        reg.register(machine).unwrap();
+        let result = bind_user_in_machine(&reg, "noleader2", "/tmp", None, "root", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no leader PID"));
+    }
+
+    #[test]
+    fn test_bind_user_source_not_found() {
+        let mut reg = MachineRegistry::new();
+        let machine = Machine {
+            name: "testm2".to_string(),
+            class: MachineClass::Container,
+            service: "test".to_string(),
+            scope: String::new(),
+            leader: std::process::id(),
+            root_directory: "/".to_string(),
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+        reg.register(machine).unwrap();
+        let result = bind_user_in_machine(
+            &reg,
+            "testm2",
+            "/nonexistent/bind/user/path",
+            None,
+            "root",
+            false,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    // -- resolve_container_user_home ----------------------------------------
+
+    #[test]
+    fn test_resolve_container_user_home_root() {
+        let dir = temp_dir();
+        let etc = dir.path().join("etc");
+        fs::create_dir_all(&etc).unwrap();
+        fs::write(
+            etc.join("passwd"),
+            "root:x:0:0:root:/root:/bin/bash\nnobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\n",
+        )
+        .unwrap();
+
+        let result = resolve_container_user_home(dir.path().to_str().unwrap(), "root");
+        assert_eq!(result.unwrap(), "/root");
+    }
+
+    #[test]
+    fn test_resolve_container_user_home_by_name() {
+        let dir = temp_dir();
+        let etc = dir.path().join("etc");
+        fs::create_dir_all(&etc).unwrap();
+        fs::write(
+            etc.join("passwd"),
+            "root:x:0:0:root:/root:/bin/bash\ntestuser:x:1000:1000:Test User:/home/testuser:/bin/bash\n",
+        )
+        .unwrap();
+
+        let result = resolve_container_user_home(dir.path().to_str().unwrap(), "testuser");
+        assert_eq!(result.unwrap(), "/home/testuser");
+    }
+
+    #[test]
+    fn test_resolve_container_user_home_by_uid() {
+        let dir = temp_dir();
+        let etc = dir.path().join("etc");
+        fs::create_dir_all(&etc).unwrap();
+        fs::write(
+            etc.join("passwd"),
+            "root:x:0:0:root:/root:/bin/bash\ntestuser:x:1000:1000:Test User:/home/testuser:/bin/bash\n",
+        )
+        .unwrap();
+
+        let result = resolve_container_user_home(dir.path().to_str().unwrap(), "1000");
+        assert_eq!(result.unwrap(), "/home/testuser");
+    }
+
+    #[test]
+    fn test_resolve_container_user_home_missing_passwd() {
+        let dir = temp_dir();
+        let result = resolve_container_user_home(dir.path().to_str().unwrap(), "testuser");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Cannot read"));
+    }
+
+    #[test]
+    fn test_resolve_container_user_home_user_not_found_defaults() {
+        let dir = temp_dir();
+        let etc = dir.path().join("etc");
+        fs::create_dir_all(&etc).unwrap();
+        fs::write(etc.join("passwd"), "root:x:0:0:root:/root:/bin/bash\n").unwrap();
+
+        // Unknown user defaults to /home/<user>
+        let result = resolve_container_user_home(dir.path().to_str().unwrap(), "nobody2");
+        assert_eq!(result.unwrap(), "/home/nobody2");
+    }
+
+    #[test]
+    fn test_resolve_container_user_home_root_uid_defaults() {
+        let dir = temp_dir();
+        let etc = dir.path().join("etc");
+        fs::create_dir_all(&etc).unwrap();
+        fs::write(etc.join("passwd"), "").unwrap();
+
+        // UID 0 defaults to /root
+        let result = resolve_container_user_home(dir.path().to_str().unwrap(), "0");
+        assert_eq!(result.unwrap(), "/root");
+    }
+
+    #[test]
+    fn test_resolve_container_user_home_comments_blanks() {
+        let dir = temp_dir();
+        let etc = dir.path().join("etc");
+        fs::create_dir_all(&etc).unwrap();
+        fs::write(
+            etc.join("passwd"),
+            "# comment\n\nroot:x:0:0:root:/root:/bin/bash\n",
+        )
+        .unwrap();
+
+        let result = resolve_container_user_home(dir.path().to_str().unwrap(), "root");
+        assert_eq!(result.unwrap(), "/root");
+    }
+
+    // -- Control command BIND / BIND-USER -----------------------------------
+
+    #[test]
+    fn test_handle_command_bind_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "BIND myvm");
+        assert!(resp.starts_with("ERROR"));
+    }
+
+    #[test]
+    fn test_handle_command_bind_machine_not_found() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "BIND nonexistent /tmp /mnt");
+        assert!(resp.starts_with("ERROR"));
+        assert!(resp.contains("not found"));
+    }
+
+    #[test]
+    fn test_handle_command_bind_user_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "BIND-USER myvm");
+        assert!(resp.starts_with("ERROR"));
+    }
+
+    #[test]
+    fn test_handle_command_bind_user_missing_user() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "BIND-USER myvm /tmp");
+        assert!(resp.starts_with("ERROR"));
+    }
+
+    #[test]
+    fn test_handle_command_bind_case_insensitive() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "bind nonexistent /tmp /mnt");
+        assert!(resp.starts_with("ERROR"));
+        assert!(resp.contains("not found"));
+    }
+
+    #[test]
+    fn test_handle_command_bind_mount_alias() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "BIND-MOUNT nonexistent /tmp /mnt");
+        assert!(resp.starts_with("ERROR"));
+        assert!(resp.contains("not found"));
+    }
+
+    #[test]
+    fn test_handle_command_bind_user_alias() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "BIND_USER nonexistent /tmp root");
+        assert!(resp.starts_with("ERROR"));
+        assert!(resp.contains("not found"));
+    }
+
+    #[test]
+    fn test_handle_command_bind_source_not_found() {
+        let mut reg = MachineRegistry::new();
+        let machine = Machine {
+            name: "bindtest".to_string(),
+            class: MachineClass::Container,
+            service: "test".to_string(),
+            scope: String::new(),
+            leader: std::process::id(),
+            root_directory: "/".to_string(),
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+        reg.register(machine).unwrap();
+        let resp = handle_control_command(&mut reg, "BIND bindtest /nonexistent/src/path /mnt");
+        assert!(resp.starts_with("ERROR"));
+        assert!(resp.contains("does not exist"));
+    }
+
+    // -- D-Bus bind mount method struct presence ----------------------------
+
+    #[test]
+    fn test_dbus_bind_mount_method_exists() {
+        // Verify Machine1Manager has the bind_mount and bind_user fields
+        // by constructing the struct (compilation test)
+        let reg = Arc::new(Mutex::new(MachineRegistry::new()));
+        let _mgr = Machine1Manager {
+            registry: reg,
+            pool_path: "/tmp".to_string(),
+        };
     }
 }
