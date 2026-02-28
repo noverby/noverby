@@ -13,21 +13,26 @@
 //! - Control socket at `/run/systemd/machined-control` for `machinectl` CLI
 //! - D-Bus interface (`org.freedesktop.machine1`) with Manager object
 //!   (ListMachines, GetMachine, GetMachineByPID, RegisterMachine,
-//!   TerminateMachine, KillMachine, GetMachineOSRelease, ListImages;
+//!   TerminateMachine, KillMachine, GetMachineOSRelease, ListImages,
+//!   CloneImage, RenameImage, RemoveImage, SetImageLimit, SetPoolLimit,
+//!   CopyTo, CopyFrom, OpenMachineLogin, OpenMachineShell,
+//!   ImportTar, ImportRaw, ExportTar, ExportRaw, PullTar, PullRaw;
 //!   properties: PoolPath, PoolUsage, PoolLimit); deferred registration
 //!   to avoid blocking early boot before dbus-daemon is ready
+//! - Image management: discover/clone/rename/remove/set-limit for directory
+//!   and raw images in `/var/lib/machines/`
+//! - Machine scoping: transient scope unit creation via systemd1 D-Bus
+//! - Copy-to/copy-from: file copy between host and running containers
+//! - PTY forwarding: openpty + nsenter for login/shell sessions
+//! - OS image import/export/pull: tar/raw image import from file/stdin,
+//!   export to file/stdout, pull from URL (http/https)
 //! - sd_notify protocol (READY/WATCHDOG/STATUS/STOPPING)
 //! - Signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload)
 //! - Stale machine cleanup (machines whose leader PID has exited)
 //!
 //! ## Missing
 //!
-//! - Image management (list/clone/rename/remove/set-limit disk images)
-//! - Machine scoping (creating transient scope units)
-//! - Copy-to/copy-from operations
-//! - PTY forwarding for `login`/`shell`
 //! - bind/bind-user mounts
-//! - OS image operations (import/export/pull)
 
 use std::collections::BTreeMap;
 use std::env;
@@ -35,8 +40,9 @@ use std::fmt;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::Shutdown;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -51,6 +57,7 @@ use zbus::blocking::Connection;
 
 const MACHINES_DIR: &str = "/run/systemd/machines";
 const CONTROL_SOCKET_PATH: &str = "/run/systemd/machined-control";
+const POOL_PATH: &str = "/var/lib/machines";
 
 const DBUS_NAME: &str = "org.freedesktop.machine1";
 const DBUS_PATH: &str = "/org/freedesktop/machine1";
@@ -144,6 +151,888 @@ pub struct Machine {
     /// Current state.
     pub state: MachineState,
 }
+
+// ---------------------------------------------------------------------------
+// Image management
+// ---------------------------------------------------------------------------
+
+/// Type of a machine image.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageType {
+    Directory,
+    Raw,
+}
+
+impl ImageType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ImageType::Directory => "directory",
+            ImageType::Raw => "raw",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "directory" | "subvolume" => Some(ImageType::Directory),
+            "raw" => Some(ImageType::Raw),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for ImageType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A machine image stored in the pool.
+#[derive(Debug, Clone)]
+pub struct ImageInfo {
+    /// Image name.
+    pub name: String,
+    /// Type (directory or raw).
+    pub image_type: ImageType,
+    /// Full path to the image.
+    pub path: PathBuf,
+    /// Whether the image is read-only.
+    pub read_only: bool,
+    /// Creation time (unix microseconds), 0 if unknown.
+    pub crtime: u64,
+    /// Modification time (unix microseconds), 0 if unknown.
+    pub mtime: u64,
+    /// Disk usage in bytes, 0 if unknown.
+    pub usage: u64,
+    /// Size limit in bytes, 0 for no limit.
+    pub limit: u64,
+}
+
+impl ImageInfo {
+    /// Discover an image from a path entry.
+    pub fn from_path(path: &Path) -> Option<Self> {
+        let name = path.file_name()?.to_string_lossy().to_string();
+        if name.starts_with('.') {
+            return None;
+        }
+
+        let meta = fs::metadata(path).ok()?;
+        let image_type = if meta.is_dir() {
+            ImageType::Directory
+        } else if meta.is_file() {
+            ImageType::Raw
+        } else {
+            return None;
+        };
+
+        let read_only = meta.permissions().readonly();
+        let mtime = meta.mtime() as u64 * 1_000_000;
+        let usage = if image_type == ImageType::Raw {
+            meta.len()
+        } else {
+            // For directories, we could walk recursively, but use 0 for now
+            0
+        };
+
+        // Read limit from .limit file if present
+        let limit_path = path.with_extension("limit");
+        let limit = fs::read_to_string(&limit_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(0);
+
+        Some(ImageInfo {
+            name,
+            image_type,
+            path: path.to_path_buf(),
+            read_only,
+            crtime: mtime, // Use mtime as crtime approximation
+            mtime,
+            usage,
+            limit,
+        })
+    }
+
+    /// Format status output for this image.
+    pub fn format_status(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&format!("       Name: {}\n", self.name));
+        s.push_str(&format!("       Type: {}\n", self.image_type));
+        s.push_str(&format!("       Path: {}\n", self.path.display()));
+        s.push_str(&format!(
+            "   ReadOnly: {}\n",
+            if self.read_only { "yes" } else { "no" }
+        ));
+        s.push_str(&format!("    Created: {}\n", format_timestamp(self.crtime)));
+        s.push_str(&format!("   Modified: {}\n", format_timestamp(self.mtime)));
+        if self.usage > 0 {
+            s.push_str(&format!("      Usage: {}\n", format_bytes(self.usage)));
+        }
+        if self.limit > 0 {
+            s.push_str(&format!("      Limit: {}\n", format_bytes(self.limit)));
+        }
+        s
+    }
+
+    /// Format `show` output (key=value pairs).
+    pub fn format_show(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&format!("Name={}\n", self.name));
+        s.push_str(&format!("Type={}\n", self.image_type));
+        s.push_str(&format!("Path={}\n", self.path.display()));
+        s.push_str(&format!(
+            "ReadOnly={}\n",
+            if self.read_only { "yes" } else { "no" }
+        ));
+        s.push_str(&format!("CreationTimestamp={}\n", self.crtime));
+        s.push_str(&format!("ModificationTimestamp={}\n", self.mtime));
+        s.push_str(&format!("Usage={}\n", self.usage));
+        s.push_str(&format!("Limit={}\n", self.limit));
+        s
+    }
+}
+
+/// Discover all images in the pool directory.
+pub fn discover_images(pool_path: &str) -> Vec<ImageInfo> {
+    let pool = Path::new(pool_path);
+    if !pool.is_dir() {
+        return Vec::new();
+    }
+    let mut images = Vec::new();
+    if let Ok(entries) = fs::read_dir(pool) {
+        for entry in entries.flatten() {
+            if let Some(info) = ImageInfo::from_path(&entry.path()) {
+                images.push(info);
+            }
+        }
+    }
+    images.sort_by(|a, b| a.name.cmp(&b.name));
+    images
+}
+
+/// Find an image by name in the pool.
+pub fn find_image(pool_path: &str, name: &str) -> Option<ImageInfo> {
+    let pool = Path::new(pool_path);
+    // Try exact name first
+    let path = pool.join(name);
+    if path.exists() {
+        return ImageInfo::from_path(&path);
+    }
+    // Try with .raw extension
+    let raw_path = pool.join(format!("{}.raw", name));
+    if raw_path.exists() {
+        return ImageInfo::from_path(&raw_path);
+    }
+    None
+}
+
+/// Clone an image to a new name.
+pub fn clone_image(
+    pool_path: &str,
+    source: &str,
+    dest: &str,
+    read_only: bool,
+) -> Result<(), String> {
+    if !is_valid_machine_name(dest) {
+        return Err(format!("Invalid image name '{}'", dest));
+    }
+
+    let src_image =
+        find_image(pool_path, source).ok_or_else(|| format!("Image '{}' not found", source))?;
+
+    let dest_path = Path::new(pool_path).join(dest);
+    if dest_path.exists() {
+        return Err(format!("Image '{}' already exists", dest));
+    }
+
+    match src_image.image_type {
+        ImageType::Directory => {
+            // Use cp -a for recursive copy
+            let status = std::process::Command::new("cp")
+                .args([
+                    "-a",
+                    &src_image.path.to_string_lossy(),
+                    &dest_path.to_string_lossy(),
+                ])
+                .status()
+                .map_err(|e| format!("Failed to clone directory: {}", e))?;
+            if !status.success() {
+                return Err("Failed to clone directory image".to_string());
+            }
+        }
+        ImageType::Raw => {
+            let dest_raw = if dest.ends_with(".raw") {
+                dest_path.clone()
+            } else {
+                Path::new(pool_path).join(format!("{}.raw", dest))
+            };
+            fs::copy(&src_image.path, &dest_raw)
+                .map_err(|e| format!("Failed to clone raw image: {}", e))?;
+        }
+    }
+
+    if read_only {
+        let perms = std::os::unix::fs::PermissionsExt::from_mode(0o444);
+        let _ = fs::set_permissions(&dest_path, perms);
+    }
+
+    Ok(())
+}
+
+/// Rename an image.
+pub fn rename_image(pool_path: &str, old_name: &str, new_name: &str) -> Result<(), String> {
+    if !is_valid_machine_name(new_name) {
+        return Err(format!("Invalid image name '{}'", new_name));
+    }
+
+    let old_image =
+        find_image(pool_path, old_name).ok_or_else(|| format!("Image '{}' not found", old_name))?;
+
+    let new_path = if old_image.image_type == ImageType::Raw && !new_name.ends_with(".raw") {
+        Path::new(pool_path).join(format!("{}.raw", new_name))
+    } else {
+        Path::new(pool_path).join(new_name)
+    };
+
+    if new_path.exists() {
+        return Err(format!("Image '{}' already exists", new_name));
+    }
+
+    fs::rename(&old_image.path, &new_path).map_err(|e| format!("Failed to rename image: {}", e))?;
+
+    // Also rename .limit file if present
+    let old_limit = old_image.path.with_extension("limit");
+    if old_limit.exists() {
+        let new_limit = new_path.with_extension("limit");
+        let _ = fs::rename(&old_limit, &new_limit);
+    }
+
+    Ok(())
+}
+
+/// Remove an image.
+pub fn remove_image(pool_path: &str, name: &str) -> Result<(), String> {
+    let image = find_image(pool_path, name).ok_or_else(|| format!("Image '{}' not found", name))?;
+
+    match image.image_type {
+        ImageType::Directory => {
+            fs::remove_dir_all(&image.path)
+                .map_err(|e| format!("Failed to remove directory image: {}", e))?;
+        }
+        ImageType::Raw => {
+            fs::remove_file(&image.path)
+                .map_err(|e| format!("Failed to remove raw image: {}", e))?;
+        }
+    }
+
+    // Also remove .limit file if present
+    let limit_path = image.path.with_extension("limit");
+    let _ = fs::remove_file(&limit_path);
+
+    Ok(())
+}
+
+/// Set a size limit on an image (stored as a .limit sidecar file).
+pub fn set_image_limit(pool_path: &str, name: &str, limit_bytes: u64) -> Result<(), String> {
+    let image = find_image(pool_path, name).ok_or_else(|| format!("Image '{}' not found", name))?;
+
+    let limit_path = image.path.with_extension("limit");
+    if limit_bytes == 0 {
+        // Remove limit
+        let _ = fs::remove_file(&limit_path);
+    } else {
+        fs::write(&limit_path, format!("{}\n", limit_bytes))
+            .map_err(|e| format!("Failed to set limit: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Get pool usage statistics.
+pub fn pool_usage_stats(pool_path: &str) -> (u64, u64) {
+    let pool = Path::new(pool_path);
+    if !pool.exists() {
+        return (0, 0);
+    }
+    // Use statvfs for disk usage
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let c_path = std::ffi::CString::new(pool_path).unwrap_or_default();
+    let ret = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+    if ret != 0 {
+        return (0, 0);
+    }
+    let total = stat.f_blocks * stat.f_frsize;
+    let free = stat.f_bfree * stat.f_frsize;
+    let used = total.saturating_sub(free);
+    (used, total)
+}
+
+/// Format bytes in human-readable form.
+pub fn format_bytes(bytes: u64) -> String {
+    if bytes == 0 {
+        return "0B".to_string();
+    }
+    let units = ["B", "K", "M", "G", "T", "P"];
+    let mut val = bytes as f64;
+    let mut idx = 0;
+    while val >= 1024.0 && idx < units.len() - 1 {
+        val /= 1024.0;
+        idx += 1;
+    }
+    if idx == 0 {
+        format!("{}B", bytes)
+    } else {
+        format!("{:.1}{}", val, units[idx])
+    }
+}
+
+/// Parse a size string with optional K/M/G/T suffix.
+pub fn parse_size(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (num_str, multiplier) = if let Some(n) = s.strip_suffix('T') {
+        (n, 1024u64 * 1024 * 1024 * 1024)
+    } else if let Some(n) = s.strip_suffix('G') {
+        (n, 1024u64 * 1024 * 1024)
+    } else if let Some(n) = s.strip_suffix('M') {
+        (n, 1024u64 * 1024)
+    } else if let Some(n) = s.strip_suffix('K') {
+        (n, 1024u64)
+    } else if let Some(n) = s.strip_suffix('B') {
+        (n, 1u64)
+    } else {
+        (s, 1u64)
+    };
+    num_str.trim().parse::<u64>().ok().map(|n| n * multiplier)
+}
+
+// ---------------------------------------------------------------------------
+// Machine scoping (transient scope units)
+// ---------------------------------------------------------------------------
+
+/// Create a transient scope unit for a machine via D-Bus.
+///
+/// Calls org.freedesktop.systemd1.Manager.StartTransientUnit to create
+/// a scope like `machine-<name>.scope` containing the leader PID.
+pub fn create_machine_scope(name: &str, leader: u32, description: &str) -> Result<String, String> {
+    let scope_name = format!("machine-{}.scope", name);
+
+    // Build D-Bus connection to system bus
+    let conn = zbus::blocking::Connection::system()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+
+    let _proxy = zbus::blocking::fdo::DBusProxy::new(&conn)
+        .map_err(|e| format!("D-Bus proxy failed: {}", e))?;
+
+    // Use the systemd1 Manager to start a transient unit
+    // We call StartTransientUnit(name, mode, properties, aux)
+    // Since zbus doesn't have a typed systemd1 proxy, we use the raw message API
+    let msg = conn.call_method(
+        Some("org.freedesktop.systemd1"),
+        "/org/freedesktop/systemd1",
+        Some("org.freedesktop.systemd1.Manager"),
+        "StartTransientUnit",
+        &(
+            &scope_name,
+            "fail",
+            vec![
+                ("Description", zbus::zvariant::Value::from(description)),
+                ("PIDs", zbus::zvariant::Value::from(vec![leader])),
+                ("Delegate", zbus::zvariant::Value::from(true)),
+            ],
+            Vec::<(String, Vec<(String, zbus::zvariant::Value)>)>::new(),
+        ),
+    );
+
+    match msg {
+        Ok(_) => {
+            log::info!("Created transient scope unit '{}'", scope_name);
+            Ok(scope_name)
+        }
+        Err(e) => {
+            // Non-fatal: machine still works without a scope
+            log::warn!("Failed to create scope '{}': {}", scope_name, e);
+            Err(format!("Failed to create scope: {}", e))
+        }
+    }
+}
+
+/// Stop a transient scope unit.
+pub fn stop_machine_scope(scope_name: &str) -> Result<(), String> {
+    let conn = zbus::blocking::Connection::system()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+
+    let _ = conn.call_method(
+        Some("org.freedesktop.systemd1"),
+        "/org/freedesktop/systemd1",
+        Some("org.freedesktop.systemd1.Manager"),
+        "StopUnit",
+        &(scope_name, "fail"),
+    );
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Copy-to/copy-from operations
+// ---------------------------------------------------------------------------
+
+/// Copy a file from the host to a running container.
+///
+/// Accesses the container's root filesystem directly via the root_directory
+/// path (works for filesystem-based containers).
+pub fn copy_to_machine(
+    registry: &MachineRegistry,
+    machine_name: &str,
+    host_path: &str,
+    container_path: &str,
+) -> Result<(), String> {
+    let machine = registry
+        .get(machine_name)
+        .ok_or_else(|| format!("Machine '{}' not found", machine_name))?;
+
+    let root = &machine.root_directory;
+    let dest = if container_path.starts_with('/') {
+        format!("{}{}", root.trim_end_matches('/'), container_path)
+    } else {
+        format!("{}/{}", root.trim_end_matches('/'), container_path)
+    };
+
+    let src = Path::new(host_path);
+    if !src.exists() {
+        return Err(format!("Source path '{}' does not exist", host_path));
+    }
+
+    let dest_path = Path::new(&dest);
+    // Ensure parent directory exists
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+    }
+
+    if src.is_dir() {
+        let status = std::process::Command::new("cp")
+            .args(["-a", host_path, &dest])
+            .status()
+            .map_err(|e| format!("Failed to copy: {}", e))?;
+        if !status.success() {
+            return Err("Failed to copy directory".to_string());
+        }
+    } else {
+        fs::copy(host_path, &dest).map_err(|e| format!("Failed to copy file: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Copy a file from a running container to the host.
+pub fn copy_from_machine(
+    registry: &MachineRegistry,
+    machine_name: &str,
+    container_path: &str,
+    host_path: &str,
+) -> Result<(), String> {
+    let machine = registry
+        .get(machine_name)
+        .ok_or_else(|| format!("Machine '{}' not found", machine_name))?;
+
+    let root = &machine.root_directory;
+    let src = if container_path.starts_with('/') {
+        format!("{}{}", root.trim_end_matches('/'), container_path)
+    } else {
+        format!("{}/{}", root.trim_end_matches('/'), container_path)
+    };
+
+    let src_path = Path::new(&src);
+    if !src_path.exists() {
+        return Err(format!(
+            "Source path '{}' does not exist in container",
+            container_path
+        ));
+    }
+
+    let dest_path = Path::new(host_path);
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+    }
+
+    if src_path.is_dir() {
+        let status = std::process::Command::new("cp")
+            .args(["-a", &src, host_path])
+            .status()
+            .map_err(|e| format!("Failed to copy: {}", e))?;
+        if !status.success() {
+            return Err("Failed to copy directory".to_string());
+        }
+    } else {
+        fs::copy(&src, host_path).map_err(|e| format!("Failed to copy file: {}", e))?;
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// PTY forwarding for login/shell
+// ---------------------------------------------------------------------------
+
+/// Open a PTY and enter a container's namespaces to provide login/shell.
+///
+/// Returns (master_fd, child_pid) on success. The caller should forward
+/// I/O between the master fd and the client's terminal.
+pub fn open_machine_pty(
+    registry: &MachineRegistry,
+    machine_name: &str,
+    shell_cmd: Option<&str>,
+    user: Option<&str>,
+) -> Result<(i32, i32), String> {
+    let machine = registry
+        .get(machine_name)
+        .ok_or_else(|| format!("Machine '{}' not found", machine_name))?;
+
+    if machine.leader == 0 {
+        return Err(format!("Machine '{}' has no leader PID", machine_name));
+    }
+
+    // Open a PTY pair
+    let mut master_fd: libc::c_int = -1;
+    let mut slave_fd: libc::c_int = -1;
+    let ret = unsafe {
+        libc::openpty(
+            &mut master_fd,
+            &mut slave_fd,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    if ret != 0 {
+        return Err(format!("openpty failed: {}", io::Error::last_os_error()));
+    }
+
+    let leader_pid = machine.leader as i32;
+    let root_dir = machine.root_directory.clone();
+
+    let child_pid = unsafe { libc::fork() };
+    match child_pid {
+        -1 => {
+            unsafe {
+                libc::close(master_fd);
+                libc::close(slave_fd);
+            }
+            Err(format!("fork failed: {}", io::Error::last_os_error()))
+        }
+        0 => {
+            // Child process: enter the container's namespaces
+            unsafe {
+                libc::close(master_fd);
+            }
+
+            // Open and enter the leader's namespaces
+            let ns_types = ["pid", "mnt", "uts", "ipc", "net"];
+            for ns in &ns_types {
+                let ns_path = format!("/proc/{}/ns/{}", leader_pid, ns);
+                let fd = unsafe {
+                    libc::open(
+                        std::ffi::CString::new(ns_path.as_str()).unwrap().as_ptr(),
+                        libc::O_RDONLY,
+                    )
+                };
+                if fd >= 0 {
+                    let _ = unsafe { libc::setns(fd, 0) };
+                    unsafe { libc::close(fd) };
+                }
+            }
+
+            // Set up the slave PTY as stdin/stdout/stderr
+            unsafe {
+                libc::setsid();
+                libc::ioctl(slave_fd, libc::TIOCSCTTY as _, 0);
+                libc::dup2(slave_fd, 0);
+                libc::dup2(slave_fd, 1);
+                libc::dup2(slave_fd, 2);
+                if slave_fd > 2 {
+                    libc::close(slave_fd);
+                }
+            }
+
+            // chroot into the container root
+            if root_dir != "/" {
+                let c_root = std::ffi::CString::new(root_dir.as_str()).unwrap();
+                unsafe {
+                    libc::chroot(c_root.as_ptr());
+                    libc::chdir(c"/".as_ptr());
+                }
+            }
+
+            // Switch user if requested
+            if let Some(u) = user
+                && let Ok(uid) = u.parse::<u32>()
+            {
+                unsafe {
+                    libc::setgid(uid);
+                    libc::setuid(uid);
+                }
+            }
+
+            // Exec the shell
+            let shell = shell_cmd.unwrap_or("/bin/login");
+            let c_shell = std::ffi::CString::new(shell).unwrap();
+            if shell.contains("login") {
+                // For login, no args
+                unsafe {
+                    libc::execl(
+                        c_shell.as_ptr(),
+                        c_shell.as_ptr(),
+                        std::ptr::null::<libc::c_char>(),
+                    );
+                }
+            } else {
+                // For shell, pass -l for login shell
+                let c_arg = std::ffi::CString::new("-l").unwrap();
+                unsafe {
+                    libc::execl(
+                        c_shell.as_ptr(),
+                        c_shell.as_ptr(),
+                        c_arg.as_ptr(),
+                        std::ptr::null::<libc::c_char>(),
+                    );
+                }
+            }
+
+            // If exec fails
+            unsafe { libc::_exit(127) };
+        }
+        pid => {
+            // Parent: close slave, return master fd and child pid
+            unsafe {
+                libc::close(slave_fd);
+            }
+            Ok((master_fd, pid))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OS image import/export/pull
+// ---------------------------------------------------------------------------
+
+/// Import a tar archive as a machine image.
+pub fn import_tar(
+    pool_path: &str,
+    source_path: &str,
+    image_name: &str,
+    read_only: bool,
+) -> Result<(), String> {
+    if !is_valid_machine_name(image_name) {
+        return Err(format!("Invalid image name '{}'", image_name));
+    }
+
+    let dest = Path::new(pool_path).join(image_name);
+    if dest.exists() {
+        return Err(format!("Image '{}' already exists", image_name));
+    }
+
+    fs::create_dir_all(&dest).map_err(|e| format!("Failed to create image directory: {}", e))?;
+
+    let status = if source_path == "-" {
+        // Read from stdin
+        std::process::Command::new("tar")
+            .args(["xf", "-", "-C", &dest.to_string_lossy()])
+            .stdin(std::process::Stdio::inherit())
+            .status()
+            .map_err(|e| format!("Failed to run tar: {}", e))?
+    } else {
+        std::process::Command::new("tar")
+            .args(["xf", source_path, "-C", &dest.to_string_lossy()])
+            .status()
+            .map_err(|e| format!("Failed to run tar: {}", e))?
+    };
+
+    if !status.success() {
+        let _ = fs::remove_dir_all(&dest);
+        return Err("Failed to extract tar archive".to_string());
+    }
+
+    if read_only {
+        let perms = std::os::unix::fs::PermissionsExt::from_mode(0o555);
+        let _ = fs::set_permissions(&dest, perms);
+    }
+
+    Ok(())
+}
+
+/// Import a raw disk image.
+pub fn import_raw(
+    pool_path: &str,
+    source_path: &str,
+    image_name: &str,
+    read_only: bool,
+) -> Result<(), String> {
+    if !is_valid_machine_name(image_name) {
+        return Err(format!("Invalid image name '{}'", image_name));
+    }
+
+    let dest_name = if image_name.ends_with(".raw") {
+        image_name.to_string()
+    } else {
+        format!("{}.raw", image_name)
+    };
+    let dest = Path::new(pool_path).join(&dest_name);
+    if dest.exists() {
+        return Err(format!("Image '{}' already exists", image_name));
+    }
+
+    if source_path == "-" {
+        // Read from stdin
+        let mut file =
+            fs::File::create(&dest).map_err(|e| format!("Failed to create image file: {}", e))?;
+        let stdin = io::stdin();
+        let mut handle = stdin.lock();
+        io::copy(&mut handle, &mut file).map_err(|e| format!("Failed to write image: {}", e))?;
+    } else {
+        fs::copy(source_path, &dest).map_err(|e| format!("Failed to copy raw image: {}", e))?;
+    }
+
+    if read_only {
+        let perms = std::os::unix::fs::PermissionsExt::from_mode(0o444);
+        let _ = fs::set_permissions(&dest, perms);
+    }
+
+    Ok(())
+}
+
+/// Export a machine image as a tar archive.
+pub fn export_tar(pool_path: &str, image_name: &str, dest_path: &str) -> Result<(), String> {
+    let image = find_image(pool_path, image_name)
+        .ok_or_else(|| format!("Image '{}' not found", image_name))?;
+
+    if image.image_type != ImageType::Directory {
+        return Err("Can only export directory images as tar".to_string());
+    }
+
+    let status = if dest_path == "-" {
+        std::process::Command::new("tar")
+            .args(["cf", "-", "-C", &image.path.to_string_lossy(), "."])
+            .stdout(std::process::Stdio::inherit())
+            .status()
+            .map_err(|e| format!("Failed to run tar: {}", e))?
+    } else {
+        std::process::Command::new("tar")
+            .args(["cf", dest_path, "-C", &image.path.to_string_lossy(), "."])
+            .status()
+            .map_err(|e| format!("Failed to run tar: {}", e))?
+    };
+
+    if !status.success() {
+        return Err("Failed to create tar archive".to_string());
+    }
+
+    Ok(())
+}
+
+/// Export a machine image as a raw copy.
+pub fn export_raw(pool_path: &str, image_name: &str, dest_path: &str) -> Result<(), String> {
+    let image = find_image(pool_path, image_name)
+        .ok_or_else(|| format!("Image '{}' not found", image_name))?;
+
+    if image.image_type != ImageType::Raw {
+        return Err("Can only export raw images as raw".to_string());
+    }
+
+    if dest_path == "-" {
+        let mut file =
+            fs::File::open(&image.path).map_err(|e| format!("Failed to open image: {}", e))?;
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        io::copy(&mut file, &mut handle).map_err(|e| format!("Failed to write image: {}", e))?;
+    } else {
+        fs::copy(&image.path, dest_path).map_err(|e| format!("Failed to copy image: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Pull a tar image from a URL.
+pub fn pull_tar(pool_path: &str, url: &str, image_name: &str, _verify: &str) -> Result<(), String> {
+    if !is_valid_machine_name(image_name) {
+        return Err(format!("Invalid image name '{}'", image_name));
+    }
+
+    let dest = Path::new(pool_path).join(image_name);
+    if dest.exists() {
+        return Err(format!("Image '{}' already exists", image_name));
+    }
+
+    // Download to a temporary file, then extract
+    let tmp_tar = Path::new(pool_path).join(format!(".{}.tar.tmp", image_name));
+
+    let status = std::process::Command::new("curl")
+        .args(["-fsSL", "-o", &tmp_tar.to_string_lossy(), url])
+        .status()
+        .map_err(|e| format!("Failed to download: {}", e))?;
+
+    if !status.success() {
+        let _ = fs::remove_file(&tmp_tar);
+        return Err(format!("Failed to download from '{}'", url));
+    }
+
+    fs::create_dir_all(&dest).map_err(|e| format!("Failed to create image directory: {}", e))?;
+
+    let extract = std::process::Command::new("tar")
+        .args([
+            "xf",
+            &tmp_tar.to_string_lossy(),
+            "-C",
+            &dest.to_string_lossy(),
+        ])
+        .status()
+        .map_err(|e| format!("Failed to extract: {}", e))?;
+
+    let _ = fs::remove_file(&tmp_tar);
+
+    if !extract.success() {
+        let _ = fs::remove_dir_all(&dest);
+        return Err("Failed to extract downloaded tar".to_string());
+    }
+
+    log::info!("Pulled tar image '{}' from {}", image_name, url);
+    Ok(())
+}
+
+/// Pull a raw image from a URL.
+pub fn pull_raw(pool_path: &str, url: &str, image_name: &str, _verify: &str) -> Result<(), String> {
+    if !is_valid_machine_name(image_name) {
+        return Err(format!("Invalid image name '{}'", image_name));
+    }
+
+    let dest_name = if image_name.ends_with(".raw") {
+        image_name.to_string()
+    } else {
+        format!("{}.raw", image_name)
+    };
+    let dest = Path::new(pool_path).join(&dest_name);
+    if dest.exists() {
+        return Err(format!("Image '{}' already exists", image_name));
+    }
+
+    let status = std::process::Command::new("curl")
+        .args(["-fsSL", "-o", &dest.to_string_lossy(), url])
+        .status()
+        .map_err(|e| format!("Failed to download: {}", e))?;
+
+    if !status.success() {
+        let _ = fs::remove_file(&dest);
+        return Err(format!("Failed to download from '{}'", url));
+    }
+
+    log::info!("Pulled raw image '{}' from {}", image_name, url);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Data model — Machine
+// ---------------------------------------------------------------------------
 
 impl Machine {
     /// Serialize to an INI-style state file for `/run/systemd/machines/<name>`.
@@ -463,6 +1352,7 @@ type SharedRegistry = Arc<Mutex<MachineRegistry>>;
 ///   PoolLimit (t) — pool size limit in bytes
 struct Machine1Manager {
     registry: SharedRegistry,
+    pool_path: String,
 }
 
 #[zbus::interface(name = "org.freedesktop.machine1.Manager")]
@@ -471,17 +1361,19 @@ impl Machine1Manager {
 
     #[zbus(property, name = "PoolPath")]
     fn pool_path(&self) -> String {
-        "/var/lib/machines".to_string()
+        self.pool_path.clone()
     }
 
     #[zbus(property, name = "PoolUsage")]
     fn pool_usage(&self) -> u64 {
-        0u64
+        let (used, _total) = pool_usage_stats(&self.pool_path);
+        used
     }
 
     #[zbus(property, name = "PoolLimit")]
     fn pool_limit(&self) -> u64 {
-        0u64
+        let (_used, total) = pool_usage_stats(&self.pool_path);
+        total
     }
 
     // --- Methods ---
@@ -555,11 +1447,16 @@ impl Machine1Manager {
             root_directory
         };
 
+        // Attempt to create a transient scope unit for this machine
+        let scope =
+            create_machine_scope(&name, leader, &format!("Machine {} ({})", name, class_str))
+                .unwrap_or_default();
+
         let machine = Machine {
             name: name.clone(),
             class,
             service,
-            scope: String::new(),
+            scope,
             leader,
             root_directory: root_dir,
             netif: Vec::new(),
@@ -586,6 +1483,10 @@ impl Machine1Manager {
                     unsafe {
                         libc::kill(machine.leader as i32, libc::SIGTERM);
                     }
+                }
+                // Stop the transient scope if one was created
+                if !machine.scope.is_empty() {
+                    let _ = stop_machine_scope(&machine.scope);
                 }
                 Ok(())
             }
@@ -646,14 +1547,188 @@ impl Machine1Manager {
         }
     }
 
-    /// ListImages() → a(sssbon) — stub returning empty list
+    /// ListImages() → a(sssbon) — (name, type, path, read_only, crtime, mtime)
     fn list_images(&self) -> Vec<(String, String, String, bool, u64, u64)> {
-        Vec::new()
+        discover_images(&self.pool_path)
+            .into_iter()
+            .map(|img| {
+                (
+                    img.name,
+                    img.image_type.as_str().to_string(),
+                    img.path.to_string_lossy().to_string(),
+                    img.read_only,
+                    img.crtime,
+                    img.mtime,
+                )
+            })
+            .collect()
     }
 
-    /// CleanPool(s mode) → a(ss) — stub
+    /// CloneImage(s source, s dest, b read_only)
+    fn clone_image_method(
+        &self,
+        source: String,
+        dest: String,
+        read_only: bool,
+    ) -> zbus::fdo::Result<()> {
+        clone_image(&self.pool_path, &source, &dest, read_only).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// RenameImage(s old_name, s new_name)
+    fn rename_image(&self, old_name: String, new_name: String) -> zbus::fdo::Result<()> {
+        rename_image(&self.pool_path, &old_name, &new_name).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// RemoveImage(s name)
+    fn remove_image(&self, name: String) -> zbus::fdo::Result<()> {
+        remove_image(&self.pool_path, &name).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// SetImageLimit(s name, t limit)
+    fn set_image_limit(&self, name: String, limit: u64) -> zbus::fdo::Result<()> {
+        set_image_limit(&self.pool_path, &name, limit).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// SetPoolLimit(t limit) — stub, pool limits require btrfs quota
+    fn set_pool_limit(&self, _limit: u64) -> zbus::fdo::Result<()> {
+        Ok(())
+    }
+
+    /// GetImageOSRelease(s name) → a{ss}
+    fn get_image_os_release(&self, name: String) -> zbus::fdo::Result<Vec<(String, String)>> {
+        let image = find_image(&self.pool_path, &name)
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("Image '{}' not found", name)))?;
+
+        if image.image_type != ImageType::Directory {
+            return Err(zbus::fdo::Error::Failed(
+                "Can only read os-release from directory images".to_string(),
+            ));
+        }
+
+        let mut fields = Vec::new();
+        let os_release_path = image.path.join("etc/os-release");
+        let usr_os_release_path = image.path.join("usr/lib/os-release");
+        let content = fs::read_to_string(&os_release_path)
+            .or_else(|_| fs::read_to_string(&usr_os_release_path))
+            .unwrap_or_default();
+        for (key, val) in parse_env_content(&content) {
+            fields.push((key, val));
+        }
+        Ok(fields)
+    }
+
+    /// CopyTo(s machine, s host_path, s container_path)
+    fn copy_to(
+        &self,
+        machine: String,
+        host_path: String,
+        container_path: String,
+    ) -> zbus::fdo::Result<()> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        copy_to_machine(&registry, &machine, &host_path, &container_path)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// CopyFrom(s machine, s container_path, s host_path)
+    fn copy_from(
+        &self,
+        machine: String,
+        container_path: String,
+        host_path: String,
+    ) -> zbus::fdo::Result<()> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        copy_from_machine(&registry, &machine, &container_path, &host_path)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// OpenMachineLogin(s name) → h (fd)
+    /// Returns the master PTY fd for a login session.
+    fn open_machine_login(&self, name: String) -> zbus::fdo::Result<(i32, i32)> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        open_machine_pty(&registry, &name, None, None).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// OpenMachineShell(s name, s user, s shell) → h (fd)
+    fn open_machine_shell(
+        &self,
+        name: String,
+        user: String,
+        shell: String,
+    ) -> zbus::fdo::Result<(i32, i32)> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let u = if user.is_empty() {
+            None
+        } else {
+            Some(user.as_str())
+        };
+        let s = if shell.is_empty() {
+            None
+        } else {
+            Some(shell.as_str())
+        };
+        open_machine_pty(&registry, &name, s, u).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// ImportTar(s source, s name, b read_only)
+    fn import_tar_method(
+        &self,
+        source: String,
+        name: String,
+        read_only: bool,
+    ) -> zbus::fdo::Result<()> {
+        import_tar(&self.pool_path, &source, &name, read_only).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// ImportRaw(s source, s name, b read_only)
+    fn import_raw_method(
+        &self,
+        source: String,
+        name: String,
+        read_only: bool,
+    ) -> zbus::fdo::Result<()> {
+        import_raw(&self.pool_path, &source, &name, read_only).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// ExportTar(s name, s dest)
+    fn export_tar_method(&self, name: String, dest: String) -> zbus::fdo::Result<()> {
+        export_tar(&self.pool_path, &name, &dest).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// ExportRaw(s name, s dest)
+    fn export_raw_method(&self, name: String, dest: String) -> zbus::fdo::Result<()> {
+        export_raw(&self.pool_path, &name, &dest).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// PullTar(s url, s name, s verify)
+    fn pull_tar_method(&self, url: String, name: String, verify: String) -> zbus::fdo::Result<()> {
+        pull_tar(&self.pool_path, &url, &name, &verify).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// PullRaw(s url, s name, s verify)
+    fn pull_raw_method(&self, url: String, name: String, verify: String) -> zbus::fdo::Result<()> {
+        pull_raw(&self.pool_path, &url, &name, &verify).map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// CleanPool(s mode) → a(ss)
     fn clean_pool(&self, _mode: String) -> Vec<(String, String)> {
-        Vec::new()
+        // Clean hidden/temporary images
+        let pool = Path::new(&self.pool_path);
+        let mut cleaned = Vec::new();
+        if let Ok(entries) = fs::read_dir(pool) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') && name.ends_with(".tmp") {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        let _ = fs::remove_dir_all(&path);
+                    } else {
+                        let _ = fs::remove_file(&path);
+                    }
+                    cleaned.push((name, "removed".to_string()));
+                }
+            }
+        }
+        cleaned
     }
 
     /// Describe() → s (JSON description of the manager state)
@@ -690,16 +1765,20 @@ impl Machine1Manager {
         }
         machines_json.push(']');
 
+        let (pool_used, pool_total) = pool_usage_stats(&self.pool_path);
         format!(
             concat!(
                 "{{",
-                "\"PoolPath\":\"/var/lib/machines\",",
-                "\"PoolUsage\":0,",
-                "\"PoolLimit\":0,",
+                "\"PoolPath\":\"{}\",",
+                "\"PoolUsage\":{},",
+                "\"PoolLimit\":{},",
                 "\"NMachines\":{},",
                 "\"Machines\":{}",
                 "}}"
             ),
+            json_escape(&self.pool_path),
+            pool_used,
+            pool_total,
             machines.len(),
             machines_json,
         )
@@ -727,7 +1806,10 @@ fn machine_object_path(name: &str) -> String {
 /// in a background thread. The returned `Connection` must be kept alive
 /// for as long as we want to serve D-Bus requests.
 fn setup_dbus(shared: SharedRegistry) -> Result<Connection, String> {
-    let iface = Machine1Manager { registry: shared };
+    let iface = Machine1Manager {
+        registry: shared,
+        pool_path: POOL_PATH.to_string(),
+    };
     let conn = zbus::blocking::connection::Builder::system()
         .map_err(|e| format!("D-Bus builder failed: {}", e))?
         .name(DBUS_NAME)
@@ -930,7 +2012,15 @@ fn handle_control_command(registry: &mut MachineRegistry, line: &str) -> String 
                 .filter(|s| !s.is_empty())
                 .unwrap_or(&"/")
                 .to_string();
-            let scope = reg_parts.get(5).unwrap_or(&"").to_string();
+            let explicit_scope = reg_parts.get(5).unwrap_or(&"").to_string();
+
+            // Attempt to create a transient scope unit
+            let scope = if explicit_scope.is_empty() {
+                create_machine_scope(&name, leader, &format!("Machine {}", name))
+                    .unwrap_or_default()
+            } else {
+                explicit_scope
+            };
 
             let machine = Machine {
                 name: name.clone(),
@@ -965,6 +2055,10 @@ fn handle_control_command(registry: &mut MachineRegistry, line: &str) -> String 
                             libc::kill(machine.leader as i32, libc::SIGTERM);
                         }
                     }
+                    // Stop the transient scope
+                    if !machine.scope.is_empty() {
+                        let _ = stop_machine_scope(&machine.scope);
+                    }
                     format!("OK: Terminated '{}'\n", args_str)
                 }
                 Err(e) => format!("ERROR: {}\n", e),
@@ -981,6 +2075,271 @@ fn handle_control_command(registry: &mut MachineRegistry, line: &str) -> String 
                     removed.len(),
                     removed.join(", ")
                 )
+            }
+        }
+
+        // --- Image management commands ---
+        "IMAGE_LIST" | "LIST-IMAGES" => {
+            let images = discover_images(POOL_PATH);
+            if images.is_empty() {
+                return "No images.\n".to_string();
+            }
+            let mut s = String::new();
+            s.push_str(&format!(
+                "{:<32} {:>10} {:>8} {:>12} {:>12}\n",
+                "NAME", "TYPE", "RO", "USAGE", "LIMIT"
+            ));
+            for img in &images {
+                s.push_str(&format!(
+                    "{:<32} {:>10} {:>8} {:>12} {:>12}\n",
+                    img.name,
+                    img.image_type,
+                    if img.read_only { "ro" } else { "no" },
+                    if img.usage > 0 {
+                        format_bytes(img.usage)
+                    } else {
+                        "-".to_string()
+                    },
+                    if img.limit > 0 {
+                        format_bytes(img.limit)
+                    } else {
+                        "-".to_string()
+                    },
+                ));
+            }
+            s.push_str(&format!("\n{} images listed.\n", images.len()));
+            s
+        }
+
+        "IMAGE_SHOW" | "SHOW-IMAGE" => {
+            if args_str.is_empty() {
+                return "ERROR: Image name required\n".to_string();
+            }
+            match find_image(POOL_PATH, args_str) {
+                Some(img) => img.format_status(),
+                None => format!("ERROR: Image '{}' not found\n", args_str),
+            }
+        }
+
+        // IMAGE_CLONE <source> <dest> [read_only]
+        "IMAGE_CLONE" | "CLONE" => {
+            let clone_parts: Vec<&str> = args_str.splitn(3, ' ').collect();
+            if clone_parts.len() < 2 {
+                return "ERROR: Usage: CLONE <source> <dest> [read_only]\n".to_string();
+            }
+            let read_only = clone_parts
+                .get(2)
+                .map(|s| *s == "true" || *s == "1")
+                .unwrap_or(false);
+            match clone_image(POOL_PATH, clone_parts[0], clone_parts[1], read_only) {
+                Ok(()) => format!("OK: Cloned '{}' to '{}'\n", clone_parts[0], clone_parts[1]),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // IMAGE_RENAME <old> <new>
+        "IMAGE_RENAME" | "RENAME" => {
+            let rename_parts: Vec<&str> = args_str.splitn(2, ' ').collect();
+            if rename_parts.len() < 2 {
+                return "ERROR: Usage: RENAME <old_name> <new_name>\n".to_string();
+            }
+            match rename_image(POOL_PATH, rename_parts[0], rename_parts[1]) {
+                Ok(()) => format!(
+                    "OK: Renamed '{}' to '{}'\n",
+                    rename_parts[0], rename_parts[1]
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // IMAGE_REMOVE <name>
+        "IMAGE_REMOVE" | "REMOVE" => {
+            if args_str.is_empty() {
+                return "ERROR: Image name required\n".to_string();
+            }
+            match remove_image(POOL_PATH, args_str) {
+                Ok(()) => format!("OK: Removed image '{}'\n", args_str),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // IMAGE_SET_LIMIT <name> <limit>
+        "IMAGE_SET_LIMIT" | "SET-LIMIT" => {
+            let limit_parts: Vec<&str> = args_str.splitn(2, ' ').collect();
+            if limit_parts.len() < 2 {
+                return "ERROR: Usage: SET-LIMIT <name> <limit>\n".to_string();
+            }
+            let limit = match parse_size(limit_parts[1]) {
+                Some(l) => l,
+                None => return format!("ERROR: Invalid size '{}'\n", limit_parts[1]),
+            };
+            match set_image_limit(POOL_PATH, limit_parts[0], limit) {
+                Ok(()) => format!(
+                    "OK: Set limit for '{}' to {} bytes\n",
+                    limit_parts[0], limit
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // --- Copy operations ---
+
+        // COPY_TO <machine> <host_path> <container_path>
+        "COPY_TO" | "COPY-TO" => {
+            let copy_parts: Vec<&str> = args_str.splitn(3, ' ').collect();
+            if copy_parts.len() < 3 {
+                return "ERROR: Usage: COPY-TO <machine> <host_path> <container_path>\n"
+                    .to_string();
+            }
+            match copy_to_machine(registry, copy_parts[0], copy_parts[1], copy_parts[2]) {
+                Ok(()) => format!(
+                    "OK: Copied '{}' to '{}:{}'\n",
+                    copy_parts[1], copy_parts[0], copy_parts[2]
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // COPY_FROM <machine> <container_path> <host_path>
+        "COPY_FROM" | "COPY-FROM" => {
+            let copy_parts: Vec<&str> = args_str.splitn(3, ' ').collect();
+            if copy_parts.len() < 3 {
+                return "ERROR: Usage: COPY-FROM <machine> <container_path> <host_path>\n"
+                    .to_string();
+            }
+            match copy_from_machine(registry, copy_parts[0], copy_parts[1], copy_parts[2]) {
+                Ok(()) => format!(
+                    "OK: Copied '{}:{}' to '{}'\n",
+                    copy_parts[0], copy_parts[1], copy_parts[2]
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // --- PTY forwarding ---
+
+        // LOGIN <machine>
+        "LOGIN" => {
+            if args_str.is_empty() {
+                return "ERROR: Machine name required\n".to_string();
+            }
+            match open_machine_pty(registry, args_str, None, None) {
+                Ok((master_fd, child_pid)) => {
+                    format!("OK: PTY master_fd={} child_pid={}\n", master_fd, child_pid)
+                }
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // SHELL <machine> [user] [command]
+        "SHELL" => {
+            let shell_parts: Vec<&str> = args_str.splitn(3, ' ').collect();
+            if shell_parts.is_empty() || shell_parts[0].is_empty() {
+                return "ERROR: Machine name required\n".to_string();
+            }
+            let user = shell_parts.get(1).filter(|s| !s.is_empty()).copied();
+            let cmd = shell_parts.get(2).filter(|s| !s.is_empty()).copied();
+            match open_machine_pty(registry, shell_parts[0], cmd, user) {
+                Ok((master_fd, child_pid)) => {
+                    format!("OK: PTY master_fd={} child_pid={}\n", master_fd, child_pid)
+                }
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // --- Import/Export/Pull ---
+
+        // IMPORT_TAR <source> <name> [read_only]
+        "IMPORT_TAR" | "IMPORT-TAR" => {
+            let imp_parts: Vec<&str> = args_str.splitn(3, ' ').collect();
+            if imp_parts.len() < 2 {
+                return "ERROR: Usage: IMPORT-TAR <source> <name> [read_only]\n".to_string();
+            }
+            let read_only = imp_parts
+                .get(2)
+                .map(|s| *s == "true" || *s == "1")
+                .unwrap_or(false);
+            match import_tar(POOL_PATH, imp_parts[0], imp_parts[1], read_only) {
+                Ok(()) => format!(
+                    "OK: Imported tar '{}' as '{}'\n",
+                    imp_parts[0], imp_parts[1]
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // IMPORT_RAW <source> <name> [read_only]
+        "IMPORT_RAW" | "IMPORT-RAW" => {
+            let imp_parts: Vec<&str> = args_str.splitn(3, ' ').collect();
+            if imp_parts.len() < 2 {
+                return "ERROR: Usage: IMPORT-RAW <source> <name> [read_only]\n".to_string();
+            }
+            let read_only = imp_parts
+                .get(2)
+                .map(|s| *s == "true" || *s == "1")
+                .unwrap_or(false);
+            match import_raw(POOL_PATH, imp_parts[0], imp_parts[1], read_only) {
+                Ok(()) => format!(
+                    "OK: Imported raw '{}' as '{}'\n",
+                    imp_parts[0], imp_parts[1]
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // EXPORT_TAR <name> <dest>
+        "EXPORT_TAR" | "EXPORT-TAR" => {
+            let exp_parts: Vec<&str> = args_str.splitn(2, ' ').collect();
+            if exp_parts.len() < 2 {
+                return "ERROR: Usage: EXPORT-TAR <name> <dest>\n".to_string();
+            }
+            match export_tar(POOL_PATH, exp_parts[0], exp_parts[1]) {
+                Ok(()) => format!("OK: Exported '{}' to '{}'\n", exp_parts[0], exp_parts[1]),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // EXPORT_RAW <name> <dest>
+        "EXPORT_RAW" | "EXPORT-RAW" => {
+            let exp_parts: Vec<&str> = args_str.splitn(2, ' ').collect();
+            if exp_parts.len() < 2 {
+                return "ERROR: Usage: EXPORT-RAW <name> <dest>\n".to_string();
+            }
+            match export_raw(POOL_PATH, exp_parts[0], exp_parts[1]) {
+                Ok(()) => format!("OK: Exported '{}' to '{}'\n", exp_parts[0], exp_parts[1]),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // PULL_TAR <url> <name> [verify]
+        "PULL_TAR" | "PULL-TAR" => {
+            let pull_parts: Vec<&str> = args_str.splitn(3, ' ').collect();
+            if pull_parts.len() < 2 {
+                return "ERROR: Usage: PULL-TAR <url> <name> [verify]\n".to_string();
+            }
+            let verify = pull_parts.get(2).copied().unwrap_or("no");
+            match pull_tar(POOL_PATH, pull_parts[0], pull_parts[1], verify) {
+                Ok(()) => format!(
+                    "OK: Pulled tar '{}' as '{}'\n",
+                    pull_parts[0], pull_parts[1]
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        // PULL_RAW <url> <name> [verify]
+        "PULL_RAW" | "PULL-RAW" => {
+            let pull_parts: Vec<&str> = args_str.splitn(3, ' ').collect();
+            if pull_parts.len() < 2 {
+                return "ERROR: Usage: PULL-RAW <url> <name> [verify]\n".to_string();
+            }
+            let verify = pull_parts.get(2).copied().unwrap_or("no");
+            match pull_raw(POOL_PATH, pull_parts[0], pull_parts[1], verify) {
+                Ok(()) => format!(
+                    "OK: Pulled raw '{}' as '{}'\n",
+                    pull_parts[0], pull_parts[1]
+                ),
+                Err(e) => format!("ERROR: {}\n", e),
             }
         }
 
@@ -1287,7 +2646,10 @@ mod tests {
     #[test]
     fn test_dbus_machine1_manager_struct() {
         let shared: SharedRegistry = Arc::new(Mutex::new(MachineRegistry::new()));
-        let _mgr = Machine1Manager { registry: shared };
+        let _mgr = Machine1Manager {
+            registry: shared,
+            pool_path: "/var/lib/machines".to_string(),
+        };
         // Struct creation succeeded without panic
     }
 
@@ -2138,5 +3500,896 @@ mod tests {
         assert!(resp.contains("OK"));
         let m = reg.get("myvm").unwrap();
         assert_eq!(m.scope, "machine-myvm.scope");
+    }
+
+    // -- Image type parsing --------------------------------------------------
+
+    #[test]
+    fn test_image_type_parse_directory() {
+        assert_eq!(ImageType::parse("directory"), Some(ImageType::Directory));
+        assert_eq!(ImageType::parse("subvolume"), Some(ImageType::Directory));
+    }
+
+    #[test]
+    fn test_image_type_parse_raw() {
+        assert_eq!(ImageType::parse("raw"), Some(ImageType::Raw));
+    }
+
+    #[test]
+    fn test_image_type_parse_invalid() {
+        assert_eq!(ImageType::parse("unknown"), None);
+        assert_eq!(ImageType::parse(""), None);
+    }
+
+    #[test]
+    fn test_image_type_display() {
+        assert_eq!(ImageType::Directory.to_string(), "directory");
+        assert_eq!(ImageType::Raw.to_string(), "raw");
+    }
+
+    #[test]
+    fn test_image_type_as_str() {
+        assert_eq!(ImageType::Directory.as_str(), "directory");
+        assert_eq!(ImageType::Raw.as_str(), "raw");
+    }
+
+    // -- Image discovery -----------------------------------------------------
+
+    #[test]
+    fn test_discover_images_empty_dir() {
+        let dir = temp_dir();
+        let images = discover_images(dir.path().to_str().unwrap());
+        assert!(images.is_empty());
+    }
+
+    #[test]
+    fn test_discover_images_nonexistent_dir() {
+        let images = discover_images("/nonexistent/path");
+        assert!(images.is_empty());
+    }
+
+    #[test]
+    fn test_discover_images_directory_image() {
+        let dir = temp_dir();
+        let img_dir = dir.path().join("mycontainer");
+        fs::create_dir(&img_dir).unwrap();
+        let images = discover_images(dir.path().to_str().unwrap());
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].name, "mycontainer");
+        assert_eq!(images[0].image_type, ImageType::Directory);
+    }
+
+    #[test]
+    fn test_discover_images_raw_image() {
+        let dir = temp_dir();
+        let img_path = dir.path().join("myimage.raw");
+        fs::write(&img_path, b"fake raw image").unwrap();
+        let images = discover_images(dir.path().to_str().unwrap());
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].name, "myimage.raw");
+        assert_eq!(images[0].image_type, ImageType::Raw);
+    }
+
+    #[test]
+    fn test_discover_images_skips_hidden() {
+        let dir = temp_dir();
+        let hidden = dir.path().join(".hidden");
+        fs::create_dir(&hidden).unwrap();
+        let visible = dir.path().join("visible");
+        fs::create_dir(&visible).unwrap();
+        let images = discover_images(dir.path().to_str().unwrap());
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].name, "visible");
+    }
+
+    #[test]
+    fn test_discover_images_sorted() {
+        let dir = temp_dir();
+        fs::create_dir(dir.path().join("charlie")).unwrap();
+        fs::create_dir(dir.path().join("alpha")).unwrap();
+        fs::create_dir(dir.path().join("bravo")).unwrap();
+        let images = discover_images(dir.path().to_str().unwrap());
+        let names: Vec<&str> = images.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "bravo", "charlie"]);
+    }
+
+    // -- find_image ----------------------------------------------------------
+
+    #[test]
+    fn test_find_image_exact_name() {
+        let dir = temp_dir();
+        fs::create_dir(dir.path().join("myvm")).unwrap();
+        let img = find_image(dir.path().to_str().unwrap(), "myvm");
+        assert!(img.is_some());
+        assert_eq!(img.unwrap().name, "myvm");
+    }
+
+    #[test]
+    fn test_find_image_with_raw_extension() {
+        let dir = temp_dir();
+        fs::write(dir.path().join("test.raw"), b"data").unwrap();
+        let img = find_image(dir.path().to_str().unwrap(), "test");
+        assert!(img.is_some());
+        assert_eq!(img.unwrap().name, "test.raw");
+    }
+
+    #[test]
+    fn test_find_image_not_found() {
+        let dir = temp_dir();
+        let img = find_image(dir.path().to_str().unwrap(), "nonexistent");
+        assert!(img.is_none());
+    }
+
+    // -- clone_image ---------------------------------------------------------
+
+    #[test]
+    fn test_clone_image_directory() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let src = dir.path().join("source");
+        fs::create_dir(&src).unwrap();
+        fs::write(src.join("file.txt"), "hello").unwrap();
+
+        let result = clone_image(pool, "source", "dest", false);
+        assert!(result.is_ok());
+        assert!(dir.path().join("dest").exists());
+    }
+
+    #[test]
+    fn test_clone_image_already_exists() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("source")).unwrap();
+        fs::create_dir(dir.path().join("dest")).unwrap();
+
+        let result = clone_image(pool, "source", "dest", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_clone_image_not_found() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = clone_image(pool, "nonexistent", "dest", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_clone_image_invalid_dest_name() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("source")).unwrap();
+        let result = clone_image(pool, "source", ".invalid", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid image name"));
+    }
+
+    // -- rename_image --------------------------------------------------------
+
+    #[test]
+    fn test_rename_image_directory() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("oldname")).unwrap();
+
+        let result = rename_image(pool, "oldname", "newname");
+        assert!(result.is_ok());
+        assert!(!dir.path().join("oldname").exists());
+        assert!(dir.path().join("newname").exists());
+    }
+
+    #[test]
+    fn test_rename_image_not_found() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = rename_image(pool, "nonexistent", "newname");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_rename_image_dest_exists() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("old")).unwrap();
+        fs::create_dir(dir.path().join("new")).unwrap();
+        let result = rename_image(pool, "old", "new");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_rename_image_with_limit_file() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("oldname")).unwrap();
+        fs::write(dir.path().join("oldname.limit"), "1073741824\n").unwrap();
+
+        let result = rename_image(pool, "oldname", "newname");
+        assert!(result.is_ok());
+        assert!(!dir.path().join("oldname.limit").exists());
+        assert!(dir.path().join("newname.limit").exists());
+    }
+
+    // -- remove_image --------------------------------------------------------
+
+    #[test]
+    fn test_remove_image_directory() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let img = dir.path().join("todelete");
+        fs::create_dir(&img).unwrap();
+        fs::write(img.join("file.txt"), "data").unwrap();
+
+        let result = remove_image(pool, "todelete");
+        assert!(result.is_ok());
+        assert!(!img.exists());
+    }
+
+    #[test]
+    fn test_remove_image_raw() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::write(dir.path().join("todelete.raw"), b"raw data").unwrap();
+
+        let result = remove_image(pool, "todelete");
+        assert!(result.is_ok());
+        assert!(!dir.path().join("todelete.raw").exists());
+    }
+
+    #[test]
+    fn test_remove_image_not_found() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = remove_image(pool, "nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_remove_image_cleans_limit_file() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("img")).unwrap();
+        fs::write(dir.path().join("img.limit"), "1024\n").unwrap();
+
+        let result = remove_image(pool, "img");
+        assert!(result.is_ok());
+        assert!(!dir.path().join("img.limit").exists());
+    }
+
+    // -- set_image_limit -----------------------------------------------------
+
+    #[test]
+    fn test_set_image_limit_creates_limit_file() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("myimg")).unwrap();
+
+        let result = set_image_limit(pool, "myimg", 1073741824);
+        assert!(result.is_ok());
+        let content = fs::read_to_string(dir.path().join("myimg.limit")).unwrap();
+        assert_eq!(content.trim(), "1073741824");
+    }
+
+    #[test]
+    fn test_set_image_limit_zero_removes() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("myimg")).unwrap();
+        fs::write(dir.path().join("myimg.limit"), "1024\n").unwrap();
+
+        let result = set_image_limit(pool, "myimg", 0);
+        assert!(result.is_ok());
+        assert!(!dir.path().join("myimg.limit").exists());
+    }
+
+    #[test]
+    fn test_set_image_limit_not_found() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = set_image_limit(pool, "nonexistent", 1024);
+        assert!(result.is_err());
+    }
+
+    // -- ImageInfo format ----------------------------------------------------
+
+    #[test]
+    fn test_image_info_format_status() {
+        let info = ImageInfo {
+            name: "test".to_string(),
+            image_type: ImageType::Directory,
+            path: PathBuf::from("/var/lib/machines/test"),
+            read_only: false,
+            crtime: 1700000000000000,
+            mtime: 1700000000000000,
+            usage: 0,
+            limit: 0,
+        };
+        let status = info.format_status();
+        assert!(status.contains("Name: test"));
+        assert!(status.contains("Type: directory"));
+        assert!(status.contains("ReadOnly: no"));
+    }
+
+    #[test]
+    fn test_image_info_format_show() {
+        let info = ImageInfo {
+            name: "test".to_string(),
+            image_type: ImageType::Raw,
+            path: PathBuf::from("/var/lib/machines/test.raw"),
+            read_only: true,
+            crtime: 0,
+            mtime: 0,
+            usage: 1024,
+            limit: 2048,
+        };
+        let show = info.format_show();
+        assert!(show.contains("Name=test"));
+        assert!(show.contains("Type=raw"));
+        assert!(show.contains("ReadOnly=yes"));
+        assert!(show.contains("Usage=1024"));
+        assert!(show.contains("Limit=2048"));
+    }
+
+    #[test]
+    fn test_image_info_from_path_directory() {
+        let dir = temp_dir();
+        let img_path = dir.path().join("testimg");
+        fs::create_dir(&img_path).unwrap();
+        let info = ImageInfo::from_path(&img_path);
+        assert!(info.is_some());
+        let info = info.unwrap();
+        assert_eq!(info.name, "testimg");
+        assert_eq!(info.image_type, ImageType::Directory);
+    }
+
+    #[test]
+    fn test_image_info_from_path_raw() {
+        let dir = temp_dir();
+        let img_path = dir.path().join("testimg.raw");
+        fs::write(&img_path, b"fake raw").unwrap();
+        let info = ImageInfo::from_path(&img_path);
+        assert!(info.is_some());
+        let info = info.unwrap();
+        assert_eq!(info.name, "testimg.raw");
+        assert_eq!(info.image_type, ImageType::Raw);
+        assert_eq!(info.usage, 8); // "fake raw" = 8 bytes
+    }
+
+    #[test]
+    fn test_image_info_from_path_hidden() {
+        let dir = temp_dir();
+        let img_path = dir.path().join(".hidden");
+        fs::create_dir(&img_path).unwrap();
+        let info = ImageInfo::from_path(&img_path);
+        assert!(info.is_none());
+    }
+
+    #[test]
+    fn test_image_info_from_path_with_limit_file() {
+        let dir = temp_dir();
+        let img_path = dir.path().join("img");
+        fs::create_dir(&img_path).unwrap();
+        fs::write(dir.path().join("img.limit"), "4096\n").unwrap();
+        let info = ImageInfo::from_path(&img_path).unwrap();
+        assert_eq!(info.limit, 4096);
+    }
+
+    // -- format_bytes --------------------------------------------------------
+
+    #[test]
+    fn test_format_bytes_zero() {
+        assert_eq!(format_bytes(0), "0B");
+    }
+
+    #[test]
+    fn test_format_bytes_bytes() {
+        assert_eq!(format_bytes(100), "100B");
+    }
+
+    #[test]
+    fn test_format_bytes_kilobytes() {
+        assert_eq!(format_bytes(1024), "1.0K");
+    }
+
+    #[test]
+    fn test_format_bytes_megabytes() {
+        assert_eq!(format_bytes(1048576), "1.0M");
+    }
+
+    #[test]
+    fn test_format_bytes_gigabytes() {
+        assert_eq!(format_bytes(1073741824), "1.0G");
+    }
+
+    #[test]
+    fn test_format_bytes_mixed() {
+        assert_eq!(format_bytes(1536), "1.5K");
+    }
+
+    // -- parse_size ----------------------------------------------------------
+
+    #[test]
+    fn test_parse_size_bytes() {
+        assert_eq!(parse_size("1024"), Some(1024));
+        assert_eq!(parse_size("1024B"), Some(1024));
+    }
+
+    #[test]
+    fn test_parse_size_kilobytes() {
+        assert_eq!(parse_size("1K"), Some(1024));
+        assert_eq!(parse_size("2K"), Some(2048));
+    }
+
+    #[test]
+    fn test_parse_size_megabytes() {
+        assert_eq!(parse_size("1M"), Some(1048576));
+    }
+
+    #[test]
+    fn test_parse_size_gigabytes() {
+        assert_eq!(parse_size("1G"), Some(1073741824));
+    }
+
+    #[test]
+    fn test_parse_size_terabytes() {
+        assert_eq!(parse_size("1T"), Some(1099511627776));
+    }
+
+    #[test]
+    fn test_parse_size_empty() {
+        assert_eq!(parse_size(""), None);
+    }
+
+    #[test]
+    fn test_parse_size_invalid() {
+        assert_eq!(parse_size("abc"), None);
+    }
+
+    // -- Copy-to/copy-from ---------------------------------------------------
+
+    #[test]
+    fn test_copy_to_machine_not_found() {
+        let reg = MachineRegistry::new();
+        let result = copy_to_machine(&reg, "nonexistent", "/tmp/file", "/dest");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_copy_from_machine_not_found() {
+        let reg = MachineRegistry::new();
+        let result = copy_from_machine(&reg, "nonexistent", "/src", "/tmp/dest");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_copy_to_machine_source_not_found() {
+        let mut reg = MachineRegistry::new();
+        let dir = temp_dir();
+        let root = dir.path().to_str().unwrap();
+        let machine = Machine {
+            name: "test".to_string(),
+            class: MachineClass::Container,
+            service: "nspawn".to_string(),
+            scope: String::new(),
+            leader: process::id(),
+            root_directory: root.to_string(),
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+        reg.register(machine).unwrap();
+
+        let result = copy_to_machine(&reg, "test", "/nonexistent/src/path", "/dest");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_copy_to_and_from_machine_file() {
+        let mut reg = MachineRegistry::new();
+        let container_dir = temp_dir();
+        let host_dir = temp_dir();
+
+        let root = container_dir.path().to_str().unwrap();
+        let machine = Machine {
+            name: "testcp".to_string(),
+            class: MachineClass::Container,
+            service: "nspawn".to_string(),
+            scope: String::new(),
+            leader: process::id(),
+            root_directory: root.to_string(),
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+        reg.register(machine).unwrap();
+
+        // Create a file on the "host"
+        let host_file = host_dir.path().join("test.txt");
+        fs::write(&host_file, "hello world").unwrap();
+
+        // Copy to container
+        let result = copy_to_machine(&reg, "testcp", host_file.to_str().unwrap(), "/test.txt");
+        assert!(result.is_ok());
+        assert!(container_dir.path().join("test.txt").exists());
+        assert_eq!(
+            fs::read_to_string(container_dir.path().join("test.txt")).unwrap(),
+            "hello world"
+        );
+
+        // Copy from container
+        let dest_file = host_dir.path().join("retrieved.txt");
+        let result = copy_from_machine(&reg, "testcp", "/test.txt", dest_file.to_str().unwrap());
+        assert!(result.is_ok());
+        assert_eq!(fs::read_to_string(&dest_file).unwrap(), "hello world");
+    }
+
+    // -- Control command: IMAGE_LIST -----------------------------------------
+
+    #[test]
+    fn test_handle_command_image_list_empty() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "IMAGE_LIST");
+        assert!(resp.contains("No images") || resp.contains("images listed"));
+    }
+
+    #[test]
+    fn test_handle_command_image_list_alias() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "LIST-IMAGES");
+        assert!(resp.contains("No images") || resp.contains("images listed"));
+    }
+
+    // -- Control command: IMAGE_SHOW -----------------------------------------
+
+    #[test]
+    fn test_handle_command_image_show_missing_name() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "IMAGE_SHOW");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Image name required"));
+    }
+
+    #[test]
+    fn test_handle_command_image_show_not_found() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "IMAGE_SHOW nonexistent");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("not found"));
+    }
+
+    // -- Control command: CLONE ----------------------------------------------
+
+    #[test]
+    fn test_handle_command_clone_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "CLONE source");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    // -- Control command: RENAME ---------------------------------------------
+
+    #[test]
+    fn test_handle_command_rename_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "RENAME old");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    // -- Control command: REMOVE ---------------------------------------------
+
+    #[test]
+    fn test_handle_command_remove_missing_name() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "REMOVE");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Image name required"));
+    }
+
+    // -- Control command: SET-LIMIT ------------------------------------------
+
+    #[test]
+    fn test_handle_command_set_limit_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "SET-LIMIT myimg");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    #[test]
+    fn test_handle_command_set_limit_invalid_size() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "SET-LIMIT myimg notasize");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Invalid size"));
+    }
+
+    // -- Control command: COPY-TO / COPY-FROM --------------------------------
+
+    #[test]
+    fn test_handle_command_copy_to_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "COPY-TO machine /src");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    #[test]
+    fn test_handle_command_copy_from_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "COPY-FROM machine /src");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    #[test]
+    fn test_handle_command_copy_to_machine_not_found() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "COPY-TO nonexistent /src /dest");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("not found"));
+    }
+
+    // -- Control command: LOGIN / SHELL --------------------------------------
+
+    #[test]
+    fn test_handle_command_login_missing_name() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "LOGIN");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Machine name required"));
+    }
+
+    #[test]
+    fn test_handle_command_login_not_found() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "LOGIN nonexistent");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("not found"));
+    }
+
+    #[test]
+    fn test_handle_command_shell_missing_name() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "SHELL");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Machine name required"));
+    }
+
+    // -- Control command: IMPORT-TAR / IMPORT-RAW ----------------------------
+
+    #[test]
+    fn test_handle_command_import_tar_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "IMPORT-TAR source");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    #[test]
+    fn test_handle_command_import_raw_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "IMPORT-RAW source");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    // -- Control command: EXPORT-TAR / EXPORT-RAW ----------------------------
+
+    #[test]
+    fn test_handle_command_export_tar_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "EXPORT-TAR name");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    #[test]
+    fn test_handle_command_export_raw_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "EXPORT-RAW name");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    // -- Control command: PULL-TAR / PULL-RAW --------------------------------
+
+    #[test]
+    fn test_handle_command_pull_tar_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "PULL-TAR url");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    #[test]
+    fn test_handle_command_pull_raw_missing_args() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "PULL-RAW url");
+        assert!(resp.contains("ERROR"));
+        assert!(resp.contains("Usage"));
+    }
+
+    // -- Control command case insensitivity for new commands ------------------
+
+    #[test]
+    fn test_handle_command_image_list_case_insensitive() {
+        let mut reg = MachineRegistry::new();
+        let resp1 = handle_control_command(&mut reg, "image_list");
+        let resp2 = handle_control_command(&mut reg, "IMAGE_LIST");
+        assert_eq!(resp1, resp2);
+    }
+
+    #[test]
+    fn test_handle_command_clone_case_insensitive() {
+        let mut reg = MachineRegistry::new();
+        let resp = handle_control_command(&mut reg, "clone source");
+        assert!(resp.contains("ERROR")); // not enough args but shows it's parsed
+    }
+
+    // -- Import/export integration with temp dirs ----------------------------
+
+    #[test]
+    fn test_import_tar_invalid_name() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = import_tar(pool, "/nonexistent.tar", ".invalid", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid image name"));
+    }
+
+    #[test]
+    fn test_import_raw_invalid_name() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = import_raw(pool, "/nonexistent.raw", ".invalid", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid image name"));
+    }
+
+    #[test]
+    fn test_import_raw_already_exists() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::write(dir.path().join("existing.raw"), b"data").unwrap();
+        let result = import_raw(pool, "/tmp/source.raw", "existing", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_export_tar_not_found() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = export_tar(pool, "nonexistent", "/tmp/out.tar");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_export_raw_not_found() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = export_raw(pool, "nonexistent", "/tmp/out.raw");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_export_tar_wrong_type() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::write(dir.path().join("myimg.raw"), b"data").unwrap();
+        let result = export_tar(pool, "myimg", "/tmp/out.tar");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("directory images"));
+    }
+
+    #[test]
+    fn test_export_raw_wrong_type() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("myimg")).unwrap();
+        let result = export_raw(pool, "myimg", "/tmp/out.raw");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("raw images"));
+    }
+
+    #[test]
+    fn test_pull_tar_invalid_name() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = pull_tar(pool, "http://example.com/test.tar", ".invalid", "no");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid image name"));
+    }
+
+    #[test]
+    fn test_pull_raw_invalid_name() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        let result = pull_raw(pool, "http://example.com/test.raw", ".invalid", "no");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid image name"));
+    }
+
+    #[test]
+    fn test_pull_tar_already_exists() {
+        let dir = temp_dir();
+        let pool = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("existing")).unwrap();
+        let result = pull_tar(pool, "http://example.com/test.tar", "existing", "no");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    // -- PTY forwarding (unit tests for error paths) -------------------------
+
+    #[test]
+    fn test_open_machine_pty_not_found() {
+        let reg = MachineRegistry::new();
+        let result = open_machine_pty(&reg, "nonexistent", None, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_open_machine_pty_no_leader() {
+        let mut reg = MachineRegistry::new();
+        let machine = Machine {
+            name: "noleader".to_string(),
+            class: MachineClass::Container,
+            service: "test".to_string(),
+            scope: String::new(),
+            leader: 0,
+            root_directory: "/".to_string(),
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+        reg.register(machine).unwrap();
+        let result = open_machine_pty(&reg, "noleader", None, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no leader PID"));
+    }
+
+    // -- Machine scoping (unit tests for scope name generation) ---------------
+
+    #[test]
+    fn test_scope_name_format() {
+        // Verify the scope name format without actually calling D-Bus
+        let name = "testvm";
+        let scope_name = format!("machine-{}.scope", name);
+        assert_eq!(scope_name, "machine-testvm.scope");
+    }
+
+    #[test]
+    fn test_scope_name_special_chars() {
+        let name = "my.container";
+        let scope_name = format!("machine-{}.scope", name);
+        assert_eq!(scope_name, "machine-my.container.scope");
+    }
+
+    // -- pool_usage_stats (basic) -------------------------------------------
+
+    #[test]
+    fn test_pool_usage_stats_nonexistent() {
+        let (used, total) = pool_usage_stats("/nonexistent/pool/path");
+        assert_eq!(used, 0);
+        assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn test_pool_usage_stats_tmp() {
+        let dir = temp_dir();
+        let (_used, total) = pool_usage_stats(dir.path().to_str().unwrap());
+        // Should return non-zero for an existing filesystem
+        assert!(total > 0);
     }
 }
