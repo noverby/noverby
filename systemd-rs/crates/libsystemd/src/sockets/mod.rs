@@ -550,12 +550,14 @@ pub(crate) fn apply_pre_bind_socket_options(fd: RawFd, conf: &SocketConfig, is_i
 /// Apply SocketUser=/SocketGroup= ownership and SocketMode= permissions
 /// to an AF_UNIX socket or FIFO file node.
 pub(crate) fn apply_socket_ownership(path: &std::path::Path, conf: &SocketConfig) {
-    // SocketMode=
-    if let Some(mode) = conf.socket_mode {
-        let permissions = std::fs::Permissions::from_mode(mode);
-        if let Err(e) = std::fs::set_permissions(path, permissions) {
-            trace!("Failed to set SocketMode on {:?}: {e}", path);
-        }
+    // SocketMode= — default is 0666 per systemd.socket(5).
+    // Without this, sockets created via bind() inherit the process umask
+    // (typically 0022 → mode 0755), which prevents non-root services from
+    // connecting (e.g. D-Bus "Permission denied" for timesyncd/networkd).
+    let mode = conf.socket_mode.unwrap_or(0o666);
+    let permissions = std::fs::Permissions::from_mode(mode);
+    if let Err(e) = std::fs::set_permissions(path, permissions) {
+        trace!("Failed to set SocketMode on {:?}: {e}", path);
     }
 
     // SocketUser= / SocketGroup=

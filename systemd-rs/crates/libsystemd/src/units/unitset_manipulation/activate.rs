@@ -107,7 +107,11 @@ impl std::fmt::Display for UnitOperationError {
     }
 }
 
-pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
+pub fn unstarted_deps(
+    id: &UnitId,
+    run_info: &RuntimeInfo,
+    activation_set: Option<&[UnitId]>,
+) -> Vec<UnitId> {
     let Some(unit) = run_info.unit_table.get(id) else {
         // If this occurs, there is a flaw in the handling of dependencies
         // IDs should be purged globally when units get removed
@@ -167,11 +171,23 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
             } else {
                 // Pure ordering dep (After= without Wants=/Requires=/BindsTo=):
                 // Only block if the dep is actively being started (status is
-                // Starting or some transient state).  If it's NeverStarted,
-                // it's not in our activation set — don't wait for it.
+                // Starting or some transient state).  If it's NeverStarted
+                // AND not in the current activation subgraph, it's not going
+                // to be activated — don't wait for it.
+                // If it IS in the activation subgraph but still NeverStarted,
+                // it's queued and we must wait (otherwise we'd start before
+                // it runs, violating After= ordering).
                 // If it's already finished (Started or Stopped), it's ready.
                 match &*status_locked {
-                    UnitStatus::NeverStarted => true, // treat as ready — not being activated
+                    UnitStatus::NeverStarted => {
+                        // Check if this dep is in the activation subgraph.
+                        // If so, it WILL be activated and we must wait.
+                        if let Some(set) = activation_set {
+                            !set.contains(elem) // ready only if NOT in activation set
+                        } else {
+                            true // no activation set info — old behavior, treat as ready
+                        }
+                    }
                     UnitStatus::Starting => false,    // actively starting, wait for it
                     _ => true,                        // finished (started/stopped), ready
                 }
@@ -645,7 +661,8 @@ pub fn activate_needed_units(
     // These can be started and the the graph can be traversed and other units can be started as soon as
     // all other units they depend on are started. This works because the units form an DAG if only
     // the 'after' relations are considered for traversal.
-    let root_units = { find_startable_units(&needed_ids, &run_info.read_poisoned()) };
+    let root_units =
+        { find_startable_units(&needed_ids, &run_info.read_poisoned(), Some(&needed_ids)) };
     let root_names: Vec<&str> = root_units.iter().map(|id| id.name.as_str()).collect();
     trace!(
         "activate_needed_units: root units count={}: {:?}",
@@ -679,11 +696,15 @@ pub fn activate_needed_units(
 }
 
 /// Check for all units in this Vec, if all units this depends on are running
-fn find_startable_units(ids: &Vec<UnitId>, run_info: &RuntimeInfo) -> Vec<UnitId> {
+fn find_startable_units(
+    ids: &Vec<UnitId>,
+    run_info: &RuntimeInfo,
+    activation_set: Option<&[UnitId]>,
+) -> Vec<UnitId> {
     let mut startable = Vec::new();
 
     for id in ids {
-        if unstarted_deps(id, run_info).is_empty() {
+        if unstarted_deps(id, run_info, activation_set).is_empty() {
             startable.push(id.clone());
         }
     }
@@ -710,7 +731,8 @@ fn activate_units_recursive(
         );
     }
 
-    let startables = { find_startable_units(&ids_to_start, &run_info.read_poisoned()) };
+    let startables =
+        { find_startable_units(&ids_to_start, &run_info.read_poisoned(), Some(&filter_ids)) };
     let startables: Vec<UnitId> = startables
         .into_iter()
         .filter(|id| filter_ids.contains(id))
@@ -724,7 +746,7 @@ fn activate_units_recursive(
         let run_info_guard = run_info.read_poisoned();
         for id in &ids_to_start {
             if filter_ids.contains(id) {
-                let unstarted = unstarted_deps(id, &run_info_guard);
+                let unstarted = unstarted_deps(id, &run_info_guard, Some(&filter_ids));
                 if !unstarted.is_empty() {
                     let dep_names: Vec<&str> = unstarted.iter().map(|d| d.name.as_str()).collect();
                     debug!(

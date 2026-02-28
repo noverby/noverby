@@ -1,4 +1,5 @@
 use std::{
+    os::unix::fs::PermissionsExt,
     os::unix::io::AsRawFd,
     os::unix::io::RawFd,
     os::unix::net::{UnixDatagram, UnixListener},
@@ -43,7 +44,9 @@ impl UnixSeqPacket {
 }
 
 /// Prepare the directory and remove old socket file if it exists.
-fn prepare_unix_socket_path(path: &std::path::Path) -> Result<(), String> {
+/// Applies `DirectoryMode=` (default `0755` per systemd.socket(5)) to
+/// newly created parent directories.
+fn prepare_unix_socket_path(path: &std::path::Path, conf: &SocketConfig) -> Result<(), String> {
     if path.exists() {
         std::fs::remove_file(path)
             .map_err(|e| format!("Error removing old socket file {path:?}: {e}"))?;
@@ -53,6 +56,13 @@ fn prepare_unix_socket_path(path: &std::path::Path) -> Result<(), String> {
     {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Error creating UnixSocket directory {parent:?}: {e}"))?;
+
+        // DirectoryMode= — default is 0755 per systemd.socket(5).
+        let dir_mode = conf.directory_mode.unwrap_or(0o755);
+        let permissions = std::fs::Permissions::from_mode(dir_mode);
+        if let Err(e) = std::fs::set_permissions(parent, permissions) {
+            trace!("Failed to set DirectoryMode on {:?}: {e}", parent);
+        }
     }
     Ok(())
 }
@@ -76,7 +86,7 @@ impl UnixSocketConfig {
         match self {
             Self::Stream(path) => {
                 let spath = std::path::Path::new(path);
-                prepare_unix_socket_path(spath)?;
+                prepare_unix_socket_path(spath, conf)?;
 
                 trace!("opening streaming unix socket: {path:?}");
                 let stream = UnixListener::bind(spath)
@@ -104,7 +114,7 @@ impl UnixSocketConfig {
             }
             Self::Datagram(path) => {
                 let spath = std::path::Path::new(path);
-                prepare_unix_socket_path(spath)?;
+                prepare_unix_socket_path(spath, conf)?;
 
                 trace!("opening datagram unix socket: {path:?}");
                 let dgram = UnixDatagram::bind(spath)
@@ -132,7 +142,7 @@ impl UnixSocketConfig {
             }
             Self::Sequential(path) => {
                 let spath = std::path::Path::new(path);
-                prepare_unix_socket_path(spath)?;
+                prepare_unix_socket_path(spath, conf)?;
 
                 let path = std::path::PathBuf::from(path);
                 trace!("opening sequential packet unix socket: {path:?}");
