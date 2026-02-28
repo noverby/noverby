@@ -7,6 +7,76 @@ use crate::lock_ext::RwLockExt;
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::units::{Specific, StatusStopped, UnitId, UnitStatus};
 
+/// The final system action to perform after all units have been stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShutdownAction {
+    Poweroff,
+    Reboot,
+    Halt,
+    Kexec,
+}
+
+impl ShutdownAction {
+    pub fn from_verb(verb: &str) -> Option<Self> {
+        match verb {
+            "poweroff" => Some(ShutdownAction::Poweroff),
+            "reboot" => Some(ShutdownAction::Reboot),
+            "halt" => Some(ShutdownAction::Halt),
+            "kexec" => Some(ShutdownAction::Kexec),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShutdownAction::Poweroff => "poweroff",
+            ShutdownAction::Reboot => "reboot",
+            ShutdownAction::Halt => "halt",
+            ShutdownAction::Kexec => "kexec",
+        }
+    }
+}
+
+/// Find the `systemd-shutdown` binary relative to our own executable,
+/// falling back to well-known system paths.
+fn find_shutdown_binary() -> Option<std::path::PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        // Check sibling directory (same dir as PID 1)
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("systemd-shutdown");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        // Walk up to find bin/systemd-shutdown or lib/systemd/systemd-shutdown
+        let mut dir = exe.parent();
+        for _ in 0..5 {
+            let Some(d) = dir else { break };
+            for subpath in &["bin/systemd-shutdown", "lib/systemd/systemd-shutdown"] {
+                let candidate = d.join(subpath);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+            dir = d.parent();
+        }
+    }
+
+    // Fallback to system paths
+    for path in &[
+        "/usr/lib/systemd/systemd-shutdown",
+        "/lib/systemd/systemd-shutdown",
+        "/usr/bin/systemd-shutdown",
+    ] {
+        let p = std::path::Path::new(path);
+        if p.is_file() {
+            return Some(p.to_path_buf());
+        }
+    }
+
+    None
+}
+
 fn get_next_service_to_shutdown(unit_table: &UnitTable) -> Option<UnitId> {
     for unit in unit_table.values() {
         let status = &unit.common.status;
@@ -179,7 +249,7 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
 
 static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 // TODO maybe this should be available everywhere for situations where normally a panic would occur?
-pub fn shutdown_sequence(run_info: ArcMutRuntimeInfo) {
+pub fn shutdown_sequence(run_info: ArcMutRuntimeInfo, action: ShutdownAction) {
     if SHUTTING_DOWN
         .compare_exchange(
             false,
@@ -236,7 +306,59 @@ pub fn shutdown_sequence(run_info: ArcMutRuntimeInfo) {
             .map_err(|e| error!("Error while cleaning up cgroups: {}", e));
         }
 
-        info!("Shutdown finished");
-        std::process::exit(0);
+        info!(
+            "Shutdown finished, performing final action: {}",
+            action.as_str()
+        );
+
+        // Execute the systemd-shutdown binary which handles process killing,
+        // filesystem unmounting, and the final reboot(2) syscall.
+        if let Some(shutdown_bin) = find_shutdown_binary() {
+            info!("Executing {} {}", shutdown_bin.display(), action.as_str());
+            match std::process::Command::new(&shutdown_bin)
+                .arg(action.as_str())
+                .status()
+            {
+                Ok(status) => {
+                    if !status.success() {
+                        error!(
+                            "systemd-shutdown exited with status: {}",
+                            status.code().unwrap_or(-1)
+                        );
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to execute systemd-shutdown: {e}");
+                }
+            }
+        } else {
+            warn!("systemd-shutdown binary not found, calling reboot(2) directly");
+        }
+
+        // Fallback: call reboot(2) directly if systemd-shutdown failed or
+        // was not found.
+        #[cfg(target_os = "linux")]
+        {
+            info!(
+                "Performing direct reboot(2) syscall for {}",
+                action.as_str()
+            );
+            unsafe {
+                libc::sync();
+            }
+            let cmd = match action {
+                ShutdownAction::Poweroff => libc::RB_POWER_OFF,
+                ShutdownAction::Reboot => libc::RB_AUTOBOOT,
+                ShutdownAction::Halt => libc::RB_HALT_SYSTEM,
+                ShutdownAction::Kexec => 0x45584543u32 as libc::c_int, // LINUX_REBOOT_CMD_KEXEC
+            };
+            unsafe {
+                libc::reboot(cmd);
+            }
+        }
+
+        // If we somehow get here (non-Linux or reboot failed), exit.
+        error!("All shutdown methods failed, exiting");
+        std::process::exit(1);
     });
 }

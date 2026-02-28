@@ -72,7 +72,7 @@ pub enum Command {
     ResetFailed(Option<String>),
     /// `kill <unit> [--signal=SIG]` — send a signal to a unit's processes.
     Kill(String, i32),
-    Shutdown,
+    Shutdown(crate::shutdown::ShutdownAction),
     /// `suspend` — put the system to sleep (suspend to RAM).
     Suspend,
     /// `hibernate` — put the system to sleep (suspend to disk).
@@ -331,7 +331,14 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
             };
             Command::ListUnits(kind)
         }
-        "shutdown" => Command::Shutdown,
+        "shutdown" => {
+            let action = match &call.params {
+                Some(Value::String(s)) => crate::shutdown::ShutdownAction::from_verb(s)
+                    .unwrap_or(crate::shutdown::ShutdownAction::Poweroff),
+                _ => crate::shutdown::ShutdownAction::Poweroff,
+            };
+            Command::Shutdown(action)
+        }
         "suspend" => Command::Suspend,
         "hibernate" => Command::Hibernate,
         "hybrid-sleep" => Command::HybridSleep,
@@ -1856,8 +1863,8 @@ pub fn execute_command(
                 }
             }
         }
-        Command::Shutdown => {
-            crate::shutdown::shutdown_sequence(run_info);
+        Command::Shutdown(action) => {
+            crate::shutdown::shutdown_sequence(run_info, action);
         }
         Command::Suspend
         | Command::Hibernate
