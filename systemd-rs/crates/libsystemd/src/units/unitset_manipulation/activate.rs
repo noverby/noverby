@@ -3,7 +3,7 @@
 use crate::lock_ext::{MutexExt, RwLockExt};
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
-use crate::units::{StatusStopped, UnitAction, UnitId, UnitStatus};
+use crate::units::{Specific, StatusStopped, UnitAction, UnitId, UnitStatus};
 
 use log::{debug, error, info, trace, warn};
 use std::sync::{Arc, Mutex};
@@ -548,6 +548,19 @@ pub fn collect_unit_start_subgraph(ids_to_start: &mut Vec<UnitId>, unit_table: &
             if let Some(unit) = unit_table.get(id) {
                 new_ids.extend(unit.common.dependencies.start_before_this());
                 new_ids.extend(unit.common.dependencies.start_concurrently_with_this());
+
+                // Include socket-activation services in the subgraph so
+                // they are eagerly started alongside their socket unit.
+                // Without this, services like dbus.service (which are only
+                // referenced via socket activation, not via Wants=/Requires=)
+                // are filtered out of the activation subgraph and only start
+                // on-demand when the first connection arrives.  This causes a
+                // race: pam_systemd tries to talk to logind via D-Bus before
+                // dbus-daemon is fully ready, producing repeated "System error"
+                // login failures until D-Bus catches up.
+                if let Specific::Socket(specific) = &unit.specific {
+                    new_ids.extend(specific.conf.services.iter().cloned());
+                }
             }
         }
         new_ids.sort();
