@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 use libsystemd::calendar_spec::CalendarSpec;
 use std::fmt;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -171,6 +172,35 @@ enum Command {
         #[arg(long)]
         no_pager: bool,
     },
+
+    /// Generate an SVG plot of the boot sequence
+    Plot,
+
+    /// Inspect an ELF binary for embedded metadata
+    #[command(name = "inspect-elf")]
+    InspectElf {
+        /// ELF binary path(s) to inspect
+        files: Vec<String>,
+    },
+
+    /// Show file descriptor store contents of a service
+    Fdstore {
+        /// Service unit name
+        unit: String,
+    },
+
+    /// Analyze image dissection policies
+    #[command(name = "image-policy")]
+    ImagePolicy {
+        /// Policy string(s) to parse and normalize
+        policies: Vec<String>,
+    },
+
+    /// Show TPM2 PCR (Platform Configuration Register) values
+    Pcrs,
+
+    /// Show the TPM2 SRK (Storage Root Key)
+    Srk,
 }
 
 // ── Boot timing data structures ───────────────────────────────────────────
@@ -956,6 +986,12 @@ fn main() {
         Some(Command::LogTarget { ref target }) => cmd_log_target(target),
         Some(Command::ServiceWatchdogs { ref state }) => cmd_service_watchdogs(state),
         Some(Command::Security { ref units, .. }) => cmd_security(units),
+        Some(Command::Plot) => cmd_plot(),
+        Some(Command::InspectElf { ref files }) => cmd_inspect_elf(files),
+        Some(Command::Fdstore { ref unit }) => cmd_fdstore(unit),
+        Some(Command::ImagePolicy { ref policies }) => cmd_image_policy(policies),
+        Some(Command::Pcrs) => cmd_pcrs(),
+        Some(Command::Srk) => cmd_srk(),
     }
 }
 
@@ -1474,11 +1510,1072 @@ fn find_unit_file(name: &str) -> Option<PathBuf> {
     None
 }
 
+// ── Plot (SVG) ────────────────────────────────────────────────────────────
+
+/// Color for a unit bar based on the unit type suffix.
+fn unit_color(name: &str) -> &'static str {
+    if name.ends_with(".target") {
+        "#4e9a06" // green
+    } else if name.ends_with(".service") {
+        "#729fcf" // blue
+    } else if name.ends_with(".socket") {
+        "#ef2929" // red
+    } else if name.ends_with(".mount") || name.ends_with(".automount") {
+        "#ad7fa8" // purple
+    } else if name.ends_with(".timer") {
+        "#fcaf3e" // orange
+    } else if name.ends_with(".device") {
+        "#e9b96e" // tan
+    } else if name.ends_with(".path") {
+        "#fce94f" // yellow
+    } else if name.ends_with(".slice") || name.ends_with(".scope") {
+        "#8ae234" // light green
+    } else {
+        "#888a85" // grey
+    }
+}
+
+fn cmd_plot() {
+    let bt = read_boot_timing();
+    let mut timings = read_unit_timings();
+
+    if timings.is_empty() {
+        eprintln!("No unit timing data available in /run/systemd-rs/timing/.");
+        eprintln!("Boot the system with systemd-rs to generate timing data.");
+        process::exit(1);
+    }
+
+    // Sort by activation start time
+    timings.sort_by_key(|t| t.activating_us);
+
+    let total_us = bt
+        .total_us
+        .or_else(|| timings.iter().map(|t| t.active_us).max())
+        .unwrap_or(1);
+
+    // SVG dimensions
+    let left_margin = 300.0_f64;
+    let right_margin = 50.0;
+    let top_margin = 120.0;
+    let row_height = 18.0;
+    let bar_height = 14.0;
+    let chart_width = 800.0_f64;
+    let total_width = left_margin + chart_width + right_margin;
+    let total_height = top_margin + (timings.len() as f64 * row_height) + 60.0;
+
+    let scale = chart_width / total_us as f64;
+
+    println!(r#"<?xml version="1.0" encoding="UTF-8" standalone="no"?>"#);
+    println!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{total_width}" height="{total_height}" version="1.1">"#
+    );
+    println!(r#"<defs><style type="text/css">"#);
+    println!(
+        r#"  text {{ font-family: "Liberation Sans", sans-serif; font-size: 10px; fill: #000; }}"#
+    );
+    println!(r#"  text.left {{ text-anchor: end; }}"#);
+    println!(r#"  text.header {{ font-size: 14px; font-weight: bold; }}"#);
+    println!(r#"  text.phase {{ font-size: 11px; }}"#);
+    println!(r#"  rect.bg {{ fill: #fff; }}"#);
+    println!(r#"  line.grid {{ stroke: #ddd; stroke-width: 0.5; }}"#);
+    println!(r#"</style></defs>"#);
+
+    // Background
+    println!(r#"<rect class="bg" x="0" y="0" width="{total_width}" height="{total_height}"/>"#);
+
+    // Title
+    let host = hostname().unwrap_or_else(|| "unknown".to_string());
+    println!(
+        r#"<text class="header" x="{}" y="20">Boot chart for {host}</text>"#,
+        total_width / 2.0
+    );
+
+    // Phase summary bar
+    let phase_y = 40.0;
+    let mut phase_x = left_margin;
+
+    if let Some(k) = bt.kernel_us {
+        let w = k as f64 * scale;
+        let color = "#fee391";
+        println!(r#"<rect x="{phase_x}" y="{phase_y}" width="{w}" height="20" fill="{color}"/>"#);
+        println!(
+            r#"<text class="phase" x="{}" y="{}">kernel ({})</text>"#,
+            phase_x + w / 2.0,
+            phase_y + 14.0,
+            format_usec(k)
+        );
+        phase_x += w;
+    }
+    if let Some(i) = bt.initrd_us {
+        let w = i as f64 * scale;
+        let color = "#fdd0a2";
+        println!(r#"<rect x="{phase_x}" y="{phase_y}" width="{w}" height="20" fill="{color}"/>"#);
+        println!(
+            r#"<text class="phase" x="{}" y="{}">initrd ({})</text>"#,
+            phase_x + w / 2.0,
+            phase_y + 14.0,
+            format_usec(i)
+        );
+        phase_x += w;
+    }
+    if let Some(u) = bt.userspace_us {
+        let w = u as f64 * scale;
+        let color = "#c6dbef";
+        println!(r#"<rect x="{phase_x}" y="{phase_y}" width="{w}" height="20" fill="{color}"/>"#);
+        println!(
+            r#"<text class="phase" x="{}" y="{}">userspace ({})</text>"#,
+            phase_x + w / 2.0,
+            phase_y + 14.0,
+            format_usec(u)
+        );
+    }
+
+    // Time axis
+    let axis_y = top_margin - 15.0;
+    let tick_count = 10usize;
+    for i in 0..=tick_count {
+        let frac = i as f64 / tick_count as f64;
+        let x = left_margin + frac * chart_width;
+        let t = (frac * total_us as f64) as u64;
+        println!(r#"<line class="grid" x1="{x}" y1="{axis_y}" x2="{x}" y2="{total_height}"/>"#);
+        println!(
+            r#"<text x="{x}" y="{}" style="text-anchor:middle;font-size:9px">{}</text>"#,
+            axis_y - 2.0,
+            format_usec(t)
+        );
+    }
+
+    // Unit bars
+    for (i, t) in timings.iter().enumerate() {
+        let y = top_margin + i as f64 * row_height;
+        let x_start = left_margin + t.activating_us as f64 * scale;
+        let activating_w = (t.active_us.saturating_sub(t.activating_us)) as f64 * scale;
+        let bar_w = activating_w.max(1.0);
+        let color = unit_color(&t.name);
+
+        // Activating phase (lighter)
+        println!(
+            r#"<rect x="{x_start}" y="{}" width="{bar_w}" height="{bar_height}" fill="{color}" opacity="0.5"/>"#,
+            y + (row_height - bar_height) / 2.0
+        );
+        // Active marker (full color, right edge)
+        let active_x = left_margin + t.active_us as f64 * scale;
+        println!(
+            r#"<rect x="{}" y="{}" width="2" height="{bar_height}" fill="{color}"/>"#,
+            active_x - 1.0,
+            y + (row_height - bar_height) / 2.0
+        );
+
+        // Unit name label
+        let label_text = if t.name.len() > 38 {
+            format!("{}...", &t.name[..35])
+        } else {
+            t.name.clone()
+        };
+        println!(
+            r#"<text class="left" x="{}" y="{}">{label_text} ({})</text>"#,
+            left_margin - 5.0,
+            y + row_height / 2.0 + 3.0,
+            format_usec(t.duration_us())
+        );
+    }
+
+    // Legend
+    let legend_y = total_height - 40.0;
+    let legend_items: &[(&str, &str)] = &[
+        ("Service", "#729fcf"),
+        ("Target", "#4e9a06"),
+        ("Socket", "#ef2929"),
+        ("Mount", "#ad7fa8"),
+        ("Timer", "#fcaf3e"),
+        ("Device", "#e9b96e"),
+        ("Other", "#888a85"),
+    ];
+    let mut lx = left_margin;
+    for &(label, color) in legend_items {
+        println!(r#"<rect x="{lx}" y="{legend_y}" width="12" height="12" fill="{color}"/>"#);
+        println!(
+            r#"<text x="{}" y="{}">{label}</text>"#,
+            lx + 16.0,
+            legend_y + 10.0
+        );
+        lx += 80.0;
+    }
+
+    println!("</svg>");
+}
+
+// ── ELF inspection ────────────────────────────────────────────────────────
+
+/// Read a u16 from a byte slice at the given offset with the given endianness.
+fn elf_read_u16(data: &[u8], offset: usize, little_endian: bool) -> u16 {
+    if little_endian {
+        u16::from_le_bytes([data[offset], data[offset + 1]])
+    } else {
+        u16::from_be_bytes([data[offset], data[offset + 1]])
+    }
+}
+
+/// Read a u32 from a byte slice at the given offset with the given endianness.
+fn elf_read_u32(data: &[u8], offset: usize, little_endian: bool) -> u32 {
+    let b = &data[offset..offset + 4];
+    if little_endian {
+        u32::from_le_bytes([b[0], b[1], b[2], b[3]])
+    } else {
+        u32::from_be_bytes([b[0], b[1], b[2], b[3]])
+    }
+}
+
+/// Read a u64 from a byte slice at the given offset with the given endianness.
+fn elf_read_u64(data: &[u8], offset: usize, little_endian: bool) -> u64 {
+    let b = &data[offset..offset + 8];
+    if little_endian {
+        u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+    } else {
+        u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+    }
+}
+
+/// ELF machine type name.
+fn elf_machine_name(em: u16) -> &'static str {
+    match em {
+        0x03 => "x86",
+        0x08 => "MIPS",
+        0x14 => "PowerPC",
+        0x15 => "PowerPC64",
+        0x28 => "ARM",
+        0x3E => "x86-64",
+        0xB7 => "AArch64",
+        0xF3 => "RISC-V",
+        0xF7 => "BPF",
+        _ => "unknown",
+    }
+}
+
+/// ELF OS/ABI name.
+fn elf_osabi_name(osabi: u8) -> &'static str {
+    match osabi {
+        0 => "UNIX System V",
+        1 => "HP-UX",
+        2 => "NetBSD",
+        3 => "GNU/Linux",
+        6 => "Solaris",
+        9 => "FreeBSD",
+        12 => "OpenBSD",
+        _ => "unknown",
+    }
+}
+
+/// ELF type name.
+fn elf_type_name(et: u16) -> &'static str {
+    match et {
+        0 => "NONE",
+        1 => "REL (Relocatable)",
+        2 => "EXEC (Executable)",
+        3 => "DYN (Shared object)",
+        4 => "CORE (Core dump)",
+        _ => "unknown",
+    }
+}
+
+/// Inspect a single ELF file and print metadata.
+fn inspect_elf_file(path: &str) -> Result<(), String> {
+    let mut file = fs::File::open(path).map_err(|e| format!("Cannot open {path}: {e}"))?;
+    let mut data = Vec::new();
+    file.read_to_end(&mut data)
+        .map_err(|e| format!("Cannot read {path}: {e}"))?;
+
+    // Check ELF magic
+    if data.len() < 64 || &data[0..4] != b"\x7fELF" {
+        return Err(format!("{path}: Not an ELF file"));
+    }
+
+    let class = data[4]; // 1 = 32-bit, 2 = 64-bit
+    let is_64 = class == 2;
+    let little_endian = data[5] == 1;
+    let osabi = data[7];
+    let elf_type = elf_read_u16(&data, 16, little_endian);
+    let machine = elf_read_u16(&data, 18, little_endian);
+
+    println!("           {path}:");
+    println!("      Type: {}", elf_type_name(elf_type));
+    println!("     Class: {}", if is_64 { "ELF64" } else { "ELF32" });
+    println!(
+        "      Data: {} endian",
+        if little_endian { "little" } else { "big" }
+    );
+    println!("    OS/ABI: {}", elf_osabi_name(osabi));
+    println!("   Machine: {}", elf_machine_name(machine));
+
+    // Parse section headers to find interesting sections
+    let (sh_offset, sh_entsize, sh_num, sh_strndx) = if is_64 {
+        let sh_off = elf_read_u64(&data, 40, little_endian) as usize;
+        let sh_ent = elf_read_u16(&data, 58, little_endian) as usize;
+        let sh_n = elf_read_u16(&data, 60, little_endian) as usize;
+        let sh_str = elf_read_u16(&data, 62, little_endian) as usize;
+        (sh_off, sh_ent, sh_n, sh_str)
+    } else {
+        let sh_off = elf_read_u32(&data, 32, little_endian) as usize;
+        let sh_ent = elf_read_u16(&data, 46, little_endian) as usize;
+        let sh_n = elf_read_u16(&data, 48, little_endian) as usize;
+        let sh_str = elf_read_u16(&data, 50, little_endian) as usize;
+        (sh_off, sh_ent, sh_n, sh_str)
+    };
+
+    if sh_offset == 0 || sh_num == 0 || sh_entsize == 0 {
+        println!("  (no section headers)");
+        return Ok(());
+    }
+
+    // Read section name string table
+    let strtab_offset = if sh_strndx < sh_num {
+        let entry = sh_offset + sh_strndx * sh_entsize;
+        if is_64 {
+            elf_read_u64(&data, entry + 24, little_endian) as usize
+        } else {
+            elf_read_u32(&data, entry + 16, little_endian) as usize
+        }
+    } else {
+        0
+    };
+
+    let get_section_name = |name_offset: usize| -> String {
+        if strtab_offset == 0 || strtab_offset + name_offset >= data.len() {
+            return String::new();
+        }
+        let start = strtab_offset + name_offset;
+        let end = data[start..]
+            .iter()
+            .position(|&b| b == 0)
+            .map(|p| start + p)
+            .unwrap_or(data.len());
+        String::from_utf8_lossy(&data[start..end]).to_string()
+    };
+
+    // Build-ID from .note.gnu.build-id
+    let mut build_id: Option<String> = None;
+    let mut package_note: Option<String> = None;
+
+    for i in 0..sh_num {
+        let entry = sh_offset + i * sh_entsize;
+        if entry + sh_entsize > data.len() {
+            break;
+        }
+
+        let name_idx = elf_read_u32(&data, entry, little_endian) as usize;
+        let sh_type = elf_read_u32(&data, entry + 4, little_endian);
+        let (sec_offset, sec_size) = if is_64 {
+            (
+                elf_read_u64(&data, entry + 24, little_endian) as usize,
+                elf_read_u64(&data, entry + 32, little_endian) as usize,
+            )
+        } else {
+            (
+                elf_read_u32(&data, entry + 16, little_endian) as usize,
+                elf_read_u32(&data, entry + 20, little_endian) as usize,
+            )
+        };
+
+        let sec_name = get_section_name(name_idx);
+
+        // SHT_NOTE = 7
+        if sh_type == 7 && sec_offset + sec_size <= data.len() {
+            let note_data = &data[sec_offset..sec_offset + sec_size];
+            let mut off = 0;
+            while off + 12 <= note_data.len() {
+                let namesz = elf_read_u32(note_data, off, little_endian) as usize;
+                let descsz = elf_read_u32(note_data, off + 4, little_endian) as usize;
+                let note_type = elf_read_u32(note_data, off + 8, little_endian);
+                let name_start = off + 12;
+                let name_end = name_start + namesz;
+                let align4 = |x: usize| (x + 3) & !3;
+                let desc_start = align4(name_end);
+                let desc_end = desc_start + descsz;
+
+                if desc_end > note_data.len() {
+                    break;
+                }
+
+                let note_name = if namesz > 0 && name_end <= note_data.len() {
+                    let end = if note_data[name_end - 1] == 0 {
+                        name_end - 1
+                    } else {
+                        name_end
+                    };
+                    String::from_utf8_lossy(&note_data[name_start..end]).to_string()
+                } else {
+                    String::new()
+                };
+
+                // NT_GNU_BUILD_ID = 3, owner "GNU"
+                if note_name == "GNU" && note_type == 3 && build_id.is_none() {
+                    let id_bytes = &note_data[desc_start..desc_end];
+                    build_id = Some(
+                        id_bytes
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<String>(),
+                    );
+                }
+
+                // .note.package (FDO package metadata), owner "FDO"
+                if (note_name == "FDO" || sec_name == ".note.package") && note_type == 0xcafe1a7e {
+                    let json_bytes = &note_data[desc_start..desc_end];
+                    // Trim trailing NULs
+                    let json_str = String::from_utf8_lossy(json_bytes);
+                    let trimmed = json_str.trim_end_matches('\0').trim();
+                    if !trimmed.is_empty() {
+                        package_note = Some(trimmed.to_string());
+                    }
+                }
+
+                off = align4(desc_end);
+            }
+        }
+    }
+
+    if let Some(ref id) = build_id {
+        println!("  Build ID: {id}");
+    }
+    if let Some(ref pkg) = package_note {
+        println!("   Package: {pkg}");
+    }
+
+    // Show interpreter (.interp section)
+    for i in 0..sh_num {
+        let entry = sh_offset + i * sh_entsize;
+        if entry + sh_entsize > data.len() {
+            break;
+        }
+        let name_idx = elf_read_u32(&data, entry, little_endian) as usize;
+        let sec_name = get_section_name(name_idx);
+        if sec_name == ".interp" {
+            let (sec_offset, sec_size) = if is_64 {
+                (
+                    elf_read_u64(&data, entry + 24, little_endian) as usize,
+                    elf_read_u64(&data, entry + 32, little_endian) as usize,
+                )
+            } else {
+                (
+                    elf_read_u32(&data, entry + 16, little_endian) as usize,
+                    elf_read_u32(&data, entry + 20, little_endian) as usize,
+                )
+            };
+            if sec_offset + sec_size <= data.len() {
+                let interp = String::from_utf8_lossy(&data[sec_offset..sec_offset + sec_size]);
+                let trimmed = interp.trim_end_matches('\0');
+                println!("   Interp.: {trimmed}");
+            }
+            break;
+        }
+    }
+
+    if build_id.is_none() && package_note.is_none() {
+        println!("  (no embedded package metadata found)");
+    }
+
+    Ok(())
+}
+
+fn cmd_inspect_elf(files: &[String]) {
+    if files.is_empty() {
+        eprintln!("No ELF binary specified.");
+        process::exit(1);
+    }
+
+    let mut any_error = false;
+    for file in files {
+        if let Err(e) = inspect_elf_file(file) {
+            eprintln!("{e}");
+            any_error = true;
+        }
+        if files.len() > 1 {
+            println!();
+        }
+    }
+
+    if any_error {
+        process::exit(1);
+    }
+}
+
+// ── FD store ──────────────────────────────────────────────────────────────
+
+fn cmd_fdstore(unit: &str) {
+    // Attempt to query fd store via the runtime state directory
+    let fdstore_dir = format!("/run/systemd-rs/fdstore/{unit}");
+    let path = Path::new(&fdstore_dir);
+
+    println!("         Unit: {unit}");
+
+    if !path.exists() {
+        // Try the standard systemd path as well
+        let systemd_path = format!("/run/systemd/units/fdstore/{unit}");
+        if Path::new(&systemd_path).exists()
+            && let Ok(entries) = fs::read_dir(&systemd_path)
+        {
+            let fds: Vec<_> = entries.flatten().collect();
+            println!("    FD Store: {} entries", fds.len());
+            for entry in &fds {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let metadata = entry.metadata().ok();
+                let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                println!("      {name}: {size} bytes");
+            }
+            return;
+        }
+
+        println!("    FD Store: (no entries)");
+        println!();
+        println!("No file descriptor store data found for {unit}.");
+        println!("The service must be running with FileDescriptorStoreMax= set to a value > 0.");
+        return;
+    }
+
+    match fs::read_dir(path) {
+        Ok(entries) => {
+            let fds: Vec<_> = entries.flatten().collect();
+            if fds.is_empty() {
+                println!("    FD Store: (empty)");
+            } else {
+                println!("    FD Store: {} entries", fds.len());
+                println!();
+                println!("  {:>4}  {:<20}  INFO", "IDX", "NAME");
+                for (idx, entry) in fds.iter().enumerate() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    // Try to read metadata about the fd
+                    let info = fs::read_to_string(entry.path())
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string();
+                    let info_display = if info.is_empty() {
+                        "(no info)".to_string()
+                    } else {
+                        info
+                    };
+                    println!("  {:>4}  {:<20}  {}", idx, name, info_display);
+                }
+            }
+        }
+        Err(e) => {
+            println!("    FD Store: error reading: {e}");
+        }
+    }
+}
+
+// ── Image policy ──────────────────────────────────────────────────────────
+
+/// Known partition designations for image policies.
+const IMAGE_POLICY_PARTITIONS: &[&str] = &[
+    "root",
+    "usr",
+    "home",
+    "srv",
+    "esp",
+    "xbootldr",
+    "swap",
+    "root-verity",
+    "root-verity-sig",
+    "usr-verity",
+    "usr-verity-sig",
+    "tmp",
+    "var",
+];
+
+/// Known use policies for partitions.
+const IMAGE_POLICY_USES: &[&str] = &[
+    "verity",
+    "signed",
+    "encrypted",
+    "unprotected",
+    "unused",
+    "absent",
+    "ignore",
+];
+
+/// Parse a single partition policy element like "root=verity+signed+encrypted".
+fn parse_partition_policy(element: &str) -> Result<(String, Vec<String>), String> {
+    let (partition, uses_str) = element
+        .split_once('=')
+        .ok_or_else(|| format!("Invalid policy element (missing '='): {element}"))?;
+
+    let partition = partition.trim().to_lowercase();
+    if partition != "*" && !IMAGE_POLICY_PARTITIONS.contains(&partition.as_str()) {
+        return Err(format!("Unknown partition designation: {partition}"));
+    }
+
+    let uses: Vec<String> = uses_str
+        .split('+')
+        .map(|s| s.trim().to_lowercase())
+        .collect();
+
+    for u in &uses {
+        if !IMAGE_POLICY_USES.contains(&u.as_str()) {
+            return Err(format!(
+                "Unknown use policy '{u}' for partition '{partition}'"
+            ));
+        }
+    }
+
+    Ok((partition, uses))
+}
+
+/// Normalize an image policy string.
+fn normalize_image_policy(policy: &str) -> Result<String, String> {
+    let policy = policy.trim();
+    if policy.is_empty() {
+        return Err("Empty image policy".to_string());
+    }
+
+    // Special well-known policies
+    match policy {
+        "allow" | "*" => return Ok("*=verity+signed+encrypted+unprotected+unused".to_string()),
+        "deny" => return Ok("*=absent".to_string()),
+        "ignore" => return Ok("*=ignore".to_string()),
+        _ => {}
+    }
+
+    let elements: Vec<&str> = policy.split(':').collect();
+    let mut parts = Vec::new();
+
+    for element in &elements {
+        let (partition, uses) = parse_partition_policy(element)?;
+        parts.push(format!("{}={}", partition, uses.join("+")));
+    }
+
+    Ok(parts.join(":"))
+}
+
+fn cmd_image_policy(policies: &[String]) {
+    if policies.is_empty() {
+        eprintln!("No image policy specified.");
+        eprintln!();
+        eprintln!("Usage: systemd-analyze image-policy POLICY...");
+        eprintln!();
+        eprintln!(
+            "Partition designations: {}",
+            IMAGE_POLICY_PARTITIONS.join(", ")
+        );
+        eprintln!("Use policies: {}", IMAGE_POLICY_USES.join(", "));
+        eprintln!();
+        eprintln!("Special policies: allow, deny, ignore");
+        eprintln!(
+            "Example: root=verity+signed+encrypted+unprotected:swap=absent:home=encrypted+unprotected"
+        );
+        process::exit(1);
+    }
+
+    let mut any_error = false;
+    for policy in policies {
+        match normalize_image_policy(policy) {
+            Ok(normalized) => {
+                println!("  Original: {policy}");
+                println!("Normalized: {normalized}");
+
+                // Decompose and display
+                for element in normalized.split(':') {
+                    if let Some((part, uses)) = element.split_once('=') {
+                        let uses_list: Vec<&str> = uses.split('+').collect();
+                        println!("  {part:>20} -> {}", uses_list.join(", "));
+                    }
+                }
+                println!();
+            }
+            Err(e) => {
+                eprintln!("Invalid policy '{policy}': {e}");
+                any_error = true;
+            }
+        }
+    }
+
+    if any_error {
+        process::exit(1);
+    }
+}
+
+// ── TPM2 PCRs ─────────────────────────────────────────────────────────────
+
+/// PCR register descriptions.
+fn pcr_description(index: u32) -> &'static str {
+    match index {
+        0 => "SRTM Contents (platform firmware)",
+        1 => "Platform Configuration",
+        2 => "Option ROM Code",
+        3 => "Option ROM Configuration and Data",
+        4 => "IPL Code (boot loader code)",
+        5 => "IPL Configuration and Data (boot loader config)",
+        6 => "State Transition and Wake Events",
+        7 => "Secure Boot Policy",
+        8 => "Kernel command line (grub, sd-stub)",
+        9 => "Kernel image/initrd (grub, sd-stub)",
+        10 => "Reserved for IMA",
+        11 => "Unified Kernel Image components (sd-stub)",
+        12 => "Kernel command line overrides (sd-stub)",
+        13 => "System Extensions (sd-stub)",
+        14 => "MOK certificates and hashes (shim)",
+        15 => "TSS/User defined",
+        16..=23 => "Dynamic/User defined",
+        _ => "Unknown",
+    }
+}
+
+fn cmd_pcrs() {
+    // Try multiple TPM sysfs paths
+    let hash_algs = ["sha256", "sha1", "sha384", "sha512"];
+    let mut found = false;
+
+    for alg in &hash_algs {
+        let pcr_dir = format!("/sys/class/tpm/tpm0/pcr-{alg}");
+        let path = Path::new(&pcr_dir);
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        if !found {
+            println!("TPM2 PCR Values:");
+            println!();
+        }
+        found = true;
+        println!("  Algorithm: {alg}");
+        println!("  {:>3}  {:<48}  DESCRIPTION", "NR", "VALUE");
+
+        // Read PCR 0-23
+        for i in 0..24u32 {
+            let pcr_file = format!("{pcr_dir}/{i}");
+            let value =
+                fs::read_to_string(&pcr_file).unwrap_or_else(|_| "(unreadable)".to_string());
+            let value = value.trim();
+            let desc = pcr_description(i);
+            println!("  {:>3}  {:<48}  {desc}", i, value);
+        }
+        println!();
+    }
+
+    if !found {
+        // No sysfs PCR data; try /dev/tpm0 existence
+        if Path::new("/dev/tpm0").exists() || Path::new("/dev/tpmrm0").exists() {
+            println!("TPM2 device found but PCR sysfs interface not available.");
+            println!("PCR values could not be read from /sys/class/tpm/tpm0/pcr-*/");
+        } else {
+            println!("No TPM2 device found.");
+            println!("Looked for /sys/class/tpm/tpm0/pcr-sha256/ and /dev/tpm0.");
+        }
+        process::exit(1);
+    }
+}
+
+// ── TPM2 SRK ──────────────────────────────────────────────────────────────
+
+fn cmd_srk() {
+    // The SRK (Storage Root Key) is a primary key in the TPM2 storage hierarchy.
+    // We check for its existence and display available information.
+
+    println!("TPM2 SRK (Storage Root Key):");
+    println!();
+
+    // Check TPM device availability
+    let has_tpm = Path::new("/dev/tpmrm0").exists() || Path::new("/dev/tpm0").exists();
+
+    if !has_tpm {
+        println!("No TPM2 device found.");
+        println!("Looked for /dev/tpmrm0 and /dev/tpm0.");
+        process::exit(1);
+    }
+
+    // Show TPM device info
+    if Path::new("/dev/tpmrm0").exists() {
+        println!("  Device: /dev/tpmrm0 (resource manager)");
+    } else {
+        println!("  Device: /dev/tpm0 (direct access)");
+    }
+
+    // Read TPM version info
+    if let Ok(caps) = fs::read_to_string("/sys/class/tpm/tpm0/caps") {
+        for line in caps.lines() {
+            let line = line.trim();
+            if !line.is_empty() {
+                println!("  {line}");
+            }
+        }
+    }
+
+    // Read TPM device description
+    if let Ok(desc) = fs::read_to_string("/sys/class/tpm/tpm0/description") {
+        let desc = desc.trim();
+        if !desc.is_empty() {
+            println!("  Description: {desc}");
+        }
+    }
+
+    // Read TPM PCR banks to show which algorithms are supported
+    let hash_algs = ["sha256", "sha384", "sha512", "sha1"];
+    let mut supported_algs = Vec::new();
+    for alg in &hash_algs {
+        let pcr_dir = format!("/sys/class/tpm/tpm0/pcr-{alg}");
+        if Path::new(&pcr_dir).is_dir() {
+            supported_algs.push(*alg);
+        }
+    }
+
+    if !supported_algs.is_empty() {
+        println!("  Supported hash algorithms: {}", supported_algs.join(", "));
+    }
+
+    // Check tpm2-tools availability
+    if let Ok(output) = std::process::Command::new("tpm2_readpublic")
+        .args(["-c", "0x81000001"])
+        .output()
+        && output.status.success()
+    {
+        println!();
+        println!("  SRK public key (handle 0x81000001):");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            println!("    {line}");
+        }
+        return;
+    }
+
+    // Also try the well-known SRK at the owner hierarchy primary
+    if let Ok(output) = std::process::Command::new("tpm2_createprimary")
+        .args([
+            "-C",
+            "o",
+            "-G",
+            "rsa2048",
+            "-c",
+            "/dev/null",
+            "--format=pem",
+            "-Q",
+        ])
+        .stderr(std::process::Stdio::null())
+        .output()
+        && output.status.success()
+    {
+        println!();
+        println!("  SRK can be created in owner hierarchy (RSA-2048).");
+    }
+
+    println!();
+    println!("  Note: Full SRK display requires tpm2-tools (tpm2_readpublic, tpm2_createprimary).");
+    println!("  The SRK is a primary key in the TPM2 owner hierarchy used for sealing");
+    println!("  secrets and key wrapping. Its handle is typically 0x81000001.");
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Plot tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_unit_color_service() {
+        assert_eq!(unit_color("foo.service"), "#729fcf");
+    }
+
+    #[test]
+    fn test_unit_color_target() {
+        assert_eq!(unit_color("default.target"), "#4e9a06");
+    }
+
+    #[test]
+    fn test_unit_color_socket() {
+        assert_eq!(unit_color("dbus.socket"), "#ef2929");
+    }
+
+    #[test]
+    fn test_unit_color_mount() {
+        assert_eq!(unit_color("tmp.mount"), "#ad7fa8");
+    }
+
+    #[test]
+    fn test_unit_color_timer() {
+        assert_eq!(unit_color("foo.timer"), "#fcaf3e");
+    }
+
+    #[test]
+    fn test_unit_color_unknown() {
+        assert_eq!(unit_color("something"), "#888a85");
+    }
+
+    // ── ELF inspection tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_elf_read_u16_le() {
+        let data = [0x01, 0x02];
+        assert_eq!(elf_read_u16(&data, 0, true), 0x0201);
+    }
+
+    #[test]
+    fn test_elf_read_u16_be() {
+        let data = [0x01, 0x02];
+        assert_eq!(elf_read_u16(&data, 0, false), 0x0102);
+    }
+
+    #[test]
+    fn test_elf_read_u32_le() {
+        let data = [0x01, 0x02, 0x03, 0x04];
+        assert_eq!(elf_read_u32(&data, 0, true), 0x04030201);
+    }
+
+    #[test]
+    fn test_elf_read_u32_be() {
+        let data = [0x01, 0x02, 0x03, 0x04];
+        assert_eq!(elf_read_u32(&data, 0, false), 0x01020304);
+    }
+
+    #[test]
+    fn test_elf_read_u64_le() {
+        let data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        assert_eq!(elf_read_u64(&data, 0, true), 0x0807060504030201);
+    }
+
+    #[test]
+    fn test_elf_machine_name_x86_64() {
+        assert_eq!(elf_machine_name(0x3E), "x86-64");
+    }
+
+    #[test]
+    fn test_elf_machine_name_aarch64() {
+        assert_eq!(elf_machine_name(0xB7), "AArch64");
+    }
+
+    #[test]
+    fn test_elf_machine_name_unknown() {
+        assert_eq!(elf_machine_name(0xFF), "unknown");
+    }
+
+    #[test]
+    fn test_elf_osabi_name_linux() {
+        assert_eq!(elf_osabi_name(3), "GNU/Linux");
+    }
+
+    #[test]
+    fn test_elf_osabi_name_sysv() {
+        assert_eq!(elf_osabi_name(0), "UNIX System V");
+    }
+
+    #[test]
+    fn test_elf_type_name_exec() {
+        assert_eq!(elf_type_name(2), "EXEC (Executable)");
+    }
+
+    #[test]
+    fn test_elf_type_name_dyn() {
+        assert_eq!(elf_type_name(3), "DYN (Shared object)");
+    }
+
+    #[test]
+    fn test_inspect_elf_not_elf() {
+        // Create a temp file that's not an ELF
+        let tmp = "/tmp/systemd-analyze-test-not-elf";
+        fs::write(tmp, b"this is not an ELF file").unwrap();
+        let result = inspect_elf_file(tmp);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not an ELF"));
+        let _ = fs::remove_file(tmp);
+    }
+
+    #[test]
+    fn test_inspect_elf_nonexistent() {
+        let result = inspect_elf_file("/nonexistent/path/to/elf");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Cannot open"));
+    }
+
+    #[test]
+    fn test_inspect_elf_self() {
+        // Inspect our own binary (should be a valid ELF)
+        let exe = std::env::current_exe().unwrap();
+        let result = inspect_elf_file(exe.to_str().unwrap());
+        assert!(result.is_ok());
+    }
+
+    // ── Image policy tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_normalize_image_policy_allow() {
+        let result = normalize_image_policy("allow").unwrap();
+        assert!(result.contains("verity"));
+        assert!(result.contains("unprotected"));
+    }
+
+    #[test]
+    fn test_normalize_image_policy_deny() {
+        let result = normalize_image_policy("deny").unwrap();
+        assert_eq!(result, "*=absent");
+    }
+
+    #[test]
+    fn test_normalize_image_policy_ignore() {
+        let result = normalize_image_policy("ignore").unwrap();
+        assert_eq!(result, "*=ignore");
+    }
+
+    #[test]
+    fn test_normalize_image_policy_custom() {
+        let result = normalize_image_policy("root=verity+signed:swap=absent").unwrap();
+        assert_eq!(result, "root=verity+signed:swap=absent");
+    }
+
+    #[test]
+    fn test_normalize_image_policy_wildcard() {
+        let result = normalize_image_policy("*=unprotected").unwrap();
+        assert_eq!(result, "*=unprotected");
+    }
+
+    #[test]
+    fn test_normalize_image_policy_empty() {
+        assert!(normalize_image_policy("").is_err());
+    }
+
+    #[test]
+    fn test_normalize_image_policy_unknown_partition() {
+        assert!(normalize_image_policy("foobar=verity").is_err());
+    }
+
+    #[test]
+    fn test_normalize_image_policy_unknown_use() {
+        assert!(normalize_image_policy("root=foobar").is_err());
+    }
+
+    #[test]
+    fn test_parse_partition_policy_valid() {
+        let (part, uses) = parse_partition_policy("root=verity+signed").unwrap();
+        assert_eq!(part, "root");
+        assert_eq!(uses, vec!["verity", "signed"]);
+    }
+
+    #[test]
+    fn test_parse_partition_policy_missing_eq() {
+        assert!(parse_partition_policy("rootverity").is_err());
+    }
+
+    // ── PCR tests ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_pcr_description_known() {
+        assert_eq!(pcr_description(0), "SRTM Contents (platform firmware)");
+        assert_eq!(pcr_description(7), "Secure Boot Policy");
+        assert_eq!(
+            pcr_description(11),
+            "Unified Kernel Image components (sd-stub)"
+        );
+    }
+
+    #[test]
+    fn test_pcr_description_dynamic() {
+        assert_eq!(pcr_description(16), "Dynamic/User defined");
+        assert_eq!(pcr_description(23), "Dynamic/User defined");
+    }
+
+    #[test]
+    fn test_pcr_description_unknown() {
+        assert_eq!(pcr_description(24), "Unknown");
+    }
 
     // TimeSpan parsing tests
 
