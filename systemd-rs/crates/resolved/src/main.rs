@@ -1612,7 +1612,7 @@ fn main() {
                     sd_notify_status("Processing requests... (D-Bus active)");
                 }
                 Err(e) => {
-                    log::warn!(
+                    log::info!(
                         "Failed to register D-Bus interface ({}); continuing without D-Bus",
                         e
                     );

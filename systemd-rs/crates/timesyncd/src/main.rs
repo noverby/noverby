@@ -1289,7 +1289,7 @@ impl TimesyncDaemon {
                         _dbus_conn = Some(conn);
                     }
                     Err(e) => {
-                        log::warn!(
+                        log::info!(
                             "Failed to register D-Bus interface ({}); continuing without D-Bus",
                             e
                         );

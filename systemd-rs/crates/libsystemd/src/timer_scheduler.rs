@@ -325,7 +325,7 @@ fn fire_timer_target(run_info: &ArcMutRuntimeInfo, target_unit_name: &str) {
                     ),
                 }
             } else {
-                warn!(
+                debug!(
                     "Timer target {} not found and could not be loaded",
                     target_unit_name
                 );
