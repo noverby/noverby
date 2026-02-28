@@ -414,6 +414,13 @@ fn pid1_specific_setup() {
     // creation serves as a fallback before mount units are activated.
     let _ = std::fs::create_dir_all("/var/log/journal");
 
+    // Ensure /var/lib/lastlog exists so that pam_lastlog2 can open/create
+    // its SQLite database (lastlog2.db).  Normally systemd-tmpfiles-setup
+    // creates this, but getty may start before tmpfiles-setup completes,
+    // causing pam_lastlog2 to return PAM_SESSION_ERR and login to print
+    // "System error" on the first attempt.
+    let _ = std::fs::create_dir_all("/var/lib/lastlog");
+
     // ── PAM / NSS prerequisite diagnostics ──────────────────────────────
     //
     // Log the state of critical files that PAM and NSS need.  If any of
