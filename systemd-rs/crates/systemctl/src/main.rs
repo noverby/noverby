@@ -10,7 +10,7 @@
 //!   --show-types, --failed, --all, -a, -f, -q, -l, -t, -p, -n
 //!
 //! Also handles special commands:
-//!   poweroff, reboot, halt  → mapped to "shutdown"
+//!   poweroff, reboot, halt, kexec  → mapped to "shutdown" with verb as param
 //!   daemon-reload           → mapped to "reload"
 //!   try-restart             → forwarded as "try-restart"
 //!   reload-or-restart       → forwarded as "reload-or-restart"
@@ -269,7 +269,15 @@ fn main() {
     // Map command aliases.
     let command = match positional[0].as_str() {
         "poweroff" | "reboot" | "halt" | "kexec" => {
+            let verb = positional[0].clone();
             positional[0] = "shutdown".to_string();
+            // Keep the original verb as a parameter so the server knows
+            // which action to perform (poweroff vs reboot vs halt vs kexec).
+            if positional.len() < 2 {
+                positional.push(verb);
+            } else {
+                positional.insert(1, verb);
+            }
             &positional[0]
         }
         "daemon-reload" => {
@@ -794,7 +802,11 @@ fn handle_response(
         | "suspend"
         | "hibernate"
         | "hybrid-sleep"
-        | "suspend-then-hibernate" => {
+        | "suspend-then-hibernate"
+        | "shutdown"
+        | "poweroff"
+        | "reboot"
+        | "halt" => {
             // These return null on success — nothing to print.
         }
         "set-property" => {

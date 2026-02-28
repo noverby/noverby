@@ -157,7 +157,10 @@ pub fn handle_signals(
                 | signal_hook::consts::SIGINT
                 | signal_hook::consts::SIGQUIT => {
                     info!("Received termination signal. systemd-rs checking out");
-                    crate::shutdown::shutdown_sequence(run_info.clone());
+                    crate::shutdown::shutdown_sequence(
+                        run_info.clone(),
+                        crate::shutdown::ShutdownAction::Poweroff,
+                    );
                 }
 
                 sig => {
@@ -190,19 +193,31 @@ fn handle_rtmin_signal(offset: i32, run_info: &ArcMutRuntimeInfo) {
         // ── Shutdown / reboot ───────────────────────────────────────────
         3 => {
             info!("SIGRTMIN+3: Halting system");
-            crate::shutdown::shutdown_sequence(run_info.clone());
+            crate::shutdown::shutdown_sequence(
+                run_info.clone(),
+                crate::shutdown::ShutdownAction::Halt,
+            );
         }
         4 => {
             info!("SIGRTMIN+4: Powering off system");
-            crate::shutdown::shutdown_sequence(run_info.clone());
+            crate::shutdown::shutdown_sequence(
+                run_info.clone(),
+                crate::shutdown::ShutdownAction::Poweroff,
+            );
         }
         5 => {
             info!("SIGRTMIN+5: Rebooting system");
-            crate::shutdown::shutdown_sequence(run_info.clone());
+            crate::shutdown::shutdown_sequence(
+                run_info.clone(),
+                crate::shutdown::ShutdownAction::Reboot,
+            );
         }
         6 => {
-            info!("SIGRTMIN+6: Kexec reboot (treated as reboot)");
-            crate::shutdown::shutdown_sequence(run_info.clone());
+            info!("SIGRTMIN+6: Kexec reboot");
+            crate::shutdown::shutdown_sequence(
+                run_info.clone(),
+                crate::shutdown::ShutdownAction::Kexec,
+            );
         }
 
         // ── Daemon re-execution ─────────────────────────────────────────
