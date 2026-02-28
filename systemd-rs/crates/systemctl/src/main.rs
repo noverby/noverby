@@ -89,7 +89,17 @@ const LONG_FLAGS_WITH_VALUE: &[&str] = &[
 
 fn main() {
     let mut args: Vec<_> = std::env::args().collect();
-    let _exec_name = args.remove(0);
+    let exec_name = args.remove(0);
+
+    // When invoked as "poweroff", "reboot", "halt", or "kexec" (e.g. via
+    // symlink), treat it as if "systemctl <verb>" was called.
+    let implicit_command: &[&str] = &["poweroff", "reboot", "halt", "kexec"];
+    for cmd in implicit_command {
+        if exec_name.ends_with(cmd) {
+            args.insert(0, cmd.to_string());
+            break;
+        }
+    }
 
     if args.is_empty() || args[0] == "--help" || args[0] == "-h" {
         print_help();
