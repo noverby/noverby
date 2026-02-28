@@ -4925,7 +4925,7 @@ pub fn run_daemon() {
             Some(server)
         }
         Err(e) => {
-            log::warn!(
+            log::info!(
                 "Failed to initialize D-Bus interface: {}. Running without D-Bus.",
                 e
             );

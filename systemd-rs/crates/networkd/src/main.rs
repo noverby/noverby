@@ -707,7 +707,7 @@ fn main() {
         {
             log::info!("{}: sending Router Solicitation", ra_state.ifname);
             if let Err(e) = ipv6_ra::send_rs(fd, &ra_state.mac) {
-                log::warn!("{}: failed to send RS: {}", ra_state.ifname, e);
+                log::debug!("{}: failed to send RS (will retry): {}", ra_state.ifname, e);
             }
             ra_state.mark_rs_sent();
         }
@@ -802,7 +802,7 @@ fn main() {
                     sd_notify(&format!("STATUS={} (D-Bus active)", mgr.overall_state()));
                 }
                 Err(e) => {
-                    log::warn!(
+                    log::info!(
                         "Failed to register D-Bus interface ({}); continuing without D-Bus",
                         e
                     );
@@ -1016,7 +1016,7 @@ fn main() {
                     ra_state.rs_count + 1
                 );
                 if let Err(e) = ipv6_ra::send_rs(fd, &ra_state.mac) {
-                    log::warn!("{}: failed to retransmit RS: {}", ra_state.ifname, e);
+                    log::debug!("{}: failed to retransmit RS: {}", ra_state.ifname, e);
                 }
                 ra_state.mark_rs_sent();
             }

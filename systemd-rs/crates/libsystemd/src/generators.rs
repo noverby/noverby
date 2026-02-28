@@ -40,9 +40,29 @@
 
 use log::{debug, info, trace, warn};
 use std::collections::HashSet;
+use std::fmt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+/// Error type for generator execution distinguishing "nothing to do" (exit 1)
+/// from real failures.
+#[derive(Debug)]
+enum GeneratorError {
+    /// Generator exited with code 1, conventionally meaning "nothing to do"
+    /// (e.g. systemd-ssh-generator when sshd is not configured).
+    NothingToDo(String),
+    /// Generator failed with a non-trivial exit code, signal, or spawn error.
+    Failed(String),
+}
+
+impl fmt::Display for GeneratorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NothingToDo(msg) | Self::Failed(msg) => f.write_str(msg),
+        }
+    }
+}
 
 /// Output directories where generators write their unit files.
 pub struct GeneratorOutput {
@@ -167,7 +187,15 @@ pub fn run_generators_to(unit_dirs: &[PathBuf], output: GeneratorOutput) -> Gene
                 );
                 succeeded += 1;
             }
-            Err(e) => {
+            Err(GeneratorError::NothingToDo(e)) => {
+                let elapsed = start.elapsed();
+                debug!(
+                    "generators: {name} skipped ({:.1}ms): {e}",
+                    elapsed.as_secs_f64() * 1000.0
+                );
+                skipped += 1;
+            }
+            Err(GeneratorError::Failed(e)) => {
                 let elapsed = start.elapsed();
                 eprintln!(
                     "systemd-rs: generators: {name} failed ({:.1}ms): {e}",
@@ -381,15 +409,15 @@ fn find_generators(unit_dirs: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 /// Execute a single generator.
-fn execute_generator(generator: &Path, output: &GeneratorOutput) -> Result<(), String> {
-    let name = generator
+fn execute_generator(path: &Path, output: &GeneratorOutput) -> Result<(), GeneratorError> {
+    let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| generator.display().to_string());
+        .unwrap_or_else(|| path.display().to_string());
 
     // Set up the environment for the generator.
     // Real systemd sets a minimal environment for generators.
-    let mut cmd = std::process::Command::new(generator);
+    let mut cmd = std::process::Command::new(path);
     cmd.arg(output.normal_dir.as_os_str())
         .arg(output.early_dir.as_os_str())
         .arg(output.late_dir.as_os_str());
@@ -405,7 +433,7 @@ fn execute_generator(generator: &Path, output: &GeneratorOutput) -> Result<(), S
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("failed to spawn {name}: {e}"))?;
+        .map_err(|e| GeneratorError::Failed(format!("failed to spawn {name}: {e}")))?;
 
     // Wait with timeout
     let result = wait_with_timeout(&mut child, GENERATOR_TIMEOUT);
@@ -446,18 +474,29 @@ fn execute_generator(generator: &Path, output: &GeneratorOutput) -> Result<(), S
             if status.success() {
                 Ok(())
             } else {
-                let code = status
-                    .code()
+                let code = status.code();
+                let code_str = code
                     .map(|c| c.to_string())
                     .unwrap_or_else(|| "signal".to_string());
-                Err(format!("exited with status {code}"))
+                // Exit code 1 is conventionally used by generators to signal
+                // "nothing to do" (e.g. systemd-ssh-generator when sshd is
+                // not configured).  Distinguish it from real failures.
+                if code == Some(1) {
+                    Err(GeneratorError::NothingToDo(
+                        "exited with status 1 (nothing to do)".to_string(),
+                    ))
+                } else {
+                    Err(GeneratorError::Failed(format!(
+                        "exited with status {code_str}"
+                    )))
+                }
             }
         }
         Err(e) => {
             // Kill the child if it's still running
             let _ = child.kill();
             let _ = child.wait();
-            Err(e)
+            Err(GeneratorError::Failed(e))
         }
     }
 }
