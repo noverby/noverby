@@ -14,17 +14,26 @@
 //! - `poweroff <name>` — alias for terminate
 //! - `reboot <name>` — terminate + note (reboot semantics need nspawn)
 //! - `kill <name> [--signal=SIG]` — send signal to machine leader
-//! - `login <name>` — (stub) login to a container
-//! - `shell <name>` — (stub) open a shell in a container
-//! - `image list` — (stub) list machine images
-//! - `clean` — (stub) clean up hidden/stale machine state
+//! - `login <name>` — PTY-forwarded login into a container
+//! - `shell <name>` — PTY-forwarded shell in a container
+//! - `list-images` — list machine images with type/RO/usage/limit
+//! - `show-image <name>` — show image details
+//! - `clone <source> <dest>` — clone an image
+//! - `rename <old> <new>` — rename an image
+//! - `remove <name>` — remove an image
+//! - `set-limit <name> <size>` — set image size limit
+//! - `copy-to <machine> <host_path> <container_path>` — copy files into container
+//! - `copy-from <machine> <container_path> <host_path>` — copy files from container
+//! - `import-tar <file> <name>` — import tar as image
+//! - `import-raw <file> <name>` — import raw disk image
+//! - `export-tar <name> <file>` — export image as tar
+//! - `export-raw <name> <file>` — export image as raw
+//! - `pull-tar <url> <name>` — download and import tar image
+//! - `pull-raw <url> <name>` — download and import raw image
+//! - `clean` — clean up stale machine state
 //!
 //! ## Missing
 //!
-//! - D-Bus interface (org.freedesktop.machine1)
-//! - Image management (clone/rename/remove/set-limit/import/export/pull)
-//! - PTY forwarding for login/shell
-//! - copy-to/copy-from operations
 //! - bind/bind-user mount operations
 //! - enable/disable image management
 
@@ -62,6 +71,10 @@ struct Args {
     value: bool,
     full: bool,
     max_addresses: Option<usize>,
+    read_only: bool,
+    extra_args: Vec<String>,
+    uid: Option<String>,
+    verify: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,9 +89,21 @@ enum Command {
     Login,
     Shell,
     ImageList,
+    ShowImage,
+    Clone,
+    Rename,
+    Remove,
+    SetLimit,
+    CopyTo,
+    CopyFrom,
+    ImportTar,
+    ImportRaw,
+    ExportTar,
+    ExportRaw,
+    PullTar,
+    PullRaw,
     Clean,
     Help,
-    ShowImage,
     CatImage,
 }
 
@@ -97,6 +122,10 @@ impl Default for Args {
             value: false,
             full: false,
             max_addresses: None,
+            read_only: false,
+            extra_args: Vec::new(),
+            uid: None,
+            verify: "no".to_string(),
         }
     }
 }
@@ -119,6 +148,7 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
             "--all" | "-a" => args.all = true,
             "--value" => args.value = true,
             "--full" | "-l" => args.full = true,
+            "--read-only" => args.read_only = true,
             _ if arg.starts_with("--signal=") => {
                 args.signal = arg.strip_prefix("--signal=").unwrap().to_string();
             }
@@ -176,8 +206,28 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
                     Err(_) => return Err(format!("Invalid --max-addresses value: {}", argv[i])),
                 }
             }
+            _ if arg.starts_with("--uid=") => {
+                args.uid = Some(arg.strip_prefix("--uid=").unwrap().to_string());
+            }
+            "--uid" => {
+                i += 1;
+                if i >= argv.len() {
+                    return Err("--uid requires a value".to_string());
+                }
+                args.uid = Some(argv[i].clone());
+            }
+            _ if arg.starts_with("--verify=") => {
+                args.verify = arg.strip_prefix("--verify=").unwrap().to_string();
+            }
+            "--verify" => {
+                i += 1;
+                if i >= argv.len() {
+                    return Err("--verify requires a value".to_string());
+                }
+                args.verify = argv[i].clone();
+            }
             // Skip known but unused flags
-            "--quiet" | "-q" | "--mkdir" | "--read-only" => {}
+            "--quiet" | "-q" | "--mkdir" => {}
             _ if arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1 => {
                 // Unknown short option — ignore
             }
@@ -232,7 +282,16 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
         }
         "shell" => {
             args.command = Command::Shell;
-            args.machine = positional.get(1).cloned();
+            // shell supports [USER@]NAME [COMMAND...]
+            if let Some(target) = positional.get(1) {
+                if let Some((user, machine)) = target.split_once('@') {
+                    args.uid = Some(user.to_string());
+                    args.machine = Some(machine.to_string());
+                } else {
+                    args.machine = Some(target.clone());
+                }
+            }
+            args.extra_args = positional.get(2..).unwrap_or(&[]).to_vec();
         }
         "clean" => {
             args.command = Command::Clean;
@@ -240,10 +299,116 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
         "list-images" => {
             args.command = Command::ImageList;
         }
+        "show-image" => {
+            args.command = Command::ShowImage;
+            args.machine = positional.get(1).cloned();
+        }
+        "clone" => {
+            args.command = Command::Clone;
+            args.machine = positional.get(1).cloned();
+            if let Some(dest) = positional.get(2) {
+                args.extra_args.push(dest.clone());
+            }
+        }
+        "rename" => {
+            args.command = Command::Rename;
+            args.machine = positional.get(1).cloned();
+            if let Some(new_name) = positional.get(2) {
+                args.extra_args.push(new_name.clone());
+            }
+        }
+        "remove" => {
+            args.command = Command::Remove;
+            args.machine = positional.get(1).cloned();
+        }
+        "set-limit" => {
+            args.command = Command::SetLimit;
+            args.machine = positional.get(1).cloned();
+            if let Some(limit) = positional.get(2) {
+                args.extra_args.push(limit.clone());
+            }
+        }
+        "copy-to" => {
+            args.command = Command::CopyTo;
+            args.machine = positional.get(1).cloned();
+            args.extra_args = positional.get(2..).unwrap_or(&[]).to_vec();
+        }
+        "copy-from" => {
+            args.command = Command::CopyFrom;
+            args.machine = positional.get(1).cloned();
+            args.extra_args = positional.get(2..).unwrap_or(&[]).to_vec();
+        }
+        "import-tar" => {
+            args.command = Command::ImportTar;
+            args.machine = positional.get(1).cloned(); // source path
+            if let Some(name) = positional.get(2) {
+                args.extra_args.push(name.clone());
+            }
+        }
+        "import-raw" => {
+            args.command = Command::ImportRaw;
+            args.machine = positional.get(1).cloned(); // source path
+            if let Some(name) = positional.get(2) {
+                args.extra_args.push(name.clone());
+            }
+        }
+        "export-tar" => {
+            args.command = Command::ExportTar;
+            args.machine = positional.get(1).cloned(); // image name
+            if let Some(dest) = positional.get(2) {
+                args.extra_args.push(dest.clone());
+            }
+        }
+        "export-raw" => {
+            args.command = Command::ExportRaw;
+            args.machine = positional.get(1).cloned(); // image name
+            if let Some(dest) = positional.get(2) {
+                args.extra_args.push(dest.clone());
+            }
+        }
+        "pull-tar" => {
+            args.command = Command::PullTar;
+            args.machine = positional.get(1).cloned(); // URL
+            if let Some(name) = positional.get(2) {
+                args.extra_args.push(name.clone());
+            }
+        }
+        "pull-raw" => {
+            args.command = Command::PullRaw;
+            args.machine = positional.get(1).cloned(); // URL
+            if let Some(name) = positional.get(2) {
+                args.extra_args.push(name.clone());
+            }
+        }
         "image" => match positional.get(1).map(|s| s.as_str()) {
             Some("show") | Some("status") => {
                 args.command = Command::ShowImage;
                 args.machine = positional.get(2).cloned();
+            }
+            Some("clone") => {
+                args.command = Command::Clone;
+                args.machine = positional.get(2).cloned();
+                if let Some(dest) = positional.get(3) {
+                    args.extra_args.push(dest.clone());
+                }
+            }
+            Some("rename") => {
+                args.command = Command::Rename;
+                args.machine = positional.get(2).cloned();
+                if let Some(new_name) = positional.get(3) {
+                    args.extra_args.push(new_name.clone());
+                }
+            }
+            Some("remove") => {
+                args.command = Command::Remove;
+                args.machine = positional.get(2).cloned();
+            }
+            Some("set-limit") => {
+                args.command = Command::SetLimit;
+                args.machine = positional.get(2).cloned();
+                if let Some(limit) = positional.get(3) {
+                    args.extra_args.push(limit.clone());
+                }
             }
             Some("cat") => {
                 args.command = Command::CatImage;
@@ -776,54 +941,708 @@ fn cmd_clean() -> i32 {
     }
 }
 
-fn cmd_image_list() -> i32 {
-    // Stub — list machine images from /var/lib/machines
-    let image_dir = Path::new("/var/lib/machines");
-    if !image_dir.exists() {
-        println!("No machine images found.");
-        return 0;
-    }
-
-    let entries = match fs::read_dir(image_dir) {
-        Ok(e) => e,
+fn cmd_image_list(args: &Args) -> i32 {
+    // Try daemon first, fall back to offline
+    match send_command("IMAGE_LIST") {
+        Ok(resp) => {
+            print!("{}", resp);
+            0
+        }
         Err(_) => {
-            println!("No machine images found.");
-            return 0;
+            // Offline fallback — list machine images from /var/lib/machines
+            let image_dir = Path::new("/var/lib/machines");
+            if !image_dir.exists() {
+                if !args.no_legend {
+                    println!("No images.");
+                }
+                return 0;
+            }
+
+            let entries = match fs::read_dir(image_dir) {
+                Ok(e) => e,
+                Err(_) => {
+                    if !args.no_legend {
+                        println!("No images.");
+                    }
+                    return 0;
+                }
+            };
+
+            let mut images: Vec<(String, String, String)> = Vec::new();
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let path = entry.path();
+                let img_type = if path.is_dir() { "directory" } else { "raw" }.to_string();
+                let ro = if path
+                    .metadata()
+                    .map(|m| m.permissions().readonly())
+                    .unwrap_or(false)
+                {
+                    "ro"
+                } else {
+                    "no"
+                }
+                .to_string();
+                images.push((name, img_type, ro));
+            }
+
+            if images.is_empty() {
+                if !args.no_legend {
+                    println!("No images.");
+                }
+                return 0;
+            }
+
+            images.sort_by(|a, b| a.0.cmp(&b.0));
+            if !args.no_legend {
+                println!(
+                    "{:<32} {:>10} {:>8} {:>12} {:>12}",
+                    "NAME", "TYPE", "RO", "USAGE", "LIMIT"
+                );
+            }
+            for (name, img_type, ro) in &images {
+                println!(
+                    "{:<32} {:>10} {:>8} {:>12} {:>12}",
+                    name, img_type, ro, "-", "-"
+                );
+            }
+            if !args.no_legend {
+                println!("\n{} images listed.", images.len());
+            }
+            0
+        }
+    }
+}
+
+fn cmd_show_image(args: &Args) -> i32 {
+    let name = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
         }
     };
 
-    let mut images: Vec<String> = Vec::new();
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
-            continue;
+    match send_command(&format!("IMAGE_SHOW {}", name)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                return 1;
+            }
+            print!("{}", resp);
+            0
         }
-        images.push(name);
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_clone(args: &Args) -> i32 {
+    let source = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Source image name required");
+            return 1;
+        }
+    };
+
+    let dest = match args.extra_args.first() {
+        Some(d) => d,
+        None => {
+            eprintln!("Destination image name required");
+            return 1;
+        }
+    };
+
+    let ro = if args.read_only { " true" } else { "" };
+    match send_command(&format!("CLONE {} {}{}", source, dest, ro)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_rename(args: &Args) -> i32 {
+    let old_name = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Old image name required");
+            return 1;
+        }
+    };
+
+    let new_name = match args.extra_args.first() {
+        Some(n) => n,
+        None => {
+            eprintln!("New image name required");
+            return 1;
+        }
+    };
+
+    match send_command(&format!("RENAME {} {}", old_name, new_name)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_remove(args: &Args) -> i32 {
+    let name = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
+        }
+    };
+
+    match send_command(&format!("REMOVE {}", name)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_set_limit(args: &Args) -> i32 {
+    let name = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
+        }
+    };
+
+    let limit = match args.extra_args.first() {
+        Some(l) => l,
+        None => {
+            eprintln!("Size limit required (e.g. 1G, 500M)");
+            return 1;
+        }
+    };
+
+    match send_command(&format!("SET-LIMIT {} {}", name, limit)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_copy_to(args: &Args) -> i32 {
+    let machine = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Machine name required");
+            return 1;
+        }
+    };
+
+    if args.extra_args.len() < 2 {
+        eprintln!("Usage: copy-to MACHINE HOST_PATH CONTAINER_PATH");
+        return 1;
     }
 
-    if images.is_empty() {
-        println!("No machine images found.");
-        return 0;
+    let host_path = &args.extra_args[0];
+    let container_path = &args.extra_args[1];
+
+    match send_command(&format!(
+        "COPY-TO {} {} {}",
+        machine, host_path, container_path
+    )) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_copy_from(args: &Args) -> i32 {
+    let machine = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Machine name required");
+            return 1;
+        }
+    };
+
+    if args.extra_args.len() < 2 {
+        eprintln!("Usage: copy-from MACHINE CONTAINER_PATH HOST_PATH");
+        return 1;
     }
 
-    images.sort();
-    println!("{:<32} {:>10} {:>10}", "NAME", "TYPE", "RO");
-    for name in &images {
-        let path = image_dir.join(name);
-        let img_type = if path.is_dir() { "directory" } else { "raw" };
-        let ro = if path
-            .metadata()
-            .map(|m| m.permissions().readonly())
-            .unwrap_or(false)
-        {
-            "ro"
-        } else {
-            "no"
-        };
-        println!("{:<32} {:>10} {:>10}", name, img_type, ro);
+    let container_path = &args.extra_args[0];
+    let host_path = &args.extra_args[1];
+
+    match send_command(&format!(
+        "COPY-FROM {} {} {}",
+        machine, container_path, host_path
+    )) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
     }
-    println!("\n{} images listed.", images.len());
-    0
+}
+
+fn cmd_login(args: &Args) -> i32 {
+    let name = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Machine name required");
+            return 1;
+        }
+    };
+
+    // Request a PTY session from machined
+    match send_command(&format!("LOGIN {}", name)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                return 1;
+            }
+            // Parse the PTY master fd and child pid from the response
+            // Format: "OK: PTY master_fd=N child_pid=M"
+            if let Some(rest) = resp.strip_prefix("OK: PTY ") {
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                let mut master_fd: i32 = -1;
+                let mut child_pid: i32 = -1;
+                for part in parts {
+                    if let Some(val) = part.strip_prefix("master_fd=") {
+                        master_fd = val.parse().unwrap_or(-1);
+                    } else if let Some(val) = part.strip_prefix("child_pid=") {
+                        child_pid = val.parse().unwrap_or(-1);
+                    }
+                }
+                if master_fd >= 0 && child_pid >= 0 {
+                    return pty_forward(master_fd, child_pid);
+                }
+            }
+            eprintln!("Unexpected response from machined");
+            1
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_shell(args: &Args) -> i32 {
+    let name = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Machine name required");
+            return 1;
+        }
+    };
+
+    let user = args.uid.as_deref().unwrap_or("");
+    let cmd = if args.extra_args.is_empty() {
+        String::new()
+    } else {
+        args.extra_args.join(" ")
+    };
+
+    let shell_cmd = format!("SHELL {} {} {}", name, user, cmd)
+        .trim_end()
+        .to_string();
+    match send_command(&shell_cmd) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                return 1;
+            }
+            if let Some(rest) = resp.strip_prefix("OK: PTY ") {
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                let mut master_fd: i32 = -1;
+                let mut child_pid: i32 = -1;
+                for part in parts {
+                    if let Some(val) = part.strip_prefix("master_fd=") {
+                        master_fd = val.parse().unwrap_or(-1);
+                    } else if let Some(val) = part.strip_prefix("child_pid=") {
+                        child_pid = val.parse().unwrap_or(-1);
+                    }
+                }
+                if master_fd >= 0 && child_pid >= 0 {
+                    return pty_forward(master_fd, child_pid);
+                }
+            }
+            eprintln!("Unexpected response from machined");
+            1
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+/// Forward I/O between the terminal and a PTY master fd.
+fn pty_forward(master_fd: i32, child_pid: i32) -> i32 {
+    // Set stdin to raw mode if it's a TTY
+    let stdin_fd = 0;
+    let mut old_termios: libc::termios = unsafe { std::mem::zeroed() };
+    let is_tty = unsafe { libc::isatty(stdin_fd) } == 1;
+
+    if is_tty {
+        unsafe {
+            libc::tcgetattr(stdin_fd, &mut old_termios);
+            let mut raw = old_termios;
+            libc::cfmakeraw(&mut raw);
+            libc::tcsetattr(stdin_fd, libc::TCSANOW, &raw);
+        }
+    }
+
+    // Forward I/O using poll
+    let mut buf = [0u8; 4096];
+    loop {
+        let mut fds = [
+            libc::pollfd {
+                fd: stdin_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: master_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+
+        let ret = unsafe { libc::poll(fds.as_mut_ptr(), 2, 100) };
+        if ret < 0 {
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::EINTR) {
+                continue;
+            }
+            break;
+        }
+
+        // Check if child is still alive
+        let mut status: libc::c_int = 0;
+        let wpid = unsafe { libc::waitpid(child_pid, &mut status, libc::WNOHANG) };
+        if wpid > 0 {
+            // Child exited
+            // Drain remaining output from master
+            loop {
+                let n = unsafe { libc::read(master_fd, buf.as_mut_ptr() as *mut _, buf.len()) };
+                if n <= 0 {
+                    break;
+                }
+                let _ = io::stdout().write_all(&buf[..n as usize]);
+                let _ = io::stdout().flush();
+            }
+
+            if is_tty {
+                unsafe {
+                    libc::tcsetattr(stdin_fd, libc::TCSANOW, &old_termios);
+                }
+            }
+            unsafe {
+                libc::close(master_fd);
+            }
+
+            if libc::WIFEXITED(status) {
+                return libc::WEXITSTATUS(status);
+            }
+            return 1;
+        }
+
+        // stdin → master
+        if fds[0].revents & libc::POLLIN != 0 {
+            let n = unsafe { libc::read(stdin_fd, buf.as_mut_ptr() as *mut _, buf.len()) };
+            if n <= 0 {
+                break;
+            }
+            let _ = unsafe { libc::write(master_fd, buf.as_ptr() as *const _, n as usize) };
+        }
+        if fds[0].revents & (libc::POLLHUP | libc::POLLERR) != 0 {
+            break;
+        }
+
+        // master → stdout
+        if fds[1].revents & libc::POLLIN != 0 {
+            let n = unsafe { libc::read(master_fd, buf.as_mut_ptr() as *mut _, buf.len()) };
+            if n <= 0 {
+                break;
+            }
+            let _ = io::stdout().write_all(&buf[..n as usize]);
+            let _ = io::stdout().flush();
+        }
+        if fds[1].revents & (libc::POLLHUP | libc::POLLERR) != 0 {
+            break;
+        }
+    }
+
+    // Restore terminal
+    if is_tty {
+        unsafe {
+            libc::tcsetattr(stdin_fd, libc::TCSANOW, &old_termios);
+        }
+    }
+    unsafe {
+        libc::close(master_fd);
+    }
+
+    // Wait for child
+    let mut status: libc::c_int = 0;
+    unsafe {
+        libc::waitpid(child_pid, &mut status, 0);
+    }
+    if libc::WIFEXITED(status) {
+        libc::WEXITSTATUS(status)
+    } else {
+        1
+    }
+}
+
+fn cmd_import_tar(args: &Args) -> i32 {
+    let source = match &args.machine {
+        Some(s) => s,
+        None => {
+            eprintln!("Source file required");
+            return 1;
+        }
+    };
+
+    let name = match args.extra_args.first() {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
+        }
+    };
+
+    let ro = if args.read_only { " true" } else { "" };
+    match send_command(&format!("IMPORT-TAR {} {}{}", source, name, ro)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_import_raw(args: &Args) -> i32 {
+    let source = match &args.machine {
+        Some(s) => s,
+        None => {
+            eprintln!("Source file required");
+            return 1;
+        }
+    };
+
+    let name = match args.extra_args.first() {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
+        }
+    };
+
+    let ro = if args.read_only { " true" } else { "" };
+    match send_command(&format!("IMPORT-RAW {} {}{}", source, name, ro)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_export_tar(args: &Args) -> i32 {
+    let name = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
+        }
+    };
+
+    let dest = match args.extra_args.first() {
+        Some(d) => d.as_str(),
+        None => "-",
+    };
+
+    match send_command(&format!("EXPORT-TAR {} {}", name, dest)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_export_raw(args: &Args) -> i32 {
+    let name = match &args.machine {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
+        }
+    };
+
+    let dest = match args.extra_args.first() {
+        Some(d) => d.as_str(),
+        None => "-",
+    };
+
+    match send_command(&format!("EXPORT-RAW {} {}", name, dest)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_pull_tar(args: &Args) -> i32 {
+    let url = match &args.machine {
+        Some(u) => u,
+        None => {
+            eprintln!("URL required");
+            return 1;
+        }
+    };
+
+    let name = match args.extra_args.first() {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
+        }
+    };
+
+    match send_command(&format!("PULL-TAR {} {} {}", url, name, args.verify)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+fn cmd_pull_raw(args: &Args) -> i32 {
+    let url = match &args.machine {
+        Some(u) => u,
+        None => {
+            eprintln!("URL required");
+            return 1;
+        }
+    };
+
+    let name = match args.extra_args.first() {
+        Some(n) => n,
+        None => {
+            eprintln!("Image name required");
+            return 1;
+        }
+    };
+
+    match send_command(&format!("PULL-RAW {} {} {}", url, name, args.verify)) {
+        Ok(resp) => {
+            if resp.starts_with("ERROR") {
+                eprintln!("{}", resp.trim());
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -845,11 +1664,26 @@ fn print_usage() {
     println!("  poweroff NAME...            Power off one or more machines");
     println!("  reboot NAME...              Reboot one or more machines");
     println!("  login [NAME]                Get a login prompt in a container");
-    println!("  shell [[USER@]NAME]         Invoke a shell in a container");
+    println!("  shell [[USER@]NAME [CMD]]   Invoke a shell (or CMD) in a container");
+    println!("  copy-to NAME HOST CONT      Copy files from host to container");
+    println!("  copy-from NAME CONT HOST    Copy files from container to host");
     println!("  clean                       Clean up stale machine state");
     println!();
     println!("Image Commands:");
     println!("  list-images                 List machine images");
+    println!("  show-image NAME             Show image details");
+    println!("  clone SOURCE DEST           Clone an image");
+    println!("  rename OLD NEW              Rename an image");
+    println!("  remove NAME                 Remove an image");
+    println!("  set-limit NAME SIZE         Set image size limit");
+    println!();
+    println!("Image Transfer Commands:");
+    println!("  import-tar FILE NAME        Import tar archive as image");
+    println!("  import-raw FILE NAME        Import raw disk image");
+    println!("  export-tar NAME [FILE]      Export image as tar archive");
+    println!("  export-raw NAME [FILE]      Export image as raw file");
+    println!("  pull-tar URL NAME           Download and import tar image");
+    println!("  pull-raw URL NAME           Download and import raw image");
     println!();
     println!("Options:");
     println!("  -h --help                   Show this help");
@@ -862,6 +1696,9 @@ fn print_usage() {
     println!("     --no-ask-password        Do not ask for system passwords");
     println!("  -s --signal=SIGNAL          Signal to send with kill (default: SIGTERM)");
     println!("  -H --host=[USER@]HOST       Operate on remote host");
+    println!("     --read-only              Clone/import as read-only");
+    println!("     --uid=USER               User for shell command");
+    println!("     --verify=MODE            Verification mode for pull (no/checksum/signature)");
 }
 
 // ---------------------------------------------------------------------------
@@ -884,17 +1721,24 @@ fn run(argv: &[String]) -> i32 {
         Command::Terminate | Command::Poweroff | Command::Reboot => cmd_terminate(&args),
         Command::Kill => cmd_kill(&args),
         Command::Clean => cmd_clean(),
-        Command::ImageList => cmd_image_list(),
-        Command::Login => {
-            eprintln!("machinectl login: not yet implemented (requires PTY forwarding)");
-            1
-        }
-        Command::Shell => {
-            eprintln!("machinectl shell: not yet implemented (requires PTY forwarding)");
-            1
-        }
-        Command::ShowImage | Command::CatImage => {
-            eprintln!("machinectl image: not yet implemented");
+        Command::ImageList => cmd_image_list(&args),
+        Command::ShowImage => cmd_show_image(&args),
+        Command::Clone => cmd_clone(&args),
+        Command::Rename => cmd_rename(&args),
+        Command::Remove => cmd_remove(&args),
+        Command::SetLimit => cmd_set_limit(&args),
+        Command::CopyTo => cmd_copy_to(&args),
+        Command::CopyFrom => cmd_copy_from(&args),
+        Command::Login => cmd_login(&args),
+        Command::Shell => cmd_shell(&args),
+        Command::ImportTar => cmd_import_tar(&args),
+        Command::ImportRaw => cmd_import_raw(&args),
+        Command::ExportTar => cmd_export_tar(&args),
+        Command::ExportRaw => cmd_export_raw(&args),
+        Command::PullTar => cmd_pull_tar(&args),
+        Command::PullRaw => cmd_pull_raw(&args),
+        Command::CatImage => {
+            eprintln!("machinectl image cat: not yet implemented");
             1
         }
         Command::Help => {
@@ -1016,12 +1860,30 @@ mod tests {
     fn test_parse_args_login() {
         let a = parse_args(&args("login myvm")).unwrap();
         assert_eq!(a.command, Command::Login);
+        assert_eq!(a.machine.as_deref(), Some("myvm"));
     }
 
     #[test]
     fn test_parse_args_shell() {
         let a = parse_args(&args("shell myvm")).unwrap();
         assert_eq!(a.command, Command::Shell);
+        assert_eq!(a.machine.as_deref(), Some("myvm"));
+    }
+
+    #[test]
+    fn test_parse_args_shell_with_user() {
+        let a = parse_args(&args("shell root@myvm")).unwrap();
+        assert_eq!(a.command, Command::Shell);
+        assert_eq!(a.machine.as_deref(), Some("myvm"));
+        assert_eq!(a.uid.as_deref(), Some("root"));
+    }
+
+    #[test]
+    fn test_parse_args_shell_with_command() {
+        let a = parse_args(&args("shell myvm /bin/bash")).unwrap();
+        assert_eq!(a.command, Command::Shell);
+        assert_eq!(a.machine.as_deref(), Some("myvm"));
+        assert_eq!(a.extra_args, vec!["/bin/bash"]);
     }
 
     #[test]
@@ -1040,6 +1902,163 @@ mod tests {
     fn test_parse_args_image_list() {
         let a = parse_args(&args("image list")).unwrap();
         assert_eq!(a.command, Command::ImageList);
+    }
+
+    #[test]
+    fn test_parse_args_show_image() {
+        let a = parse_args(&args("show-image myimg")).unwrap();
+        assert_eq!(a.command, Command::ShowImage);
+        assert_eq!(a.machine.as_deref(), Some("myimg"));
+    }
+
+    #[test]
+    fn test_parse_args_image_show() {
+        let a = parse_args(&args("image show myimg")).unwrap();
+        assert_eq!(a.command, Command::ShowImage);
+        assert_eq!(a.machine.as_deref(), Some("myimg"));
+    }
+
+    #[test]
+    fn test_parse_args_clone() {
+        let a = parse_args(&args("clone source dest")).unwrap();
+        assert_eq!(a.command, Command::Clone);
+        assert_eq!(a.machine.as_deref(), Some("source"));
+        assert_eq!(a.extra_args, vec!["dest"]);
+    }
+
+    #[test]
+    fn test_parse_args_clone_read_only() {
+        let a = parse_args(&args("clone source dest --read-only")).unwrap();
+        assert_eq!(a.command, Command::Clone);
+        assert!(a.read_only);
+    }
+
+    #[test]
+    fn test_parse_args_rename() {
+        let a = parse_args(&args("rename old new")).unwrap();
+        assert_eq!(a.command, Command::Rename);
+        assert_eq!(a.machine.as_deref(), Some("old"));
+        assert_eq!(a.extra_args, vec!["new"]);
+    }
+
+    #[test]
+    fn test_parse_args_remove() {
+        let a = parse_args(&args("remove myimg")).unwrap();
+        assert_eq!(a.command, Command::Remove);
+        assert_eq!(a.machine.as_deref(), Some("myimg"));
+    }
+
+    #[test]
+    fn test_parse_args_set_limit() {
+        let a = parse_args(&args("set-limit myimg 1G")).unwrap();
+        assert_eq!(a.command, Command::SetLimit);
+        assert_eq!(a.machine.as_deref(), Some("myimg"));
+        assert_eq!(a.extra_args, vec!["1G"]);
+    }
+
+    #[test]
+    fn test_parse_args_copy_to() {
+        let a = parse_args(&args("copy-to myvm /host/file /container/file")).unwrap();
+        assert_eq!(a.command, Command::CopyTo);
+        assert_eq!(a.machine.as_deref(), Some("myvm"));
+        assert_eq!(a.extra_args, vec!["/host/file", "/container/file"]);
+    }
+
+    #[test]
+    fn test_parse_args_copy_from() {
+        let a = parse_args(&args("copy-from myvm /container/file /host/file")).unwrap();
+        assert_eq!(a.command, Command::CopyFrom);
+        assert_eq!(a.machine.as_deref(), Some("myvm"));
+        assert_eq!(a.extra_args, vec!["/container/file", "/host/file"]);
+    }
+
+    #[test]
+    fn test_parse_args_import_tar() {
+        let a = parse_args(&args("import-tar /path/to/file.tar myimage")).unwrap();
+        assert_eq!(a.command, Command::ImportTar);
+        assert_eq!(a.machine.as_deref(), Some("/path/to/file.tar"));
+        assert_eq!(a.extra_args, vec!["myimage"]);
+    }
+
+    #[test]
+    fn test_parse_args_import_raw() {
+        let a = parse_args(&args("import-raw /path/to/file.raw myimage")).unwrap();
+        assert_eq!(a.command, Command::ImportRaw);
+        assert_eq!(a.machine.as_deref(), Some("/path/to/file.raw"));
+        assert_eq!(a.extra_args, vec!["myimage"]);
+    }
+
+    #[test]
+    fn test_parse_args_export_tar() {
+        let a = parse_args(&args("export-tar myimage /path/to/out.tar")).unwrap();
+        assert_eq!(a.command, Command::ExportTar);
+        assert_eq!(a.machine.as_deref(), Some("myimage"));
+        assert_eq!(a.extra_args, vec!["/path/to/out.tar"]);
+    }
+
+    #[test]
+    fn test_parse_args_export_raw() {
+        let a = parse_args(&args("export-raw myimage /path/to/out.raw")).unwrap();
+        assert_eq!(a.command, Command::ExportRaw);
+        assert_eq!(a.machine.as_deref(), Some("myimage"));
+        assert_eq!(a.extra_args, vec!["/path/to/out.raw"]);
+    }
+
+    #[test]
+    fn test_parse_args_pull_tar() {
+        let a = parse_args(&args("pull-tar http://example.com/img.tar myimage")).unwrap();
+        assert_eq!(a.command, Command::PullTar);
+        assert_eq!(a.machine.as_deref(), Some("http://example.com/img.tar"));
+        assert_eq!(a.extra_args, vec!["myimage"]);
+    }
+
+    #[test]
+    fn test_parse_args_pull_raw() {
+        let a = parse_args(&args("pull-raw http://example.com/img.raw myimage")).unwrap();
+        assert_eq!(a.command, Command::PullRaw);
+        assert_eq!(a.machine.as_deref(), Some("http://example.com/img.raw"));
+        assert_eq!(a.extra_args, vec!["myimage"]);
+    }
+
+    #[test]
+    fn test_parse_args_pull_tar_with_verify() {
+        let a = parse_args(&args(
+            "pull-tar --verify=checksum http://example.com/img.tar myimage",
+        ))
+        .unwrap();
+        assert_eq!(a.command, Command::PullTar);
+        assert_eq!(a.verify, "checksum");
+    }
+
+    #[test]
+    fn test_parse_args_image_clone() {
+        let a = parse_args(&args("image clone source dest")).unwrap();
+        assert_eq!(a.command, Command::Clone);
+        assert_eq!(a.machine.as_deref(), Some("source"));
+        assert_eq!(a.extra_args, vec!["dest"]);
+    }
+
+    #[test]
+    fn test_parse_args_image_rename() {
+        let a = parse_args(&args("image rename old new")).unwrap();
+        assert_eq!(a.command, Command::Rename);
+        assert_eq!(a.machine.as_deref(), Some("old"));
+        assert_eq!(a.extra_args, vec!["new"]);
+    }
+
+    #[test]
+    fn test_parse_args_image_remove() {
+        let a = parse_args(&args("image remove myimg")).unwrap();
+        assert_eq!(a.command, Command::Remove);
+        assert_eq!(a.machine.as_deref(), Some("myimg"));
+    }
+
+    #[test]
+    fn test_parse_args_image_set_limit() {
+        let a = parse_args(&args("image set-limit myimg 2G")).unwrap();
+        assert_eq!(a.command, Command::SetLimit);
+        assert_eq!(a.machine.as_deref(), Some("myimg"));
+        assert_eq!(a.extra_args, vec!["2G"]);
     }
 
     #[test]
@@ -1082,6 +2101,27 @@ mod tests {
     fn test_parse_args_full() {
         let a = parse_args(&args("list -l")).unwrap();
         assert!(a.full);
+    }
+
+    #[test]
+    fn test_parse_args_read_only() {
+        let a = parse_args(&args("clone --read-only source dest")).unwrap();
+        assert!(a.read_only);
+    }
+
+    #[test]
+    fn test_parse_args_uid() {
+        let a = parse_args(&args("shell --uid=root myvm")).unwrap();
+        assert_eq!(a.uid.as_deref(), Some("root"));
+    }
+
+    #[test]
+    fn test_parse_args_verify() {
+        let a = parse_args(&args(
+            "pull-tar --verify=signature http://example.com/img.tar myimage",
+        ))
+        .unwrap();
+        assert_eq!(a.verify, "signature");
     }
 
     #[test]
@@ -1224,13 +2264,87 @@ mod tests {
     }
 
     #[test]
-    fn test_run_login_stub() {
+    fn test_run_login_no_daemon() {
+        // Without daemon, login should fail with connection error
         assert_eq!(run(&args("login myvm")), 1);
     }
 
     #[test]
-    fn test_run_shell_stub() {
+    fn test_run_shell_no_daemon() {
+        // Without daemon, shell should fail with connection error
         assert_eq!(run(&args("shell myvm")), 1);
+    }
+
+    #[test]
+    fn test_run_clone_no_args() {
+        // clone without dest arg should fail
+        assert_eq!(run(&args("clone source")), 1);
+    }
+
+    #[test]
+    fn test_run_rename_no_args() {
+        // rename without new name should fail
+        assert_eq!(run(&args("rename old")), 1);
+    }
+
+    #[test]
+    fn test_run_remove_no_name() {
+        // remove without name should fail
+        assert_eq!(run(&args("remove")), 1);
+    }
+
+    #[test]
+    fn test_run_set_limit_no_args() {
+        // set-limit without size should fail
+        assert_eq!(run(&args("set-limit myimg")), 1);
+    }
+
+    #[test]
+    fn test_run_copy_to_missing_paths() {
+        // copy-to with only machine name should fail
+        assert_eq!(run(&args("copy-to myvm")), 1);
+    }
+
+    #[test]
+    fn test_run_copy_from_missing_paths() {
+        // copy-from with only machine name should fail
+        assert_eq!(run(&args("copy-from myvm")), 1);
+    }
+
+    #[test]
+    fn test_run_import_tar_no_name() {
+        // import-tar without name should fail
+        assert_eq!(run(&args("import-tar /file")), 1);
+    }
+
+    #[test]
+    fn test_run_import_raw_no_name() {
+        assert_eq!(run(&args("import-raw /file")), 1);
+    }
+
+    #[test]
+    fn test_run_export_tar_no_name() {
+        assert_eq!(run(&args("export-tar")), 1);
+    }
+
+    #[test]
+    fn test_run_export_raw_no_name() {
+        assert_eq!(run(&args("export-raw")), 1);
+    }
+
+    #[test]
+    fn test_run_pull_tar_no_name() {
+        assert_eq!(run(&args("pull-tar http://example.com/img.tar")), 1);
+    }
+
+    #[test]
+    fn test_run_pull_raw_no_name() {
+        assert_eq!(run(&args("pull-raw http://example.com/img.raw")), 1);
+    }
+
+    #[test]
+    fn test_run_show_image_no_name() {
+        assert_eq!(run(&args("show-image")), 1);
     }
 
     // -- read_machines_offline (no state dir) --------------------------------
@@ -1254,5 +2368,29 @@ mod tests {
         };
         // Should not panic even if daemon is unavailable
         let _ = cmd_list(&a);
+    }
+
+    // -- cmd_image_list offline fallback ------------------------------------
+
+    #[test]
+    fn test_cmd_image_list_no_legend() {
+        let a = Args {
+            command: Command::ImageList,
+            no_legend: true,
+            ..Args::default()
+        };
+        // Should not panic even if daemon/dir is unavailable
+        let _ = cmd_image_list(&a);
+    }
+
+    // -- Default args -------------------------------------------------------
+
+    #[test]
+    fn test_default_args_new_fields() {
+        let a = Args::default();
+        assert!(!a.read_only);
+        assert!(a.extra_args.is_empty());
+        assert!(a.uid.is_none());
+        assert_eq!(a.verify, "no");
     }
 }
