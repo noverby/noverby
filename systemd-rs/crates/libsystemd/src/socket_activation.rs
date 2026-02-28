@@ -20,9 +20,20 @@ unsafe fn borrow_fd(fd: i32) -> BorrowedFd<'static> {
 pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
     std::thread::spawn(move || {
         loop {
+            // Exit the thread once a shutdown has been initiated — no new
+            // services should be socket-activated while we are stopping.
+            if crate::shutdown::is_shutting_down() {
+                trace!("Socket activation thread exiting: shutdown in progress");
+                return;
+            }
+
             let wait_result = wait_for_socket(run_info.clone());
             match wait_result {
                 Ok(ids) => {
+                    if crate::shutdown::is_shutting_down() {
+                        trace!("Socket activation thread exiting: shutdown in progress");
+                        return;
+                    }
                     let run_info = run_info.read_poisoned();
                     let unit_table = &run_info.unit_table;
                     for socket_id in ids {
@@ -149,7 +160,13 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                     }
                 }
                 Err(e) => {
-                    error!("Error in socket activation loop: {e}");
+                    // During shutdown, sockets are closed which causes EBADF
+                    // from select(). This is expected — exit silently.
+                    if crate::shutdown::is_shutting_down() {
+                        trace!("Socket activation thread exiting: shutdown in progress ({e})");
+                    } else {
+                        error!("Error in socket activation loop: {e}");
+                    }
                     break;
                 }
             }
@@ -199,6 +216,11 @@ pub fn wait_for_socket(run_info: ArcMutRuntimeInfo) -> Result<Vec<UnitId>, Strin
         }
         Err(e) => {
             if e == nix::Error::EINTR {
+                Ok(Vec::new())
+            } else if e == nix::Error::EBADF && crate::shutdown::is_shutting_down() {
+                // During shutdown, socket fds are closed before this thread
+                // exits, causing EBADF from select().  Return an empty vec
+                // so the caller can check the shutdown flag and exit cleanly.
                 Ok(Vec::new())
             } else {
                 Err(format!("Error while selecting: {e}"))

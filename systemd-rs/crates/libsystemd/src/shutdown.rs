@@ -87,6 +87,25 @@ fn get_next_service_to_shutdown(unit_table: &UnitTable) -> Option<UnitId> {
             }
         }
 
+        // Skip root and API/virtual filesystem mounts during the unit
+        // shutdown phase.  These are still needed while we stop services
+        // and will be handled later by systemd-shutdown.
+        if let Specific::Mount(specific) = &unit.specific {
+            let mp = specific.conf.where_.as_str();
+            if mp == "/"
+                || mp == "/proc"
+                || mp == "/sys"
+                || mp == "/dev"
+                || mp == "/run"
+                || mp.starts_with("/sys/")
+                || mp.starts_with("/dev/")
+                || mp.starts_with("/proc/")
+                || mp.starts_with("/nix/store")
+            {
+                continue;
+            }
+        }
+
         let kill_before = unit
             .common
             .dependencies
@@ -130,7 +149,10 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
                 Ok(()) => {
                     trace!("Killed service unit: {}", unit.id.name);
                 }
-                Err(e) => error!("{e}"),
+                // ExecStop failures are common during shutdown (missing
+                // binaries, unsupported flags, etc.) — log as warnings
+                // rather than errors to reduce noise.
+                Err(e) => warn!("Service {} stop: {e}", unit.id.name),
             }
             if let Some(datagram) = &mut_state.srvc.notifications {
                 match datagram.shutdown(std::net::Shutdown::Both) {
@@ -140,7 +162,7 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
                             unit.id.name
                         );
                     }
-                    Err(e) => error!(
+                    Err(e) => trace!(
                         "Error closing notification socket for service unit {}: {}",
                         unit.id.name, e
                     ),
@@ -158,7 +180,7 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
                             unit.id.name
                         );
                     }
-                    Err(e) => error!(
+                    Err(e) => trace!(
                         "Error removing notification socket for service unit {}: {}",
                         unit.id.name, e
                     ),
@@ -232,8 +254,10 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
                     trace!("Unmounted mount unit: {}", unit.id.name);
                 }
                 Err(e) => {
-                    error!(
-                        "Failed to unmount {} ({}): {}",
+                    // Unmount failures during shutdown are common (busy
+                    // filesystems, etc.) — systemd-shutdown will retry.
+                    warn!(
+                        "Failed to unmount {} ({}): {} (will retry in systemd-shutdown)",
                         conf.where_, unit.id.name, e
                     );
                 }
@@ -248,7 +272,15 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
 }
 
 static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-// TODO maybe this should be available everywhere for situations where normally a panic would occur?
+
+/// Returns `true` once a shutdown sequence has been initiated.
+///
+/// Background threads (socket activation, notification handler, etc.) should
+/// check this flag and exit gracefully when it becomes `true`.
+pub fn is_shutting_down() -> bool {
+    SHUTTING_DOWN.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 pub fn shutdown_sequence(run_info: ArcMutRuntimeInfo, action: ShutdownAction) {
     if SHUTTING_DOWN
         .compare_exchange(
@@ -266,6 +298,14 @@ pub fn shutdown_sequence(run_info: ArcMutRuntimeInfo, action: ShutdownAction) {
 
     std::thread::spawn(move || {
         trace!("Shutting down");
+
+        // Wake up all handler threads (socket activation, notification,
+        // stdout/stderr) so they re-check the SHUTTING_DOWN flag and exit
+        // instead of blocking forever in select().
+        if let Ok(ri) = run_info.read() {
+            ri.notify_eventfds();
+        }
+
         let run_info_lock = match run_info.read() {
             Ok(r) => r,
             Err(e) => e.into_inner(),
