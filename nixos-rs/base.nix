@@ -85,14 +85,4 @@
   };
 
   services.getty.autologinUser = "nixos";
-
-  # Make pam_lastlog2 optional in the login PAM stack.
-  # pam_lastlog2.so opens a SQLite database at /var/lib/lastlog/lastlog2.db.
-  # On systemd-rs there is a timing race where the first getty auto-login
-  # fires before pam_lastlog2 can successfully open/create the database,
-  # causing PAM_SESSION_ERR and a "System error" from login.  The second
-  # attempt always succeeds.  Since pam_lastlog2 only records last-login
-  # time (a non-essential feature), making it optional prevents the
-  # transient failure from blocking login.
-  security.pam.services.login.rules.session.lastlog.control = lib.mkForce "optional";
 })
