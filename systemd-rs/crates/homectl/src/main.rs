@@ -22,6 +22,24 @@
 //! - `lock-all`                    — lock all active homes
 //! - `deactivate-all`              — deactivate all active homes
 //! - `with USER [-- CMD...]`       — activate, run command, deactivate
+//! - `recovery-key USER`           — generate a recovery key
+//! - `check-password PASSWORD`     — check password quality
+//!
+//! ## Create Options
+//!
+//! - `--real-name=NAME`            — real name for user
+//! - `--shell=PATH`                — login shell
+//! - `--storage=TYPE`              — storage backend (directory/subvolume/luks/cifs/fscrypt)
+//! - `--password=PASS`             — initial password
+//! - `--home-dir=PATH`             — home directory path
+//! - `--image-path=PATH`           — image/backing store path
+//! - `--disk-size=SIZE`            — disk size (K/M/G/T suffixes)
+//! - `--cifs-service=//SRV/SHARE`  — CIFS service path (for cifs storage)
+//! - `--cifs-user-name=USER`       — CIFS user name
+//! - `--cifs-domain=DOMAIN`        — CIFS domain
+//! - `--no-password-quality`       — skip password quality checks
+//! - `--pkcs11-token-uri=URI`      — PKCS#11 token URI for authentication
+//! - `--fido2-device=PATH`         — FIDO2 authenticator device
 //!
 //! ## Flags
 //!
@@ -33,16 +51,6 @@
 //! - `-j`, `--json`                — (accepted, ignored)
 //! - `-h`, `--help`                — show usage
 //! - `--version`                   — show version
-//!
-//! ## Missing
-//!
-//! - D-Bus interface support (`org.freedesktop.home1`)
-//! - Interactive password prompting with TTY echo suppression
-//! - PKCS#11 / FIDO2 token options
-//! - `--identity` file import
-//! - `--disk-size` in create
-//! - JSON output mode
-//! - `lock-all`/`deactivate-all` via D-Bus
 
 use std::env;
 use std::fs;
@@ -81,6 +89,8 @@ pub enum Command {
     LockAll,
     DeactivateAll,
     With(String, Vec<String>),
+    RecoveryKey(String),
+    CheckPassword(String),
     Help,
     Version,
 }
@@ -94,6 +104,13 @@ pub struct CreateOpts {
     pub password: Option<String>,
     pub home_dir: Option<String>,
     pub image_path: Option<String>,
+    pub disk_size: Option<String>,
+    pub cifs_service: Option<String>,
+    pub cifs_user_name: Option<String>,
+    pub cifs_domain: Option<String>,
+    pub no_password_quality: bool,
+    pub pkcs11_token_uri: Option<String>,
+    pub fido2_device: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -241,6 +258,20 @@ pub fn parse_command(args: &[String]) -> Result<Command, String> {
 
         "deactivate-all" => Ok(Command::DeactivateAll),
 
+        "recovery-key" => {
+            if rest.is_empty() {
+                return Err("recovery-key requires a user name".to_string());
+            }
+            Ok(Command::RecoveryKey(rest[0].clone()))
+        }
+
+        "check-password" => {
+            if rest.is_empty() {
+                return Err("check-password requires a password".to_string());
+            }
+            Ok(Command::CheckPassword(rest[0].clone()))
+        }
+
         "with" => {
             if rest.is_empty() {
                 return Err("with requires a user name".to_string());
@@ -305,6 +336,50 @@ fn parse_create_flags(args: &[String], opts: &mut CreateOpts) {
             i += 1;
             if i < args.len() {
                 opts.image_path = Some(args[i].clone());
+            }
+        } else if let Some(val) = a.strip_prefix("--disk-size=") {
+            opts.disk_size = Some(val.to_string());
+        } else if a == "--disk-size" {
+            i += 1;
+            if i < args.len() {
+                opts.disk_size = Some(args[i].clone());
+            }
+        } else if let Some(val) = a.strip_prefix("--cifs-service=") {
+            opts.cifs_service = Some(val.to_string());
+        } else if a == "--cifs-service" {
+            i += 1;
+            if i < args.len() {
+                opts.cifs_service = Some(args[i].clone());
+            }
+        } else if let Some(val) = a.strip_prefix("--cifs-user-name=") {
+            opts.cifs_user_name = Some(val.to_string());
+        } else if a == "--cifs-user-name" {
+            i += 1;
+            if i < args.len() {
+                opts.cifs_user_name = Some(args[i].clone());
+            }
+        } else if let Some(val) = a.strip_prefix("--cifs-domain=") {
+            opts.cifs_domain = Some(val.to_string());
+        } else if a == "--cifs-domain" {
+            i += 1;
+            if i < args.len() {
+                opts.cifs_domain = Some(args[i].clone());
+            }
+        } else if a == "--no-password-quality" {
+            opts.no_password_quality = true;
+        } else if let Some(val) = a.strip_prefix("--pkcs11-token-uri=") {
+            opts.pkcs11_token_uri = Some(val.to_string());
+        } else if a == "--pkcs11-token-uri" {
+            i += 1;
+            if i < args.len() {
+                opts.pkcs11_token_uri = Some(args[i].clone());
+            }
+        } else if let Some(val) = a.strip_prefix("--fido2-device=") {
+            opts.fido2_device = Some(val.to_string());
+        } else if a == "--fido2-device" {
+            i += 1;
+            if i < args.len() {
+                opts.fido2_device = Some(args[i].clone());
             }
         }
         // Silently ignore unknown flags
@@ -532,6 +607,21 @@ fn build_create_command(opts: &CreateOpts) -> String {
     if let Some(ref ip) = opts.image_path {
         cmd.push_str(&format!(" image={}", ip));
     }
+    if let Some(ref ds) = opts.disk_size {
+        cmd.push_str(&format!(" disk-size={}", ds));
+    }
+    if let Some(ref cs) = opts.cifs_service {
+        cmd.push_str(&format!(" cifs-service={}", cs));
+    }
+    if let Some(ref cu) = opts.cifs_user_name {
+        cmd.push_str(&format!(" cifs-user={}", cu));
+    }
+    if let Some(ref cd) = opts.cifs_domain {
+        cmd.push_str(&format!(" cifs-domain={}", cd));
+    }
+    if opts.no_password_quality {
+        cmd.push_str(" no-password-quality");
+    }
     cmd
 }
 
@@ -561,6 +651,39 @@ fn execute_command(cmd: Command) -> i32 {
         Command::Version => {
             println!("homectl {}", VERSION);
             0
+        }
+        Command::RecoveryKey(user) => match send_command(&format!("RECOVERY-KEY {}", user)) {
+            Ok(resp) => {
+                if resp.starts_with("ERROR:") {
+                    eprintln!("{}", resp);
+                    1
+                } else {
+                    print!("{}", resp);
+                    if !resp.ends_with('\n') {
+                        println!();
+                    }
+                    0
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to connect to homed: {}", e);
+                1
+            }
+        },
+        Command::CheckPassword(password) => {
+            match send_command(&format!("CHECK-PASSWORD {}", password)) {
+                Ok(resp) => {
+                    print!("{}", resp);
+                    if !resp.ends_with('\n') {
+                        println!();
+                    }
+                    if resp.starts_with("OK:") { 0 } else { 1 }
+                }
+                Err(e) => {
+                    eprintln!("Failed to connect to homed: {}", e);
+                    1
+                }
+            }
         }
         Command::List => {
             match send_command("LIST") {
@@ -863,6 +986,8 @@ fn print_usage() {
     println!("  lock-all                  Lock all active homes");
     println!("  deactivate-all            Deactivate all active homes");
     println!("  with USER [-- CMD...]     Activate, run command, deactivate");
+    println!("  recovery-key USER         Generate a recovery key");
+    println!("  check-password PASSWORD   Check password quality");
     println!();
     println!("Create Options:");
     println!("  --real-name=NAME          Set real name");
@@ -873,6 +998,13 @@ fn print_usage() {
     println!("  --password=PASSWORD       Set initial password");
     println!("  --home-dir=PATH           Set home directory path");
     println!("  --image-path=PATH         Set image path");
+    println!("  --disk-size=SIZE          Set disk size (K/M/G/T suffixes)");
+    println!("  --cifs-service=//S/SHARE  Set CIFS service path (for cifs storage)");
+    println!("  --cifs-user-name=USER     Set CIFS user name");
+    println!("  --cifs-domain=DOMAIN      Set CIFS domain");
+    println!("  --no-password-quality     Skip password quality checks");
+    println!("  --pkcs11-token-uri=URI    PKCS#11 token URI for authentication");
+    println!("  --fido2-device=PATH       FIDO2 authenticator device");
     println!();
     println!("Update Options:");
     println!("  --real-name=NAME          Update real name");
@@ -1327,7 +1459,8 @@ mod tests {
             user_name: "alice".to_string(),
             ..Default::default()
         };
-        assert_eq!(build_create_command(&opts), "CREATE alice");
+        let cmd = build_create_command(&opts);
+        assert_eq!(cmd, "CREATE alice");
     }
 
     #[test]
@@ -1336,19 +1469,47 @@ mod tests {
             user_name: "alice".to_string(),
             real_name: Some("Alice".to_string()),
             shell: Some("/bin/zsh".to_string()),
-            storage: Some("directory".to_string()),
+            storage: Some("luks".to_string()),
             password: Some("secret".to_string()),
             home_dir: Some("/home/alice".to_string()),
-            image_path: Some("/home/alice.homedir".to_string()),
+            image_path: Some("/home/alice.home".to_string()),
+            disk_size: Some("10G".to_string()),
+            cifs_service: None,
+            cifs_user_name: None,
+            cifs_domain: None,
+            no_password_quality: false,
+            pkcs11_token_uri: None,
+            fido2_device: None,
         };
         let cmd = build_create_command(&opts);
         assert!(cmd.starts_with("CREATE alice"));
         assert!(cmd.contains("realname=Alice"));
         assert!(cmd.contains("shell=/bin/zsh"));
-        assert!(cmd.contains("storage=directory"));
+        assert!(cmd.contains("storage=luks"));
         assert!(cmd.contains("password=secret"));
         assert!(cmd.contains("home=/home/alice"));
-        assert!(cmd.contains("image=/home/alice.homedir"));
+        assert!(cmd.contains("image=/home/alice.home"));
+        assert!(cmd.contains("disk-size=10G"));
+    }
+
+    #[test]
+    fn test_build_create_command_cifs() {
+        let opts = CreateOpts {
+            user_name: "bob".to_string(),
+            storage: Some("cifs".to_string()),
+            cifs_service: Some("//server/share".to_string()),
+            cifs_user_name: Some("netbob".to_string()),
+            cifs_domain: Some("CORP".to_string()),
+            no_password_quality: true,
+            ..Default::default()
+        };
+        let cmd = build_create_command(&opts);
+        assert!(cmd.starts_with("CREATE bob"));
+        assert!(cmd.contains("storage=cifs"));
+        assert!(cmd.contains("cifs-service=//server/share"));
+        assert!(cmd.contains("cifs-user=netbob"));
+        assert!(cmd.contains("cifs-domain=CORP"));
+        assert!(cmd.contains("no-password-quality"));
     }
 
     // -----------------------------------------------------------------------
