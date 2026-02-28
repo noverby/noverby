@@ -584,73 +584,16 @@ pub fn activate_needed_units(
     let mut needed_ids = vec![target_id.clone()];
     {
         let run_info = run_info.read_poisoned();
-
-        // Log getty.target dependencies for debugging before subgraph collection
-        for unit in run_info.unit_table.values() {
-            if unit.id.name.contains("getty")
-                || unit.id.name.contains("autovt")
-                || unit.id.name.contains("ttyS")
-            {
-                let wants: Vec<&str> = unit
-                    .common
-                    .dependencies
-                    .wants
-                    .iter()
-                    .map(|d| d.name.as_str())
-                    .collect();
-                let after: Vec<&str> = unit
-                    .common
-                    .dependencies
-                    .after
-                    .iter()
-                    .map(|d| d.name.as_str())
-                    .collect();
-                let before: Vec<&str> = unit
-                    .common
-                    .dependencies
-                    .before
-                    .iter()
-                    .map(|d| d.name.as_str())
-                    .collect();
-                let wanted_by: Vec<&str> = unit
-                    .common
-                    .dependencies
-                    .wanted_by
-                    .iter()
-                    .map(|d| d.name.as_str())
-                    .collect();
-                info!(
-                    "activate_needed_units: unit {} | wants={:?} | after={:?} | before={:?} | wanted_by={:?}",
-                    unit.id.name, wants, after, before, wanted_by
-                );
-            }
-        }
-
         collect_unit_start_subgraph(&mut needed_ids, &run_info.unit_table);
     }
-    let needed_names: Vec<&str> = needed_ids.iter().map(|id| id.name.as_str()).collect();
     info!(
-        "activate_needed_units: target={}, needed_ids count={}, units: {:?}",
+        "activate_needed_units: target={}, {} units in subgraph",
         target_id.name,
         needed_ids.len(),
-        needed_names
     );
-
-    // Check if getty-related units are in the subgraph
-    let getty_in_subgraph: Vec<&str> = needed_ids
-        .iter()
-        .filter(|id| {
-            id.name.contains("getty") || id.name.contains("autovt") || id.name.contains("ttyS")
-        })
-        .map(|id| id.name.as_str())
-        .collect();
-    if getty_in_subgraph.is_empty() {
-        warn!("activate_needed_units: NO getty/autovt/serial-getty units in activation subgraph!");
-    } else {
-        info!(
-            "activate_needed_units: getty-related units in subgraph: {:?}",
-            getty_in_subgraph
-        );
+    if log::log_enabled!(log::Level::Trace) {
+        let needed_names: Vec<&str> = needed_ids.iter().map(|id| id.name.as_str()).collect();
+        trace!("activate_needed_units: units: {:?}", needed_names);
     }
 
     // Note on Type=idle services (e.g. getty):
