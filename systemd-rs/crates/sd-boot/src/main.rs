@@ -61,27 +61,19 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt::Write as _;
+use core::time::Duration;
 use uefi::prelude::*;
 use uefi::proto::console::text::{Key, ScanCode};
 use uefi::proto::loaded_image::LoadedImage;
-use uefi::proto::media::file::{
-    Directory, File, FileAttribute, FileInfo, FileMode, FileType, RegularFile,
-};
+use uefi::proto::media::file::{Directory, File, FileAttribute, FileInfo, FileMode, FileType};
 use uefi::proto::media::fs::SimpleFileSystem;
-use uefi::table::runtime::VariableAttributes;
+use uefi::runtime::VariableAttributes;
 use uefi::{cstr16, CStr16};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// The Boot Loader Interface vendor GUID used for LoaderInfo, LoaderEntryDefault, etc.
-const LOADER_GUID: uefi::Guid = uefi::Guid::from_values(
-    0x4a67b082,
-    0x0a4c,
-    0x41cf,
-    0xb6,
-    0xc7,
-    [0x44, 0x0b, 0x29, 0xbb, 0x8c, 0x4f],
-);
+const LOADER_GUID: uefi::Guid = uefi::guid!("4a67b082-0a4c-41cf-b6c7-440b29bb8c4f");
 
 /// Version string embedded in the binary (used by bootctl to identify the installed version).
 const LOADER_VERSION: &str = "systemd-boot 256.0-rs";
@@ -721,7 +713,7 @@ fn discover_auto_entries(root: &mut Directory) -> Vec<BootEntry> {
 /// Create a "Reboot into Firmware Interface" entry if the firmware supports it.
 fn create_firmware_entry() -> Option<BootEntry> {
     // Check OsIndicationsSupported for the boot-to-firmware-UI bit.
-    let global_guid = uefi::table::runtime::VariableVendor::GLOBAL_VARIABLE;
+    let global_guid = uefi::runtime::VariableVendor::GLOBAL_VARIABLE;
     let mut buf = [0u8; 16];
     let name = cstr16!("OsIndicationsSupported");
 
@@ -1022,7 +1014,7 @@ fn wait_for_key_with_timeout(timeout_us: Option<u64>) -> Option<Key> {
                 }
                 None
             });
-            uefi::boot::stall(100_000); // 100ms
+            uefi::boot::stall(Duration::from_millis(100));
         }
         None
     } else {
@@ -1032,7 +1024,7 @@ fn wait_for_key_with_timeout(timeout_us: Option<u64>) -> Option<Key> {
             if let Some(k) = key {
                 return Some(k);
             }
-            uefi::boot::stall(50_000); // 50ms poll interval
+            uefi::boot::stall(Duration::from_millis(50));
         }
     }
 }
@@ -1259,7 +1251,7 @@ fn boot_efi_image(root: &mut Directory, entry: &BootEntry, image_handle: Handle)
 
 /// Reboot into the firmware setup interface.
 fn reboot_to_firmware() -> ! {
-    let global_guid = uefi::table::runtime::VariableVendor::GLOBAL_VARIABLE;
+    let global_guid = uefi::runtime::VariableVendor::GLOBAL_VARIABLE;
 
     // Read current OsIndications and set the boot-to-firmware bit.
     let mut buf = [0u8; 16];
@@ -1280,11 +1272,7 @@ fn reboot_to_firmware() -> ! {
     );
 
     // Perform a warm reset.
-    uefi::runtime::reset(
-        uefi::table::runtime::ResetType::COLD,
-        uefi::Status::SUCCESS,
-        None,
-    );
+    uefi::runtime::reset(uefi::runtime::ResetType::COLD, uefi::Status::SUCCESS, None);
 }
 
 // ── Publish Loader Interface Variables ────────────────────────────────────
@@ -1322,7 +1310,7 @@ fn efi_main() -> Status {
         Ok(li) => li,
         Err(_) => {
             println("Error: Could not open LoadedImage protocol.");
-            uefi::boot::stall(5_000_000);
+            uefi::boot::stall(Duration::from_secs(5));
             return Status::LOAD_ERROR;
         }
     };
@@ -1332,7 +1320,7 @@ fn efi_main() -> Status {
         Some(r) => r,
         None => {
             println("Error: Could not open ESP filesystem.");
-            uefi::boot::stall(5_000_000);
+            uefi::boot::stall(Duration::from_secs(5));
             return Status::LOAD_ERROR;
         }
     };
@@ -1389,11 +1377,7 @@ fn efi_main() -> Status {
         println("");
         println("Press any key to reboot...");
         wait_for_key_with_timeout(None);
-        uefi::runtime::reset(
-            uefi::table::runtime::ResetType::COLD,
-            uefi::Status::SUCCESS,
-            None,
-        );
+        uefi::runtime::reset(uefi::runtime::ResetType::COLD, uefi::Status::SUCCESS, None);
     }
 
     // Find default entry index.
