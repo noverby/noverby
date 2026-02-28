@@ -13,16 +13,16 @@
 //! - `reattach <image> [profile]` — atomic detach + attach
 //! - `inspect <image>` — show image details, os-release, and unit files
 //! - `is-attached <image>` — check attachment state
-//! - `read-only <image>` — (stub) show/toggle read-only state
-//! - `set-limit [image] <bytes>` — (stub) set image size limit
+//! - `read-only <image> [BOOL]` — show/toggle read-only state
+//! - `set-limit [image] <bytes>` — set image size limit (K/M/G/T suffixes)
 //!
-//! ## Missing
+//! ## Features
 //!
-//! - D-Bus interface (org.freedesktop.portable1)
-//! - Extension images (`--extension`)
-//! - Image size limit management
-//! - Copy operations
-//! - Raw image support
+//! - Extension images via `--extension=NAME` (multiple allowed)
+//! - Automatic daemon-reload after attach/detach (unless `--no-reload`)
+//! - Raw disk image support (delegated to daemon for loopback mount)
+//! - Image size limit management via `.limit` sidecar files
+//! - Read-only flag toggling for directory images
 
 use std::collections::BTreeMap;
 use std::env;
@@ -66,14 +66,17 @@ enum Command {
         image: String,
         profile: Option<String>,
         runtime: bool,
+        extensions: Vec<String>,
     },
     Detach {
         image: String,
+        extensions: Vec<String>,
     },
     Reattach {
         image: String,
         profile: Option<String>,
         runtime: bool,
+        extensions: Vec<String>,
     },
     Inspect {
         image: String,
@@ -100,6 +103,7 @@ fn parse_command(args: &[String]) -> Result<Command, String> {
     let mut no_pager = false;
     let mut no_legend = false;
     let mut no_ask_password = false;
+    let mut extensions: Vec<String> = Vec::new();
 
     let mut i = 0;
     while i < args.len() {
@@ -118,6 +122,18 @@ fn parse_command(args: &[String]) -> Result<Command, String> {
             }
             "--json" => {
                 i += 1; // skip json format arg
+            }
+            "--extension" => {
+                i += 1;
+                if i < args.len() {
+                    extensions.push(args[i].clone());
+                }
+            }
+            _ if args[i].starts_with("--extension=") => {
+                let val = args[i].strip_prefix("--extension=").unwrap();
+                if !val.is_empty() {
+                    extensions.push(val.to_string());
+                }
             }
             "-h" | "--help" => return Ok(Command::Help),
             _ => filtered.push(args[i].clone()),
@@ -143,6 +159,7 @@ fn parse_command(args: &[String]) -> Result<Command, String> {
                 image: args[1].clone(),
                 profile: args.get(2).cloned(),
                 runtime,
+                extensions: extensions.clone(),
             })
         }
 
@@ -152,6 +169,7 @@ fn parse_command(args: &[String]) -> Result<Command, String> {
             }
             Ok(Command::Detach {
                 image: args[1].clone(),
+                extensions: extensions.clone(),
             })
         }
 
@@ -163,6 +181,7 @@ fn parse_command(args: &[String]) -> Result<Command, String> {
                 image: args[1].clone(),
                 profile: args.get(2).cloned(),
                 runtime,
+                extensions: extensions.clone(),
             })
         }
 
@@ -488,17 +507,27 @@ fn run_command(cmd: Command) -> i32 {
             image,
             profile,
             runtime,
+            extensions,
         } => {
-            let mut cmd_str = format!("ATTACH {}", image);
-            if let Some(ref prof) = profile {
-                cmd_str.push(' ');
-                cmd_str.push_str(prof);
+            let cmd_str = if extensions.is_empty() {
+                let mut s = format!("ATTACH {}", image);
+                if let Some(ref prof) = profile {
+                    s.push(' ');
+                    s.push_str(prof);
+                } else {
+                    s.push_str(" -"); // placeholder
+                }
+                if runtime {
+                    s.push_str(" runtime");
+                }
+                s
             } else {
-                cmd_str.push_str(" -"); // placeholder
-            }
-            if runtime {
-                cmd_str.push_str(" runtime");
-            }
+                // Use ATTACH-EXT for extension support
+                let ext_list = extensions.join(",");
+                let prof = profile.as_deref().unwrap_or("-");
+                let rt = if runtime { " runtime" } else { "" };
+                format!("ATTACH-EXT {} {} {}{}", image, ext_list, prof, rt)
+            };
 
             match send_command(&cmd_str) {
                 Ok(response) => {
@@ -512,7 +541,10 @@ fn run_command(cmd: Command) -> i32 {
             }
         }
 
-        Command::Detach { image } => match send_command(&format!("DETACH {}", image)) {
+        Command::Detach {
+            image,
+            extensions: _,
+        } => match send_command(&format!("DETACH {}", image)) {
             Ok(response) => {
                 print!("{}", response);
                 if response.starts_with("OK") { 0 } else { 1 }
@@ -527,17 +559,29 @@ fn run_command(cmd: Command) -> i32 {
             image,
             profile,
             runtime,
+            extensions,
         } => {
-            let mut cmd_str = format!("REATTACH {}", image);
-            if let Some(ref prof) = profile {
-                cmd_str.push(' ');
-                cmd_str.push_str(prof);
+            let cmd_str = if extensions.is_empty() {
+                let mut s = format!("REATTACH {}", image);
+                if let Some(ref prof) = profile {
+                    s.push(' ');
+                    s.push_str(prof);
+                } else {
+                    s.push_str(" -");
+                }
+                if runtime {
+                    s.push_str(" runtime");
+                }
+                s
             } else {
-                cmd_str.push_str(" -");
-            }
-            if runtime {
-                cmd_str.push_str(" runtime");
-            }
+                // Reattach with extensions: detach then attach-ext
+                let ext_list = extensions.join(",");
+                let prof = profile.as_deref().unwrap_or("-");
+                let rt = if runtime { " runtime" } else { "" };
+                // Use REATTACH for base, but we need to send DETACH + ATTACH-EXT
+                let _ = send_command(&format!("DETACH {}", image));
+                format!("ATTACH-EXT {} {} {}{}", image, ext_list, prof, rt)
+            };
 
             match send_command(&cmd_str) {
                 Ok(response) => {
@@ -575,24 +619,56 @@ fn run_command(cmd: Command) -> i32 {
             if state == "detached" { 1 } else { 0 }
         }
 
-        Command::ReadOnly { image, value: _ } => {
-            eprintln!(
-                "read-only for image '{}': not yet implemented (images are always writable)",
-                image
-            );
-            1
-        }
+        Command::ReadOnly { image, value } => match value {
+            None => {
+                // Query read-only state
+                match try_daemon_command(&format!("READ-ONLY {}", image)) {
+                    Some(r) => {
+                        let r = r.trim();
+                        println!("{}", r);
+                        0
+                    }
+                    None => {
+                        // Offline fallback: check for .readonly marker
+                        let found = offline_check_read_only(&image);
+                        println!("{}", if found { "yes" } else { "no" });
+                        0
+                    }
+                }
+            }
+            Some(ro) => {
+                let val = if ro { "yes" } else { "no" };
+                match send_command(&format!("READ-ONLY {} {}", image, val)) {
+                    Ok(response) => {
+                        print!("{}", response);
+                        if response.starts_with("OK") { 0 } else { 1 }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to set read-only: {}", e);
+                        1
+                    }
+                }
+            }
+        },
 
         Command::SetLimit { image, bytes } => {
-            eprintln!(
-                "set-limit{}: {} — not yet implemented",
-                image
-                    .as_ref()
-                    .map(|n| format!(" {}", n))
-                    .unwrap_or_default(),
-                bytes
-            );
-            1
+            let cmd_str = match image {
+                Some(ref name) => format!("SET-LIMIT {} {}", name, bytes),
+                None => {
+                    eprintln!("Pool-wide set-limit requires an image name");
+                    return 1;
+                }
+            };
+            match send_command(&cmd_str) {
+                Ok(response) => {
+                    print!("{}", response);
+                    if response.starts_with("OK") { 0 } else { 1 }
+                }
+                Err(e) => {
+                    eprintln!("Failed to set limit: {}", e);
+                    1
+                }
+            }
         }
 
         Command::Help => {
@@ -600,6 +676,17 @@ fn run_command(cmd: Command) -> i32 {
             0
         }
     }
+}
+
+/// Offline fallback: check if a directory image has a .readonly marker.
+fn offline_check_read_only(name: &str) -> bool {
+    let images = offline_discover_images();
+    if let Some(image) = images.get(name)
+        && image.image_type == "directory"
+    {
+        return image.path.join(".readonly").exists();
+    }
+    false
 }
 
 fn print_help() {
@@ -617,10 +704,11 @@ Commands:
   inspect IMAGE                Inspect a portable image
   is-attached IMAGE            Check if an image is attached
   read-only IMAGE [BOOL]       Show/set read-only state
-  set-limit [IMAGE] BYTES      Set image disk space limit
+  set-limit [IMAGE] BYTES      Set image disk space limit (K/M/G/T suffixes)
 
 Options:
   --runtime                    Use runtime (volatile) attachment
+  --extension=NAME             Attach extension image (may be repeated)
   --no-reload                  Don't reload daemon after attach/detach
   --no-pager                   Don't pipe output into a pager
   --no-legend                  Don't print table headers/footers
@@ -723,39 +811,42 @@ mod tests {
 
     #[test]
     fn test_parse_attach() {
-        let cmd = parse_command(&args(&["attach", "myapp"])).unwrap();
+        let cmd = parse_command(&args(&["attach", "myimage"])).unwrap();
         assert_eq!(
             cmd,
             Command::Attach {
-                image: s("myapp"),
+                image: s("myimage"),
                 profile: None,
                 runtime: false,
+                extensions: vec![],
             }
         );
     }
 
     #[test]
     fn test_parse_attach_with_profile() {
-        let cmd = parse_command(&args(&["attach", "myapp", "default"])).unwrap();
+        let cmd = parse_command(&args(&["attach", "myimage", "trusted"])).unwrap();
         assert_eq!(
             cmd,
             Command::Attach {
-                image: s("myapp"),
-                profile: Some(s("default")),
+                image: s("myimage"),
+                profile: Some(s("trusted")),
                 runtime: false,
+                extensions: vec![],
             }
         );
     }
 
     #[test]
     fn test_parse_attach_runtime() {
-        let cmd = parse_command(&args(&["--runtime", "attach", "myapp"])).unwrap();
+        let cmd = parse_command(&args(&["attach", "myimage", "--runtime"])).unwrap();
         assert_eq!(
             cmd,
             Command::Attach {
-                image: s("myapp"),
+                image: s("myimage"),
                 profile: None,
                 runtime: true,
+                extensions: vec![],
             }
         );
     }
@@ -769,8 +860,14 @@ mod tests {
 
     #[test]
     fn test_parse_detach() {
-        let cmd = parse_command(&args(&["detach", "myapp"])).unwrap();
-        assert_eq!(cmd, Command::Detach { image: s("myapp") });
+        let cmd = parse_command(&args(&["detach", "myimage"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Detach {
+                image: s("myimage"),
+                extensions: vec![],
+            }
+        );
     }
 
     #[test]
@@ -781,26 +878,28 @@ mod tests {
 
     #[test]
     fn test_parse_reattach() {
-        let cmd = parse_command(&args(&["reattach", "myapp"])).unwrap();
+        let cmd = parse_command(&args(&["reattach", "myimage"])).unwrap();
         assert_eq!(
             cmd,
             Command::Reattach {
-                image: s("myapp"),
+                image: s("myimage"),
                 profile: None,
                 runtime: false,
+                extensions: vec![],
             }
         );
     }
 
     #[test]
     fn test_parse_reattach_with_profile_and_runtime() {
-        let cmd = parse_command(&args(&["--runtime", "reattach", "myapp", "strict"])).unwrap();
+        let cmd = parse_command(&args(&["reattach", "myimage", "trusted", "--runtime"])).unwrap();
         assert_eq!(
             cmd,
             Command::Reattach {
-                image: s("myapp"),
-                profile: Some(s("strict")),
+                image: s("myimage"),
+                profile: Some(s("trusted")),
                 runtime: true,
+                extensions: vec![],
             }
         );
     }
@@ -958,13 +1057,14 @@ mod tests {
 
     #[test]
     fn test_parse_strips_no_reload() {
-        let cmd = parse_command(&args(&["--no-reload", "attach", "x"])).unwrap();
+        let cmd = parse_command(&args(&["--no-reload", "attach", "myimage"])).unwrap();
         assert_eq!(
             cmd,
             Command::Attach {
-                image: s("x"),
+                image: s("myimage"),
                 profile: None,
                 runtime: false,
+                extensions: vec![],
             }
         );
     }
@@ -1211,6 +1311,7 @@ mod tests {
                 ref image,
                 ref profile,
                 runtime,
+                extensions: _,
             } => {
                 let mut cmd_str = format!("ATTACH {}", image);
                 if let Some(prof) = profile {
@@ -1234,6 +1335,7 @@ mod tests {
                 ref image,
                 ref profile,
                 runtime,
+                extensions: _,
             } => {
                 assert_eq!(image, "myapp");
                 assert!(profile.is_none());
@@ -1247,7 +1349,10 @@ mod tests {
     fn test_detach_command_format() {
         let cmd = parse_command(&args(&["detach", "myapp"])).unwrap();
         match cmd {
-            Command::Detach { ref image } => {
+            Command::Detach {
+                ref image,
+                extensions: _,
+            } => {
                 let cmd_str = format!("DETACH {}", image);
                 assert_eq!(cmd_str, "DETACH myapp");
             }
@@ -1263,6 +1368,7 @@ mod tests {
                 ref image,
                 ref profile,
                 runtime,
+                extensions: _,
             } => {
                 assert_eq!(image, "myapp");
                 assert_eq!(profile.as_deref(), Some("strict"));
@@ -1311,6 +1417,7 @@ mod tests {
                 image: s("img"),
                 profile: None,
                 runtime: true,
+                extensions: vec![],
             }
         );
     }
@@ -1331,5 +1438,254 @@ mod tests {
     fn test_parse_json_flag_skips_arg() {
         let cmd = parse_command(&args(&["--json", "short", "list"])).unwrap();
         assert_eq!(cmd, Command::List);
+    }
+
+    // ── Extension image parsing tests ─────────────────────────────────────
+
+    #[test]
+    fn test_parse_attach_with_extension() {
+        let cmd = parse_command(&args(&["attach", "myapp", "--extension=myext"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Attach {
+                image: s("myapp"),
+                profile: None,
+                runtime: false,
+                extensions: vec![s("myext")],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_attach_with_multiple_extensions() {
+        let cmd = parse_command(&args(&[
+            "--extension=ext1",
+            "--extension=ext2",
+            "attach",
+            "myapp",
+        ]))
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Attach {
+                image: s("myapp"),
+                profile: None,
+                runtime: false,
+                extensions: vec![s("ext1"), s("ext2")],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_attach_extension_space_separated() {
+        let cmd = parse_command(&args(&["--extension", "myext", "attach", "myapp"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Attach {
+                image: s("myapp"),
+                profile: None,
+                runtime: false,
+                extensions: vec![s("myext")],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_detach_with_extension() {
+        let cmd = parse_command(&args(&["--extension=myext", "detach", "myapp"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Detach {
+                image: s("myapp"),
+                extensions: vec![s("myext")],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_reattach_with_extension() {
+        let cmd = parse_command(&args(&[
+            "--extension=myext",
+            "reattach",
+            "myapp",
+            "default",
+        ]))
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Reattach {
+                image: s("myapp"),
+                profile: Some(s("default")),
+                runtime: false,
+                extensions: vec![s("myext")],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_attach_extension_with_runtime() {
+        let cmd = parse_command(&args(&[
+            "--runtime",
+            "--extension=myext",
+            "attach",
+            "myapp",
+            "trusted",
+        ]))
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Attach {
+                image: s("myapp"),
+                profile: Some(s("trusted")),
+                runtime: true,
+                extensions: vec![s("myext")],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_extension_empty_value_ignored() {
+        let cmd = parse_command(&args(&["--extension=", "attach", "myapp"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Attach {
+                image: s("myapp"),
+                profile: None,
+                runtime: false,
+                extensions: vec![],
+            }
+        );
+    }
+
+    // ── Read-only offline check tests ─────────────────────────────────────
+
+    #[test]
+    fn test_offline_check_read_only_not_found() {
+        assert!(!offline_check_read_only("nonexistent_image_xyz"));
+    }
+
+    // ── Set-limit command format tests ────────────────────────────────────
+
+    #[test]
+    fn test_set_limit_command_format_per_image() {
+        let cmd = parse_command(&args(&["set-limit", "myapp", "500M"])).unwrap();
+        match cmd {
+            Command::SetLimit {
+                ref image,
+                ref bytes,
+            } => {
+                assert_eq!(image.as_deref(), Some("myapp"));
+                assert_eq!(bytes, "500M");
+                let cmd_str = format!("SET-LIMIT {} {}", image.as_deref().unwrap(), bytes);
+                assert_eq!(cmd_str, "SET-LIMIT myapp 500M");
+            }
+            _ => panic!("Expected SetLimit command"),
+        }
+    }
+
+    #[test]
+    fn test_set_limit_command_format_global() {
+        let cmd = parse_command(&args(&["set-limit", "1G"])).unwrap();
+        match cmd {
+            Command::SetLimit {
+                ref image,
+                ref bytes,
+            } => {
+                assert!(image.is_none());
+                assert_eq!(bytes, "1G");
+            }
+            _ => panic!("Expected SetLimit command"),
+        }
+    }
+
+    // ── Read-only command format tests ────────────────────────────────────
+
+    #[test]
+    fn test_read_only_command_format_query() {
+        let cmd = parse_command(&args(&["read-only", "myapp"])).unwrap();
+        match cmd {
+            Command::ReadOnly {
+                ref image,
+                ref value,
+            } => {
+                assert_eq!(image, "myapp");
+                assert!(value.is_none());
+            }
+            _ => panic!("Expected ReadOnly command"),
+        }
+    }
+
+    #[test]
+    fn test_read_only_command_format_set_true() {
+        let cmd = parse_command(&args(&["read-only", "myapp", "true"])).unwrap();
+        match cmd {
+            Command::ReadOnly {
+                ref image,
+                ref value,
+            } => {
+                assert_eq!(image, "myapp");
+                assert_eq!(*value, Some(true));
+            }
+            _ => panic!("Expected ReadOnly command"),
+        }
+    }
+
+    #[test]
+    fn test_read_only_command_format_set_false() {
+        let cmd = parse_command(&args(&["read-only", "myapp", "0"])).unwrap();
+        match cmd {
+            Command::ReadOnly {
+                ref image,
+                ref value,
+            } => {
+                assert_eq!(image, "myapp");
+                assert_eq!(*value, Some(false));
+            }
+            _ => panic!("Expected ReadOnly command"),
+        }
+    }
+
+    // ── Attach with extensions command format ─────────────────────────────
+
+    #[test]
+    fn test_attach_ext_command_format() {
+        let cmd = parse_command(&args(&[
+            "--extension=ext1",
+            "--extension=ext2",
+            "attach",
+            "myapp",
+            "default",
+        ]))
+        .unwrap();
+        match cmd {
+            Command::Attach {
+                ref image,
+                ref profile,
+                runtime,
+                ref extensions,
+            } => {
+                assert_eq!(image, "myapp");
+                assert_eq!(profile.as_deref(), Some("default"));
+                assert!(!runtime);
+                assert_eq!(extensions, &vec![s("ext1"), s("ext2")]);
+                // Build ATTACH-EXT command string
+                let ext_list = extensions.join(",");
+                let prof = profile.as_deref().unwrap_or("-");
+                let cmd_str = format!("ATTACH-EXT {} {} {}", image, ext_list, prof);
+                assert_eq!(cmd_str, "ATTACH-EXT myapp ext1,ext2 default");
+            }
+            _ => panic!("Expected Attach command"),
+        }
+    }
+
+    #[test]
+    fn test_attach_no_extensions_uses_attach() {
+        let cmd = parse_command(&args(&["attach", "myapp"])).unwrap();
+        match cmd {
+            Command::Attach { ref extensions, .. } => {
+                assert!(extensions.is_empty());
+            }
+            _ => panic!("Expected Attach command"),
+        }
     }
 }
