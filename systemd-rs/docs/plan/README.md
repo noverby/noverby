@@ -14,6 +14,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 | Phase 3 — Network Stack | 🔶 Partial | [phase-3.md](phase-3.md) |
 | Phase 4 — Extended Services | 🔶 Partial | [phase-4.md](phase-4.md) |
 | Phase 5 — Utilities, Boot & Polish | 🔶 Partial | [phase-5.md](phase-5.md) |
+| Phase 6 — Differential Testing | ❌ Not started | [phase-6.md](phase-6.md) |
 
 Legend: ✅ = complete, 🔶 = partial, ❌ = not started
 
@@ -27,4 +28,5 @@ Legend: ✅ = complete, 🔶 = partial, ❌ = not started
 - **[phase-3.md](phase-3.md)** — Phase 3: Network Stack
 - **[phase-4.md](phase-4.md)** — Phase 4: Extended Services
 - **[phase-5.md](phase-5.md)** — Phase 5: Utilities, Boot & Polish
+- **[phase-6.md](phase-6.md)** — Phase 6: Differential Testing Against Real systemd
 - **[integration.md](integration.md)** — Integration testing with nixos-rs
