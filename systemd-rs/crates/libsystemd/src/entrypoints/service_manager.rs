@@ -536,7 +536,7 @@ fn ensure_home_directories() {
             Err(_) => continue,
         };
         unsafe { libc::chown(c_path.as_ptr(), uid, gid) };
-        unsafe { libc::chmod(c_path.as_ptr(), 0o700) };
+        unsafe { libc::chmod(c_path.as_ptr(), 0o755) };
         eprintln!("systemd-rs: created home directory {home} for {user} (uid={uid}, gid={gid})");
     }
 }
