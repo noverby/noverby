@@ -18,6 +18,7 @@
     nixd
     nil
     alejandra
+    colmena
     (writeShellScriptBin "ragenix" ''
       exec ${ragenix}/bin/ragenix -i ~/.age/id_fido2 "$@"
     '')
