@@ -13,21 +13,21 @@
   - [🔗 Software](#-software)
   - [📝 Data](#-data)
   - [📡 Network](#-network)
-- [💻 Hardware](#-hardware-1)
 - [🖥️ System](#-system)
+  - [💻 Hardware](#-hardware-1)
   - [⚙️ Core](#-core)
   - [📚 Frameworks & Libraries](#-frameworks--libraries)
-- [🏗️ Infrastructure](#-infrastructure)
+  - [🧱 Platform](#-platform)
 - [🛠️ Development](#-development)
   - [🔧 Tooling](#-tooling)
   - [❄️ Configuration](#-configuration)
   - [🦀 Systems](#-systems)
   - [🌐 Web](#-web)
   - [🐍 Scripting](#-scripting)
-- [☁️ Cloud](#-cloud)
 - [🌐 Services](#-services)
   - [🔒 Personal](#-personal)
   - [👥 Social Platforms](#-social-platforms)
+  - [☁️ Cloud](#-cloud)
 - [📱 Applications](#-applications)
   - [💻 Command Line](#-command-line)
   - [🖥️ Desktop Environment](#-desktop-environment)
@@ -266,9 +266,13 @@
 
 </details>
 
+<a id="-system"></a>
+
+## 🖥️ System [⬆](#toc)
+
 <a id="-hardware-1"></a>
 
-## 💻 Hardware [⬆](#toc)
+### 💻 Hardware [⬆](#toc)
 
 <details open>
 
@@ -286,10 +290,6 @@
 | ✅ | E-book Reader | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [PineNote 🇭🇰](https://pine64.org/devices/pinenote) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
 
 </details>
-
-<a id="-system"></a>
-
-## 🖥️ System [⬆](#toc)
 
 <a id="-core"></a>
 
@@ -336,9 +336,9 @@
 
 </details>
 
-<a id="-infrastructure"></a>
+<a id="-platform"></a>
 
-## 🏗️ Infrastructure [⬆](#toc)
+### 🧱 Platform [⬆](#toc)
 
 <details open>
 
@@ -476,25 +476,6 @@
 
 </details>
 
-<a id="-cloud"></a>
-
-## ☁️ Cloud [⬆](#toc)
-
-<details open>
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| 🚧 | Cloud Provider | [Amazon AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com), [UpCloud 🇪🇺](https://www.upcloud.com) | | |
-| ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
-| ✅ | Static Host | [Statichost 🇪🇺](https://statichost.eu) | [FastFront 🇪🇺](https://www.fastfront.io) | | [Vercel 🇺🇸](https://vercel.com) |
-| ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
-| 🚧 | Backend | [Nhost 🇪🇺](https://nhost.io) | WIP Backend 🔥 | | |
-| ✅ | Logging | [Bugfender 🇪🇺](https://bugfender.com) | | | [Sentry 🇺🇸](https://sentry.io) |
-| ✅ | Analytics | [Counter.dev 🇪🇺](https://counter.dev) | | | [Vercel Analytics 🇺🇸](https://vercel.com/analytics) |
-| ✅ | Content Delivery Network | [Bunny.net 🇪🇺](https://bunny.net) | | | |
-
-</details>
-
 <a id="-services"></a>
 
 ## 🌐 Services [⬆](#toc)
@@ -605,6 +586,25 @@
 |:-:|-|-|-|-|-|
 | ✅ | Event Hosting | [Smoke Signal Events 🌐🌀](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [AT Protocol 🌀](https://atproto.com) | [Meta Facebook Events 🔒🇺🇸](https://facebook.com) |
 | ✅ | Dating | [Veggly 🔒👁️🇧🇷](https://veggly.net) | | 🆗 | [Tinder 🔒🇺🇸](https://en.wikipedia.org/wiki/Tinder_(app)) |
+
+</details>
+
+<a id="-cloud"></a>
+
+### ☁️ Cloud [⬆](#toc)
+
+<details open>
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Cloud Provider | [Amazon AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com), [UpCloud 🇪🇺](https://www.upcloud.com) | | |
+| ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
+| ✅ | Static Host | [Statichost 🇪🇺](https://statichost.eu) | [FastFront 🇪🇺](https://www.fastfront.io) | | [Vercel 🇺🇸](https://vercel.com) |
+| ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
+| 🚧 | Backend | [Nhost 🇪🇺](https://nhost.io) | WIP Backend 🔥 | | |
+| ✅ | Logging | [Bugfender 🇪🇺](https://bugfender.com) | | | [Sentry 🇺🇸](https://sentry.io) |
+| ✅ | Analytics | [Counter.dev 🇪🇺](https://counter.dev) | | | [Vercel Analytics 🇺🇸](https://vercel.com/analytics) |
+| ✅ | Content Delivery Network | [Bunny.net 🇪🇺](https://bunny.net) | | | |
 
 </details>
 
