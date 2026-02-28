@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "crates/difftest",
+  "crates/difftest-macros",
   "crates/libsystemd",
   "crates/systemd",
   "crates/systemctl",
