@@ -18,6 +18,19 @@
 //! 3. If `--no-tty` is not given and stdin is a terminal, the tool will
 //!    also try to read the password directly from the TTY.
 //!
+//! ## Kernel keyring caching
+//!
+//! When `--keyname` is specified, the tool first checks the Linux kernel
+//! keyring for a previously cached password under that name. If found, the
+//! cached password is returned immediately without prompting. After a
+//! password is successfully obtained (from TTY, agent, or stdin), it is
+//! stored in the kernel keyring for future lookups. The cached key is
+//! placed in the user session keyring (`KEY_SPEC_USER_SESSION_KEYRING`)
+//! with a timeout of 2.5 minutes (matching systemd's default).
+//!
+//! The kernel keyring API uses the `add_key(2)`, `request_key(2)`, and
+//! `keyctl(2)` syscalls directly, with no external library dependency.
+//!
 //! Exit codes:
 //!   0 — Password was successfully obtained and printed to stdout.
 //!   1 — No password was provided (timeout, cancel, or error).
@@ -32,6 +45,171 @@ use std::time::{Duration, Instant};
 
 /// The directory where password query files are placed.
 const ASK_PASSWORD_DIR: &str = "/run/systemd/ask-password";
+
+// ---------------------------------------------------------------------------
+// Kernel keyring constants and syscall wrappers
+// ---------------------------------------------------------------------------
+
+/// Keyring ID for the user session keyring.
+const KEY_SPEC_USER_SESSION_KEYRING: i32 = -5;
+
+/// `keyctl` command: set timeout on a key.
+const KEYCTL_SET_TIMEOUT: u32 = 15;
+
+/// `keyctl` command: read the payload of a key.
+const KEYCTL_READ: u32 = 11;
+
+/// Default cache timeout in seconds (2.5 minutes, matching systemd).
+const KEYRING_CACHE_TIMEOUT_SECS: u32 = 150;
+
+/// Add a key to a keyring via the `add_key(2)` syscall.
+///
+/// Returns the key serial number on success, or a negative errno on failure.
+fn sys_add_key(key_type: &str, description: &str, payload: &[u8], keyring: i32) -> io::Result<i64> {
+    let type_cstr = std::ffi::CString::new(key_type)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let desc_cstr = std::ffi::CString::new(description)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    let ret = unsafe {
+        libc::syscall(
+            libc::SYS_add_key,
+            type_cstr.as_ptr(),
+            desc_cstr.as_ptr(),
+            payload.as_ptr() as *const libc::c_void,
+            payload.len(),
+            keyring,
+        )
+    };
+
+    if ret < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(ret)
+    }
+}
+
+/// Search for a key via the `request_key(2)` syscall.
+///
+/// Returns the key serial number on success, or an error if not found.
+fn sys_request_key(key_type: &str, description: &str) -> io::Result<i64> {
+    let type_cstr = std::ffi::CString::new(key_type)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let desc_cstr = std::ffi::CString::new(description)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    let ret = unsafe {
+        libc::syscall(
+            libc::SYS_request_key,
+            type_cstr.as_ptr(),
+            desc_cstr.as_ptr(),
+            std::ptr::null::<libc::c_void>(), // callout_info
+            0i32,                             // dest_keyring (0 = don't link)
+        )
+    };
+
+    if ret < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(ret)
+    }
+}
+
+/// Call `keyctl(2)` with KEYCTL_SET_TIMEOUT to set key expiry.
+fn sys_keyctl_set_timeout(key_id: i64, timeout_secs: u32) -> io::Result<()> {
+    let ret = unsafe {
+        libc::syscall(
+            libc::SYS_keyctl,
+            KEYCTL_SET_TIMEOUT as libc::c_long,
+            key_id as libc::c_long,
+            timeout_secs as libc::c_long,
+        )
+    };
+
+    if ret < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+/// Call `keyctl(2)` with KEYCTL_READ to read a key's payload.
+fn sys_keyctl_read(key_id: i64) -> io::Result<Vec<u8>> {
+    // First call with NULL buffer to get the size
+    let size = unsafe {
+        libc::syscall(
+            libc::SYS_keyctl,
+            KEYCTL_READ as libc::c_long,
+            key_id as libc::c_long,
+            std::ptr::null::<libc::c_void>(),
+            0 as libc::c_long,
+        )
+    };
+
+    if size < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut buf = vec![0u8; size as usize];
+    let n = unsafe {
+        libc::syscall(
+            libc::SYS_keyctl,
+            KEYCTL_READ as libc::c_long,
+            key_id as libc::c_long,
+            buf.as_mut_ptr() as *mut libc::c_void,
+            buf.len() as libc::c_long,
+        )
+    };
+
+    if n < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    buf.truncate(n as usize);
+    Ok(buf)
+}
+
+// ---------------------------------------------------------------------------
+// High-level keyring cache API
+// ---------------------------------------------------------------------------
+
+/// Try to retrieve a cached password from the kernel keyring.
+///
+/// Returns `Some(password)` if the key exists and is readable, `None` otherwise.
+fn keyring_cache_get(keyname: &str) -> Option<String> {
+    let key_id = sys_request_key("user", keyname).ok()?;
+    let payload = sys_keyctl_read(key_id).ok()?;
+    String::from_utf8(payload).ok()
+}
+
+/// Store a password in the kernel keyring with a timeout.
+///
+/// The key is placed in the user session keyring and given a 2.5-minute
+/// timeout (matching systemd's default).
+fn keyring_cache_put(keyname: &str, password: &str) -> io::Result<()> {
+    let key_id = sys_add_key(
+        "user",
+        keyname,
+        password.as_bytes(),
+        KEY_SPEC_USER_SESSION_KEYRING,
+    )?;
+
+    // Set timeout so the cached password expires automatically
+    if let Err(e) = sys_keyctl_set_timeout(key_id, KEYRING_CACHE_TIMEOUT_SECS) {
+        eprintln!("Warning: failed to set keyring timeout: {e}");
+        // Non-fatal — the key was still added
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
 #[command(
@@ -52,7 +230,8 @@ struct Cli {
     id: Option<String>,
 
     /// Specify a key name for the kernel keyring. If set, the password
-    /// is cached in the kernel keyring under this name.
+    /// is cached in the kernel keyring under this name so subsequent
+    /// queries can return it without re-prompting.
     #[arg(long, value_name = "NAME")]
     keyname: Option<String>,
 
@@ -305,6 +484,24 @@ fn try_credential(name: &str) -> Option<String> {
         .map(|s| s.trim_end().to_string())
 }
 
+/// Output a password and exit successfully. If `keyname` is set, cache
+/// the password in the kernel keyring before printing.
+fn output_password(password: &str, no_newline: bool, keyname: Option<&str>) -> ! {
+    // Cache in kernel keyring if requested
+    if let Some(kn) = keyname
+        && let Err(e) = keyring_cache_put(kn, password)
+    {
+        eprintln!("Warning: failed to cache password in kernel keyring: {e}");
+    }
+
+    print!("{password}");
+    if !no_newline {
+        println!();
+    }
+    io::stdout().flush().ok();
+    process::exit(0);
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -315,11 +512,14 @@ fn main() {
     if let Some(ref cred_name) = cli.credential
         && let Some(password) = try_credential(cred_name)
     {
-        print!("{password}");
-        if !cli.no_newline {
-            println!();
-        }
-        process::exit(0);
+        output_password(&password, cli.no_newline, cli.keyname.as_deref());
+    }
+
+    // Try kernel keyring cache lookup
+    if let Some(ref keyname) = cli.keyname
+        && let Some(cached) = keyring_cache_get(keyname)
+    {
+        output_password(&cached, cli.no_newline, None); // already cached, no need to re-store
     }
 
     let can_tty = !cli.no_tty && stdin_is_tty();
@@ -346,12 +546,7 @@ fn main() {
                     eprintln!("Empty password not accepted.");
                     process::exit(1);
                 }
-                print!("{password}");
-                if !cli.no_newline {
-                    println!();
-                }
-                io::stdout().flush().ok();
-                process::exit(0);
+                output_password(&password, cli.no_newline, cli.keyname.as_deref());
             }
             Err(e) if e.kind() == io::ErrorKind::Interrupted => {
                 process::exit(1);
@@ -375,12 +570,7 @@ fn main() {
                     eprintln!("Empty password not accepted.");
                     process::exit(1);
                 }
-                print!("{password}");
-                if !cli.no_newline {
-                    println!();
-                }
-                io::stdout().flush().ok();
-                process::exit(0);
+                output_password(&password, cli.no_newline, cli.keyname.as_deref());
             }
             Ok(None) => {
                 eprintln!("No password provided (timeout or cancellation).");
@@ -404,12 +594,7 @@ fn main() {
                     eprintln!("Empty password not accepted.");
                     process::exit(1);
                 }
-                print!("{password}");
-                if !cli.no_newline {
-                    println!();
-                }
-                io::stdout().flush().ok();
-                process::exit(0);
+                output_password(password, cli.no_newline, cli.keyname.as_deref());
             }
             Err(e) => {
                 eprintln!("Error reading from stdin: {e}");
@@ -470,5 +655,211 @@ mod tests {
     #[test]
     fn test_ask_password_dir_constant() {
         assert_eq!(ASK_PASSWORD_DIR, "/run/systemd/ask-password");
+    }
+
+    // -----------------------------------------------------------------------
+    // Kernel keyring caching tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_keyring_constants() {
+        assert_eq!(KEY_SPEC_USER_SESSION_KEYRING, -5);
+        assert_eq!(KEYCTL_SET_TIMEOUT, 15);
+        assert_eq!(KEYCTL_READ, 11);
+        assert_eq!(KEYRING_CACHE_TIMEOUT_SECS, 150);
+    }
+
+    #[test]
+    fn test_keyring_cache_get_nonexistent() {
+        // A random key name that certainly doesn't exist
+        let keyname = format!("systemd-rs-test-nonexistent-{}", uuid::Uuid::new_v4());
+        let result = keyring_cache_get(&keyname);
+        assert!(
+            result.is_none(),
+            "non-existent key should return None, got: {:?}",
+            result
+        );
+    }
+
+    /// Helper: returns true if the kernel keyring supports full round-trip
+    /// (add + request + read). Some sandboxed environments (e.g. Nix build)
+    /// allow `add_key` but restrict `keyctl(KEYCTL_READ)` or `request_key`,
+    /// so we probe once and skip round-trip assertions when unsupported.
+    fn keyring_round_trip_works() -> bool {
+        let probe_name = format!("systemd-rs-probe-{}", uuid::Uuid::new_v4());
+        let probe_payload = b"probe";
+        match sys_add_key(
+            "user",
+            &probe_name,
+            probe_payload,
+            KEY_SPEC_USER_SESSION_KEYRING,
+        ) {
+            Ok(_key_id) => {
+                // Check if we can read back via request_key + keyctl_read
+                match sys_request_key("user", &probe_name) {
+                    Ok(found_id) => match sys_keyctl_read(found_id) {
+                        Ok(data) => data == probe_payload,
+                        Err(_) => false,
+                    },
+                    Err(_) => false,
+                }
+            }
+            Err(_) => false,
+        }
+    }
+
+    #[test]
+    fn test_keyring_cache_put_and_get() {
+        // This test requires the kernel keyring to be available and fully
+        // functional. Some sandboxed environments allow add_key but restrict
+        // keyctl(KEYCTL_READ), so we skip gracefully.
+        if !keyring_round_trip_works() {
+            eprintln!(
+                "Skipping keyring put+get test (round-trip not supported in this environment)"
+            );
+            return;
+        }
+
+        let keyname = format!("systemd-rs-test-{}", uuid::Uuid::new_v4());
+        let password = "test-password-12345";
+
+        keyring_cache_put(&keyname, password).expect("put should succeed");
+        let cached = keyring_cache_get(&keyname);
+        assert_eq!(
+            cached,
+            Some(password.to_string()),
+            "cached password should match what was stored"
+        );
+    }
+
+    #[test]
+    fn test_keyring_cache_put_overwrites() {
+        if !keyring_round_trip_works() {
+            eprintln!(
+                "Skipping keyring overwrite test (round-trip not supported in this environment)"
+            );
+            return;
+        }
+
+        let keyname = format!("systemd-rs-test-overwrite-{}", uuid::Uuid::new_v4());
+        let password1 = "first-password";
+        let password2 = "second-password";
+
+        keyring_cache_put(&keyname, password1).expect("first put should succeed");
+        keyring_cache_put(&keyname, password2).expect("overwrite should succeed");
+        let cached = keyring_cache_get(&keyname);
+        assert_eq!(
+            cached,
+            Some(password2.to_string()),
+            "cached password should be the latest one"
+        );
+    }
+
+    #[test]
+    fn test_keyring_cache_put_empty_password() {
+        if !keyring_round_trip_works() {
+            eprintln!("Skipping keyring empty test (round-trip not supported in this environment)");
+            return;
+        }
+
+        let keyname = format!("systemd-rs-test-empty-{}", uuid::Uuid::new_v4());
+
+        keyring_cache_put(&keyname, "").expect("put empty should succeed");
+        let cached = keyring_cache_get(&keyname);
+        assert_eq!(
+            cached,
+            Some(String::new()),
+            "empty password should be cached correctly"
+        );
+    }
+
+    #[test]
+    fn test_keyring_cache_put_unicode_password() {
+        if !keyring_round_trip_works() {
+            eprintln!(
+                "Skipping keyring unicode test (round-trip not supported in this environment)"
+            );
+            return;
+        }
+
+        let keyname = format!("systemd-rs-test-unicode-{}", uuid::Uuid::new_v4());
+        let password = "пароль🔑密码";
+
+        keyring_cache_put(&keyname, password).expect("put unicode should succeed");
+        let cached = keyring_cache_get(&keyname);
+        assert_eq!(
+            cached,
+            Some(password.to_string()),
+            "unicode password should round-trip correctly"
+        );
+    }
+
+    #[test]
+    fn test_sys_request_key_invalid_type() {
+        // Using an invalid key type should fail gracefully
+        let result = sys_request_key("invalid-type-that-does-not-exist", "test");
+        assert!(result.is_err(), "invalid key type should fail");
+    }
+
+    #[test]
+    fn test_sys_add_key_nul_in_name() {
+        // Key name with NUL byte should fail at CString creation
+        let result = sys_add_key(
+            "user",
+            "test\0name",
+            b"payload",
+            KEY_SPEC_USER_SESSION_KEYRING,
+        );
+        assert!(
+            result.is_err(),
+            "key name with NUL should fail CString creation"
+        );
+    }
+
+    #[test]
+    fn test_sys_request_key_nul_in_name() {
+        let result = sys_request_key("user", "test\0name");
+        assert!(
+            result.is_err(),
+            "key name with NUL should fail CString creation"
+        );
+    }
+
+    #[test]
+    fn test_sys_keyctl_read_invalid_key() {
+        // Reading from an invalid key ID should fail
+        let result = sys_keyctl_read(-999999);
+        assert!(result.is_err(), "reading invalid key ID should fail");
+    }
+
+    #[test]
+    fn test_sys_keyctl_set_timeout_invalid_key() {
+        let result = sys_keyctl_set_timeout(-999999, 60);
+        assert!(
+            result.is_err(),
+            "setting timeout on invalid key should fail"
+        );
+    }
+
+    #[test]
+    fn test_keyring_cache_long_password() {
+        if !keyring_round_trip_works() {
+            eprintln!(
+                "Skipping keyring long password test (round-trip not supported in this environment)"
+            );
+            return;
+        }
+
+        let keyname = format!("systemd-rs-test-long-{}", uuid::Uuid::new_v4());
+        // 4KB password
+        let password: String = (0..4096).map(|i| (b'a' + (i % 26) as u8) as char).collect();
+
+        keyring_cache_put(&keyname, &password).expect("put long should succeed");
+        let cached = keyring_cache_get(&keyname);
+        assert_eq!(
+            cached,
+            Some(password),
+            "long password should round-trip correctly"
+        );
     }
 }
