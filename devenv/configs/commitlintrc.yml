@@ -30,6 +30,7 @@ rules:
       - devenv
       - flake
       - nixos-rs
+      - nixpkgs-rs
       - pkgs
       - pkg-config-rs
       - readme
