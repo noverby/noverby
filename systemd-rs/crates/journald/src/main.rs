@@ -48,8 +48,10 @@ const STDOUT_SOCKET_PATH: &str = "/run/systemd/journal/stdout";
 const SYSLOG_SOCKET_PATH: &str = "/dev/log";
 /// Kernel ring buffer.
 const KMSG_PATH: &str = "/proc/kmsg";
-/// PID file for sd_notify integration.
+/// Runtime directory for sockets and PID file.
 const RUNTIME_DIR: &str = "/run/systemd/journal";
+/// PID file path — used by `journalctl --flush` / `--rotate` to signal us.
+const PID_FILE_PATH: &str = "/run/systemd/journal/pid";
 
 // ---------------------------------------------------------------------------
 // Rate limiting
@@ -1837,6 +1839,14 @@ fn main() {
     // Ensure runtime directory exists
     let _ = fs::create_dir_all(RUNTIME_DIR);
 
+    // Write PID file so journalctl --flush / --rotate can find us
+    if let Err(e) = fs::write(PID_FILE_PATH, process::id().to_string()) {
+        eprintln!(
+            "journald: failed to write PID file {}: {}",
+            PID_FILE_PATH, e
+        );
+    }
+
     // Start listener threads
     let state_native = Arc::clone(&state);
     let _native_handle = thread::Builder::new()
@@ -1914,7 +1924,8 @@ fn main() {
         let _ = storage.flush();
     }
 
-    // Clean up socket files
+    // Clean up socket and PID files
+    let _ = fs::remove_file(PID_FILE_PATH);
     let _ = fs::remove_file(JOURNAL_SOCKET_PATH);
     let _ = fs::remove_file(STDOUT_SOCKET_PATH);
     let _ = fs::remove_file(SYSLOG_SOCKET_PATH);
