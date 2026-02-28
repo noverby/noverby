@@ -21,6 +21,7 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::io;
+use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 
@@ -509,6 +510,348 @@ impl PortForward {
     }
 }
 
+// ── Seccomp profiles ─────────────────────────────────────────────────────
+
+/// Seccomp profile modes for restricting syscalls inside the container.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SeccompProfile {
+    /// Default deny list matching systemd-nspawn's built-in filter
+    Default,
+    /// Stricter filter — only essential syscalls allowed
+    Strict,
+    /// No seccomp filter at all
+    AllowAll,
+    /// Custom BPF filter loaded from a file path
+    Custom(String),
+}
+
+#[allow(dead_code)]
+impl SeccompProfile {
+    fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "default" => Some(SeccompProfile::Default),
+            "strict" => Some(SeccompProfile::Strict),
+            "allow-all" | "allowall" | "off" => Some(SeccompProfile::AllowAll),
+            _ => {
+                // Treat as a path to a custom profile
+                Some(SeccompProfile::Custom(s.to_string()))
+            }
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            SeccompProfile::Default => "default",
+            SeccompProfile::Strict => "strict",
+            SeccompProfile::AllowAll => "allow-all",
+            SeccompProfile::Custom(_) => "custom",
+        }
+    }
+}
+
+/// Syscall numbers for x86_64 that are blocked by default in systemd-nspawn.
+/// These are dangerous syscalls that could escape the container or compromise the host.
+#[cfg(target_arch = "x86_64")]
+const SECCOMP_DEFAULT_DENY_SYSCALLS: &[u32] = &[
+    246, // kexec_load
+    320, // kexec_file_load
+    175, // init_module
+    313, // finit_module
+    176, // delete_module
+    173, // ioperm
+    172, // iopl
+    167, // swapon
+    168, // swapoff
+    304, // open_by_handle_at
+    303, // name_to_handle_at
+    250, // keyctl
+    248, // add_key
+    249, // request_key
+    134, // uselib
+    159, // acct
+    180, // nfsservctl
+];
+
+/// Stricter set: also blocks mount/umount/ptrace/personality/reboot/chroot etc.
+#[cfg(target_arch = "x86_64")]
+const SECCOMP_STRICT_EXTRA_DENY: &[u32] = &[
+    165, // mount
+    166, // umount2
+    101, // ptrace
+    135, // personality
+    169, // reboot
+    161, // chroot
+    310, // process_vm_readv
+    311, // process_vm_writev
+];
+
+/// Fallback for non-x86_64 architectures.
+#[cfg(not(target_arch = "x86_64"))]
+const SECCOMP_DEFAULT_DENY_SYSCALLS: &[u32] = &[];
+#[cfg(not(target_arch = "x86_64"))]
+const SECCOMP_STRICT_EXTRA_DENY: &[u32] = &[];
+
+// BPF instruction constants for seccomp
+const BPF_LD: u16 = 0x00;
+const BPF_W: u16 = 0x00;
+const BPF_ABS: u16 = 0x20;
+const BPF_JMP: u16 = 0x05;
+const BPF_JEQ: u16 = 0x10;
+const BPF_K: u16 = 0x00;
+const BPF_RET: u16 = 0x06;
+
+const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
+const SECCOMP_RET_ERRNO: u32 = 0x0005_0000;
+const SECCOMP_RET_ERRNO_EPERM: u32 = SECCOMP_RET_ERRNO | 1; // EPERM
+
+const SECCOMP_DATA_NR_OFFSET: u32 = 0; // offsetof(struct seccomp_data, nr)
+
+/// A single BPF instruction (matches struct sock_filter).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct BpfInsn {
+    code: u16,
+    jt: u8,
+    jf: u8,
+    k: u32,
+}
+
+/// A BPF program (matches struct sock_fprog).
+#[repr(C)]
+struct BpfProg {
+    len: u16,
+    filter: *const BpfInsn,
+}
+
+/// Build a seccomp BPF filter that denies the given syscall numbers with EPERM.
+fn build_seccomp_filter(deny_syscalls: &[u32]) -> Vec<BpfInsn> {
+    let mut insns = Vec::new();
+
+    // Load the syscall number: LD W ABS offsetof(seccomp_data, nr)
+    insns.push(BpfInsn {
+        code: BPF_LD | BPF_W | BPF_ABS,
+        jt: 0,
+        jf: 0,
+        k: SECCOMP_DATA_NR_OFFSET,
+    });
+
+    // For each denied syscall: JEQ nr → DENY, else next
+    for &nr in deny_syscalls {
+        insns.push(BpfInsn {
+            code: BPF_JMP | BPF_JEQ | BPF_K,
+            jt: 0, // jump to the immediately following RET ERRNO
+            jf: 1, // skip to next check
+            k: nr,
+        });
+        insns.push(BpfInsn {
+            code: BPF_RET | BPF_K,
+            jt: 0,
+            jf: 0,
+            k: SECCOMP_RET_ERRNO_EPERM,
+        });
+    }
+
+    // Default: ALLOW
+    insns.push(BpfInsn {
+        code: BPF_RET | BPF_K,
+        jt: 0,
+        jf: 0,
+        k: SECCOMP_RET_ALLOW,
+    });
+
+    insns
+}
+
+/// Collect the denied syscalls for a given profile.
+fn seccomp_deny_list(profile: &SeccompProfile) -> Vec<u32> {
+    match profile {
+        SeccompProfile::AllowAll | SeccompProfile::Custom(_) => Vec::new(),
+        SeccompProfile::Default => SECCOMP_DEFAULT_DENY_SYSCALLS.to_vec(),
+        SeccompProfile::Strict => {
+            let mut v = SECCOMP_DEFAULT_DENY_SYSCALLS.to_vec();
+            v.extend_from_slice(SECCOMP_STRICT_EXTRA_DENY);
+            v
+        }
+    }
+}
+
+/// Apply the seccomp filter to the current process.
+fn apply_seccomp_filter(profile: &SeccompProfile) -> Result<(), String> {
+    match profile {
+        SeccompProfile::AllowAll => return Ok(()),
+        SeccompProfile::Custom(path) => {
+            let data = std::fs::read(path)
+                .map_err(|e| format!("failed to read seccomp profile {path}: {e}"))?;
+            if data.len() % 8 != 0 || data.is_empty() {
+                return Err(format!(
+                    "invalid seccomp profile {path}: size {} not a multiple of 8",
+                    data.len()
+                ));
+            }
+            let insn_count = data.len() / 8;
+            let insns: Vec<BpfInsn> = (0..insn_count)
+                .map(|i| {
+                    let off = i * 8;
+                    BpfInsn {
+                        code: u16::from_ne_bytes([data[off], data[off + 1]]),
+                        jt: data[off + 2],
+                        jf: data[off + 3],
+                        k: u32::from_ne_bytes([
+                            data[off + 4],
+                            data[off + 5],
+                            data[off + 6],
+                            data[off + 7],
+                        ]),
+                    }
+                })
+                .collect();
+
+            // Require NO_NEW_PRIVS before seccomp
+            let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
+            if ret != 0 {
+                return Err(format!(
+                    "prctl(PR_SET_NO_NEW_PRIVS) failed: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+
+            let prog = BpfProg {
+                len: insns.len() as u16,
+                filter: insns.as_ptr(),
+            };
+            let ret = unsafe {
+                libc::prctl(
+                    libc::PR_SET_SECCOMP,
+                    2, // SECCOMP_MODE_FILTER
+                    &prog as *const BpfProg as libc::c_ulong,
+                    0,
+                    0,
+                )
+            };
+            if ret != 0 {
+                return Err(format!(
+                    "prctl(PR_SET_SECCOMP) failed: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
+
+    let deny = seccomp_deny_list(profile);
+    if deny.is_empty() {
+        return Ok(());
+    }
+
+    // Set NO_NEW_PRIVS (required before installing seccomp filter)
+    let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
+    if ret != 0 {
+        return Err(format!(
+            "prctl(PR_SET_NO_NEW_PRIVS) failed: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+
+    let insns = build_seccomp_filter(&deny);
+    let prog = BpfProg {
+        len: insns.len() as u16,
+        filter: insns.as_ptr(),
+    };
+
+    let ret = unsafe {
+        libc::prctl(
+            libc::PR_SET_SECCOMP,
+            2, // SECCOMP_MODE_FILTER
+            &prog as *const BpfProg as libc::c_ulong,
+            0,
+            0,
+        )
+    };
+    if ret != 0 {
+        return Err(format!(
+            "prctl(PR_SET_SECCOMP) failed: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+
+    Ok(())
+}
+
+// ── Disk image support (loopback + GPT dissection) ───────────────────────
+
+/// IOCTL constants for loop device management.
+const LOOP_CTL_GET_FREE: libc::c_ulong = 0x4C82;
+const LOOP_SET_FD: libc::c_ulong = 0x4C00;
+const LOOP_CLR_FD: libc::c_ulong = 0x4C01;
+const LOOP_SET_STATUS64: libc::c_ulong = 0x4C04;
+
+/// Flags for loop_info64.
+const LO_FLAGS_READ_ONLY: u32 = 1;
+const LO_FLAGS_AUTOCLEAR: u32 = 4;
+const LO_FLAGS_PARTSCAN: u32 = 8;
+
+/// GPT header signature "EFI PART"
+const IMAGE_GPT_SIGNATURE: &[u8; 8] = b"EFI PART";
+const IMAGE_SECTOR_SIZE: u64 = 512;
+
+/// Well-known GPT partition type GUIDs (mixed-endian).
+#[allow(dead_code)]
+const GPT_ROOT_X86_64: [u8; 16] = [
+    0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11, 0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B,
+];
+#[allow(dead_code)]
+const GPT_ROOT_AARCH64: [u8; 16] = [
+    0x01, 0x57, 0x13, 0xB1, 0x4D, 0x11, 0xB4, 0x0D, 0x82, 0x5D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69,
+];
+#[allow(dead_code)]
+const GPT_USR_X86_64: [u8; 16] = [
+    0x73, 0x8A, 0x17, 0x77, 0x3E, 0x4F, 0xA1, 0x4D, 0x8D, 0x93, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24,
+];
+#[allow(dead_code)]
+const GPT_LINUX_GENERIC: [u8; 16] = [
+    0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47, 0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4,
+];
+
+/// loop_info64 structure for LOOP_SET_STATUS64.
+#[repr(C)]
+#[derive(Clone)]
+struct LoopInfo64 {
+    lo_device: u64,
+    lo_inode: u64,
+    lo_rdevice: u64,
+    lo_offset: u64,
+    lo_sizelimit: u64,
+    lo_number: u32,
+    lo_encrypt_type: u32,
+    lo_encrypt_key_size: u32,
+    lo_flags: u32,
+    lo_file_name: [u8; 64],
+    lo_crypt_name: [u8; 64],
+    lo_encrypt_key: [u8; 32],
+    lo_init: [u64; 2],
+}
+
+impl Default for LoopInfo64 {
+    fn default() -> Self {
+        LoopInfo64 {
+            lo_device: 0,
+            lo_inode: 0,
+            lo_rdevice: 0,
+            lo_offset: 0,
+            lo_sizelimit: 0,
+            lo_number: 0,
+            lo_encrypt_type: 0,
+            lo_encrypt_key_size: 0,
+            lo_flags: 0,
+            lo_file_name: [0u8; 64],
+            lo_crypt_name: [0u8; 64],
+            lo_encrypt_key: [0u8; 32],
+            lo_init: [0u64; 2],
+        }
+    }
+}
+
 // ── Container arguments ──────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -589,6 +932,62 @@ struct NspawnArgs {
     notify_ready: bool,
     /// Suppress creating /etc/machine-id
     suppress_sync: bool,
+    /// Seccomp profile (`--seccomp-profile`)
+    seccomp_profile: SeccompProfile,
+    /// Network configuration inside container (`--network-config`)
+    network_config: NetworkConfig,
+    /// Delegate cgroup to the container (`--cgroup-delegate`)
+    cgroup_delegate: bool,
+}
+
+// ── Network configuration inside container ───────────────────────────────
+
+/// Network configuration mode for the container-side `host0` interface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NetworkConfig {
+    /// No network configuration (manual / leave unconfigured)
+    None,
+    /// Use DHCP on host0
+    Dhcp,
+    /// Static IP configuration: address/prefix, optional gateway
+    Static {
+        address: String,
+        gateway: Option<String>,
+    },
+}
+
+#[allow(dead_code)]
+impl NetworkConfig {
+    fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "none" | "off" => Some(NetworkConfig::None),
+            "dhcp" => Some(NetworkConfig::Dhcp),
+            _ => {
+                // Parse "ADDR/PREFIX[:GATEWAY]"
+                if let Some((addr, gw)) = s.split_once(':') {
+                    Some(NetworkConfig::Static {
+                        address: addr.to_string(),
+                        gateway: Some(gw.to_string()),
+                    })
+                } else if s.contains('/') {
+                    Some(NetworkConfig::Static {
+                        address: s.to_string(),
+                        gateway: None,
+                    })
+                } else {
+                    Option::None
+                }
+            }
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            NetworkConfig::None => "none",
+            NetworkConfig::Dhcp => "dhcp",
+            NetworkConfig::Static { .. } => "static",
+        }
+    }
 }
 
 impl Default for NspawnArgs {
@@ -632,6 +1031,9 @@ impl Default for NspawnArgs {
             settings: None,
             notify_ready: false,
             suppress_sync: false,
+            seccomp_profile: SeccompProfile::Default,
+            network_config: NetworkConfig::None,
+            cgroup_delegate: false,
         }
     }
 }
@@ -929,6 +1331,22 @@ fn parse_args(args: &[&str]) -> Result<NspawnArgs, String> {
                 let val = value_or_next(arg, "--oci-bundle", &mut iter)?;
                 result.oci_bundle = Some(val.to_string());
             }
+            _ if arg.starts_with("--seccomp-profile") => {
+                let val = value_or_next(arg, "--seccomp-profile", &mut iter)?;
+                result.seccomp_profile = SeccompProfile::from_str(val)
+                    .ok_or_else(|| format!("invalid seccomp profile: {val}"))?;
+            }
+            _ if arg.starts_with("--network-config") => {
+                let val = value_or_next(arg, "--network-config", &mut iter)?;
+                result.network_config = NetworkConfig::from_str(val)
+                    .ok_or_else(|| format!("invalid network config: {val}"))?;
+            }
+            _ if arg == "--cgroup-delegate" || arg == "--cgroup-delegate=yes" => {
+                result.cgroup_delegate = true;
+            }
+            _ if arg == "--cgroup-delegate=no" => {
+                result.cgroup_delegate = false;
+            }
             _ if arg.starts_with("-U") || arg == "--private-users" => {
                 result.private_users = true;
             }
@@ -1052,6 +1470,8 @@ fn apply_capability_bounding_set(allowed: &[Capability]) -> Result<(), String> {
 // ── Container root resolution ────────────────────────────────────────────
 
 /// Resolve the container root directory from args. Returns the canonical path.
+/// For `--image`, sets up a loopback device, dissects GPT, and mounts the root
+/// partition to a temporary directory. For `--oci-bundle`, reads config.json.
 fn resolve_root(args: &NspawnArgs) -> Result<PathBuf, String> {
     if let Some(ref dir) = args.directory {
         let p = PathBuf::from(dir);
@@ -1066,14 +1486,10 @@ fn resolve_root(args: &NspawnArgs) -> Result<PathBuf, String> {
             .map_err(|e| format!("failed to canonicalize {dir}: {e}"));
     }
     if let Some(ref img) = args.image {
-        return Err(format!(
-            "image-based containers (--image={img}) are not yet supported; use --directory"
-        ));
+        return resolve_image_root(img, args.read_only);
     }
     if let Some(ref oci) = args.oci_bundle {
-        return Err(format!(
-            "OCI bundles (--oci-bundle={oci}) are not yet supported; use --directory"
-        ));
+        return resolve_oci_root(oci);
     }
 
     // Look in /var/lib/machines/<machine>
@@ -1084,9 +1500,1215 @@ fn resolve_root(args: &NspawnArgs) -> Result<PathBuf, String> {
                 .canonicalize()
                 .map_err(|e| format!("failed to canonicalize /var/lib/machines/{machine}: {e}"));
         }
+        // Also try .raw image
+        let machine_img = PathBuf::from(format!("/var/lib/machines/{machine}.raw"));
+        if machine_img.is_file() {
+            return resolve_image_root(&machine_img.to_string_lossy(), args.read_only);
+        }
     }
 
     Err("no container root specified; use --directory=PATH or --machine=NAME".to_string())
+}
+
+// ── Disk image mounting (--image) ────────────────────────────────────────
+
+/// Set up a loopback device for the given image file.
+/// Returns the loop device path (e.g. "/dev/loop0").
+fn setup_loopback(image_path: &str, read_only: bool) -> Result<String, String> {
+    let image = Path::new(image_path);
+    if !image.exists() {
+        return Err(format!("image file does not exist: {image_path}"));
+    }
+    if !image.is_file() {
+        return Err(format!("not a regular file: {image_path}"));
+    }
+
+    // Open /dev/loop-control to get a free loop device
+    let ctl_path = CString::new("/dev/loop-control").unwrap();
+    let ctl_fd = unsafe { libc::open(ctl_path.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+    if ctl_fd < 0 {
+        return Err(format!(
+            "failed to open /dev/loop-control: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    let loop_nr = unsafe { libc::ioctl(ctl_fd, LOOP_CTL_GET_FREE) };
+    unsafe { libc::close(ctl_fd) };
+    if loop_nr < 0 {
+        return Err(format!(
+            "LOOP_CTL_GET_FREE failed: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    let loop_dev = format!("/dev/loop{loop_nr}");
+    let loop_c = CString::new(loop_dev.as_str()).unwrap();
+    let loop_fd = unsafe { libc::open(loop_c.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+    if loop_fd < 0 {
+        return Err(format!(
+            "failed to open {loop_dev}: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    // Open the image file
+    let img_c = CString::new(image_path).map_err(|e| format!("invalid path: {e}"))?;
+    let open_flags = if read_only {
+        libc::O_RDONLY | libc::O_CLOEXEC
+    } else {
+        libc::O_RDWR | libc::O_CLOEXEC
+    };
+    let img_fd = unsafe { libc::open(img_c.as_ptr(), open_flags) };
+    if img_fd < 0 {
+        unsafe { libc::close(loop_fd) };
+        return Err(format!(
+            "failed to open {image_path}: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    // Associate the loop device with the image file
+    let ret = unsafe { libc::ioctl(loop_fd, LOOP_SET_FD, img_fd) };
+    if ret < 0 {
+        let err = io::Error::last_os_error();
+        unsafe {
+            libc::close(img_fd);
+            libc::close(loop_fd);
+        }
+        return Err(format!("LOOP_SET_FD failed: {err}"));
+    }
+    unsafe { libc::close(img_fd) };
+
+    // Set loop device info (enable partition scanning, autoclear)
+    let mut flags = LO_FLAGS_AUTOCLEAR | LO_FLAGS_PARTSCAN;
+    if read_only {
+        flags |= LO_FLAGS_READ_ONLY;
+    }
+    let mut info = LoopInfo64 {
+        lo_flags: flags,
+        ..LoopInfo64::default()
+    };
+    // Copy filename into lo_file_name
+    let name_bytes = image_path.as_bytes();
+    let copy_len = name_bytes.len().min(63);
+    info.lo_file_name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+
+    let ret = unsafe {
+        libc::ioctl(
+            loop_fd,
+            LOOP_SET_STATUS64,
+            &info as *const LoopInfo64 as libc::c_ulong,
+        )
+    };
+    unsafe { libc::close(loop_fd) };
+    if ret < 0 {
+        // Try to detach on failure
+        let _ = detach_loopback(&loop_dev);
+        return Err(format!(
+            "LOOP_SET_STATUS64 failed: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    // Give the kernel a moment to create partition device nodes
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    Ok(loop_dev)
+}
+
+/// Detach (release) a loop device.
+fn detach_loopback(loop_dev: &str) -> Result<(), String> {
+    let c = CString::new(loop_dev).map_err(|e| format!("invalid path: {e}"))?;
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(format!(
+            "failed to open {loop_dev}: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    let ret = unsafe { libc::ioctl(fd, LOOP_CLR_FD) };
+    unsafe { libc::close(fd) };
+    if ret < 0 {
+        return Err(format!(
+            "LOOP_CLR_FD failed: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+/// A GPT partition entry found during dissection.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct DissectedPartition {
+    /// Partition index (0-based)
+    index: u32,
+    /// First LBA
+    first_lba: u64,
+    /// Last LBA (inclusive)
+    last_lba: u64,
+    /// Partition type GUID (16 bytes, raw)
+    type_guid: [u8; 16],
+    /// Device node path (e.g. "/dev/loop0p1")
+    device: String,
+}
+
+#[allow(dead_code)]
+impl DissectedPartition {
+    fn size_bytes(&self) -> u64 {
+        (self.last_lba - self.first_lba + 1) * IMAGE_SECTOR_SIZE
+    }
+
+    fn is_root(&self) -> bool {
+        self.type_guid == GPT_ROOT_X86_64
+            || self.type_guid == GPT_ROOT_AARCH64
+            || self.type_guid == GPT_LINUX_GENERIC
+    }
+
+    fn is_usr(&self) -> bool {
+        self.type_guid == GPT_USR_X86_64
+    }
+}
+
+/// Parse the GPT header from an image file or loop device.
+/// Returns a list of partitions found.
+fn dissect_gpt(device_path: &str) -> Result<Vec<DissectedPartition>, String> {
+    let mut f = std::fs::File::open(device_path)
+        .map_err(|e| format!("failed to open {device_path}: {e}"))?;
+
+    // Read GPT header at LBA 1 (offset 512)
+    f.seek(SeekFrom::Start(IMAGE_SECTOR_SIZE))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    let mut hdr = [0u8; 92];
+    f.read_exact(&mut hdr)
+        .map_err(|e| format!("read GPT header failed: {e}"))?;
+
+    // Verify signature
+    if &hdr[0..8] != IMAGE_GPT_SIGNATURE {
+        return Err("no GPT signature found in image".to_string());
+    }
+
+    // Parse header fields
+    let partition_entry_lba = u64::from_le_bytes(hdr[72..80].try_into().unwrap());
+    let num_entries = u32::from_le_bytes(hdr[80..84].try_into().unwrap());
+    let entry_size = u32::from_le_bytes(hdr[84..88].try_into().unwrap());
+
+    if entry_size < 128 || num_entries == 0 {
+        return Ok(Vec::new());
+    }
+
+    let entry_offset = partition_entry_lba * IMAGE_SECTOR_SIZE;
+    f.seek(SeekFrom::Start(entry_offset))
+        .map_err(|e| format!("seek to partition entries failed: {e}"))?;
+
+    let mut partitions = Vec::new();
+    for i in 0..num_entries {
+        let mut entry = vec![0u8; entry_size as usize];
+        if f.read_exact(&mut entry).is_err() {
+            break;
+        }
+
+        // Type GUID at offset 0..16
+        let mut type_guid = [0u8; 16];
+        type_guid.copy_from_slice(&entry[0..16]);
+
+        // Skip empty entries (all-zero type GUID)
+        if type_guid == [0u8; 16] {
+            continue;
+        }
+
+        let first_lba = u64::from_le_bytes(entry[32..40].try_into().unwrap());
+        let last_lba = u64::from_le_bytes(entry[40..48].try_into().unwrap());
+
+        let device = format!("{device_path}p{}", i + 1);
+
+        partitions.push(DissectedPartition {
+            index: i,
+            first_lba,
+            last_lba,
+            type_guid,
+            device,
+        });
+    }
+
+    Ok(partitions)
+}
+
+/// Find the root partition from dissected GPT partitions.
+/// Prefers the architecture-specific root type, falls back to Linux generic.
+fn find_root_partition(partitions: &[DissectedPartition]) -> Option<&DissectedPartition> {
+    // First try architecture-specific root
+    if let Some(p) = partitions
+        .iter()
+        .find(|p| p.type_guid == GPT_ROOT_X86_64 || p.type_guid == GPT_ROOT_AARCH64)
+    {
+        return Some(p);
+    }
+    // Fallback to generic Linux data
+    partitions.iter().find(|p| p.type_guid == GPT_LINUX_GENERIC)
+}
+
+/// Resolve an --image path to a mounted root directory.
+/// Sets up loopback, dissects GPT, and mounts the root partition.
+fn resolve_image_root(image_path: &str, read_only: bool) -> Result<PathBuf, String> {
+    let loop_dev = setup_loopback(image_path, read_only)?;
+
+    // Try GPT dissection first
+    let partitions = match dissect_gpt(&loop_dev) {
+        Ok(parts) if !parts.is_empty() => parts,
+        _ => {
+            // No GPT — treat the whole image as a filesystem
+            let mount_dir = create_image_mount_dir(image_path)?;
+            mount_device(&loop_dev, &mount_dir, read_only)?;
+            return Ok(mount_dir);
+        }
+    };
+
+    let root_part = find_root_partition(&partitions).ok_or_else(|| {
+        let _ = detach_loopback(&loop_dev);
+        "no root partition found in image GPT".to_string()
+    })?;
+
+    // Check if the partition device node exists
+    let part_dev = &root_part.device;
+    if !Path::new(part_dev).exists() {
+        // Partition device nodes may not have been created yet;
+        // fall back to mounting with offset
+        let mount_dir = create_image_mount_dir(image_path)?;
+        mount_device_with_offset(
+            &loop_dev,
+            &mount_dir,
+            root_part.first_lba * IMAGE_SECTOR_SIZE,
+            root_part.size_bytes(),
+            read_only,
+        )?;
+        return Ok(mount_dir);
+    }
+
+    let mount_dir = create_image_mount_dir(image_path)?;
+    mount_device(part_dev, &mount_dir, read_only)?;
+    Ok(mount_dir)
+}
+
+/// Create a temporary directory to mount an image.
+fn create_image_mount_dir(image_path: &str) -> Result<PathBuf, String> {
+    let name = Path::new(image_path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "image".to_string());
+    let dir = PathBuf::from(format!("/run/systemd/nspawn/{name}"));
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("failed to create mount directory {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
+/// Mount a block device at the given path.
+fn mount_device(device: &str, target: &Path, read_only: bool) -> Result<(), String> {
+    let dev_c = CString::new(device).map_err(|e| format!("invalid device: {e}"))?;
+    let tgt_c = CString::new(target.to_string_lossy().as_bytes())
+        .map_err(|e| format!("invalid target: {e}"))?;
+
+    // Try common filesystem types
+    for fstype in &["ext4", "btrfs", "xfs", "vfat", "erofs", "squashfs"] {
+        let fs_c = CString::new(*fstype).unwrap();
+        let mut flags: libc::c_ulong = 0;
+        if read_only {
+            flags |= libc::MS_RDONLY as libc::c_ulong;
+        }
+        let ret = unsafe {
+            libc::mount(
+                dev_c.as_ptr(),
+                tgt_c.as_ptr(),
+                fs_c.as_ptr(),
+                flags,
+                std::ptr::null(),
+            )
+        };
+        if ret == 0 {
+            return Ok(());
+        }
+    }
+
+    Err(format!(
+        "failed to mount {} at {}: {}",
+        device,
+        target.display(),
+        io::Error::last_os_error()
+    ))
+}
+
+/// Mount a block device with a specific byte offset and size limit.
+fn mount_device_with_offset(
+    device: &str,
+    target: &Path,
+    offset: u64,
+    _size: u64,
+    read_only: bool,
+) -> Result<(), String> {
+    let dev_c = CString::new(device).map_err(|e| format!("invalid device: {e}"))?;
+    let tgt_c = CString::new(target.to_string_lossy().as_bytes())
+        .map_err(|e| format!("invalid target: {e}"))?;
+
+    for fstype in &["ext4", "btrfs", "xfs", "vfat", "erofs", "squashfs"] {
+        let fs_c = CString::new(*fstype).unwrap();
+        let data = format!("offset={offset}");
+        let data_c = CString::new(data.as_str()).unwrap();
+        let mut flags: libc::c_ulong = 0;
+        if read_only {
+            flags |= libc::MS_RDONLY as libc::c_ulong;
+        }
+        let ret = unsafe {
+            libc::mount(
+                dev_c.as_ptr(),
+                tgt_c.as_ptr(),
+                fs_c.as_ptr(),
+                flags,
+                data_c.as_ptr() as *const libc::c_void,
+            )
+        };
+        if ret == 0 {
+            return Ok(());
+        }
+    }
+
+    Err(format!(
+        "failed to mount {} (offset {offset}) at {}: {}",
+        device,
+        target.display(),
+        io::Error::last_os_error()
+    ))
+}
+
+// ── OCI bundle support ───────────────────────────────────────────────────
+
+/// Minimal OCI runtime configuration parsed from config.json.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct OciConfig {
+    /// Root filesystem path (relative to bundle)
+    root_path: String,
+    /// Read-only root
+    root_readonly: bool,
+    /// Process args
+    args: Vec<String>,
+    /// Process env
+    env: Vec<(String, String)>,
+    /// Process cwd
+    cwd: String,
+    /// Hostname
+    hostname: Option<String>,
+    /// OCI mounts
+    mounts: Vec<OciMount>,
+    /// Linux namespaces to create
+    namespaces: Vec<String>,
+}
+
+/// An OCI mount specification.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct OciMount {
+    destination: String,
+    source: Option<String>,
+    mount_type: Option<String>,
+    options: Vec<String>,
+}
+
+/// Parse OCI bundle config.json with a minimal JSON parser.
+fn parse_oci_config(bundle_path: &str) -> Result<OciConfig, String> {
+    let config_path = Path::new(bundle_path).join("config.json");
+    let content = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("failed to read {}: {e}", config_path.display()))?;
+
+    // Minimal JSON parsing for the fields we need
+    let mut config = OciConfig {
+        root_path: "rootfs".to_string(),
+        root_readonly: false,
+        args: Vec::new(),
+        env: Vec::new(),
+        cwd: "/".to_string(),
+        hostname: None,
+        mounts: Vec::new(),
+        namespaces: Vec::new(),
+    };
+
+    // Parse root.path
+    if let Some(idx) = content.find("\"root\"") {
+        let section = &content[idx..];
+        if let Some(path_val) = extract_json_string(section, "path") {
+            config.root_path = path_val;
+        }
+        if section.contains("\"readonly\"") && section.contains("true") {
+            config.root_readonly = true;
+        }
+    }
+
+    // Parse process.args
+    if let Some(idx) = content.find("\"process\"") {
+        let section = &content[idx..];
+        if let Some(args_start) = section.find("\"args\"") {
+            let args_section = &section[args_start..];
+            config.args = extract_json_string_array(args_section);
+        }
+        // Parse process.env
+        if let Some(env_start) = section.find("\"env\"") {
+            let env_section = &section[env_start..];
+            for item in extract_json_string_array(env_section) {
+                if let Some((k, v)) = item.split_once('=') {
+                    config.env.push((k.to_string(), v.to_string()));
+                }
+            }
+        }
+        // Parse process.cwd
+        if let Some(cwd) = extract_json_string(section, "cwd") {
+            config.cwd = cwd;
+        }
+    }
+
+    // Parse hostname
+    if let Some(h) = extract_json_string(&content, "hostname") {
+        config.hostname = Some(h);
+    }
+
+    // Parse mounts array
+    if let Some(mounts_idx) = content.find("\"mounts\"") {
+        let mounts_section = &content[mounts_idx..];
+        config.mounts = parse_oci_mounts(mounts_section);
+    }
+
+    Ok(config)
+}
+
+/// Extract a JSON string value for a given key (very minimal parser).
+fn extract_json_string(json: &str, key: &str) -> Option<String> {
+    let search = format!("\"{key}\"");
+    let idx = json.find(&search)?;
+    let rest = &json[idx + search.len()..];
+    // Skip whitespace and colon
+    let rest = rest.trim_start();
+    let rest = rest.strip_prefix(':')?;
+    let rest = rest.trim_start();
+    // Read quoted string
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+/// Extract a JSON string array (very minimal parser).
+fn extract_json_string_array(json: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    let start = match json.find('[') {
+        Some(i) => i + 1,
+        None => return results,
+    };
+    let end = match json[start..].find(']') {
+        Some(i) => start + i,
+        None => return results,
+    };
+    let content = &json[start..end];
+
+    let mut in_string = false;
+    let mut current = String::new();
+    let mut escaped = false;
+
+    for ch in content.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_string => {
+                escaped = true;
+            }
+            '"' => {
+                if in_string {
+                    results.push(current.clone());
+                    current.clear();
+                }
+                in_string = !in_string;
+            }
+            _ if in_string => {
+                current.push(ch);
+            }
+            _ => {} // skip commas, whitespace outside strings
+        }
+    }
+    results
+}
+
+/// Parse OCI mounts from the mounts section of config.json.
+fn parse_oci_mounts(json: &str) -> Vec<OciMount> {
+    let mut mounts = Vec::new();
+    // Find the opening '[' of the mounts array
+    let arr_start = match json.find('[') {
+        Some(i) => i + 1,
+        None => return mounts,
+    };
+    // Find the *matching* ']' by tracking bracket depth
+    let arr_end = {
+        let mut depth = 1i32;
+        let mut pos = None;
+        for (i, ch) in json[arr_start..].char_indices() {
+            match ch {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        pos = Some(arr_start + i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        match pos {
+            Some(p) => p,
+            None => return mounts,
+        }
+    };
+    let content = &json[arr_start..arr_end];
+
+    // Split on "}" to find individual mount objects
+    for chunk in content.split('}') {
+        let destination = match extract_json_string(chunk, "destination") {
+            Some(d) => d,
+            None => continue,
+        };
+        let source = extract_json_string(chunk, "source");
+        let mount_type = extract_json_string(chunk, "type");
+        // Options: try to extract array
+        let options = if let Some(opts_idx) = chunk.find("\"options\"") {
+            extract_json_string_array(&chunk[opts_idx..])
+        } else {
+            Vec::new()
+        };
+
+        mounts.push(OciMount {
+            destination,
+            source,
+            mount_type,
+            options,
+        });
+    }
+    mounts
+}
+
+/// Resolve an OCI bundle to its rootfs directory.
+fn resolve_oci_root(bundle_path: &str) -> Result<PathBuf, String> {
+    let bundle = Path::new(bundle_path);
+    if !bundle.is_dir() {
+        return Err(format!(
+            "OCI bundle directory does not exist: {bundle_path}"
+        ));
+    }
+    let config = parse_oci_config(bundle_path)?;
+    let root = bundle.join(&config.root_path);
+    if !root.is_dir() {
+        return Err(format!("OCI rootfs not found at {}", root.display()));
+    }
+    root.canonicalize()
+        .map_err(|e| format!("failed to canonicalize OCI rootfs: {e}"))
+}
+
+// ── Cgroup delegation ────────────────────────────────────────────────────
+
+/// The cgroup2 unified mount point.
+const CGROUP2_PATH: &str = "/sys/fs/cgroup";
+
+/// Set up cgroup delegation for the container.
+/// Creates a child cgroup under the current cgroup and writes the container PID into it.
+/// Also enables subtree delegation by writing to `cgroup.subtree_control`.
+fn setup_cgroup_delegation(machine_name: &str, child_pid: i32) -> Result<String, String> {
+    // Determine our current cgroup (from /proc/self/cgroup)
+    let self_cgroup = read_self_cgroup()?;
+
+    let container_cgroup = format!("{CGROUP2_PATH}{self_cgroup}/machine-{machine_name}");
+
+    // Create the cgroup directory
+    std::fs::create_dir_all(&container_cgroup)
+        .map_err(|e| format!("failed to create cgroup {container_cgroup}: {e}"))?;
+
+    // Write the child PID to cgroup.procs
+    let procs_path = format!("{container_cgroup}/cgroup.procs");
+    std::fs::write(&procs_path, format!("{child_pid}\n"))
+        .map_err(|e| format!("failed to write PID to {procs_path}: {e}"))?;
+
+    // Enable controllers in the parent's subtree_control
+    let parent_control = format!("{CGROUP2_PATH}{self_cgroup}/cgroup.subtree_control");
+    for controller in &["cpu", "memory", "io", "pids"] {
+        let _ = std::fs::write(&parent_control, format!("+{controller}"));
+    }
+
+    // Also enable controllers in the container cgroup's subtree_control
+    // so the container can manage its own sub-cgroups
+    let container_control = format!("{container_cgroup}/cgroup.subtree_control");
+    for controller in &["cpu", "memory", "io", "pids"] {
+        let _ = std::fs::write(&container_control, format!("+{controller}"));
+    }
+
+    Ok(container_cgroup)
+}
+
+/// Remove (cleanup) a container cgroup directory.
+fn cleanup_cgroup(machine_name: &str) {
+    let self_cgroup = match read_self_cgroup() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let container_cgroup = format!("{CGROUP2_PATH}{self_cgroup}/machine-{machine_name}");
+    let _ = std::fs::remove_dir(&container_cgroup);
+}
+
+/// Read the current process's cgroup path from /proc/self/cgroup (cgroup v2).
+fn read_self_cgroup() -> Result<String, String> {
+    let content = std::fs::read_to_string("/proc/self/cgroup")
+        .map_err(|e| format!("failed to read /proc/self/cgroup: {e}"))?;
+    // cgroup v2: "0::<path>"
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("0::") {
+            return Ok(rest.to_string());
+        }
+    }
+    // Fallback: use "/"
+    Ok("/".to_string())
+}
+
+// ── Network configuration inside container ───────────────────────────────
+
+// Netlink constants for address/route configuration
+#[allow(dead_code)]
+const RTM_NEWADDR: u16 = 20;
+#[allow(dead_code)]
+const RTM_NEWROUTE: u16 = 24;
+#[allow(dead_code)]
+const IFA_LOCAL: u16 = 2;
+#[allow(dead_code)]
+const IFA_ADDRESS: u16 = 1;
+#[allow(dead_code)]
+const RTA_GATEWAY: u16 = 5;
+#[allow(dead_code)]
+const RTA_OIF: u16 = 4;
+#[allow(dead_code)]
+const RTA_DST: u16 = 1;
+#[allow(dead_code)]
+const RT_SCOPE_UNIVERSE: u8 = 0;
+#[allow(dead_code)]
+const RT_TABLE_MAIN: u8 = 254;
+#[allow(dead_code)]
+const RTPROT_BOOT: u8 = 3;
+#[allow(dead_code)]
+const RTN_UNICAST: u8 = 1;
+#[allow(dead_code)]
+const IFADDRMSG_LEN: usize = 8;
+#[allow(dead_code)]
+const RTMSG_LEN: usize = 12;
+
+/// Configure the container-side network interface (`host0`).
+/// Must be called from inside the container's network namespace.
+fn setup_container_network(config: &NetworkConfig) -> Result<(), String> {
+    match config {
+        NetworkConfig::None => Ok(()),
+        NetworkConfig::Dhcp => {
+            // Bring up host0 first
+            bring_interface_up("host0").map_err(|e| format!("failed to bring up host0: {e}"))?;
+            // Spawn a minimal DHCP client
+            run_dhcp_client("host0")
+        }
+        NetworkConfig::Static { address, gateway } => {
+            // Parse address/prefix
+            let (addr_str, prefix) = address
+                .split_once('/')
+                .ok_or_else(|| format!("invalid static address (need ADDR/PREFIX): {address}"))?;
+            let prefix_len: u8 = prefix
+                .parse()
+                .map_err(|_| format!("invalid prefix length: {prefix}"))?;
+            let addr_bytes = parse_ipv4(addr_str)?;
+
+            // Bring up host0
+            bring_interface_up("host0").map_err(|e| format!("failed to bring up host0: {e}"))?;
+
+            // Read the interface index for host0
+            let ifindex =
+                read_ifindex("host0").map_err(|e| format!("failed to read host0 ifindex: {e}"))?;
+
+            // Add the address via netlink
+            add_ipv4_address(ifindex as u32, &addr_bytes, prefix_len)?;
+
+            // Add default route via gateway if specified
+            if let Some(gw) = gateway {
+                let gw_bytes = parse_ipv4(gw)?;
+                add_ipv4_default_route(ifindex as u32, &gw_bytes)?;
+            }
+
+            Ok(())
+        }
+    }
+}
+
+/// Parse an IPv4 address string into 4 bytes.
+fn parse_ipv4(s: &str) -> Result<[u8; 4], String> {
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() != 4 {
+        return Err(format!("invalid IPv4 address: {s}"));
+    }
+    let mut bytes = [0u8; 4];
+    for (i, part) in parts.iter().enumerate() {
+        bytes[i] = part
+            .parse()
+            .map_err(|_| format!("invalid IPv4 octet: {part}"))?;
+    }
+    Ok(bytes)
+}
+
+/// Append a netlink route attribute (header + bytes payload) to a Vec.
+fn vec_put_rta_bytes(buf: &mut Vec<u8>, rta_type: u16, data: &[u8]) {
+    let rta_len = (4 + data.len()) as u16;
+    buf.extend_from_slice(&rta_len.to_ne_bytes());
+    buf.extend_from_slice(&rta_type.to_ne_bytes());
+    buf.extend_from_slice(data);
+    // Pad to 4-byte alignment
+    let pad = (4 - (data.len() % 4)) % 4;
+    for _ in 0..pad {
+        buf.push(0);
+    }
+}
+
+/// Append a netlink route attribute with a u32 payload to a Vec.
+fn vec_put_rta_u32(buf: &mut Vec<u8>, rta_type: u16, val: u32) {
+    let rta_len: u16 = 8; // 4 header + 4 data
+    buf.extend_from_slice(&rta_len.to_ne_bytes());
+    buf.extend_from_slice(&rta_type.to_ne_bytes());
+    buf.extend_from_slice(&val.to_ne_bytes());
+}
+
+/// Add an IPv4 address to an interface via netlink RTM_NEWADDR.
+fn add_ipv4_address(ifindex: u32, addr: &[u8; 4], prefix_len: u8) -> Result<(), String> {
+    let mut msg = Vec::new();
+
+    // nlmsghdr placeholder (will be filled at the end)
+    let nlh_start = msg.len();
+    msg.extend_from_slice(&[0u8; 16]); // nlmsghdr: len, type, flags, seq, pid
+
+    // ifaddrmsg
+    msg.push(libc::AF_INET as u8); // ifa_family
+    msg.push(prefix_len); // ifa_prefixlen
+    msg.push(0); // ifa_flags
+    msg.push(RT_SCOPE_UNIVERSE); // ifa_scope
+    msg.extend_from_slice(&ifindex.to_ne_bytes()); // ifa_index
+
+    // IFA_LOCAL attribute
+    vec_put_rta_bytes(&mut msg, IFA_LOCAL, addr);
+
+    // IFA_ADDRESS attribute
+    vec_put_rta_bytes(&mut msg, IFA_ADDRESS, addr);
+
+    // Fill in nlmsghdr
+    let total_len = msg.len() as u32;
+    msg[nlh_start..nlh_start + 4].copy_from_slice(&total_len.to_ne_bytes());
+    msg[nlh_start + 4..nlh_start + 6].copy_from_slice(&RTM_NEWADDR.to_ne_bytes());
+    let flags: u16 = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL;
+    msg[nlh_start + 6..nlh_start + 8].copy_from_slice(&flags.to_ne_bytes());
+
+    netlink_route_request(&msg).map_err(|e| format!("RTM_NEWADDR failed: {e}"))
+}
+
+/// Add a default IPv4 route via gateway through netlink RTM_NEWROUTE.
+fn add_ipv4_default_route(ifindex: u32, gateway: &[u8; 4]) -> Result<(), String> {
+    let mut msg = Vec::new();
+
+    // nlmsghdr placeholder
+    let nlh_start = msg.len();
+    msg.extend_from_slice(&[0u8; 16]);
+
+    // rtmsg
+    msg.push(libc::AF_INET as u8); // rtm_family
+    msg.push(0); // rtm_dst_len (0 = default route)
+    msg.push(0); // rtm_src_len
+    msg.push(0); // rtm_tos
+    msg.push(RT_TABLE_MAIN); // rtm_table
+    msg.push(RTPROT_BOOT); // rtm_protocol
+    msg.push(RT_SCOPE_UNIVERSE); // rtm_scope
+    msg.push(RTN_UNICAST); // rtm_type
+    msg.extend_from_slice(&[0u8; 4]); // rtm_flags
+
+    // RTA_GATEWAY
+    vec_put_rta_bytes(&mut msg, RTA_GATEWAY, gateway);
+
+    // RTA_OIF
+    vec_put_rta_u32(&mut msg, RTA_OIF, ifindex);
+
+    // Fill in nlmsghdr
+    let total_len = msg.len() as u32;
+    msg[nlh_start..nlh_start + 4].copy_from_slice(&total_len.to_ne_bytes());
+    msg[nlh_start + 4..nlh_start + 6].copy_from_slice(&RTM_NEWROUTE.to_ne_bytes());
+    let flags: u16 = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL;
+    msg[nlh_start + 6..nlh_start + 8].copy_from_slice(&flags.to_ne_bytes());
+
+    netlink_route_request(&msg).map_err(|e| format!("RTM_NEWROUTE failed: {e}"))
+}
+
+/// Run a minimal DHCP client on the given interface.
+/// Tries `dhclient`, `dhcpcd`, or `udhcpc` in that order.
+fn run_dhcp_client(interface: &str) -> Result<(), String> {
+    let clients = [
+        ("/usr/sbin/dhclient", vec!["-1", "-v", interface]),
+        ("/usr/bin/dhcpcd", vec!["-1", "-4", interface]),
+        ("/sbin/udhcpc", vec!["-i", interface, "-n", "-q"]),
+    ];
+
+    for (path, args) in &clients {
+        if Path::new(path).exists() {
+            let c_path = CString::new(*path).unwrap();
+            let mut c_args: Vec<CString> = vec![CString::new(*path).unwrap()];
+            for a in args {
+                c_args.push(CString::new(*a).unwrap());
+            }
+
+            // Fork and exec the DHCP client
+            let pid = unsafe { libc::fork() };
+            match pid {
+                -1 => continue,
+                0 => {
+                    // Child: exec DHCP client
+                    let ptrs: Vec<*const libc::c_char> = c_args
+                        .iter()
+                        .map(|a| a.as_ptr())
+                        .chain(std::iter::once(std::ptr::null()))
+                        .collect();
+                    unsafe { libc::execv(c_path.as_ptr(), ptrs.as_ptr()) };
+                    std::process::exit(127);
+                }
+                child => {
+                    // Wait for the DHCP client
+                    let mut status = 0i32;
+                    unsafe { libc::waitpid(child, &mut status, 0) };
+                    if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0 {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    Err("no DHCP client found (tried dhclient, dhcpcd, udhcpc)".to_string())
+}
+
+// ── .nspawn settings file parsing ────────────────────────────────────────
+
+/// Settings parsed from a .nspawn file.
+/// INI-style format with [Exec], [Files], and [Network] sections.
+#[derive(Debug, Clone, Default)]
+struct NspawnSettings {
+    // [Exec] section
+    boot: Option<bool>,
+    process_two: Option<bool>,
+    parameters: Vec<String>,
+    environment: Vec<(String, String)>,
+    user: Option<String>,
+    working_directory: Option<String>,
+    capability: Vec<String>,
+    drop_capability: Vec<String>,
+    kill_signal: Option<String>,
+    hostname: Option<String>,
+    machine_id: Option<String>,
+    no_new_privileges: Option<bool>,
+    private_users: Option<bool>,
+    notify_ready: Option<bool>,
+
+    // [Files] section
+    read_only: Option<bool>,
+    volatile: Option<String>,
+    bind: Vec<String>,
+    bind_ro: Vec<String>,
+    tmpfs: Vec<String>,
+    overlay: Vec<String>,
+    overlay_ro: Vec<String>,
+
+    // [Network] section
+    private_network: Option<bool>,
+    virtual_ethernet: Option<bool>,
+    port: Vec<String>,
+    network_config: Option<String>,
+}
+
+/// Search for a .nspawn settings file for the given machine name.
+/// Searches: /etc/systemd/nspawn/<name>.nspawn, /run/systemd/nspawn/<name>.nspawn,
+/// and alongside the image/directory.
+fn find_nspawn_settings(machine_name: &str, image_path: Option<&str>) -> Option<PathBuf> {
+    let name = format!("{machine_name}.nspawn");
+
+    // System configuration directories
+    let search_dirs = [
+        "/etc/systemd/nspawn",
+        "/run/systemd/nspawn",
+        "/var/lib/machines",
+    ];
+    for dir in &search_dirs {
+        let path = Path::new(dir).join(&name);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    // Alongside the image file
+    if let Some(img) = image_path {
+        let img_path = Path::new(img);
+        if let Some(parent) = img_path.parent() {
+            // Try <image-stem>.nspawn
+            if let Some(stem) = img_path.file_stem() {
+                let settings_path = parent.join(format!("{}.nspawn", stem.to_string_lossy()));
+                if settings_path.is_file() {
+                    return Some(settings_path);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Parse a .nspawn settings file (INI format).
+fn parse_nspawn_settings(path: &Path) -> Result<NspawnSettings, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    parse_nspawn_settings_str(&content)
+}
+
+/// Parse .nspawn settings from a string (for testing).
+fn parse_nspawn_settings_str(content: &str) -> Result<NspawnSettings, String> {
+    let mut settings = NspawnSettings::default();
+    let mut current_section = String::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+
+        // Skip empty lines and comments
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+
+        // Section header
+        if line.starts_with('[') && line.ends_with(']') {
+            current_section = line[1..line.len() - 1].to_lowercase();
+            continue;
+        }
+
+        // Key=Value
+        let (key, value) = match line.split_once('=') {
+            Some((k, v)) => (k.trim().to_lowercase(), v.trim().to_string()),
+            None => continue,
+        };
+
+        match current_section.as_str() {
+            "exec" => match key.as_str() {
+                "boot" => settings.boot = parse_bool_setting(&value),
+                "processtwo" | "process-two" => settings.process_two = parse_bool_setting(&value),
+                "parameters" => {
+                    settings
+                        .parameters
+                        .extend(value.split_whitespace().map(|s| s.to_string()));
+                }
+                "environment" => {
+                    if let Some((k, v)) = value.split_once('=') {
+                        settings.environment.push((k.to_string(), v.to_string()));
+                    }
+                }
+                "user" => settings.user = Some(value),
+                "workingdirectory" | "working-directory" => {
+                    settings.working_directory = Some(value);
+                }
+                "capability" => {
+                    settings
+                        .capability
+                        .extend(value.split(',').map(|s| s.trim().to_string()));
+                }
+                "dropcapability" | "drop-capability" => {
+                    settings
+                        .drop_capability
+                        .extend(value.split(',').map(|s| s.trim().to_string()));
+                }
+                "killsignal" | "kill-signal" => settings.kill_signal = Some(value),
+                "hostname" => settings.hostname = Some(value),
+                "machineid" | "machine-id" => settings.machine_id = Some(value),
+                "nonewprivileges" | "no-new-privileges" => {
+                    settings.no_new_privileges = parse_bool_setting(&value);
+                }
+                "privateusers" | "private-users" => {
+                    settings.private_users = parse_bool_setting(&value);
+                }
+                "notifyready" | "notify-ready" => {
+                    settings.notify_ready = parse_bool_setting(&value);
+                }
+                _ => {}
+            },
+            "files" => match key.as_str() {
+                "readonly" | "read-only" => settings.read_only = parse_bool_setting(&value),
+                "volatile" => settings.volatile = Some(value),
+                "bind" => settings.bind.push(value),
+                "bindreadonly" | "bind-read-only" | "bindro" | "bind-ro" => {
+                    settings.bind_ro.push(value);
+                }
+                "tmpfs" | "temporaryfilesystem" | "temporary-file-system" => {
+                    settings.tmpfs.push(value);
+                }
+                "overlay" => settings.overlay.push(value),
+                "overlayreadonly" | "overlay-read-only" | "overlayro" | "overlay-ro" => {
+                    settings.overlay_ro.push(value);
+                }
+                _ => {}
+            },
+            "network" => match key.as_str() {
+                "private" | "privatenetwork" | "private-network" => {
+                    settings.private_network = parse_bool_setting(&value);
+                }
+                "virtualethernet" | "virtual-ethernet" | "veth" => {
+                    settings.virtual_ethernet = parse_bool_setting(&value);
+                }
+                "port" => settings.port.push(value),
+                "networkconfig" | "network-config" => {
+                    settings.network_config = Some(value);
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    Ok(settings)
+}
+
+/// Parse a boolean setting value (yes/no/true/false/1/0).
+fn parse_bool_setting(s: &str) -> Option<bool> {
+    match s.to_lowercase().as_str() {
+        "yes" | "true" | "1" | "on" => Some(true),
+        "no" | "false" | "0" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+/// Apply .nspawn settings to args (settings act as defaults; CLI overrides).
+fn apply_nspawn_settings(args: &mut NspawnArgs, settings: &NspawnSettings) {
+    // [Exec] section — only set if not already specified on command line
+    if let Some(boot) = settings.boot
+        && !args.boot
+    {
+        args.boot = boot;
+    }
+    if let Some(p2) = settings.process_two
+        && !args.as_pid2
+    {
+        args.as_pid2 = p2;
+    }
+    if args.command.is_empty() && !settings.parameters.is_empty() {
+        args.command = settings.parameters.clone();
+    }
+    for (k, v) in &settings.environment {
+        args.environment
+            .entry(k.clone())
+            .or_insert_with(|| v.clone());
+    }
+    if args.user.is_none() {
+        args.user = settings.user.clone();
+    }
+    if args.chdir.is_none() {
+        args.chdir = settings.working_directory.clone();
+    }
+    for cap_str in &settings.capability {
+        if let Some(cap) = Capability::from_str(cap_str)
+            && !args.extra_capabilities.contains(&cap)
+        {
+            args.extra_capabilities.push(cap);
+        }
+    }
+    for cap_str in &settings.drop_capability {
+        if let Some(cap) = Capability::from_str(cap_str)
+            && !args.drop_capabilities.contains(&cap)
+        {
+            args.drop_capabilities.push(cap);
+        }
+    }
+    if args.kill_signal.is_none() {
+        args.kill_signal = settings.kill_signal.clone();
+    }
+    if args.hostname.is_none() {
+        args.hostname = settings.hostname.clone();
+    }
+    if let Some(nnp) = settings.no_new_privileges
+        && !args.no_new_privileges
+    {
+        args.no_new_privileges = nnp;
+    }
+    if let Some(pu) = settings.private_users
+        && !args.private_users
+    {
+        args.private_users = pu;
+    }
+    if let Some(nr) = settings.notify_ready
+        && !args.notify_ready
+    {
+        args.notify_ready = nr;
+    }
+
+    // [Files] section
+    if let Some(ro) = settings.read_only
+        && !args.read_only
+    {
+        args.read_only = ro;
+    }
+    if let Some(ref vol) = settings.volatile
+        && args.volatile == VolatileMode::No
+        && let Some(vm) = VolatileMode::from_str(vol)
+    {
+        args.volatile = vm;
+    }
+    for spec in &settings.bind {
+        if let Ok(m) = BindMount::parse(spec, false) {
+            args.bind_mounts.push(m);
+        }
+    }
+    for spec in &settings.bind_ro {
+        if let Ok(m) = BindMount::parse(spec, true) {
+            args.bind_mounts.push(m);
+        }
+    }
+    for spec in &settings.tmpfs {
+        let (path, opts) = if let Some((p, o)) = spec.split_once(':') {
+            (p.to_string(), o.to_string())
+        } else {
+            (spec.to_string(), "mode=0755".to_string())
+        };
+        args.tmpfs_mounts.push((path, opts));
+    }
+    for spec in &settings.overlay {
+        args.overlay_mounts.push(spec.clone());
+    }
+    for spec in &settings.overlay_ro {
+        args.overlay_mounts.push(format!("ro:{spec}"));
+    }
+
+    // [Network] section
+    if let Some(privnet) = settings.private_network
+        && !args.private_network
+    {
+        args.private_network = privnet;
+    }
+    if let Some(ve) = settings.virtual_ethernet
+        && !args.network_veth
+    {
+        args.network_veth = ve;
+    }
+    for spec in &settings.port {
+        if let Ok(pf) = PortForward::parse(spec) {
+            args.port_forwards.push(pf);
+        }
+    }
+    if let Some(ref nc) = settings.network_config
+        && args.network_config == NetworkConfig::None
+        && let Some(cfg) = NetworkConfig::from_str(nc)
+    {
+        args.network_config = cfg;
+    }
 }
 
 // ── Mount helpers ────────────────────────────────────────────────────────
@@ -1935,7 +3557,12 @@ fn container_child_inner(
         log::trace!("capability bounding set failed (non-fatal): {e}");
     }
 
-    // Set no_new_privs if requested
+    // Apply seccomp profile (after capabilities, before exec)
+    if let Err(e) = apply_seccomp_filter(&args.seccomp_profile) {
+        log::trace!("seccomp filter failed (non-fatal): {e}");
+    }
+
+    // Set no_new_privs if requested (seccomp may have already set this)
     if args.no_new_privileges {
         let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         if ret != 0 {
@@ -1944,6 +3571,14 @@ fn container_child_inner(
                 std::io::Error::last_os_error()
             );
         }
+    }
+
+    // Configure container-side network (host0 interface)
+    if args.network_veth
+        && args.network_config != NetworkConfig::None
+        && let Err(e) = setup_container_network(&args.network_config)
+    {
+        log::trace!("container network config failed (non-fatal): {e}");
     }
 
     // Determine the command to execute
@@ -2243,6 +3878,9 @@ Options:
       --oci-bundle=PATH    OCI bundle path
       --read-only          Mount root read-only
       --notify-ready       Notify when ready
+      --seccomp-profile=MODE  Seccomp profile (default/strict/allow-all/PATH)
+      --network-config=MODE   Container network config (none/dhcp/ADDR/PREFIX[:GW])
+      --cgroup-delegate    Delegate cgroup to the container
   -q, --quiet              Suppress informational output
   -h, --help               Show this help
       --version            Show version
@@ -2253,7 +3891,7 @@ Options:
 fn run() -> i32 {
     let argv: Vec<String> = std::env::args().collect();
     let arg_refs: Vec<&str> = argv[1..].iter().map(|s| s.as_str()).collect();
-    let args = match parse_args(&arg_refs) {
+    let mut args = match parse_args(&arg_refs) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("systemd-nspawn: {e}");
@@ -2280,7 +3918,35 @@ fn run() -> i32 {
         }
     };
 
+    // Load .nspawn settings file if --settings is not "no"
+    let settings_disabled = args
+        .settings
+        .as_deref()
+        .map(|s| matches!(s.to_lowercase().as_str(), "no" | "false" | "0" | "off"))
+        .unwrap_or(false);
+
     let machine_name = derive_machine_name(&args);
+
+    if !settings_disabled {
+        let img_path = args.image.as_deref();
+        if let Some(settings_path) = find_nspawn_settings(&machine_name, img_path) {
+            match parse_nspawn_settings(&settings_path) {
+                Ok(settings) => {
+                    if !args.quiet {
+                        eprintln!(
+                            "systemd-nspawn: loaded settings from {}",
+                            settings_path.display()
+                        );
+                    }
+                    apply_nspawn_settings(&mut args, &settings);
+                }
+                Err(e) => {
+                    log::trace!("Failed to parse {}: {e}", settings_path.display());
+                }
+            }
+        }
+    }
+
     let capabilities = compute_capabilities(&args);
 
     if !args.quiet {
@@ -2402,6 +4068,24 @@ fn run() -> i32 {
                 }
             }
 
+            // Set up cgroup delegation if requested
+            let _cgroup_path = if args.cgroup_delegate {
+                match setup_cgroup_delegation(&machine_name, child_pid) {
+                    Ok(path) => {
+                        if !args.quiet {
+                            eprintln!("systemd-nspawn: delegated cgroup {path}");
+                        }
+                        Some(path)
+                    }
+                    Err(e) => {
+                        log::trace!("cgroup delegation failed (non-fatal): {e}");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             // Register with machined
             let should_register = args.register.unwrap_or(true);
             if should_register
@@ -2439,6 +4123,17 @@ fn run() -> i32 {
                 let _ = unregister_from_machined(&machine_name);
             }
 
+            // Clean up cgroup
+            if args.cgroup_delegate {
+                cleanup_cgroup(&machine_name);
+            }
+
+            // Clean up loop device (image mode — autoclear handles it,
+            // but we unmount the mount directory if we created one)
+            if args.image.is_some() {
+                let _ = cleanup_image_mount(&args);
+            }
+
             // Determine exit code
             if libc::WIFEXITED(status) {
                 let code = libc::WEXITSTATUS(status);
@@ -2461,6 +4156,21 @@ fn run() -> i32 {
     }
 }
 
+/// Clean up image mount directory created by --image.
+fn cleanup_image_mount(args: &NspawnArgs) -> Result<(), String> {
+    if let Some(ref img) = args.image {
+        let name = Path::new(img)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "image".to_string());
+        let dir = format!("/run/systemd/nspawn/{name}");
+        let dir_c = CString::new(dir.as_str()).map_err(|e| format!("invalid path: {e}"))?;
+        unsafe { libc::umount2(dir_c.as_ptr(), libc::MNT_DETACH) };
+        let _ = std::fs::remove_dir(&dir);
+    }
+    Ok(())
+}
+
 fn main() {
     std::process::exit(run());
 }
@@ -2470,6 +4180,1109 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Seccomp profile tests ────────────────────────────────────────
+
+    #[test]
+    fn test_seccomp_profile_from_str() {
+        assert_eq!(
+            SeccompProfile::from_str("default"),
+            Some(SeccompProfile::Default)
+        );
+        assert_eq!(
+            SeccompProfile::from_str("strict"),
+            Some(SeccompProfile::Strict)
+        );
+        assert_eq!(
+            SeccompProfile::from_str("allow-all"),
+            Some(SeccompProfile::AllowAll)
+        );
+        assert_eq!(
+            SeccompProfile::from_str("off"),
+            Some(SeccompProfile::AllowAll)
+        );
+        assert_eq!(
+            SeccompProfile::from_str("/path/to/profile"),
+            Some(SeccompProfile::Custom("/path/to/profile".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_seccomp_profile_as_str() {
+        assert_eq!(SeccompProfile::Default.as_str(), "default");
+        assert_eq!(SeccompProfile::Strict.as_str(), "strict");
+        assert_eq!(SeccompProfile::AllowAll.as_str(), "allow-all");
+        assert_eq!(SeccompProfile::Custom("/x".to_string()).as_str(), "custom");
+    }
+
+    #[test]
+    fn test_seccomp_deny_list_default() {
+        let deny = seccomp_deny_list(&SeccompProfile::Default);
+        assert!(!deny.is_empty());
+        // Should contain kexec_load (246 on x86_64)
+        #[cfg(target_arch = "x86_64")]
+        assert!(deny.contains(&246));
+    }
+
+    #[test]
+    fn test_seccomp_deny_list_strict() {
+        let deny = seccomp_deny_list(&SeccompProfile::Strict);
+        let default_deny = seccomp_deny_list(&SeccompProfile::Default);
+        assert!(deny.len() >= default_deny.len());
+        // Strict includes everything in default plus more
+        for nr in &default_deny {
+            assert!(deny.contains(nr));
+        }
+        #[cfg(target_arch = "x86_64")]
+        {
+            // Strict should also block mount (165)
+            assert!(deny.contains(&165));
+        }
+    }
+
+    #[test]
+    fn test_seccomp_deny_list_allow_all() {
+        let deny = seccomp_deny_list(&SeccompProfile::AllowAll);
+        assert!(deny.is_empty());
+    }
+
+    #[test]
+    fn test_seccomp_deny_list_custom() {
+        let deny = seccomp_deny_list(&SeccompProfile::Custom("/x".to_string()));
+        assert!(deny.is_empty());
+    }
+
+    #[test]
+    fn test_build_seccomp_filter_empty() {
+        let filter = build_seccomp_filter(&[]);
+        // Should have only the load + allow instructions
+        assert_eq!(filter.len(), 2); // LD + RET ALLOW
+        assert_eq!(filter[1].k, SECCOMP_RET_ALLOW);
+    }
+
+    #[test]
+    fn test_build_seccomp_filter_single_deny() {
+        let filter = build_seccomp_filter(&[42]);
+        // LD + JEQ/RET_DENY + RET_ALLOW = 4 instructions
+        assert_eq!(filter.len(), 4);
+        // First: LD syscall nr
+        assert_eq!(filter[0].code, BPF_LD | BPF_W | BPF_ABS);
+        assert_eq!(filter[0].k, SECCOMP_DATA_NR_OFFSET);
+        // Second: JEQ 42
+        assert_eq!(filter[1].code, BPF_JMP | BPF_JEQ | BPF_K);
+        assert_eq!(filter[1].k, 42);
+        // Third: RET ERRNO EPERM
+        assert_eq!(filter[2].code, BPF_RET | BPF_K);
+        assert_eq!(filter[2].k, SECCOMP_RET_ERRNO_EPERM);
+        // Fourth: RET ALLOW
+        assert_eq!(filter[3].code, BPF_RET | BPF_K);
+        assert_eq!(filter[3].k, SECCOMP_RET_ALLOW);
+    }
+
+    #[test]
+    fn test_build_seccomp_filter_multiple_deny() {
+        let filter = build_seccomp_filter(&[10, 20, 30]);
+        // LD + 3*(JEQ+RET) + RET_ALLOW = 1 + 6 + 1 = 8
+        assert_eq!(filter.len(), 8);
+        // Verify each JEQ targets the right syscall number
+        assert_eq!(filter[1].k, 10);
+        assert_eq!(filter[3].k, 20);
+        assert_eq!(filter[5].k, 30);
+    }
+
+    #[test]
+    fn test_bpf_constants() {
+        assert_eq!(BPF_LD, 0x00);
+        assert_eq!(BPF_W, 0x00);
+        assert_eq!(BPF_ABS, 0x20);
+        assert_eq!(BPF_JMP, 0x05);
+        assert_eq!(BPF_JEQ, 0x10);
+        assert_eq!(BPF_K, 0x00);
+        assert_eq!(BPF_RET, 0x06);
+        assert_eq!(SECCOMP_RET_ALLOW, 0x7fff_0000);
+        assert_eq!(SECCOMP_RET_ERRNO, 0x0005_0000);
+        assert_eq!(SECCOMP_RET_ERRNO_EPERM, 0x0005_0001);
+    }
+
+    #[test]
+    fn test_apply_seccomp_filter_allow_all() {
+        // AllowAll should be a no-op and succeed
+        assert!(apply_seccomp_filter(&SeccompProfile::AllowAll).is_ok());
+    }
+
+    #[test]
+    fn test_apply_seccomp_filter_custom_nonexistent() {
+        let result = apply_seccomp_filter(&SeccompProfile::Custom(
+            "/nonexistent/seccomp/profile".to_string(),
+        ));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed to read"));
+    }
+
+    // ── Network config tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_network_config_from_str() {
+        assert_eq!(NetworkConfig::from_str("none"), Some(NetworkConfig::None));
+        assert_eq!(NetworkConfig::from_str("off"), Some(NetworkConfig::None));
+        assert_eq!(NetworkConfig::from_str("dhcp"), Some(NetworkConfig::Dhcp));
+        assert_eq!(
+            NetworkConfig::from_str("192.168.1.2/24"),
+            Some(NetworkConfig::Static {
+                address: "192.168.1.2/24".to_string(),
+                gateway: None,
+            })
+        );
+        assert_eq!(
+            NetworkConfig::from_str("10.0.0.2/24:10.0.0.1"),
+            Some(NetworkConfig::Static {
+                address: "10.0.0.2/24".to_string(),
+                gateway: Some("10.0.0.1".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn test_network_config_from_str_invalid() {
+        assert_eq!(NetworkConfig::from_str("foobar"), Option::None);
+    }
+
+    #[test]
+    fn test_network_config_as_str() {
+        assert_eq!(NetworkConfig::None.as_str(), "none");
+        assert_eq!(NetworkConfig::Dhcp.as_str(), "dhcp");
+        assert_eq!(
+            NetworkConfig::Static {
+                address: "x".into(),
+                gateway: None
+            }
+            .as_str(),
+            "static"
+        );
+    }
+
+    #[test]
+    fn test_parse_ipv4_valid() {
+        assert_eq!(parse_ipv4("1.2.3.4"), Ok([1, 2, 3, 4]));
+        assert_eq!(parse_ipv4("0.0.0.0"), Ok([0, 0, 0, 0]));
+        assert_eq!(parse_ipv4("255.255.255.255"), Ok([255, 255, 255, 255]));
+        assert_eq!(parse_ipv4("10.0.0.1"), Ok([10, 0, 0, 1]));
+    }
+
+    #[test]
+    fn test_parse_ipv4_invalid() {
+        assert!(parse_ipv4("1.2.3").is_err());
+        assert!(parse_ipv4("1.2.3.4.5").is_err());
+        assert!(parse_ipv4("abc").is_err());
+        assert!(parse_ipv4("256.0.0.1").is_err());
+        assert!(parse_ipv4("").is_err());
+    }
+
+    // ── Cgroup delegation tests ──────────────────────────────────────
+
+    #[test]
+    fn test_read_self_cgroup() {
+        // Should not panic; returns "/" or a valid cgroup path
+        if let Ok(cg) = read_self_cgroup() {
+            assert!(cg.starts_with('/'));
+        }
+        // In environments without /proc/self/cgroup, error is acceptable
+    }
+
+    #[test]
+    fn test_cgroup_path_format() {
+        // Verify the expected cgroup path format
+        let name = "test-container";
+        let expected_suffix = format!("/machine-{name}");
+        // The full path would be CGROUP2_PATH + self_cgroup + expected_suffix
+        assert!(expected_suffix.contains("machine-test-container"));
+    }
+
+    // ── Disk image support tests ─────────────────────────────────────
+
+    #[test]
+    fn test_loop_info64_default() {
+        let info = LoopInfo64::default();
+        assert_eq!(info.lo_device, 0);
+        assert_eq!(info.lo_flags, 0);
+        assert_eq!(info.lo_offset, 0);
+        assert!(info.lo_file_name.iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn test_loop_constants() {
+        assert_eq!(LOOP_CTL_GET_FREE, 0x4C82);
+        assert_eq!(LOOP_SET_FD, 0x4C00);
+        assert_eq!(LOOP_CLR_FD, 0x4C01);
+        assert_eq!(LOOP_SET_STATUS64, 0x4C04);
+        assert_eq!(LO_FLAGS_READ_ONLY, 1);
+        assert_eq!(LO_FLAGS_AUTOCLEAR, 4);
+        assert_eq!(LO_FLAGS_PARTSCAN, 8);
+    }
+
+    #[test]
+    fn test_setup_loopback_nonexistent() {
+        let result = setup_loopback("/nonexistent/image.raw", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_setup_loopback_not_file() {
+        let result = setup_loopback("/tmp", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not a regular file"));
+    }
+
+    #[test]
+    fn test_detach_loopback_nonexistent() {
+        let result = detach_loopback("/dev/loop_nonexistent_9999");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_dissected_partition_size() {
+        let part = DissectedPartition {
+            index: 0,
+            first_lba: 2048,
+            last_lba: 4095,
+            type_guid: [0u8; 16],
+            device: "/dev/loop0p1".to_string(),
+        };
+        assert_eq!(part.size_bytes(), 2048 * 512);
+    }
+
+    #[test]
+    fn test_dissected_partition_is_root() {
+        let mut part = DissectedPartition {
+            index: 0,
+            first_lba: 0,
+            last_lba: 0,
+            type_guid: GPT_ROOT_X86_64,
+            device: String::new(),
+        };
+        assert!(part.is_root());
+
+        part.type_guid = GPT_LINUX_GENERIC;
+        assert!(part.is_root());
+
+        part.type_guid = [0u8; 16];
+        assert!(!part.is_root());
+    }
+
+    #[test]
+    fn test_dissected_partition_is_usr() {
+        let mut part = DissectedPartition {
+            index: 0,
+            first_lba: 0,
+            last_lba: 0,
+            type_guid: GPT_USR_X86_64,
+            device: String::new(),
+        };
+        assert!(part.is_usr());
+
+        part.type_guid = GPT_ROOT_X86_64;
+        assert!(!part.is_usr());
+    }
+
+    #[test]
+    fn test_find_root_partition_prefers_specific() {
+        let partitions = vec![
+            DissectedPartition {
+                index: 0,
+                first_lba: 0,
+                last_lba: 100,
+                type_guid: GPT_LINUX_GENERIC,
+                device: "/dev/loop0p1".to_string(),
+            },
+            DissectedPartition {
+                index: 1,
+                first_lba: 101,
+                last_lba: 200,
+                type_guid: GPT_ROOT_X86_64,
+                device: "/dev/loop0p2".to_string(),
+            },
+        ];
+        let root = find_root_partition(&partitions).unwrap();
+        assert_eq!(root.index, 1);
+    }
+
+    #[test]
+    fn test_find_root_partition_falls_back_to_generic() {
+        let partitions = vec![DissectedPartition {
+            index: 0,
+            first_lba: 0,
+            last_lba: 100,
+            type_guid: GPT_LINUX_GENERIC,
+            device: "/dev/loop0p1".to_string(),
+        }];
+        let root = find_root_partition(&partitions).unwrap();
+        assert_eq!(root.index, 0);
+    }
+
+    #[test]
+    fn test_find_root_partition_none() {
+        let partitions = vec![DissectedPartition {
+            index: 0,
+            first_lba: 0,
+            last_lba: 100,
+            type_guid: GPT_USR_X86_64,
+            device: "/dev/loop0p1".to_string(),
+        }];
+        assert!(find_root_partition(&partitions).is_none());
+    }
+
+    #[test]
+    fn test_dissect_gpt_nonexistent() {
+        let result = dissect_gpt("/nonexistent/device");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_dissect_gpt_no_signature() {
+        let dir = tempfile::tempdir().unwrap();
+        let img = dir.path().join("test.raw");
+        // Write 2 sectors of zeros (no GPT signature)
+        std::fs::write(&img, vec![0u8; 1024]).unwrap();
+        let result = dissect_gpt(img.to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no GPT signature"));
+    }
+
+    #[test]
+    fn test_dissect_gpt_valid_header_no_partitions() {
+        let dir = tempfile::tempdir().unwrap();
+        let img = dir.path().join("test.raw");
+        // Create a minimal GPT image: sector 0 = MBR, sector 1 = GPT header
+        let mut data = vec![0u8; 512 * 34]; // Enough for header + partition entries
+        // Write GPT signature at offset 512
+        data[512..520].copy_from_slice(b"EFI PART");
+        // Revision
+        data[520..524].copy_from_slice(&1u32.to_le_bytes());
+        // Header size
+        data[524..528].copy_from_slice(&92u32.to_le_bytes());
+        // Partition entry LBA = 2
+        data[584..592].copy_from_slice(&2u64.to_le_bytes());
+        // Number of entries = 0
+        data[592..596].copy_from_slice(&0u32.to_le_bytes());
+        // Entry size = 128
+        data[596..600].copy_from_slice(&128u32.to_le_bytes());
+        std::fs::write(&img, &data).unwrap();
+
+        let result = dissect_gpt(img.to_str().unwrap()).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_dissect_gpt_with_partition() {
+        let dir = tempfile::tempdir().unwrap();
+        let img = dir.path().join("test.raw");
+        let mut data = vec![0u8; 512 * 34];
+        // GPT header at LBA 1
+        data[512..520].copy_from_slice(b"EFI PART");
+        data[520..524].copy_from_slice(&1u32.to_le_bytes());
+        data[524..528].copy_from_slice(&92u32.to_le_bytes());
+        data[584..592].copy_from_slice(&2u64.to_le_bytes()); // entries at LBA 2
+        data[592..596].copy_from_slice(&1u32.to_le_bytes()); // 1 entry
+        data[596..600].copy_from_slice(&128u32.to_le_bytes());
+
+        // Partition entry at LBA 2 (offset 1024)
+        let entry_off = 1024;
+        // Type GUID = GPT_ROOT_X86_64
+        data[entry_off..entry_off + 16].copy_from_slice(&GPT_ROOT_X86_64);
+        // First LBA at offset 32
+        data[entry_off + 32..entry_off + 40].copy_from_slice(&2048u64.to_le_bytes());
+        // Last LBA at offset 40
+        data[entry_off + 40..entry_off + 48].copy_from_slice(&4095u64.to_le_bytes());
+
+        std::fs::write(&img, &data).unwrap();
+
+        let result = dissect_gpt(img.to_str().unwrap()).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].first_lba, 2048);
+        assert_eq!(result[0].last_lba, 4095);
+        assert!(result[0].is_root());
+        assert!(result[0].device.ends_with("p1"));
+    }
+
+    #[test]
+    fn test_create_image_mount_dir_name() {
+        // Verify the name extraction logic
+        let name = Path::new("/path/to/myimage.raw")
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "image".to_string());
+        assert_eq!(name, "myimage");
+    }
+
+    #[test]
+    fn test_gpt_type_guids_are_16_bytes() {
+        assert_eq!(GPT_ROOT_X86_64.len(), 16);
+        assert_eq!(GPT_ROOT_AARCH64.len(), 16);
+        assert_eq!(GPT_USR_X86_64.len(), 16);
+        assert_eq!(GPT_LINUX_GENERIC.len(), 16);
+    }
+
+    #[test]
+    fn test_image_sector_size() {
+        assert_eq!(IMAGE_SECTOR_SIZE, 512);
+    }
+
+    #[test]
+    fn test_image_gpt_signature() {
+        assert_eq!(IMAGE_GPT_SIGNATURE, b"EFI PART");
+    }
+
+    // ── OCI bundle tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_json_string_basic() {
+        let json = r#"{"name": "value", "other": "stuff"}"#;
+        assert_eq!(extract_json_string(json, "name"), Some("value".to_string()));
+        assert_eq!(
+            extract_json_string(json, "other"),
+            Some("stuff".to_string())
+        );
+        assert_eq!(extract_json_string(json, "missing"), None);
+    }
+
+    #[test]
+    fn test_extract_json_string_nested() {
+        let json = r#"{"root": {"path": "rootfs", "readonly": true}}"#;
+        assert_eq!(
+            extract_json_string(json, "path"),
+            Some("rootfs".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_json_string_array_basic() {
+        let json = r#""args": ["/bin/sh", "-c", "echo hello"]"#;
+        let arr = extract_json_string_array(json);
+        assert_eq!(arr, vec!["/bin/sh", "-c", "echo hello"]);
+    }
+
+    #[test]
+    fn test_extract_json_string_array_empty() {
+        let json = r#""args": []"#;
+        let arr = extract_json_string_array(json);
+        assert!(arr.is_empty());
+    }
+
+    #[test]
+    fn test_extract_json_string_array_no_bracket() {
+        let json = r#""args": "not an array""#;
+        let arr = extract_json_string_array(json);
+        assert!(arr.is_empty());
+    }
+
+    #[test]
+    fn test_parse_oci_config_basic() {
+        let dir = tempfile::tempdir().unwrap();
+        let rootfs = dir.path().join("rootfs");
+        std::fs::create_dir(&rootfs).unwrap();
+        let config = dir.path().join("config.json");
+        std::fs::write(
+            &config,
+            r#"{
+                "root": {"path": "rootfs", "readonly": false},
+                "process": {
+                    "args": ["/bin/sh"],
+                    "env": ["PATH=/usr/bin", "TERM=xterm"],
+                    "cwd": "/home"
+                },
+                "hostname": "testhost",
+                "mounts": []
+            }"#,
+        )
+        .unwrap();
+
+        let oci = parse_oci_config(dir.path().to_str().unwrap()).unwrap();
+        assert_eq!(oci.root_path, "rootfs");
+        assert_eq!(oci.args, vec!["/bin/sh"]);
+        assert_eq!(oci.env.len(), 2);
+        assert_eq!(oci.env[0], ("PATH".to_string(), "/usr/bin".to_string()));
+        assert_eq!(oci.cwd, "/home");
+        assert_eq!(oci.hostname, Some("testhost".to_string()));
+    }
+
+    #[test]
+    fn test_parse_oci_config_missing() {
+        let result = parse_oci_config("/nonexistent/bundle");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_oci_config_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.json");
+        std::fs::write(&config, "{}").unwrap();
+
+        let oci = parse_oci_config(dir.path().to_str().unwrap()).unwrap();
+        assert_eq!(oci.root_path, "rootfs");
+        assert_eq!(oci.cwd, "/");
+        assert!(oci.args.is_empty());
+        assert!(oci.hostname.is_none());
+    }
+
+    #[test]
+    fn test_resolve_oci_root_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        let rootfs = dir.path().join("rootfs");
+        std::fs::create_dir(&rootfs).unwrap();
+        let config = dir.path().join("config.json");
+        std::fs::write(&config, r#"{"root": {"path": "rootfs"}}"#).unwrap();
+
+        let result = resolve_oci_root(dir.path().to_str().unwrap());
+        assert!(result.is_ok());
+        assert!(result.unwrap().ends_with("rootfs"));
+    }
+
+    #[test]
+    fn test_resolve_oci_root_missing_rootfs() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.json");
+        std::fs::write(&config, r#"{"root": {"path": "rootfs"}}"#).unwrap();
+
+        let result = resolve_oci_root(dir.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("OCI rootfs not found"));
+    }
+
+    #[test]
+    fn test_resolve_oci_root_not_dir() {
+        let result = resolve_oci_root("/nonexistent/oci/bundle");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_parse_oci_mounts_basic() {
+        let json = r#""mounts": [
+            {"destination": "/proc", "type": "proc", "source": "proc"},
+            {"destination": "/dev", "type": "tmpfs", "source": "tmpfs", "options": ["nosuid", "strictatime"]}
+        ]"#;
+        let mounts = parse_oci_mounts(json);
+        assert_eq!(mounts.len(), 2);
+        assert_eq!(mounts[0].destination, "/proc");
+        assert_eq!(mounts[0].mount_type, Some("proc".to_string()));
+        assert_eq!(mounts[1].destination, "/dev");
+        assert_eq!(mounts[1].options, vec!["nosuid", "strictatime"]);
+    }
+
+    #[test]
+    fn test_parse_oci_mounts_empty() {
+        let json = r#""mounts": []"#;
+        let mounts = parse_oci_mounts(json);
+        assert!(mounts.is_empty());
+    }
+
+    // ── .nspawn settings tests ───────────────────────────────────────
+
+    #[test]
+    fn test_parse_nspawn_settings_empty() {
+        let result = parse_nspawn_settings_str("").unwrap();
+        assert!(result.boot.is_none());
+        assert!(result.bind.is_empty());
+        assert!(result.private_network.is_none());
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_exec_section() {
+        let content = "\
+[Exec]
+Boot=yes
+User=testuser
+Hostname=mycontainer
+NoNewPrivileges=true
+Capability=CAP_NET_ADMIN,CAP_SYS_ADMIN
+DropCapability=CAP_SYS_PTRACE
+KillSignal=SIGTERM
+WorkingDirectory=/home
+NotifyReady=yes
+PrivateUsers=yes
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.boot, Some(true));
+        assert_eq!(s.user, Some("testuser".to_string()));
+        assert_eq!(s.hostname, Some("mycontainer".to_string()));
+        assert_eq!(s.no_new_privileges, Some(true));
+        assert_eq!(s.capability.len(), 2);
+        assert_eq!(s.capability[0], "CAP_NET_ADMIN");
+        assert_eq!(s.capability[1], "CAP_SYS_ADMIN");
+        assert_eq!(s.drop_capability, vec!["CAP_SYS_PTRACE"]);
+        assert_eq!(s.kill_signal, Some("SIGTERM".to_string()));
+        assert_eq!(s.working_directory, Some("/home".to_string()));
+        assert_eq!(s.notify_ready, Some(true));
+        assert_eq!(s.private_users, Some(true));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_files_section() {
+        let content = "\
+[Files]
+ReadOnly=yes
+Volatile=state
+Bind=/host/path:/container/path
+BindReadOnly=/ro/source:/ro/dest
+Tmpfs=/run:mode=0755
+Overlay=/lower:/upper
+OverlayReadOnly=/ro/overlay
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.read_only, Some(true));
+        assert_eq!(s.volatile, Some("state".to_string()));
+        assert_eq!(s.bind, vec!["/host/path:/container/path"]);
+        assert_eq!(s.bind_ro, vec!["/ro/source:/ro/dest"]);
+        assert_eq!(s.tmpfs, vec!["/run:mode=0755"]);
+        assert_eq!(s.overlay, vec!["/lower:/upper"]);
+        assert_eq!(s.overlay_ro, vec!["/ro/overlay"]);
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_network_section() {
+        let content = "\
+[Network]
+Private=yes
+VirtualEthernet=yes
+Port=tcp:8080:80
+NetworkConfig=dhcp
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.private_network, Some(true));
+        assert_eq!(s.virtual_ethernet, Some(true));
+        assert_eq!(s.port, vec!["tcp:8080:80"]);
+        assert_eq!(s.network_config, Some("dhcp".to_string()));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_comments_and_blanks() {
+        let content = "\
+# This is a comment
+; This is also a comment
+
+[Exec]
+# Comment inside section
+Boot=no
+
+[Files]
+ReadOnly=no
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.boot, Some(false));
+        assert_eq!(s.read_only, Some(false));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_case_insensitive_keys() {
+        let content = "\
+[Exec]
+boot=YES
+NONEWPRIVILEGES=True
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.boot, Some(true));
+        assert_eq!(s.no_new_privileges, Some(true));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_environment() {
+        let content = "\
+[Exec]
+Environment=FOO=bar
+Environment=BAZ=qux
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.environment.len(), 2);
+        assert_eq!(s.environment[0], ("FOO".to_string(), "bar".to_string()));
+        assert_eq!(s.environment[1], ("BAZ".to_string(), "qux".to_string()));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_parameters() {
+        let content = "\
+[Exec]
+Parameters=/bin/sh -c echo
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.parameters, vec!["/bin/sh", "-c", "echo"]);
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_multiple_binds() {
+        let content = "\
+[Files]
+Bind=/a:/b
+Bind=/c:/d
+BindReadOnly=/e:/f
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.bind.len(), 2);
+        assert_eq!(s.bind_ro.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_unknown_section() {
+        let content = "\
+[Unknown]
+Key=Value
+
+[Exec]
+Boot=yes
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.boot, Some(true));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_hyphenated_keys() {
+        let content = "\
+[Exec]
+no-new-privileges=yes
+working-directory=/tmp
+kill-signal=SIGKILL
+process-two=yes
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.no_new_privileges, Some(true));
+        assert_eq!(s.working_directory, Some("/tmp".to_string()));
+        assert_eq!(s.kill_signal, Some("SIGKILL".to_string()));
+        assert_eq!(s.process_two, Some(true));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_network_keys_variants() {
+        let content = "\
+[Network]
+private-network=yes
+virtual-ethernet=no
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.private_network, Some(true));
+        assert_eq!(s.virtual_ethernet, Some(false));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_files_key_variants() {
+        let content = "\
+[Files]
+read-only=yes
+bind-ro=/x:/y
+overlay-ro=/a
+temporary-file-system=/tmp
+";
+        let s = parse_nspawn_settings_str(content).unwrap();
+        assert_eq!(s.read_only, Some(true));
+        assert_eq!(s.bind_ro, vec!["/x:/y"]);
+        assert_eq!(s.overlay_ro, vec!["/a"]);
+        assert_eq!(s.tmpfs, vec!["/tmp"]);
+    }
+
+    #[test]
+    fn test_parse_bool_setting_values() {
+        assert_eq!(parse_bool_setting("yes"), Some(true));
+        assert_eq!(parse_bool_setting("Yes"), Some(true));
+        assert_eq!(parse_bool_setting("YES"), Some(true));
+        assert_eq!(parse_bool_setting("true"), Some(true));
+        assert_eq!(parse_bool_setting("1"), Some(true));
+        assert_eq!(parse_bool_setting("on"), Some(true));
+        assert_eq!(parse_bool_setting("no"), Some(false));
+        assert_eq!(parse_bool_setting("false"), Some(false));
+        assert_eq!(parse_bool_setting("0"), Some(false));
+        assert_eq!(parse_bool_setting("off"), Some(false));
+        assert_eq!(parse_bool_setting("maybe"), None);
+        assert_eq!(parse_bool_setting(""), None);
+    }
+
+    #[test]
+    fn test_find_nspawn_settings_nonexistent() {
+        assert!(find_nspawn_settings("nonexistent_machine_xyz_999", None).is_none());
+    }
+
+    #[test]
+    fn test_find_nspawn_settings_alongside_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let nspawn_file = dir.path().join("myimage.nspawn");
+        std::fs::write(&nspawn_file, "[Exec]\nBoot=yes\n").unwrap();
+        let image_path = dir.path().join("myimage.raw");
+        std::fs::write(&image_path, "").unwrap();
+
+        let result = find_nspawn_settings("myimage", Some(image_path.to_str().unwrap()));
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), nspawn_file);
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let nspawn_file = dir.path().join("test.nspawn");
+        std::fs::write(
+            &nspawn_file,
+            "\
+[Exec]
+Boot=yes
+User=root
+
+[Files]
+ReadOnly=no
+
+[Network]
+VirtualEthernet=yes
+",
+        )
+        .unwrap();
+
+        let s = parse_nspawn_settings(&nspawn_file).unwrap();
+        assert_eq!(s.boot, Some(true));
+        assert_eq!(s.user, Some("root".to_string()));
+        assert_eq!(s.read_only, Some(false));
+        assert_eq!(s.virtual_ethernet, Some(true));
+    }
+
+    #[test]
+    fn test_parse_nspawn_settings_file_nonexistent() {
+        let result = parse_nspawn_settings(Path::new("/nonexistent/file.nspawn"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_basic() {
+        let mut args = NspawnArgs::default();
+        let settings = NspawnSettings {
+            boot: Some(true),
+            user: Some("testuser".to_string()),
+            hostname: Some("myhost".to_string()),
+            private_network: Some(true),
+            virtual_ethernet: Some(true),
+            read_only: Some(true),
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        assert!(args.boot);
+        assert_eq!(args.user, Some("testuser".to_string()));
+        assert_eq!(args.hostname, Some("myhost".to_string()));
+        assert!(args.private_network);
+        assert!(args.network_veth);
+        assert!(args.read_only);
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_cli_overrides() {
+        let mut args = NspawnArgs {
+            boot: true,
+            user: Some("cliuser".to_string()),
+            hostname: Some("clihost".to_string()),
+            ..Default::default()
+        };
+        let settings = NspawnSettings {
+            boot: Some(false),
+            user: Some("settingsuser".to_string()),
+            hostname: Some("settingshost".to_string()),
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        // CLI values should be preserved (boot=true stays true)
+        assert!(args.boot);
+        assert_eq!(args.user, Some("cliuser".to_string()));
+        assert_eq!(args.hostname, Some("clihost".to_string()));
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_binds() {
+        let mut args = NspawnArgs::default();
+        let settings = NspawnSettings {
+            bind: vec!["/host:/container".to_string()],
+            bind_ro: vec!["/ro-host:/ro-container".to_string()],
+            tmpfs: vec!["/run".to_string()],
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        assert_eq!(args.bind_mounts.len(), 2);
+        assert!(!args.bind_mounts[0].read_only);
+        assert!(args.bind_mounts[1].read_only);
+        assert_eq!(args.tmpfs_mounts.len(), 1);
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_capabilities() {
+        let mut args = NspawnArgs::default();
+        let settings = NspawnSettings {
+            capability: vec!["CAP_NET_ADMIN".to_string()],
+            drop_capability: vec!["CAP_SYS_ADMIN".to_string()],
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        assert!(args.extra_capabilities.contains(&Capability::NetAdmin));
+        assert!(args.drop_capabilities.contains(&Capability::SysAdmin));
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_environment() {
+        let mut args = NspawnArgs::default();
+        let settings = NspawnSettings {
+            environment: vec![
+                ("FOO".to_string(), "bar".to_string()),
+                ("BAZ".to_string(), "qux".to_string()),
+            ],
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        assert_eq!(args.environment.get("FOO"), Some(&"bar".to_string()));
+        assert_eq!(args.environment.get("BAZ"), Some(&"qux".to_string()));
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_network_config() {
+        let mut args = NspawnArgs::default();
+        let settings = NspawnSettings {
+            network_config: Some("dhcp".to_string()),
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        assert_eq!(args.network_config, NetworkConfig::Dhcp);
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_volatile() {
+        let mut args = NspawnArgs::default();
+        let settings = NspawnSettings {
+            volatile: Some("state".to_string()),
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        assert_eq!(args.volatile, VolatileMode::State);
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_port_forwards() {
+        let mut args = NspawnArgs::default();
+        let settings = NspawnSettings {
+            port: vec!["tcp:8080:80".to_string()],
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        assert_eq!(args.port_forwards.len(), 1);
+        assert_eq!(args.port_forwards[0].host_port, 8080);
+        assert_eq!(args.port_forwards[0].container_port, 80);
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_parameters() {
+        let mut args = NspawnArgs::default();
+        let settings = NspawnSettings {
+            parameters: vec!["/bin/bash".to_string(), "-l".to_string()],
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        assert_eq!(args.command, vec!["/bin/bash", "-l"]);
+    }
+
+    #[test]
+    fn test_apply_nspawn_settings_parameters_not_overridden() {
+        let mut args = NspawnArgs {
+            command: vec!["/bin/sh".to_string()],
+            ..Default::default()
+        };
+        let settings = NspawnSettings {
+            parameters: vec!["/bin/bash".to_string()],
+            ..Default::default()
+        };
+        apply_nspawn_settings(&mut args, &settings);
+        // CLI command should be preserved
+        assert_eq!(args.command, vec!["/bin/sh"]);
+    }
+
+    // ── Argument parsing for new options ──────────────────────────────
+
+    #[test]
+    fn test_parse_args_seccomp_profile() {
+        let args = parse_args(&["--seccomp-profile=strict", "-D", "/tmp"]).unwrap();
+        assert_eq!(args.seccomp_profile, SeccompProfile::Strict);
+    }
+
+    #[test]
+    fn test_parse_args_seccomp_profile_default() {
+        let args = parse_args(&["-D", "/tmp"]).unwrap();
+        assert_eq!(args.seccomp_profile, SeccompProfile::Default);
+    }
+
+    #[test]
+    fn test_parse_args_seccomp_profile_allow_all() {
+        let args = parse_args(&["--seccomp-profile=allow-all", "-D", "/tmp"]).unwrap();
+        assert_eq!(args.seccomp_profile, SeccompProfile::AllowAll);
+    }
+
+    #[test]
+    fn test_parse_args_seccomp_profile_custom() {
+        let args = parse_args(&["--seccomp-profile=/path/to/filter.bpf", "-D", "/tmp"]).unwrap();
+        assert_eq!(
+            args.seccomp_profile,
+            SeccompProfile::Custom("/path/to/filter.bpf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_args_network_config_none() {
+        let args = parse_args(&["--network-config=none", "-D", "/tmp"]).unwrap();
+        assert_eq!(args.network_config, NetworkConfig::None);
+    }
+
+    #[test]
+    fn test_parse_args_network_config_dhcp() {
+        let args = parse_args(&["--network-config=dhcp", "-D", "/tmp"]).unwrap();
+        assert_eq!(args.network_config, NetworkConfig::Dhcp);
+    }
+
+    #[test]
+    fn test_parse_args_network_config_static() {
+        let args =
+            parse_args(&["--network-config=192.168.1.2/24:192.168.1.1", "-D", "/tmp"]).unwrap();
+        assert_eq!(
+            args.network_config,
+            NetworkConfig::Static {
+                address: "192.168.1.2/24".to_string(),
+                gateway: Some("192.168.1.1".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_network_config_static_no_gw() {
+        let args = parse_args(&["--network-config=10.0.0.2/24", "-D", "/tmp"]).unwrap();
+        assert_eq!(
+            args.network_config,
+            NetworkConfig::Static {
+                address: "10.0.0.2/24".to_string(),
+                gateway: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_cgroup_delegate() {
+        let args = parse_args(&["--cgroup-delegate", "-D", "/tmp"]).unwrap();
+        assert!(args.cgroup_delegate);
+    }
+
+    #[test]
+    fn test_parse_args_cgroup_delegate_yes() {
+        let args = parse_args(&["--cgroup-delegate=yes", "-D", "/tmp"]).unwrap();
+        assert!(args.cgroup_delegate);
+    }
+
+    #[test]
+    fn test_parse_args_cgroup_delegate_no() {
+        let args = parse_args(&["--cgroup-delegate=no", "-D", "/tmp"]).unwrap();
+        assert!(!args.cgroup_delegate);
+    }
+
+    #[test]
+    fn test_parse_args_default_new_fields() {
+        let args = parse_args(&["-D", "/tmp"]).unwrap();
+        assert_eq!(args.seccomp_profile, SeccompProfile::Default);
+        assert_eq!(args.network_config, NetworkConfig::None);
+        assert!(!args.cgroup_delegate);
+    }
 
     // ── Capability tests ─────────────────────────────────────────────
 
@@ -3393,21 +6206,21 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_root_image_not_supported() {
+    fn test_resolve_root_image_nonexistent() {
         let mut args = NspawnArgs::default();
-        args.image = Some("/path/to/image.raw".to_string());
+        args.image = Some("/nonexistent/path/to/image.raw".to_string());
         let result = resolve_root(&args);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not yet supported"));
+        assert!(result.unwrap_err().contains("does not exist"));
     }
 
     #[test]
-    fn test_resolve_root_oci_not_supported() {
+    fn test_resolve_root_oci_nonexistent() {
         let mut args = NspawnArgs::default();
-        args.oci_bundle = Some("/path/to/bundle".to_string());
+        args.oci_bundle = Some("/nonexistent/path/to/bundle".to_string());
         let result = resolve_root(&args);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not yet supported"));
+        assert!(result.unwrap_err().contains("does not exist"));
     }
 
     // ── Find init / shell tests ──────────────────────────────────────
