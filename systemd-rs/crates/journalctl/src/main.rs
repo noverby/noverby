@@ -7,22 +7,34 @@
 //! Supported features:
 //!
 //! - Time-based filtering (`--since`, `--until`)
-//! - Unit filtering (`-u`, `--unit`)
+//! - Unit filtering (`-u`, `--unit`, `--user-unit`)
 //! - Priority filtering (`-p`, `--priority`)
+//! - Facility filtering (`--facility`)
+//! - Transport filtering (`--transport`)
 //! - Boot filtering (`-b`, `--boot`)
 //! - Identifier filtering (`-t`, `--identifier`)
-//! - Output formats (`-o`): `short`, `short-iso`, `short-precise`,
-//!   `short-monotonic`, `verbose`, `json`, `json-pretty`, `cat`, `export`
-//! - Follow mode (`-f`, `--follow`)
+//! - PID/UID/GID filtering (`--pid`, `--uid`, `--gid`)
+//! - Machine filtering (`-M`, `--machine`)
+//! - System/user journal selection (`--system`, `--user`)
+//! - Output formats (`-o`): `short`, `short-full`, `short-iso`,
+//!   `short-iso-precise`, `short-precise`, `short-monotonic`,
+//!   `short-unix`, `with-unit`, `verbose`, `json`, `json-pretty`,
+//!   `json-sse`, `json-seq`, `cat`, `export`
+//! - Follow mode (`-f`, `--follow`) with `--no-tail`
 //! - Reverse output (`-r`, `--reverse`)
 //! - Line count limiting (`-n`, `--lines`)
-//! - Field listing (`--field`)
-//! - Cursor support (`--cursor`, `--after-cursor`)
+//! - Field listing (`--field`, `--fields`)
+//! - Cursor support (`--cursor`, `--after-cursor`, `--show-cursor`)
 //! - Disk usage query (`--disk-usage`)
+//! - Vacuum commands (`--vacuum-size`, `--vacuum-time`, `--vacuum-files`)
 //! - Flush and rotate commands (`--flush`, `--rotate`)
+//! - Journal header (`--header`)
 //! - List boots (`--list-boots`)
-//! - Grep filtering (`-g`, `--grep`)
+//! - Grep filtering (`-g`, `--grep`, `--case-sensitive`)
 //! - Kernel messages only (`-k`, `--dmesg`)
+//! - Catalog augmentation (`-x`, `--catalog`)
+//! - Output field selection (`--output-fields`)
+//! - Hostname suppression (`--no-hostname`)
 //! - No pager mode (`--no-pager`)
 
 use clap::Parser;
@@ -71,6 +83,14 @@ struct Cli {
     #[arg(short = 'p', long = "priority", value_name = "PRIORITY")]
     priority: Option<String>,
 
+    /// Filter by syslog facility (0-23 or name like kern, user, mail, daemon, auth, etc.).
+    #[arg(long = "facility", value_name = "FACILITY")]
+    facility: Option<String>,
+
+    /// Filter by transport (_TRANSPORT field: journal, syslog, kernel, stdout, audit, driver).
+    #[arg(long = "transport", value_name = "TRANSPORT")]
+    transport: Option<String>,
+
     /// Filter by a grep pattern applied to the MESSAGE field.
     #[arg(short = 'g', long = "grep", value_name = "PATTERN")]
     grep: Option<String>,
@@ -100,8 +120,9 @@ struct Cli {
     #[arg(short = 'r', long = "reverse")]
     reverse: bool,
 
-    /// Output format: short, short-iso, short-precise, short-monotonic,
-    /// verbose, json, json-pretty, cat, export.
+    /// Output format: short, short-full, short-iso, short-iso-precise,
+    /// short-precise, short-monotonic, short-unix, with-unit, verbose,
+    /// json, json-pretty, json-sse, json-seq, cat, export.
     #[arg(
         short = 'o',
         long = "output",
@@ -190,6 +211,52 @@ struct Cli {
     #[arg(long = "utc")]
     utc: bool,
 
+    /// Show only system journal entries.
+    #[arg(long = "system")]
+    system: bool,
+
+    /// Show only user journal entries.
+    #[arg(long = "user")]
+    user: bool,
+
+    /// Filter by machine ID.
+    #[arg(short = 'M', long = "machine", value_name = "MACHINE")]
+    machine: Option<String>,
+
+    /// Augment log lines with explanation texts from the message catalog.
+    #[arg(short = 'x', long = "catalog")]
+    catalog: bool,
+
+    /// Do not show tail in follow mode (show all matching entries first).
+    #[arg(long = "no-tail")]
+    no_tail: bool,
+
+    /// Comma-separated list of fields to output (for verbose/json/export).
+    #[arg(long = "output-fields", value_name = "FIELDS")]
+    output_fields: Option<String>,
+
+    /// Suppress the hostname field in short output formats.
+    #[arg(long = "no-hostname")]
+    no_hostname: bool,
+
+    /// Show journal file header information.
+    #[arg(long = "header")]
+    header: bool,
+
+    /// Remove archived journal files until the disk space taken up drops
+    /// below SIZE (K/M/G/T suffix).
+    #[arg(long = "vacuum-size", value_name = "SIZE")]
+    vacuum_size: Option<String>,
+
+    /// Remove archived journal files that are older than the given
+    /// time span (s/min/h/days/weeks/months/years).
+    #[arg(long = "vacuum-time", value_name = "TIME")]
+    vacuum_time: Option<String>,
+
+    /// Remove archived journal files until no more than N remain.
+    #[arg(long = "vacuum-files", value_name = "N")]
+    vacuum_files: Option<usize>,
+
     /// Free-form match expressions: FIELD=VALUE
     #[arg(trailing_var_arg = true)]
     matches: Vec<String>,
@@ -202,12 +269,18 @@ struct Cli {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OutputFormat {
     Short,
+    ShortFull,
     ShortIso,
+    ShortIsoPrecise,
     ShortPrecise,
     ShortMonotonic,
+    ShortUnix,
+    WithUnit,
     Verbose,
     Json,
     JsonPretty,
+    JsonSse,
+    JsonSeq,
     Cat,
     Export,
 }
@@ -216,12 +289,18 @@ impl OutputFormat {
     fn from_str(s: &str) -> Result<Self, String> {
         match s.to_lowercase().as_str() {
             "short" => Ok(OutputFormat::Short),
+            "short-full" => Ok(OutputFormat::ShortFull),
             "short-iso" => Ok(OutputFormat::ShortIso),
+            "short-iso-precise" => Ok(OutputFormat::ShortIsoPrecise),
             "short-precise" => Ok(OutputFormat::ShortPrecise),
             "short-monotonic" => Ok(OutputFormat::ShortMonotonic),
+            "short-unix" => Ok(OutputFormat::ShortUnix),
+            "with-unit" => Ok(OutputFormat::WithUnit),
             "verbose" => Ok(OutputFormat::Verbose),
             "json" => Ok(OutputFormat::Json),
             "json-pretty" => Ok(OutputFormat::JsonPretty),
+            "json-sse" => Ok(OutputFormat::JsonSse),
+            "json-seq" => Ok(OutputFormat::JsonSeq),
             "cat" => Ok(OutputFormat::Cat),
             "export" => Ok(OutputFormat::Export),
             _ => Err(format!("Unknown output format: {}", s)),
@@ -263,6 +342,103 @@ fn parse_single_priority(s: &str) -> Result<u8, String> {
         "info" | "6" => Ok(6),
         "debug" | "7" => Ok(7),
         _ => Err(format!("Unknown priority: {}", s)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Facility filtering
+// ---------------------------------------------------------------------------
+
+/// Parse a syslog facility specification. Accepts numeric (0-23) or name.
+fn parse_facility(s: &str) -> Result<u8, String> {
+    match s.trim().to_lowercase().as_str() {
+        "kern" | "0" => Ok(0),
+        "user" | "1" => Ok(1),
+        "mail" | "2" => Ok(2),
+        "daemon" | "3" => Ok(3),
+        "auth" | "4" => Ok(4),
+        "syslog" | "5" => Ok(5),
+        "lpr" | "6" => Ok(6),
+        "news" | "7" => Ok(7),
+        "uucp" | "8" => Ok(8),
+        "cron" | "9" => Ok(9),
+        "authpriv" | "10" => Ok(10),
+        "ftp" | "11" => Ok(11),
+        "ntp" | "12" => Ok(12),
+        "security" | "13" => Ok(13),
+        "console" | "14" => Ok(14),
+        "solaris-cron" | "15" => Ok(15),
+        "local0" | "16" => Ok(16),
+        "local1" | "17" => Ok(17),
+        "local2" | "18" => Ok(18),
+        "local3" | "19" => Ok(19),
+        "local4" | "20" => Ok(20),
+        "local5" | "21" => Ok(21),
+        "local6" | "22" => Ok(22),
+        "local7" | "23" => Ok(23),
+        _ => Err(format!("Unknown facility: {}", s)),
+    }
+}
+
+/// Return the facility name for a numeric facility code.
+#[allow(dead_code)]
+fn facility_name(f: u8) -> &'static str {
+    match f {
+        0 => "kern",
+        1 => "user",
+        2 => "mail",
+        3 => "daemon",
+        4 => "auth",
+        5 => "syslog",
+        6 => "lpr",
+        7 => "news",
+        8 => "uucp",
+        9 => "cron",
+        10 => "authpriv",
+        11 => "ftp",
+        12 => "ntp",
+        13 => "security",
+        14 => "console",
+        15 => "solaris-cron",
+        16 => "local0",
+        17 => "local1",
+        18 => "local2",
+        19 => "local3",
+        20 => "local4",
+        21 => "local5",
+        22 => "local6",
+        23 => "local7",
+        _ => "unknown",
+    }
+}
+
+/// Parse a size specification with K/M/G/T suffix into bytes.
+fn parse_size_spec(s: &str) -> Result<u64, String> {
+    let s = s.trim();
+    let (num_str, multiplier) = if let Some(n) = s.strip_suffix('T') {
+        (n, 1024u64 * 1024 * 1024 * 1024)
+    } else if let Some(n) = s.strip_suffix('G') {
+        (n, 1024u64 * 1024 * 1024)
+    } else if let Some(n) = s.strip_suffix('M') {
+        (n, 1024u64 * 1024)
+    } else if let Some(n) = s.strip_suffix('K') {
+        (n, 1024u64)
+    } else {
+        (s, 1u64)
+    };
+    num_str
+        .trim()
+        .parse::<u64>()
+        .map(|n| n * multiplier)
+        .map_err(|_| format!("Invalid size specification: {}", s))
+}
+
+/// Parse a vacuum time specification into seconds.
+fn parse_vacuum_time(s: &str) -> Result<u64, String> {
+    if let Some(usec) = parse_relative_time(s) {
+        Ok(usec / 1_000_000)
+    } else {
+        Err(format!("Invalid time specification: {}", s))
     }
 }
 
@@ -426,50 +602,116 @@ fn parse_relative_time(s: &str) -> Option<u64> {
 }
 
 // ---------------------------------------------------------------------------
+// Output field filtering
+// ---------------------------------------------------------------------------
+
+/// Parse a comma-separated list of output fields into a set.
+fn parse_output_fields(s: &str) -> HashSet<String> {
+    s.split(',')
+        .map(|f| f.trim().to_uppercase())
+        .filter(|f| !f.is_empty())
+        .collect()
+}
+
+/// Filter a JSON object to only include specified fields (plus metadata).
+fn filter_json_fields(json: &serde_json::Value, fields: &HashSet<String>) -> serde_json::Value {
+    if let serde_json::Value::Object(map) = json {
+        let mut filtered = serde_json::Map::new();
+        for (key, value) in map {
+            // Always include __-prefixed metadata fields
+            if key.starts_with("__") || fields.contains(&key.to_uppercase()) {
+                filtered.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::Value::Object(filtered)
+    } else {
+        json.clone()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Entry formatting
 // ---------------------------------------------------------------------------
+
+/// Formatting options passed through to the format functions.
+#[derive(Clone, Debug)]
+struct FormatOptions {
+    utc: bool,
+    #[allow(dead_code)]
+    all: bool,
+    no_hostname: bool,
+    output_fields: Option<HashSet<String>>,
+    #[allow(dead_code)]
+    catalog: bool,
+}
 
 /// Format and print a single journal entry according to the output format.
 fn format_entry(
     entry: &JournalEntry,
     format: OutputFormat,
-    utc: bool,
-    _all: bool,
+    opts: &FormatOptions,
     writer: &mut impl Write,
 ) -> io::Result<()> {
     match format {
-        OutputFormat::Short => format_short(entry, false, false, utc, writer),
-        OutputFormat::ShortIso => format_short(entry, true, false, utc, writer),
-        OutputFormat::ShortPrecise => format_short(entry, false, true, utc, writer),
-        OutputFormat::ShortMonotonic => format_short_monotonic(entry, writer),
-        OutputFormat::Verbose => format_verbose(entry, writer),
-        OutputFormat::Json => format_json(entry, false, writer),
-        OutputFormat::JsonPretty => format_json(entry, true, writer),
+        OutputFormat::Short => format_short(entry, ShortTimestamp::Syslog, opts, writer),
+        OutputFormat::ShortFull => format_short(entry, ShortTimestamp::Full, opts, writer),
+        OutputFormat::ShortIso => format_short(entry, ShortTimestamp::Iso, opts, writer),
+        OutputFormat::ShortIsoPrecise => {
+            format_short(entry, ShortTimestamp::IsoPrecise, opts, writer)
+        }
+        OutputFormat::ShortPrecise => format_short(entry, ShortTimestamp::Precise, opts, writer),
+        OutputFormat::ShortMonotonic => {
+            format_short(entry, ShortTimestamp::Monotonic, opts, writer)
+        }
+        OutputFormat::ShortUnix => format_short(entry, ShortTimestamp::Unix, opts, writer),
+        OutputFormat::WithUnit => format_with_unit(entry, opts, writer),
+        OutputFormat::Verbose => format_verbose(entry, opts, writer),
+        OutputFormat::Json => format_json(entry, JsonStyle::Compact, opts, writer),
+        OutputFormat::JsonPretty => format_json(entry, JsonStyle::Pretty, opts, writer),
+        OutputFormat::JsonSse => format_json(entry, JsonStyle::Sse, opts, writer),
+        OutputFormat::JsonSeq => format_json(entry, JsonStyle::Seq, opts, writer),
         OutputFormat::Cat => format_cat(entry, writer),
-        OutputFormat::Export => format_export(entry, writer),
+        OutputFormat::Export => format_export(entry, opts, writer),
     }
+}
+
+/// Which timestamp style to use for short-format variants.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ShortTimestamp {
+    Syslog,
+    Full,
+    Iso,
+    IsoPrecise,
+    Precise,
+    Monotonic,
+    Unix,
 }
 
 fn format_short(
     entry: &JournalEntry,
-    iso: bool,
-    precise: bool,
-    utc: bool,
+    ts_style: ShortTimestamp,
+    opts: &FormatOptions,
     writer: &mut impl Write,
 ) -> io::Result<()> {
-    let timestamp = if iso {
-        if utc {
-            format_realtime_utc(entry.realtime_usec)
-        } else {
-            format_realtime_iso(entry.realtime_usec)
+    let timestamp = match ts_style {
+        ShortTimestamp::Syslog => format_realtime_syslog(entry.realtime_usec, opts.utc),
+        ShortTimestamp::Full => format_realtime_full(entry.realtime_usec, opts.utc),
+        ShortTimestamp::Iso => {
+            if opts.utc {
+                format_realtime_utc(entry.realtime_usec)
+            } else {
+                format_realtime_iso(entry.realtime_usec)
+            }
         }
-    } else if precise {
-        format_realtime_precise(entry.realtime_usec, utc)
-    } else {
-        format_realtime_syslog(entry.realtime_usec, utc)
+        ShortTimestamp::IsoPrecise => format_realtime_iso_precise(entry.realtime_usec, opts.utc),
+        ShortTimestamp::Precise => format_realtime_precise(entry.realtime_usec, opts.utc),
+        ShortTimestamp::Monotonic => {
+            let mono_secs = entry.monotonic_usec as f64 / 1_000_000.0;
+            format!("{:>12.6}", mono_secs)
+        }
+        ShortTimestamp::Unix => format_realtime_unix(entry.realtime_usec),
     };
 
-    let hostname = entry.hostname().unwrap_or_default();
     let identifier = entry
         .syslog_identifier()
         .or_else(|| entry.comm())
@@ -477,16 +719,34 @@ fn format_short(
     let pid_str = entry.pid().map(|p| format!("[{}]", p)).unwrap_or_default();
     let message = entry.message().unwrap_or_default();
 
-    writeln!(
-        writer,
-        "{} {} {}{}: {}",
-        timestamp, hostname, identifier, pid_str, message
-    )
+    if opts.no_hostname {
+        writeln!(
+            writer,
+            "{} {}{}: {}",
+            timestamp, identifier, pid_str, message
+        )
+    } else {
+        let hostname = entry.hostname().unwrap_or_default();
+        writeln!(
+            writer,
+            "{} {} {}{}: {}",
+            timestamp, hostname, identifier, pid_str, message
+        )
+    }
 }
 
-fn format_short_monotonic(entry: &JournalEntry, writer: &mut impl Write) -> io::Result<()> {
-    let mono_secs = entry.monotonic_usec as f64 / 1_000_000.0;
-    let hostname = entry.hostname().unwrap_or_default();
+/// Format with the unit name included (like short but with unit name after
+/// hostname).
+fn format_with_unit(
+    entry: &JournalEntry,
+    opts: &FormatOptions,
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    let timestamp = format_realtime_syslog(entry.realtime_usec, opts.utc);
+    let unit = entry
+        .systemd_unit()
+        .or_else(|| entry.field("_SYSTEMD_USER_UNIT"))
+        .unwrap_or_default();
     let identifier = entry
         .syslog_identifier()
         .or_else(|| entry.comm())
@@ -494,19 +754,37 @@ fn format_short_monotonic(entry: &JournalEntry, writer: &mut impl Write) -> io::
     let pid_str = entry.pid().map(|p| format!("[{}]", p)).unwrap_or_default();
     let message = entry.message().unwrap_or_default();
 
-    writeln!(
-        writer,
-        "{:>12.6} {} {}{}: {}",
-        mono_secs, hostname, identifier, pid_str, message
-    )
+    if opts.no_hostname {
+        writeln!(
+            writer,
+            "{} {} {}{}: {}",
+            timestamp, unit, identifier, pid_str, message
+        )
+    } else {
+        let hostname = entry.hostname().unwrap_or_default();
+        writeln!(
+            writer,
+            "{} {} {} {}{}: {}",
+            timestamp, hostname, unit, identifier, pid_str, message
+        )
+    }
 }
 
-fn format_verbose(entry: &JournalEntry, writer: &mut impl Write) -> io::Result<()> {
+fn format_verbose(
+    entry: &JournalEntry,
+    opts: &FormatOptions,
+    writer: &mut impl Write,
+) -> io::Result<()> {
     let timestamp = format_realtime_iso(entry.realtime_usec);
     writeln!(writer, "{} [s={}]", timestamp, entry.seqnum)?;
 
-    // Print all fields sorted
+    // Print fields sorted, possibly filtered
     for (key, value) in &entry.fields {
+        if let Some(ref fields) = opts.output_fields
+            && !fields.contains(&key.to_uppercase())
+        {
+            continue;
+        }
         let value_str = String::from_utf8_lossy(value);
         writeln!(writer, "    {}={}", key, value_str)?;
     }
@@ -514,20 +792,60 @@ fn format_verbose(entry: &JournalEntry, writer: &mut impl Write) -> io::Result<(
     writeln!(writer)
 }
 
-fn format_json(entry: &JournalEntry, pretty: bool, writer: &mut impl Write) -> io::Result<()> {
-    let json = entry.to_json();
-    if pretty {
-        writeln!(
-            writer,
-            "{}",
-            serde_json::to_string_pretty(&json).unwrap_or_default()
-        )
-    } else {
-        writeln!(
-            writer,
-            "{}",
-            serde_json::to_string(&json).unwrap_or_default()
-        )
+/// Which JSON variant to emit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JsonStyle {
+    Compact,
+    Pretty,
+    Sse,
+    Seq,
+}
+
+fn format_json(
+    entry: &JournalEntry,
+    style: JsonStyle,
+    opts: &FormatOptions,
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    let mut json = entry.to_json();
+
+    // Apply output-fields filter
+    if let Some(ref fields) = opts.output_fields {
+        json = filter_json_fields(&json, fields);
+    }
+
+    match style {
+        JsonStyle::Compact => {
+            writeln!(
+                writer,
+                "{}",
+                serde_json::to_string(&json).unwrap_or_default()
+            )
+        }
+        JsonStyle::Pretty => {
+            writeln!(
+                writer,
+                "{}",
+                serde_json::to_string_pretty(&json).unwrap_or_default()
+            )
+        }
+        JsonStyle::Sse => {
+            // Server-Sent Events format: "data: <json>\n\n"
+            writeln!(
+                writer,
+                "data: {}\n",
+                serde_json::to_string(&json).unwrap_or_default()
+            )
+        }
+        JsonStyle::Seq => {
+            // RFC 7464 JSON Text Sequences: RS (0x1E) prefix, LF suffix
+            writer.write_all(&[0x1E])?;
+            writeln!(
+                writer,
+                "{}",
+                serde_json::to_string(&json).unwrap_or_default()
+            )
+        }
     }
 }
 
@@ -536,16 +854,50 @@ fn format_cat(entry: &JournalEntry, writer: &mut impl Write) -> io::Result<()> {
     writeln!(writer, "{}", message)
 }
 
-fn format_export(entry: &JournalEntry, writer: &mut impl Write) -> io::Result<()> {
-    let cursor = format!(
-        "s=0;i={:x};b={};m={:x};t={:x};x=0",
-        entry.seqnum,
-        entry.boot_id().unwrap_or_default(),
-        entry.monotonic_usec,
-        entry.realtime_usec,
-    );
-    let export = entry.to_export_format(&cursor);
-    writer.write_all(&export)
+fn format_export(
+    entry: &JournalEntry,
+    opts: &FormatOptions,
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    if let Some(ref fields) = opts.output_fields {
+        // Build a filtered entry for export
+        let cursor = format!(
+            "s=0;i={:x};b={};m={:x};t={:x};x=0",
+            entry.seqnum,
+            entry.boot_id().unwrap_or_default(),
+            entry.monotonic_usec,
+            entry.realtime_usec,
+        );
+        // Write header fields
+        writeln!(writer, "__CURSOR={}", cursor)?;
+        writeln!(writer, "__REALTIME_TIMESTAMP={}", entry.realtime_usec)?;
+        writeln!(writer, "__MONOTONIC_TIMESTAMP={}", entry.monotonic_usec)?;
+        // Write only requested user fields
+        for (key, value) in &entry.fields {
+            if !fields.contains(&key.to_uppercase()) {
+                continue;
+            }
+            if let Ok(s) = std::str::from_utf8(value) {
+                writeln!(writer, "{}={}", key, s)?;
+            } else {
+                writeln!(writer, "{}", key)?;
+                writer.write_all(&(value.len() as u64).to_le_bytes())?;
+                writer.write_all(value)?;
+                writeln!(writer)?;
+            }
+        }
+        writeln!(writer)
+    } else {
+        let cursor = format!(
+            "s=0;i={:x};b={};m={:x};t={:x};x=0",
+            entry.seqnum,
+            entry.boot_id().unwrap_or_default(),
+            entry.monotonic_usec,
+            entry.realtime_usec,
+        );
+        let export = entry.to_export_format(&cursor);
+        writer.write_all(&export)
+    }
 }
 
 /// Format timestamp as syslog-style "Mon DD HH:MM:SS".
@@ -563,6 +915,26 @@ fn format_realtime_syslog(realtime_usec: u64, utc: bool) -> String {
         use chrono::{Local, TimeZone};
         match Local.timestamp_opt(secs, micros * 1_000) {
             chrono::LocalResult::Single(dt) => dt.format("%b %d %H:%M:%S").to_string(),
+            _ => format!("@{}", realtime_usec),
+        }
+    }
+}
+
+/// Format timestamp as full "Day YYYY-MM-DD HH:MM:SS TZ" (short-full).
+fn format_realtime_full(realtime_usec: u64, utc: bool) -> String {
+    let secs = (realtime_usec / 1_000_000) as i64;
+    let micros = (realtime_usec % 1_000_000) as u32;
+
+    if utc {
+        use chrono::{TimeZone, Utc};
+        match Utc.timestamp_opt(secs, micros * 1_000) {
+            chrono::LocalResult::Single(dt) => dt.format("%a %Y-%m-%d %H:%M:%S UTC").to_string(),
+            _ => format!("@{}", realtime_usec),
+        }
+    } else {
+        use chrono::{Local, TimeZone};
+        match Local.timestamp_opt(secs, micros * 1_000) {
+            chrono::LocalResult::Single(dt) => dt.format("%a %Y-%m-%d %H:%M:%S %Z").to_string(),
             _ => format!("@{}", realtime_usec),
         }
     }
@@ -586,6 +958,33 @@ fn format_realtime_precise(realtime_usec: u64, utc: bool) -> String {
             _ => format!("@{}", realtime_usec),
         }
     }
+}
+
+/// Format timestamp as ISO 8601 with microsecond precision (short-iso-precise).
+fn format_realtime_iso_precise(realtime_usec: u64, utc: bool) -> String {
+    let secs = (realtime_usec / 1_000_000) as i64;
+    let micros = (realtime_usec % 1_000_000) as u32;
+
+    if utc {
+        use chrono::{TimeZone, Utc};
+        match Utc.timestamp_opt(secs, micros * 1_000) {
+            chrono::LocalResult::Single(dt) => dt.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string(),
+            _ => format!("@{}", realtime_usec),
+        }
+    } else {
+        use chrono::{Local, TimeZone};
+        match Local.timestamp_opt(secs, micros * 1_000) {
+            chrono::LocalResult::Single(dt) => dt.format("%Y-%m-%dT%H:%M:%S%.6f%:z").to_string(),
+            _ => format!("@{}", realtime_usec),
+        }
+    }
+}
+
+/// Format timestamp as UNIX seconds with microsecond fractional part.
+fn format_realtime_unix(realtime_usec: u64) -> String {
+    let secs = realtime_usec / 1_000_000;
+    let micros = realtime_usec % 1_000_000;
+    format!("{}.{:06}", secs, micros)
 }
 
 // ---------------------------------------------------------------------------
@@ -734,6 +1133,18 @@ fn main() {
         }
     };
 
+    // Handle --vacuum-* commands
+    if cli.vacuum_size.is_some() || cli.vacuum_time.is_some() || cli.vacuum_files.is_some() {
+        handle_vacuum(&cli, &storage);
+        return;
+    }
+
+    // Handle --header
+    if cli.header {
+        handle_header(&storage);
+        return;
+    }
+
     // Handle disk usage query
     if cli.disk_usage {
         match storage.disk_usage() {
@@ -829,6 +1240,15 @@ fn main() {
             eprintln!("journalctl: {}", e);
             process::exit(1);
         }
+    };
+
+    // Build format options
+    let fmt_opts = FormatOptions {
+        utc: cli.utc,
+        all: cli.all,
+        no_hostname: cli.no_hostname,
+        output_fields: cli.output_fields.as_deref().map(parse_output_fields),
+        catalog: cli.catalog,
     };
 
     // Build filters
@@ -929,6 +1349,52 @@ fn main() {
         }
     }
 
+    // Facility filter
+    if let Some(ref facility_spec) = cli.facility {
+        match parse_facility(facility_spec) {
+            Ok(fac) => {
+                filtered.retain(|e| {
+                    e.field("SYSLOG_FACILITY")
+                        .and_then(|s| s.parse::<u8>().ok())
+                        .is_some_and(|f| f == fac)
+                });
+            }
+            Err(e) => {
+                eprintln!("journalctl: {}", e);
+                process::exit(1);
+            }
+        }
+    }
+
+    // Transport filter
+    if let Some(ref transport) = cli.transport {
+        let transport_lower = transport.to_lowercase();
+        filtered.retain(|e| {
+            e.transport()
+                .is_some_and(|t| t.to_lowercase() == transport_lower)
+        });
+    }
+
+    // System/user journal filter
+    if cli.system && !cli.user {
+        // System entries have _UID=0 or _TRANSPORT=kernel/driver/syslog,
+        // or _SYSTEMD_UNIT set (not user units)
+        filtered
+            .retain(|e| e.field("_SYSTEMD_USER_UNIT").is_none() && e.field("USER_UNIT").is_none());
+    } else if cli.user && !cli.system {
+        // User entries have _SYSTEMD_USER_UNIT or USER_UNIT set
+        filtered
+            .retain(|e| e.field("_SYSTEMD_USER_UNIT").is_some() || e.field("USER_UNIT").is_some());
+    }
+
+    // Machine filter
+    if let Some(ref machine) = cli.machine {
+        filtered.retain(|e| {
+            e.machine_id().is_some_and(|m| m == *machine)
+                || e.hostname().is_some_and(|h| h == *machine)
+        });
+    }
+
     // Since/Until time filters
     if let Some(ref since_str) = cli.since {
         match parse_timestamp(since_str) {
@@ -1013,8 +1479,9 @@ fn main() {
         }
     }
 
-    // Default: if follow mode and no -n specified, show last 10 entries
-    if cli.follow && cli.lines.is_none() && !cli.reverse {
+    // Default: if follow mode and no -n specified and --no-tail not set,
+    // show last 10 entries
+    if cli.follow && cli.lines.is_none() && !cli.reverse && !cli.no_tail {
         let n = 10;
         if filtered.len() > n {
             let skip = filtered.len() - n;
@@ -1027,7 +1494,7 @@ fn main() {
     let mut writer = io::BufWriter::new(stdout.lock());
 
     for entry in &filtered {
-        if let Err(e) = format_entry(entry, output_format, cli.utc, cli.all, &mut writer) {
+        if let Err(e) = format_entry(entry, output_format, &fmt_opts, &mut writer) {
             if e.kind() == io::ErrorKind::BrokenPipe {
                 // Pager closed, exit cleanly
                 process::exit(0);
@@ -1056,12 +1523,17 @@ fn main() {
     // Follow mode: poll for new entries
     if cli.follow {
         drop(writer);
-        follow_journal(&cli, output_format, &storage);
+        follow_journal(&cli, output_format, &fmt_opts, &storage);
     }
 }
 
 /// Follow the journal, printing new entries as they appear.
-fn follow_journal(cli: &Cli, format: OutputFormat, _initial_storage: &JournalStorage) {
+fn follow_journal(
+    cli: &Cli,
+    format: OutputFormat,
+    fmt_opts: &FormatOptions,
+    _initial_storage: &JournalStorage,
+) {
     let stdout = io::stdout();
 
     // Track the last seen timestamp + seqnum
@@ -1097,7 +1569,7 @@ fn follow_journal(cli: &Cli, format: OutputFormat, _initial_storage: &JournalSto
                     continue;
                 }
 
-                if let Err(e) = format_entry(entry, format, cli.utc, cli.all, &mut writer) {
+                if let Err(e) = format_entry(entry, format, fmt_opts, &mut writer) {
                     if e.kind() == io::ErrorKind::BrokenPipe {
                         process::exit(0);
                     }
@@ -1127,6 +1599,22 @@ fn matches_follow_filters(entry: &JournalEntry, cli: &Cli) -> bool {
         }
     }
 
+    // User unit filter
+    if let Some(ref unit) = cli.user_unit {
+        let unit_name = if unit.contains('.') {
+            unit.clone()
+        } else {
+            format!("{}.service", unit)
+        };
+        let has_user_unit = entry
+            .field("_SYSTEMD_USER_UNIT")
+            .is_some_and(|u| u == unit_name)
+            || entry.field("USER_UNIT").is_some_and(|u| u == unit_name);
+        if !has_user_unit {
+            return false;
+        }
+    }
+
     // Identifier filter
     let effective_identifier = if cli.dmesg {
         Some("kernel".to_string())
@@ -1148,10 +1636,71 @@ fn matches_follow_filters(entry: &JournalEntry, cli: &Cli) -> bool {
         return false;
     }
 
+    // Facility filter
+    if let Some(ref facility_spec) = cli.facility
+        && let Ok(fac) = parse_facility(facility_spec)
+    {
+        let entry_fac = entry
+            .field("SYSLOG_FACILITY")
+            .and_then(|s| s.parse::<u8>().ok());
+        if entry_fac != Some(fac) {
+            return false;
+        }
+    }
+
+    // Transport filter
+    if let Some(ref transport) = cli.transport {
+        let transport_lower = transport.to_lowercase();
+        if entry
+            .transport()
+            .is_none_or(|t| t.to_lowercase() != transport_lower)
+        {
+            return false;
+        }
+    }
+
+    // System/user filter
+    if cli.system && !cli.user {
+        if entry.field("_SYSTEMD_USER_UNIT").is_some() || entry.field("USER_UNIT").is_some() {
+            return false;
+        }
+    } else if cli.user
+        && !cli.system
+        && entry.field("_SYSTEMD_USER_UNIT").is_none()
+        && entry.field("USER_UNIT").is_none()
+    {
+        return false;
+    }
+
+    // Machine filter
+    if let Some(ref machine) = cli.machine {
+        let matches = entry.machine_id().is_some_and(|m| m == *machine)
+            || entry.hostname().is_some_and(|h| h == *machine);
+        if !matches {
+            return false;
+        }
+    }
+
     // PID filter
     if let Some(ref pid_str) = cli.pid
         && let Ok(pid) = pid_str.parse::<u32>()
         && entry.pid() != Some(pid)
+    {
+        return false;
+    }
+
+    // UID filter
+    if let Some(ref uid_str) = cli.uid
+        && let Ok(uid) = uid_str.parse::<u32>()
+        && entry.uid() != Some(uid)
+    {
+        return false;
+    }
+
+    // GID filter
+    if let Some(ref gid_str) = cli.gid
+        && let Ok(gid) = gid_str.parse::<u32>()
+        && entry.gid() != Some(gid)
     {
         return false;
     }
@@ -1170,7 +1719,225 @@ fn matches_follow_filters(entry: &JournalEntry, cli: &Cli) -> bool {
         }
     }
 
+    // Free-form matches
+    for m in &cli.matches {
+        if let Some((key, value)) = parse_match(m) {
+            let key_upper = key.to_uppercase();
+            if entry.field(&key_upper).is_none_or(|v| v != value) {
+                return false;
+            }
+        }
+    }
+
     true
+}
+
+// ---------------------------------------------------------------------------
+// Vacuum handling
+// ---------------------------------------------------------------------------
+
+/// Handle --vacuum-size, --vacuum-time, and --vacuum-files commands.
+fn handle_vacuum(cli: &Cli, storage: &JournalStorage) {
+    let directory = storage.directory();
+    let directory = &directory;
+
+    // List journal files
+    let mut files: Vec<PathBuf> = match fs::read_dir(directory) {
+        Ok(rd) => rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|ext| ext == "journal" || ext == "journal~")
+            })
+            .collect(),
+        Err(e) => {
+            eprintln!("journalctl: Failed to read journal directory: {}", e);
+            process::exit(1);
+        }
+    };
+
+    // Also check machine-id subdirectory
+    if files.is_empty()
+        && let Ok(rd) = fs::read_dir(directory)
+    {
+        for subdir in rd.flatten() {
+            if subdir.file_type().is_ok_and(|ft| ft.is_dir())
+                && let Ok(rd2) = fs::read_dir(subdir.path())
+            {
+                for f in rd2.flatten() {
+                    let p = f.path();
+                    if p.extension()
+                        .is_some_and(|ext| ext == "journal" || ext == "journal~")
+                    {
+                        files.push(p);
+                    }
+                }
+            }
+        }
+    }
+
+    files.sort();
+
+    let mut removed = 0u64;
+    let mut removed_count = 0usize;
+
+    // Vacuum by file count
+    if let Some(max_files) = cli.vacuum_files {
+        while files.len() > max_files {
+            if let Some(oldest) = files.first() {
+                if let Ok(meta) = fs::metadata(oldest) {
+                    removed += meta.len();
+                }
+                let _ = fs::remove_file(oldest);
+                removed_count += 1;
+                files.remove(0);
+            } else {
+                break;
+            }
+        }
+    }
+
+    // Vacuum by size
+    if let Some(ref size_spec) = cli.vacuum_size {
+        match parse_size_spec(size_spec) {
+            Ok(max_bytes) => loop {
+                let total: u64 = files
+                    .iter()
+                    .filter_map(|f| fs::metadata(f).ok().map(|m| m.len()))
+                    .sum();
+                if total <= max_bytes || files.is_empty() {
+                    break;
+                }
+                if let Some(oldest) = files.first() {
+                    if let Ok(meta) = fs::metadata(oldest) {
+                        removed += meta.len();
+                    }
+                    let _ = fs::remove_file(oldest);
+                    removed_count += 1;
+                    files.remove(0);
+                } else {
+                    break;
+                }
+            },
+            Err(e) => {
+                eprintln!("journalctl: {}", e);
+                process::exit(1);
+            }
+        }
+    }
+
+    // Vacuum by time
+    if let Some(ref time_spec) = cli.vacuum_time {
+        match parse_vacuum_time(time_spec) {
+            Ok(max_age_secs) => {
+                let now = SystemTime::now();
+                let cutoff = now
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+                    .saturating_sub(max_age_secs);
+
+                files.retain(|f| {
+                    if let Ok(meta) = fs::metadata(f)
+                        && let Ok(modified) = meta.modified()
+                    {
+                        let mod_secs = modified
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        if mod_secs < cutoff {
+                            removed += meta.len();
+                            removed_count += 1;
+                            let _ = fs::remove_file(f);
+                            return false;
+                        }
+                    }
+                    true
+                });
+            }
+            Err(e) => {
+                eprintln!("journalctl: {}", e);
+                process::exit(1);
+            }
+        }
+    }
+
+    if removed_count > 0 {
+        let (val, unit) = human_size(removed);
+        println!(
+            "Vacuuming done, freed {:.1}{} of archived journals from {} file(s).",
+            val, unit, removed_count
+        );
+    } else {
+        println!("Vacuuming done, no files needed to be removed.");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Header handling
+// ---------------------------------------------------------------------------
+
+/// Show journal file header information.
+fn handle_header(storage: &JournalStorage) {
+    let directory = storage.directory();
+    let directory = &directory;
+    println!("File path: {}", directory.display());
+
+    // Count files and total size
+    let mut file_count = 0usize;
+    let mut total_size = 0u64;
+
+    fn count_journal_files(dir: &std::path::Path, file_count: &mut usize, total_size: &mut u64) {
+        if let Ok(rd) = fs::read_dir(dir) {
+            for entry in rd.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    count_journal_files(&path, file_count, total_size);
+                } else if path
+                    .extension()
+                    .is_some_and(|ext| ext == "journal" || ext == "journal~")
+                {
+                    *file_count += 1;
+                    if let Ok(meta) = fs::metadata(&path) {
+                        *total_size += meta.len();
+                    }
+                }
+            }
+        }
+    }
+
+    count_journal_files(directory, &mut file_count, &mut total_size);
+
+    let (val, unit) = human_size(total_size);
+    println!("Number of journal files: {}", file_count);
+    println!("Total disk usage: {:.1}{}", val, unit);
+
+    // Show machine ID if available
+    if let Ok(machine_id) = fs::read_to_string("/etc/machine-id") {
+        println!("Machine ID: {}", machine_id.trim());
+    }
+
+    // Show boot ID if available
+    if let Ok(boot_id) = fs::read_to_string("/proc/sys/kernel/random/boot_id") {
+        println!("Boot ID: {}", boot_id.trim());
+    }
+
+    // Try to read entry counts
+    match storage.read_all() {
+        Ok(entries) => {
+            println!("Number of entries: {}", entries.len());
+            if let Some(first) = entries.first() {
+                println!("First entry: {}", format_realtime_iso(first.realtime_usec));
+            }
+            if let Some(last) = entries.last() {
+                println!("Last entry: {}", format_realtime_iso(last.realtime_usec));
+            }
+        }
+        Err(_) => {
+            println!("Number of entries: (unable to read)");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1239,6 +2006,17 @@ fn send_signal_to_journald(signal: libc::c_int) {
 mod tests {
     use super::*;
 
+    /// Helper to create default format options for tests.
+    fn default_opts() -> FormatOptions {
+        FormatOptions {
+            utc: false,
+            all: false,
+            no_hostname: false,
+            output_fields: None,
+            catalog: false,
+        }
+    }
+
     // ---- Priority parsing ----
 
     #[test]
@@ -1281,6 +2059,74 @@ mod tests {
         let (min, max) = parse_priority_filter("err..warning").unwrap();
         assert_eq!(min, 3);
         assert_eq!(max, 4);
+    }
+
+    // ---- Facility parsing ----
+
+    #[test]
+    fn test_parse_facility_by_name() {
+        assert_eq!(parse_facility("kern").unwrap(), 0);
+        assert_eq!(parse_facility("user").unwrap(), 1);
+        assert_eq!(parse_facility("mail").unwrap(), 2);
+        assert_eq!(parse_facility("daemon").unwrap(), 3);
+        assert_eq!(parse_facility("auth").unwrap(), 4);
+        assert_eq!(parse_facility("syslog").unwrap(), 5);
+        assert_eq!(parse_facility("lpr").unwrap(), 6);
+        assert_eq!(parse_facility("news").unwrap(), 7);
+        assert_eq!(parse_facility("uucp").unwrap(), 8);
+        assert_eq!(parse_facility("cron").unwrap(), 9);
+        assert_eq!(parse_facility("authpriv").unwrap(), 10);
+        assert_eq!(parse_facility("ftp").unwrap(), 11);
+        assert_eq!(parse_facility("local0").unwrap(), 16);
+        assert_eq!(parse_facility("local7").unwrap(), 23);
+    }
+
+    #[test]
+    fn test_parse_facility_by_number() {
+        assert_eq!(parse_facility("0").unwrap(), 0);
+        assert_eq!(parse_facility("3").unwrap(), 3);
+        assert_eq!(parse_facility("23").unwrap(), 23);
+    }
+
+    #[test]
+    fn test_parse_facility_invalid() {
+        assert!(parse_facility("invalid").is_err());
+        assert!(parse_facility("99").is_err());
+    }
+
+    #[test]
+    fn test_facility_name() {
+        assert_eq!(facility_name(0), "kern");
+        assert_eq!(facility_name(1), "user");
+        assert_eq!(facility_name(3), "daemon");
+        assert_eq!(facility_name(16), "local0");
+        assert_eq!(facility_name(23), "local7");
+        assert_eq!(facility_name(99), "unknown");
+    }
+
+    // ---- Size spec parsing ----
+
+    #[test]
+    fn test_parse_size_spec() {
+        assert_eq!(parse_size_spec("100").unwrap(), 100);
+        assert_eq!(parse_size_spec("1K").unwrap(), 1024);
+        assert_eq!(parse_size_spec("1M").unwrap(), 1024 * 1024);
+        assert_eq!(parse_size_spec("1G").unwrap(), 1024 * 1024 * 1024);
+        assert_eq!(
+            parse_size_spec("2T").unwrap(),
+            2 * 1024 * 1024 * 1024 * 1024
+        );
+        assert!(parse_size_spec("abcM").is_err());
+    }
+
+    // ---- Vacuum time parsing ----
+
+    #[test]
+    fn test_parse_vacuum_time() {
+        assert_eq!(parse_vacuum_time("1h").unwrap(), 3600);
+        assert_eq!(parse_vacuum_time("2d").unwrap(), 172800);
+        assert_eq!(parse_vacuum_time("30s").unwrap(), 30);
+        assert!(parse_vacuum_time("invalid").is_err());
     }
 
     // ---- Timestamp parsing ----
@@ -1348,8 +2194,16 @@ mod tests {
             OutputFormat::Short
         );
         assert_eq!(
+            OutputFormat::from_str("short-full").unwrap(),
+            OutputFormat::ShortFull
+        );
+        assert_eq!(
             OutputFormat::from_str("short-iso").unwrap(),
             OutputFormat::ShortIso
+        );
+        assert_eq!(
+            OutputFormat::from_str("short-iso-precise").unwrap(),
+            OutputFormat::ShortIsoPrecise
         );
         assert_eq!(
             OutputFormat::from_str("short-precise").unwrap(),
@@ -1360,6 +2214,14 @@ mod tests {
             OutputFormat::ShortMonotonic
         );
         assert_eq!(
+            OutputFormat::from_str("short-unix").unwrap(),
+            OutputFormat::ShortUnix
+        );
+        assert_eq!(
+            OutputFormat::from_str("with-unit").unwrap(),
+            OutputFormat::WithUnit
+        );
+        assert_eq!(
             OutputFormat::from_str("verbose").unwrap(),
             OutputFormat::Verbose
         );
@@ -1367,6 +2229,14 @@ mod tests {
         assert_eq!(
             OutputFormat::from_str("json-pretty").unwrap(),
             OutputFormat::JsonPretty
+        );
+        assert_eq!(
+            OutputFormat::from_str("json-sse").unwrap(),
+            OutputFormat::JsonSse
+        );
+        assert_eq!(
+            OutputFormat::from_str("json-seq").unwrap(),
+            OutputFormat::JsonSeq
         );
         assert_eq!(OutputFormat::from_str("cat").unwrap(), OutputFormat::Cat);
         assert_eq!(
@@ -1496,12 +2366,119 @@ mod tests {
         entry.set_field("SYSLOG_IDENTIFIER", "myapp");
         entry.set_field("_PID", "42");
 
+        let opts = default_opts();
         let mut output = Vec::new();
-        format_short(&entry, false, false, false, &mut output).unwrap();
+        format_short(&entry, ShortTimestamp::Syslog, &opts, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("myhost"));
         assert!(output_str.contains("myapp[42]"));
         assert!(output_str.contains("test message"));
+    }
+
+    #[test]
+    fn test_format_short_no_hostname() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "test message");
+        entry.set_field("_HOSTNAME", "myhost");
+        entry.set_field("SYSLOG_IDENTIFIER", "myapp");
+        entry.set_field("_PID", "42");
+
+        let opts = FormatOptions {
+            no_hostname: true,
+            ..default_opts()
+        };
+        let mut output = Vec::new();
+        format_short(&entry, ShortTimestamp::Syslog, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(!output_str.contains("myhost"));
+        assert!(output_str.contains("myapp[42]"));
+        assert!(output_str.contains("test message"));
+    }
+
+    #[test]
+    fn test_format_short_full() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "full test");
+        entry.set_field("_HOSTNAME", "host");
+        entry.set_field("SYSLOG_IDENTIFIER", "app");
+
+        let opts = default_opts();
+        let mut output = Vec::new();
+        format_short(&entry, ShortTimestamp::Full, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+        // short-full includes year in timestamp
+        assert!(output_str.contains("2023"));
+        assert!(output_str.contains("host"));
+        assert!(output_str.contains("full test"));
+    }
+
+    #[test]
+    fn test_format_short_unix() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_123_456, 0);
+        entry.set_field("MESSAGE", "unix test");
+        entry.set_field("_HOSTNAME", "host");
+        entry.set_field("SYSLOG_IDENTIFIER", "app");
+
+        let opts = default_opts();
+        let mut output = Vec::new();
+        format_short(&entry, ShortTimestamp::Unix, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("1700000000.123456"));
+        assert!(output_str.contains("unix test"));
+    }
+
+    #[test]
+    fn test_format_short_iso_precise() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_123_456, 0);
+        entry.set_field("MESSAGE", "iso-precise test");
+        entry.set_field("_HOSTNAME", "host");
+        entry.set_field("SYSLOG_IDENTIFIER", "app");
+
+        let opts = default_opts();
+        let mut output = Vec::new();
+        format_short(&entry, ShortTimestamp::IsoPrecise, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+        // ISO precise has 'T' separator and microseconds
+        assert!(output_str.contains("T"));
+        assert!(output_str.contains("iso-precise test"));
+    }
+
+    #[test]
+    fn test_format_with_unit() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "unit test msg");
+        entry.set_field("_HOSTNAME", "myhost");
+        entry.set_field("SYSLOG_IDENTIFIER", "myapp");
+        entry.set_field("_SYSTEMD_UNIT", "foo.service");
+        entry.set_field("_PID", "100");
+
+        let opts = default_opts();
+        let mut output = Vec::new();
+        format_with_unit(&entry, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("myhost"));
+        assert!(output_str.contains("foo.service"));
+        assert!(output_str.contains("myapp[100]"));
+        assert!(output_str.contains("unit test msg"));
+    }
+
+    #[test]
+    fn test_format_with_unit_no_hostname() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "unit test msg");
+        entry.set_field("_HOSTNAME", "myhost");
+        entry.set_field("SYSLOG_IDENTIFIER", "myapp");
+        entry.set_field("_SYSTEMD_UNIT", "foo.service");
+
+        let opts = FormatOptions {
+            no_hostname: true,
+            ..default_opts()
+        };
+        let mut output = Vec::new();
+        format_with_unit(&entry, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(!output_str.contains("myhost"));
+        assert!(output_str.contains("foo.service"));
     }
 
     #[test]
@@ -1510,8 +2487,9 @@ mod tests {
         entry.set_field("MESSAGE", "test");
         entry.set_field("PRIORITY", "6");
 
+        let opts = default_opts();
         let mut output = Vec::new();
-        format_json(&entry, false, &mut output).unwrap();
+        format_json(&entry, JsonStyle::Compact, &opts, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
 
         let parsed: serde_json::Value = serde_json::from_str(output_str.trim()).unwrap();
@@ -1524,8 +2502,9 @@ mod tests {
         let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
         entry.set_field("MESSAGE", "test");
 
+        let opts = default_opts();
         let mut output = Vec::new();
-        format_json(&entry, true, &mut output).unwrap();
+        format_json(&entry, JsonStyle::Pretty, &opts, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
 
         // Pretty JSON should contain indentation
@@ -1535,19 +2514,100 @@ mod tests {
     }
 
     #[test]
+    fn test_format_json_sse() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "sse test");
+
+        let opts = default_opts();
+        let mut output = Vec::new();
+        format_json(&entry, JsonStyle::Sse, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+
+        // SSE format: "data: <json>\n\n"
+        assert!(output_str.starts_with("data: "));
+        assert!(output_str.ends_with("\n\n"));
+        let json_part = output_str.strip_prefix("data: ").unwrap().trim();
+        let parsed: serde_json::Value = serde_json::from_str(json_part).unwrap();
+        assert_eq!(parsed["MESSAGE"], "sse test");
+    }
+
+    #[test]
+    fn test_format_json_seq() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "seq test");
+
+        let opts = default_opts();
+        let mut output = Vec::new();
+        format_json(&entry, JsonStyle::Seq, &opts, &mut output).unwrap();
+        let output_bytes = output;
+
+        // RFC 7464: starts with RS (0x1E)
+        assert_eq!(output_bytes[0], 0x1E);
+        let json_part = std::str::from_utf8(&output_bytes[1..]).unwrap().trim();
+        let parsed: serde_json::Value = serde_json::from_str(json_part).unwrap();
+        assert_eq!(parsed["MESSAGE"], "seq test");
+    }
+
+    #[test]
+    fn test_format_json_output_fields() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "filtered");
+        entry.set_field("PRIORITY", "6");
+        entry.set_field("_HOSTNAME", "host");
+
+        let opts = FormatOptions {
+            output_fields: Some(parse_output_fields("MESSAGE")),
+            ..default_opts()
+        };
+        let mut output = Vec::new();
+        format_json(&entry, JsonStyle::Compact, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+
+        let parsed: serde_json::Value = serde_json::from_str(output_str.trim()).unwrap();
+        assert_eq!(parsed["MESSAGE"], "filtered");
+        // PRIORITY and _HOSTNAME should be filtered out
+        assert!(parsed.get("PRIORITY").is_none());
+        assert!(parsed.get("_HOSTNAME").is_none());
+        // Metadata fields should still be present
+        assert!(parsed.get("__REALTIME_TIMESTAMP").is_some());
+    }
+
+    #[test]
     fn test_format_verbose() {
         let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
         entry.seqnum = 42;
         entry.set_field("MESSAGE", "verbose test");
         entry.set_field("PRIORITY", "6");
 
+        let opts = default_opts();
         let mut output = Vec::new();
-        format_verbose(&entry, &mut output).unwrap();
+        format_verbose(&entry, &opts, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
 
         assert!(output_str.contains("[s=42]"));
         assert!(output_str.contains("MESSAGE=verbose test"));
         assert!(output_str.contains("PRIORITY=6"));
+    }
+
+    #[test]
+    fn test_format_verbose_output_fields() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.seqnum = 42;
+        entry.set_field("MESSAGE", "verbose filtered");
+        entry.set_field("PRIORITY", "6");
+        entry.set_field("_HOSTNAME", "host");
+
+        let opts = FormatOptions {
+            output_fields: Some(parse_output_fields("MESSAGE")),
+            ..default_opts()
+        };
+        let mut output = Vec::new();
+        format_verbose(&entry, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+
+        assert!(output_str.contains("MESSAGE=verbose filtered"));
+        assert!(!output_str.contains("PRIORITY=6"));
+        assert!(!output_str.contains("_HOSTNAME=host"));
     }
 
     #[test]
@@ -1557,8 +2617,9 @@ mod tests {
         entry.set_field("_HOSTNAME", "host");
         entry.set_field("SYSLOG_IDENTIFIER", "app");
 
+        let opts = default_opts();
         let mut output = Vec::new();
-        format_short_monotonic(&entry, &mut output).unwrap();
+        format_short(&entry, ShortTimestamp::Monotonic, &opts, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
 
         assert!(output_str.contains("5.500000"));
@@ -1574,13 +2635,214 @@ mod tests {
         entry.set_field("MESSAGE", "export test");
         entry.set_field("_BOOT_ID", "testboot");
 
+        let opts = default_opts();
         let mut output = Vec::new();
-        format_export(&entry, &mut output).unwrap();
+        format_export(&entry, &opts, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
 
         assert!(output_str.contains("__CURSOR="));
         assert!(output_str.contains("__REALTIME_TIMESTAMP="));
         assert!(output_str.contains("__MONOTONIC_TIMESTAMP="));
         assert!(output_str.contains("MESSAGE=export test"));
+    }
+
+    #[test]
+    fn test_format_export_output_fields() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 100);
+        entry.seqnum = 1;
+        entry.set_field("MESSAGE", "export filtered");
+        entry.set_field("PRIORITY", "6");
+        entry.set_field("_BOOT_ID", "testboot");
+
+        let opts = FormatOptions {
+            output_fields: Some(parse_output_fields("MESSAGE")),
+            ..default_opts()
+        };
+        let mut output = Vec::new();
+        format_export(&entry, &opts, &mut output).unwrap();
+        let output_str = String::from_utf8(output).unwrap();
+
+        assert!(output_str.contains("__CURSOR="));
+        assert!(output_str.contains("MESSAGE=export filtered"));
+        assert!(!output_str.contains("PRIORITY=6"));
+    }
+
+    // ---- Output field filtering ----
+
+    #[test]
+    fn test_parse_output_fields() {
+        let fields = parse_output_fields("MESSAGE,PRIORITY,_PID");
+        assert!(fields.contains("MESSAGE"));
+        assert!(fields.contains("PRIORITY"));
+        assert!(fields.contains("_PID"));
+        assert!(!fields.contains("_HOSTNAME"));
+        assert_eq!(fields.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_output_fields_case_insensitive() {
+        let fields = parse_output_fields("message,Priority");
+        assert!(fields.contains("MESSAGE"));
+        assert!(fields.contains("PRIORITY"));
+    }
+
+    #[test]
+    fn test_parse_output_fields_empty() {
+        let fields = parse_output_fields("");
+        assert!(fields.is_empty());
+    }
+
+    #[test]
+    fn test_filter_json_fields() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "hello");
+        entry.set_field("PRIORITY", "6");
+        entry.set_field("_HOSTNAME", "host");
+
+        let json = entry.to_json();
+        let fields = parse_output_fields("MESSAGE");
+        let filtered = filter_json_fields(&json, &fields);
+
+        assert!(filtered.get("MESSAGE").is_some());
+        assert!(filtered.get("PRIORITY").is_none());
+        assert!(filtered.get("_HOSTNAME").is_none());
+        // Metadata fields with __ prefix are always preserved
+        assert!(filtered.get("__REALTIME_TIMESTAMP").is_some());
+    }
+
+    // ---- Timestamp formatting ----
+
+    #[test]
+    fn test_format_realtime_unix() {
+        let s = format_realtime_unix(1_700_000_000_123_456);
+        assert_eq!(s, "1700000000.123456");
+    }
+
+    #[test]
+    fn test_format_realtime_unix_zero_micros() {
+        let s = format_realtime_unix(1_700_000_000_000_000);
+        assert_eq!(s, "1700000000.000000");
+    }
+
+    #[test]
+    fn test_format_realtime_full() {
+        let s = format_realtime_full(1_700_000_000_000_000, true);
+        // UTC: should contain the year 2023 and "UTC"
+        assert!(s.contains("2023"));
+        assert!(s.contains("UTC"));
+    }
+
+    #[test]
+    fn test_format_realtime_iso_precise_utc() {
+        let s = format_realtime_iso_precise(1_700_000_000_123_456, true);
+        // Should be ISO format with T and microseconds and end with Z
+        assert!(s.contains("T"));
+        assert!(s.ends_with("Z"));
+    }
+
+    // ---- Follow filters ----
+
+    #[test]
+    fn test_matches_follow_filters_facility() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "test");
+        entry.set_field("SYSLOG_FACILITY", "3");
+
+        let cli = Cli::parse_from(["journalctl", "--facility", "daemon"]);
+        assert!(matches_follow_filters(&entry, &cli));
+
+        let cli_wrong = Cli::parse_from(["journalctl", "--facility", "kern"]);
+        assert!(!matches_follow_filters(&entry, &cli_wrong));
+    }
+
+    #[test]
+    fn test_matches_follow_filters_transport() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "test");
+        entry.set_field("_TRANSPORT", "syslog");
+
+        let cli = Cli::parse_from(["journalctl", "--transport", "syslog"]);
+        assert!(matches_follow_filters(&entry, &cli));
+
+        let cli_wrong = Cli::parse_from(["journalctl", "--transport", "kernel"]);
+        assert!(!matches_follow_filters(&entry, &cli_wrong));
+    }
+
+    #[test]
+    fn test_matches_follow_filters_system() {
+        let mut sys_entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        sys_entry.set_field("MESSAGE", "system entry");
+        sys_entry.set_field("_SYSTEMD_UNIT", "foo.service");
+
+        let mut user_entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        user_entry.set_field("MESSAGE", "user entry");
+        user_entry.set_field("_SYSTEMD_USER_UNIT", "bar.service");
+
+        let cli_system = Cli::parse_from(["journalctl", "--system"]);
+        assert!(matches_follow_filters(&sys_entry, &cli_system));
+        assert!(!matches_follow_filters(&user_entry, &cli_system));
+
+        let cli_user = Cli::parse_from(["journalctl", "--user"]);
+        assert!(!matches_follow_filters(&sys_entry, &cli_user));
+        assert!(matches_follow_filters(&user_entry, &cli_user));
+    }
+
+    #[test]
+    fn test_matches_follow_filters_machine() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "test");
+        entry.set_field("_HOSTNAME", "myhost");
+
+        let cli = Cli::parse_from(["journalctl", "--machine", "myhost"]);
+        assert!(matches_follow_filters(&entry, &cli));
+
+        let cli_wrong = Cli::parse_from(["journalctl", "--machine", "otherhost"]);
+        assert!(!matches_follow_filters(&entry, &cli_wrong));
+    }
+
+    #[test]
+    fn test_matches_follow_filters_uid_gid() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "test");
+        entry.set_field("_UID", "1000");
+        entry.set_field("_GID", "1000");
+
+        let cli_uid = Cli::parse_from(["journalctl", "--uid", "1000"]);
+        assert!(matches_follow_filters(&entry, &cli_uid));
+
+        let cli_uid_wrong = Cli::parse_from(["journalctl", "--uid", "0"]);
+        assert!(!matches_follow_filters(&entry, &cli_uid_wrong));
+
+        let cli_gid = Cli::parse_from(["journalctl", "--gid", "1000"]);
+        assert!(matches_follow_filters(&entry, &cli_gid));
+
+        let cli_gid_wrong = Cli::parse_from(["journalctl", "--gid", "0"]);
+        assert!(!matches_follow_filters(&entry, &cli_gid_wrong));
+    }
+
+    #[test]
+    fn test_matches_follow_filters_user_unit() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "test");
+        entry.set_field("_SYSTEMD_USER_UNIT", "foo.service");
+
+        let cli = Cli::parse_from(["journalctl", "--user-unit", "foo.service"]);
+        assert!(matches_follow_filters(&entry, &cli));
+
+        let cli_wrong = Cli::parse_from(["journalctl", "--user-unit", "bar.service"]);
+        assert!(!matches_follow_filters(&entry, &cli_wrong));
+    }
+
+    #[test]
+    fn test_matches_follow_filters_free_form_match() {
+        let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000, 0);
+        entry.set_field("MESSAGE", "test");
+        entry.set_field("_SYSTEMD_UNIT", "sshd.service");
+
+        let cli = Cli::parse_from(["journalctl", "_SYSTEMD_UNIT=sshd.service"]);
+        assert!(matches_follow_filters(&entry, &cli));
+
+        let cli_wrong = Cli::parse_from(["journalctl", "_SYSTEMD_UNIT=other.service"]);
+        assert!(!matches_follow_filters(&entry, &cli_wrong));
     }
 }
