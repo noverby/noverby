@@ -64,6 +64,7 @@
 | [Zed-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/zed-mojo) | Mojo language extension for Zed |
 | [Zed-nickel ❄️](https://tangled.org/@overby.me/overby.me/tree/main/zed-nickel) | Nickel language extension for Zed |
 | [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-rs) | NixOS with Rust user space |
+| [Nixpkgs-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixpkgs-rs) | Rust replacements for the C toolchain that builds Nix packages |
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | A Systemd replacement in Rust |
 | [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | A pkg-config implementation in Rust |
 | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | A Nickel-powered workspace manager for Nix flakes |

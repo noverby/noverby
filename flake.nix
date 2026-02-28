@@ -183,6 +183,7 @@
         ./zed-nickel
 
         ./nixos-rs
+        ./nixpkgs-rs
         ./systemd-rs
         ./pkg-config-rs
         ./nu-plugin-tramp
