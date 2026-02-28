@@ -43,6 +43,10 @@ where
 pub fn handle_all_streams(run_info: ArcMutRuntimeInfo) {
     let eventfd = { run_info.read_poisoned().notification_eventfd };
     loop {
+        if crate::shutdown::is_shutting_down() {
+            trace!("Notification handler exiting: shutdown in progress");
+            return;
+        }
         let fd_to_srvc_id = collect_from_srvc(run_info.clone(), |map, srvc, id| {
             if let Some(socket) = &srvc.notifications {
                 map.insert(socket.as_raw_fd(), id);
@@ -177,6 +181,10 @@ pub fn handle_all_streams(run_info: ArcMutRuntimeInfo) {
                 }
             }
             Err(e) => {
+                if crate::shutdown::is_shutting_down() {
+                    trace!("Notification handler exiting: shutdown in progress ({e})");
+                    return;
+                }
                 warn!("Error while selecting: {e}");
             }
         }
@@ -354,6 +362,10 @@ fn handle_received_fds_impl(
 pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
     let eventfd = { run_info.read_poisoned().stdout_eventfd };
     loop {
+        if crate::shutdown::is_shutting_down() {
+            trace!("Stdout handler exiting: shutdown in progress");
+            return;
+        }
         let fd_to_srvc_id = collect_from_srvc(run_info.clone(), |map, srvc, id| {
             if let Some(StdIo::Piped(r, _w)) = &srvc.stdout {
                 map.insert(*r, id);
@@ -445,6 +457,10 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                 }
             }
             Err(e) => {
+                if crate::shutdown::is_shutting_down() {
+                    trace!("Stdout handler exiting: shutdown in progress ({e})");
+                    return;
+                }
                 warn!("Error while selecting: {e}");
             }
         }
@@ -454,6 +470,10 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
 pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
     let eventfd = { run_info.read_poisoned().stderr_eventfd };
     loop {
+        if crate::shutdown::is_shutting_down() {
+            trace!("Stderr handler exiting: shutdown in progress");
+            return;
+        }
         let fd_to_srvc_id = collect_from_srvc(run_info.clone(), |map, srvc, id| {
             if let Some(StdIo::Piped(r, _w)) = &srvc.stderr {
                 map.insert(*r, id);
@@ -544,6 +564,10 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                 }
             }
             Err(e) => {
+                if crate::shutdown::is_shutting_down() {
+                    trace!("Stderr handler exiting: shutdown in progress ({e})");
+                    return;
+                }
                 warn!("Error while selecting: {e}");
             }
         }
