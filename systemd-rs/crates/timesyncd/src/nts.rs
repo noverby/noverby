@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use aead::{Aead, KeyInit, Payload};
 use aes_siv::Aes128SivAead; // 256-bit key = 2×AES-128 → AEAD_AES_SIV_CMAC_256
-use rand::Rng;
+use rand::RngExt;
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -816,7 +816,7 @@ pub fn build_nts_request_extensions(
     ntp_header: &[u8],
     extra_cookie_placeholders: usize,
 ) -> Result<(Vec<u8>, Vec<u8>), NtsError> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // 1. Unique Identifier — random 32 bytes
     let mut unique_id = vec![0u8; UNIQUE_ID_LEN];
