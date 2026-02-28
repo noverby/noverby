@@ -305,6 +305,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bootctl"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libc",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
