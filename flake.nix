@@ -171,6 +171,7 @@
         ./flake/desktops.nix
         ./flake/devenvModules.nix
         ./flake/devenvConfigurations.nix
+        ./flake/colmena.nix
 
         ./nix-workspace
 
@@ -193,7 +194,7 @@
       nixDirAliases = {
         packages = ["pkgs"];
         flakelightModules = ["flake"];
-        nixosConfigurations = ["config/nixos"];
+        nixosConfigurations = inputs.nixpkgs.lib.mkForce ["config/nixos"];
         nixosModules = ["nixos"];
         homeConfigurations = ["config/home-manager"];
         homeModules = ["home-manager"];
