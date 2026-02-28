@@ -4918,20 +4918,22 @@ pub fn run_daemon() {
         children_max,
     }));
 
-    // Initialize D-Bus server (org.freedesktop.udev1)
-    let _dbus_server = match DbusServer::new(daemon_state.clone()) {
+    // D-Bus connection is deferred — we retry periodically in the main
+    // loop until the connection succeeds, since udevd may start before
+    // dbus.socket is activated.  zbus dispatches messages automatically
+    // in a background thread — we just keep the server handle alive.
+    let mut _dbus_server: Option<DbusServer> = match DbusServer::new(daemon_state.clone()) {
         Ok(server) => {
             log::info!("D-Bus interface registered on {}", DBUS_NAME);
             Some(server)
         }
         Err(e) => {
-            log::info!(
-                "Failed to initialize D-Bus interface: {}. Running without D-Bus.",
-                e
-            );
+            log::debug!("D-Bus not yet available ({}); will retry in main loop", e);
             None
         }
     };
+    let mut dbus_next_retry = Instant::now() + Duration::from_secs(5);
+    const DBUS_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
     sd_notify(&format!(
         "READY=1\nSTATUS=Processing events (rules={}, D-Bus: {})",
@@ -4939,7 +4941,7 @@ pub fn run_daemon() {
         if _dbus_server.is_some() {
             "active"
         } else {
-            "unavailable"
+            "pending"
         }
     ));
 
@@ -4950,7 +4952,7 @@ pub fn run_daemon() {
         if _dbus_server.is_some() {
             "active"
         } else {
-            "unavailable"
+            "pending"
         }
     );
 
@@ -4965,6 +4967,28 @@ pub fn run_daemon() {
         if SHUTDOWN_FLAG.load(Ordering::SeqCst) {
             log::info!("Received shutdown signal");
             break;
+        }
+
+        // Retry D-Bus registration periodically until successful.
+        if _dbus_server.is_none() && Instant::now() >= dbus_next_retry {
+            match DbusServer::new(daemon_state.clone()) {
+                Ok(server) => {
+                    log::info!("D-Bus interface registered on {}", DBUS_NAME);
+                    _dbus_server = Some(server);
+                    sd_notify(&format!(
+                        "STATUS=Processing events (rules={}, D-Bus: active)",
+                        rules.rules.len()
+                    ));
+                }
+                Err(e) => {
+                    log::debug!(
+                        "D-Bus not yet available ({}); will retry in {}s",
+                        e,
+                        DBUS_RETRY_INTERVAL.as_secs()
+                    );
+                    dbus_next_retry = Instant::now() + DBUS_RETRY_INTERVAL;
+                }
+            }
         }
 
         // Check inotify watcher for rules directory changes (debounced)

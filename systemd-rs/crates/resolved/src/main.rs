@@ -1576,10 +1576,13 @@ fn main() {
     log::info!("systemd-resolved is ready");
 
     // D-Bus connection is deferred to after READY=1 so we don't block
-    // early boot waiting for dbus-daemon.  zbus dispatches messages
-    // automatically in a background thread — we just keep the connection alive.
+    // early boot waiting for dbus-daemon.  We retry periodically until
+    // the connection succeeds, since this service may start before
+    // dbus.socket is activated.  zbus dispatches messages automatically
+    // in a background thread — we just keep the connection alive.
     let mut _dbus_conn: Option<Connection> = None;
-    let mut dbus_attempted = false;
+    let mut dbus_next_retry = Instant::now();
+    const DBUS_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
     // Watchdog setup
     let watchdog_usec = get_watchdog_usec();
@@ -1601,10 +1604,10 @@ fn main() {
             break;
         }
 
-        // Attempt D-Bus registration once (deferred from startup).
-        // zbus handles message dispatch in a background thread automatically.
-        if !dbus_attempted {
-            dbus_attempted = true;
+        // Attempt D-Bus registration (deferred from startup, retried
+        // periodically until successful).  zbus handles message dispatch
+        // in a background thread automatically.
+        if _dbus_conn.is_none() && Instant::now() >= dbus_next_retry {
             match setup_dbus(shared_dbus_state.clone(), Arc::clone(&dns_cache)) {
                 Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
@@ -1612,10 +1615,12 @@ fn main() {
                     sd_notify_status("Processing requests... (D-Bus active)");
                 }
                 Err(e) => {
-                    log::info!(
-                        "Failed to register D-Bus interface ({}); continuing without D-Bus",
-                        e
+                    log::debug!(
+                        "D-Bus not yet available ({}); will retry in {}s",
+                        e,
+                        DBUS_RETRY_INTERVAL.as_secs()
                     );
+                    dbus_next_retry = Instant::now() + DBUS_RETRY_INTERVAL;
                 }
             }
         }
