@@ -2046,7 +2046,7 @@ mod tests {
         let e = NtsError::ExtensionField("parse".into());
         assert!(e.to_string().contains("extension"));
 
-        let e = NtsError::Io(io::Error::new(io::ErrorKind::Other, "test"));
+        let e = NtsError::Io(io::Error::other("test"));
         assert!(e.to_string().contains("I/O"));
 
         let e = NtsError::AuthFailed("mismatch".into());

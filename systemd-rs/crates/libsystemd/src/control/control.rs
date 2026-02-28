@@ -4451,7 +4451,7 @@ mod tests {
         }
         if !specific_section_lines.is_empty() {
             use std::fmt::Write;
-            let _ = write!(content, "[{section_name}]\n");
+            let _ = writeln!(content, "[{section_name}]");
             for line in &specific_section_lines {
                 content.push_str(line);
                 content.push('\n');

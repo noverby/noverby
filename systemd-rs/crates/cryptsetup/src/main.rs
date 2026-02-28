@@ -1478,8 +1478,10 @@ mod tests {
 
     #[test]
     fn test_build_crypt_params_with_discard() {
-        let mut opts = CryptOptions::default();
-        opts.discard = true;
+        let opts = CryptOptions {
+            discard: true,
+            ..Default::default()
+        };
         let key = vec![0x00; 32];
         let params = build_crypt_params(&opts, &key, "/dev/sda1");
         assert!(params.contains("allow_discards"));
@@ -1488,10 +1490,12 @@ mod tests {
 
     #[test]
     fn test_build_crypt_params_with_multiple_features() {
-        let mut opts = CryptOptions::default();
-        opts.discard = true;
-        opts.same_cpu_crypt = true;
-        opts.no_read_workqueue = true;
+        let opts = CryptOptions {
+            discard: true,
+            same_cpu_crypt: true,
+            no_read_workqueue: true,
+            ..Default::default()
+        };
         let key = vec![0x00; 32];
         let params = build_crypt_params(&opts, &key, "/dev/sda1");
         assert!(params.contains("allow_discards"));
@@ -1511,8 +1515,10 @@ mod tests {
 
     #[test]
     fn test_build_crypt_params_custom_cipher() {
-        let mut opts = CryptOptions::default();
-        opts.cipher = "aes-cbc-essiv:sha256".to_string();
+        let opts = CryptOptions {
+            cipher: "aes-cbc-essiv:sha256".to_string(),
+            ..Default::default()
+        };
         let key = vec![0xaa; 16];
         let params = build_crypt_params(&opts, &key, "/dev/sdb2");
         assert!(params.starts_with("aes-cbc-essiv:sha256 "));
@@ -1520,9 +1526,11 @@ mod tests {
 
     #[test]
     fn test_build_crypt_params_with_offset_and_skip() {
-        let mut opts = CryptOptions::default();
-        opts.offset = 2048;
-        opts.skip = 512;
+        let opts = CryptOptions {
+            offset: 2048,
+            skip: 512,
+            ..Default::default()
+        };
         let key = vec![0x11; 32];
         let params = build_crypt_params(&opts, &key, "/dev/sda1");
         assert!(params.contains(" 512 /dev/sda1 2048"));
@@ -1530,8 +1538,10 @@ mod tests {
 
     #[test]
     fn test_build_crypt_params_custom_sector_size() {
-        let mut opts = CryptOptions::default();
-        opts.sector_size = 4096;
+        let opts = CryptOptions {
+            sector_size: 4096,
+            ..Default::default()
+        };
         let key = vec![0x00; 32];
         let params = build_crypt_params(&opts, &key, "/dev/sda1");
         assert!(params.contains("sector_size:4096"));
@@ -1539,13 +1549,15 @@ mod tests {
 
     #[test]
     fn test_build_crypt_params_all_features() {
-        let mut opts = CryptOptions::default();
-        opts.discard = true;
-        opts.same_cpu_crypt = true;
-        opts.submit_from_crypt_cpus = true;
-        opts.no_read_workqueue = true;
-        opts.no_write_workqueue = true;
-        opts.sector_size = 4096;
+        let opts = CryptOptions {
+            discard: true,
+            same_cpu_crypt: true,
+            submit_from_crypt_cpus: true,
+            no_read_workqueue: true,
+            no_write_workqueue: true,
+            sector_size: 4096,
+            ..Default::default()
+        };
         let key = vec![0x00; 32];
         let params = build_crypt_params(&opts, &key, "/dev/sda1");
         // 5 boolean features + 1 sector_size = 6 total.

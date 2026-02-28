@@ -2737,16 +2737,11 @@ mod tests {
 
     #[test]
     fn test_parse_type_bit_maps_multiple_windows() {
-        let mut data = Vec::new();
-        // Window 0: type 1 (A)
-        data.push(0);
-        data.push(1);
-        data.push(0x40);
-
-        // Window 1: type 256 (would be bit 0 of window 1, byte 0, bit 0)
-        data.push(1);
-        data.push(1);
-        data.push(0x80); // bit 0 → type 256
+        let data = vec![
+            // Window 0: type 1 (A)
+            0, 1, 0x40, // Window 1: type 256 (would be bit 0 of window 1, byte 0, bit 0)
+            1, 1, 0x80, // bit 0 → type 256
+        ];
 
         let types = parse_type_bit_maps(&data).unwrap();
         assert!(types.contains(&1));

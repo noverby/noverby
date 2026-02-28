@@ -2382,15 +2382,17 @@ mod tests {
 
     #[test]
     fn test_router_from_config_has_routes() {
-        let mut cfg = ResolvedConfig::default();
-        cfg.link_dns = vec![{
-            let mut link = config::LinkDns::new(2, "vpn0".to_string());
-            link.dns_servers = vec![config::DnsServer::new(std::net::IpAddr::V4(Ipv4Addr::new(
-                10, 0, 0, 1,
-            )))];
-            link.domains = vec!["~corp.local".to_string()];
-            link
-        }];
+        let cfg = ResolvedConfig {
+            link_dns: vec![{
+                let mut link = config::LinkDns::new(2, "vpn0".to_string());
+                link.dns_servers = vec![config::DnsServer::new(std::net::IpAddr::V4(
+                    Ipv4Addr::new(10, 0, 0, 1),
+                ))];
+                link.domains = vec!["~corp.local".to_string()];
+                link
+            }],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&cfg);
         assert!(router.has_routing_domains());

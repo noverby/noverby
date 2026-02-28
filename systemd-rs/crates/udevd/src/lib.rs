@@ -5428,7 +5428,7 @@ mod tests {
         // Should return immediately without error (no rename attempted).
         super::apply_net_link_settings(&mut event, &result);
         // No env changes expected.
-        assert!(event.env.get("INTERFACE").is_none());
+        assert!(!event.env.contains_key("INTERFACE"));
     }
 
     #[test]
@@ -5460,7 +5460,7 @@ mod tests {
         // No actual rename attempted (target == current).
         super::apply_net_link_settings(&mut event, &result);
         // INTERFACE env should NOT be set (no rename happened).
-        assert!(event.env.get("INTERFACE").is_none());
+        assert!(!event.env.contains_key("INTERFACE"));
     }
 
     #[test]
@@ -5470,8 +5470,10 @@ mod tests {
         event.subsystem = "net".to_string();
         event.action = "add".to_string();
         event.devpath = "/devices/pci0000:00/net/eth0".to_string();
-        let mut result = super::RuleResult::default();
-        result.name = Some("customnet0".to_string());
+        let result = super::RuleResult {
+            name: Some("customnet0".to_string()),
+            ..Default::default()
+        };
         // Can't actually rename (no sysfs ifindex), but verify fallback logic.
         super::apply_net_link_settings(&mut event, &result);
         // Without sysfs, the function returns early at ifindex check.
@@ -5487,8 +5489,10 @@ mod tests {
         event
             .env
             .insert("ID_NET_NAME".to_string(), "enp0s3".to_string());
-        let mut result = super::RuleResult::default();
-        result.name = Some("customnet0".to_string());
+        let result = super::RuleResult {
+            name: Some("customnet0".to_string()),
+            ..Default::default()
+        };
         // The target_name should be "enp0s3" (from ID_NET_NAME), not "customnet0".
         // We can verify this by checking the logic directly.
         let target = event
@@ -7438,8 +7442,8 @@ mod tests {
         event.devpath = "/devices/pci0000:00/0000:00:1f.2/ata1/host0".to_string();
         builtin_net_setup_link(&mut event);
         // Should not set any ID_NET_ variables.
-        assert!(event.env.get("ID_NET_LINK_FILE").is_none());
-        assert!(event.env.get("ID_NET_NAME").is_none());
+        assert!(!event.env.contains_key("ID_NET_LINK_FILE"));
+        assert!(!event.env.contains_key("ID_NET_NAME"));
     }
 
     #[test]
@@ -7449,7 +7453,7 @@ mod tests {
         event.devpath = String::new();
         // No INTERFACE env var, empty devpath — no interface name available.
         builtin_net_setup_link(&mut event);
-        assert!(event.env.get("ID_NET_LINK_FILE").is_none());
+        assert!(!event.env.contains_key("ID_NET_LINK_FILE"));
     }
 
     #[test]

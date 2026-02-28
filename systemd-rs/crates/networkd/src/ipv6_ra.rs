@@ -1889,8 +1889,8 @@ mod tests {
         let octets = ll.octets();
         assert_eq!(octets[0], 0xfe);
         assert_eq!(octets[1], 0x80);
-        for i in 2..8 {
-            assert_eq!(octets[i], 0);
+        for octet in &octets[2..8] {
+            assert_eq!(*octet, 0);
         }
     }
 
@@ -2928,17 +2928,10 @@ mod tests {
     #[test]
     fn test_parse_dns_names_multiple() {
         // "a.b" then "c.d"
-        let mut data = Vec::new();
-        data.push(1);
-        data.push(b'a');
-        data.push(1);
-        data.push(b'b');
-        data.push(0); // end of first name
-        data.push(1);
-        data.push(b'c');
-        data.push(1);
-        data.push(b'd');
-        data.push(0); // end of second name
+        let data = vec![
+            1, b'a', 1, b'b', 0, // end of first name
+            1, b'c', 1, b'd', 0, // end of second name
+        ];
         let names = parse_dns_names(&data);
         assert_eq!(names, vec!["a.b", "c.d"]);
     }

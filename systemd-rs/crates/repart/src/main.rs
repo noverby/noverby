@@ -3704,39 +3704,49 @@ Weight=333
 
     #[test]
     fn test_effective_flags_no_auto() {
-        let mut def = PartitionDefinition::default();
-        def.no_auto = Some(true);
+        let def = PartitionDefinition {
+            no_auto: Some(true),
+            ..Default::default()
+        };
         assert_eq!(def.effective_flags() & (1u64 << 63), 1u64 << 63);
     }
 
     #[test]
     fn test_effective_flags_read_only() {
-        let mut def = PartitionDefinition::default();
-        def.read_only = Some(true);
+        let def = PartitionDefinition {
+            read_only: Some(true),
+            ..Default::default()
+        };
         assert_eq!(def.effective_flags() & (1u64 << 60), 1u64 << 60);
     }
 
     #[test]
     fn test_effective_flags_grow_fs() {
-        let mut def = PartitionDefinition::default();
-        def.grow_fs = Some(true);
+        let def = PartitionDefinition {
+            grow_fs: Some(true),
+            ..Default::default()
+        };
         assert_eq!(def.effective_flags() & (1u64 << 59), 1u64 << 59);
     }
 
     #[test]
     fn test_effective_flags_override_base() {
-        let mut def = PartitionDefinition::default();
-        def.flags = 0xFFFFFFFFFFFFFFFF;
-        def.no_auto = Some(false);
+        let def = PartitionDefinition {
+            flags: 0xFFFFFFFFFFFFFFFF,
+            no_auto: Some(false),
+            ..Default::default()
+        };
         assert_eq!(def.effective_flags() & (1u64 << 63), 0);
     }
 
     #[test]
     fn test_effective_flags_combined() {
-        let mut def = PartitionDefinition::default();
-        def.no_auto = Some(true);
-        def.read_only = Some(true);
-        def.grow_fs = Some(true);
+        let def = PartitionDefinition {
+            no_auto: Some(true),
+            read_only: Some(true),
+            grow_fs: Some(true),
+            ..Default::default()
+        };
         let f = def.effective_flags();
         assert_ne!(f & (1u64 << 63), 0);
         assert_ne!(f & (1u64 << 60), 0);
@@ -3749,22 +3759,28 @@ Weight=333
 
     #[test]
     fn test_effective_label_explicit() {
-        let mut def = PartitionDefinition::default();
-        def.label = Some("MyLabel".into());
+        let def = PartitionDefinition {
+            label: Some("MyLabel".into()),
+            ..Default::default()
+        };
         assert_eq!(def.effective_label(), "MyLabel");
     }
 
     #[test]
     fn test_effective_label_from_type_id() {
-        let mut def = PartitionDefinition::default();
-        def.type_id = Some("root-x86-64".into());
+        let def = PartitionDefinition {
+            type_id: Some("root-x86-64".into()),
+            ..Default::default()
+        };
         assert_eq!(def.effective_label(), "root x86 64");
     }
 
     #[test]
     fn test_effective_label_from_type_uuid() {
-        let mut def = PartitionDefinition::default();
-        def.type_uuid = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b".into();
+        let def = PartitionDefinition {
+            type_uuid: "c12a7328-f81f-11d2-ba4b-00a0c93ec93b".into(),
+            ..Default::default()
+        };
         assert_eq!(def.effective_label(), "esp");
     }
 

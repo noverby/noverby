@@ -1151,31 +1151,39 @@ NamePolicy=kernel bogus_policy path
 
     #[test]
     fn test_link_match_original_name_glob() {
-        let mut section = LinkMatchSection::default();
-        section.original_names = vec!["en*".to_string()];
+        let section = LinkMatchSection {
+            original_names: vec!["en*".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface("enp3s0", None, None, None, None));
         assert!(!section.matches_interface("wlp2s0", None, None, None, None));
     }
 
     #[test]
     fn test_link_match_original_name_wildcard_all() {
-        let mut section = LinkMatchSection::default();
-        section.original_names = vec!["*".to_string()];
+        let section = LinkMatchSection {
+            original_names: vec!["*".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface("anything", None, None, None, None));
     }
 
     #[test]
     fn test_link_match_original_name_exact() {
-        let mut section = LinkMatchSection::default();
-        section.original_names = vec!["eth0".to_string()];
+        let section = LinkMatchSection {
+            original_names: vec!["eth0".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface("eth0", None, None, None, None));
         assert!(!section.matches_interface("eth1", None, None, None, None));
     }
 
     #[test]
     fn test_link_match_mac_address() {
-        let mut section = LinkMatchSection::default();
-        section.mac_addresses = vec!["00:11:22:33:44:55".to_string()];
+        let section = LinkMatchSection {
+            mac_addresses: vec!["00:11:22:33:44:55".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface("eth0", Some("00:11:22:33:44:55"), None, None, None));
         assert!(section.matches_interface("eth0", Some("00:11:22:33:44:55"), None, None, None));
         assert!(!section.matches_interface("eth0", Some("aa:bb:cc:dd:ee:ff"), None, None, None));
@@ -1184,16 +1192,20 @@ NamePolicy=kernel bogus_policy path
 
     #[test]
     fn test_link_match_mac_address_case_insensitive() {
-        let mut section = LinkMatchSection::default();
-        section.mac_addresses = vec!["00:11:22:33:44:55".to_string()];
+        let section = LinkMatchSection {
+            mac_addresses: vec!["00:11:22:33:44:55".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface("eth0", Some("00:11:22:33:44:55"), None, None, None));
         assert!(section.matches_interface("eth0", Some("00:11:22:33:44:55"), None, None, None));
     }
 
     #[test]
     fn test_link_match_driver() {
-        let mut section = LinkMatchSection::default();
-        section.drivers = vec!["virtio*".to_string()];
+        let section = LinkMatchSection {
+            drivers: vec!["virtio*".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface("eth0", None, Some("virtio_net"), None, None));
         assert!(!section.matches_interface("eth0", None, Some("e1000"), None, None));
         assert!(!section.matches_interface("eth0", None, None, None, None));
@@ -1201,8 +1213,10 @@ NamePolicy=kernel bogus_policy path
 
     #[test]
     fn test_link_match_type() {
-        let mut section = LinkMatchSection::default();
-        section.types = vec!["ether".to_string()];
+        let section = LinkMatchSection {
+            types: vec!["ether".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface("eth0", None, None, Some("ether"), None));
         assert!(!section.matches_interface("eth0", None, None, Some("wlan"), None));
         assert!(!section.matches_interface("eth0", None, None, None, None));
@@ -1210,8 +1224,10 @@ NamePolicy=kernel bogus_policy path
 
     #[test]
     fn test_link_match_path() {
-        let mut section = LinkMatchSection::default();
-        section.paths = vec!["pci-0000:02:00.0-*".to_string()];
+        let section = LinkMatchSection {
+            paths: vec!["pci-0000:02:00.0-*".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface(
             "eth0",
             None,
@@ -1225,9 +1241,11 @@ NamePolicy=kernel bogus_policy path
 
     #[test]
     fn test_link_match_multiple_criteria_all_must_match() {
-        let mut section = LinkMatchSection::default();
-        section.original_names = vec!["en*".to_string()];
-        section.drivers = vec!["virtio*".to_string()];
+        let section = LinkMatchSection {
+            original_names: vec!["en*".to_string()],
+            drivers: vec!["virtio*".to_string()],
+            ..Default::default()
+        };
 
         // Both match — OK.
         assert!(section.matches_interface("enp0s3", None, Some("virtio_net"), None, None));
@@ -1239,8 +1257,10 @@ NamePolicy=kernel bogus_policy path
 
     #[test]
     fn test_link_match_multiple_original_names() {
-        let mut section = LinkMatchSection::default();
-        section.original_names = vec!["en*".to_string(), "eth*".to_string()];
+        let section = LinkMatchSection {
+            original_names: vec!["en*".to_string(), "eth*".to_string()],
+            ..Default::default()
+        };
         assert!(section.matches_interface("enp3s0", None, None, None, None));
         assert!(section.matches_interface("eth0", None, None, None, None));
         assert!(!section.matches_interface("wlan0", None, None, None, None));
@@ -1248,11 +1268,13 @@ NamePolicy=kernel bogus_policy path
 
     #[test]
     fn test_link_match_multiple_mac_addresses() {
-        let mut section = LinkMatchSection::default();
-        section.mac_addresses = vec![
-            "00:11:22:33:44:55".to_string(),
-            "aa:bb:cc:dd:ee:ff".to_string(),
-        ];
+        let section = LinkMatchSection {
+            mac_addresses: vec![
+                "00:11:22:33:44:55".to_string(),
+                "aa:bb:cc:dd:ee:ff".to_string(),
+            ],
+            ..Default::default()
+        };
         assert!(section.matches_interface("eth0", Some("00:11:22:33:44:55"), None, None, None));
         assert!(section.matches_interface("eth0", Some("aa:bb:cc:dd:ee:ff"), None, None, None));
         assert!(!section.matches_interface("eth0", Some("11:22:33:44:55:66"), None, None, None));
