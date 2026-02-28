@@ -2425,7 +2425,7 @@ MaxFileSec=30min
         assert_eq!(seal.epoch, 0);
         // Key should not be all zeros (random init)
         // Note: there's an astronomically small chance this could fail
-        assert!(seal.key.iter().any(|&b| b != 0) || true);
+        assert!(seal.key.iter().any(|&b| b != 0));
     }
 
     #[test]

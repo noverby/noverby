@@ -1311,8 +1311,10 @@ mod tests {
 
     #[test]
     fn test_build_verity_params_with_salt() {
-        let mut opts = VerityOptions::default();
-        opts.salt = "deadbeef".to_string();
+        let opts = VerityOptions {
+            salt: "deadbeef".to_string(),
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains(" deadbeef"));
         assert!(!params.contains(" - ")); // salt should not be "-" placeholder
@@ -1320,8 +1322,10 @@ mod tests {
 
     #[test]
     fn test_build_verity_params_explicit_data_blocks() {
-        let mut opts = VerityOptions::default();
-        opts.data_blocks = 500;
+        let opts = VerityOptions {
+            data_blocks: 500,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 10000);
         // num_data_blocks should be 500 (explicit), not calculated.
         assert!(params.contains(" 500 "));
@@ -1329,8 +1333,10 @@ mod tests {
 
     #[test]
     fn test_build_verity_params_with_hash_offset() {
-        let mut opts = VerityOptions::default();
-        opts.hash_offset = 8192;
+        let opts = VerityOptions {
+            hash_offset: 8192,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         // hash_start_block = 8192 / 4096 = 2
         assert!(params.contains(" 2 sha256 "));
@@ -1338,66 +1344,82 @@ mod tests {
 
     #[test]
     fn test_build_verity_params_custom_algorithm() {
-        let mut opts = VerityOptions::default();
-        opts.hash_algorithm = "sha512".to_string();
+        let opts = VerityOptions {
+            hash_algorithm: "sha512".to_string(),
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains(" sha512 "));
     }
 
     #[test]
     fn test_build_verity_params_format_v2() {
-        let mut opts = VerityOptions::default();
-        opts.format_version = 2;
+        let opts = VerityOptions {
+            format_version: 2,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.starts_with("2 "));
     }
 
     #[test]
     fn test_build_verity_params_ignore_corruption() {
-        let mut opts = VerityOptions::default();
-        opts.error_mode = ErrorMode::IgnoreCorruption;
+        let opts = VerityOptions {
+            error_mode: ErrorMode::IgnoreCorruption,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains(" 1 ignore_corruption"));
     }
 
     #[test]
     fn test_build_verity_params_restart_on_corruption() {
-        let mut opts = VerityOptions::default();
-        opts.error_mode = ErrorMode::RestartOnCorruption;
+        let opts = VerityOptions {
+            error_mode: ErrorMode::RestartOnCorruption,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains("restart_on_corruption"));
     }
 
     #[test]
     fn test_build_verity_params_panic_on_corruption() {
-        let mut opts = VerityOptions::default();
-        opts.error_mode = ErrorMode::PanicOnCorruption;
+        let opts = VerityOptions {
+            error_mode: ErrorMode::PanicOnCorruption,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains("panic_on_corruption"));
     }
 
     #[test]
     fn test_build_verity_params_ignore_zero_blocks() {
-        let mut opts = VerityOptions::default();
-        opts.ignore_zero_blocks = true;
+        let opts = VerityOptions {
+            ignore_zero_blocks: true,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains("ignore_zero_blocks"));
     }
 
     #[test]
     fn test_build_verity_params_check_at_most_once() {
-        let mut opts = VerityOptions::default();
-        opts.check_at_most_once = true;
+        let opts = VerityOptions {
+            check_at_most_once: true,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains("check_at_most_once"));
     }
 
     #[test]
     fn test_build_verity_params_fec() {
-        let mut opts = VerityOptions::default();
-        opts.fec_device = Some(PathBuf::from("/dev/sda3"));
-        opts.fec_offset = 4096;
-        opts.fec_roots = 4;
+        let opts = VerityOptions {
+            fec_device: Some(PathBuf::from("/dev/sda3")),
+            fec_offset: 4096,
+            fec_roots: 4,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains("use_fec_from_device /dev/sda3"));
         assert!(params.contains("fec_blocks 128"));
@@ -1407,8 +1429,10 @@ mod tests {
 
     #[test]
     fn test_build_verity_params_fec_default_roots() {
-        let mut opts = VerityOptions::default();
-        opts.fec_device = Some(PathBuf::from("/dev/sda3"));
+        let opts = VerityOptions {
+            fec_device: Some(PathBuf::from("/dev/sda3")),
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         // Default fec_roots=2, should NOT include fec_roots in optional params.
         assert!(!params.contains("fec_roots"));
@@ -1416,18 +1440,22 @@ mod tests {
 
     #[test]
     fn test_build_verity_params_root_hash_signature() {
-        let mut opts = VerityOptions::default();
-        opts.root_hash_signature = Some(PathBuf::from("/path/to/sig.der"));
+        let opts = VerityOptions {
+            root_hash_signature: Some(PathBuf::from("/path/to/sig.der")),
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         assert!(params.contains("root_hash_sig_key_desc /path/to/sig.der"));
     }
 
     #[test]
     fn test_build_verity_params_multiple_optional() {
-        let mut opts = VerityOptions::default();
-        opts.error_mode = ErrorMode::IgnoreCorruption;
-        opts.ignore_zero_blocks = true;
-        opts.check_at_most_once = true;
+        let opts = VerityOptions {
+            error_mode: ErrorMode::IgnoreCorruption,
+            ignore_zero_blocks: true,
+            check_at_most_once: true,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         // Should have 3 optional params.
         assert!(params.contains(" 3 "));
@@ -1441,15 +1469,17 @@ mod tests {
         let opts = VerityOptions::default();
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         // With EIO (default), no optional params should be appended.
-        let base = format!("1 /dev/sda1 /dev/sda2 4096 4096 128 0 sha256 aabb -");
+        let base = "1 /dev/sda1 /dev/sda2 4096 4096 128 0 sha256 aabb -".to_string();
         assert_eq!(params, base);
     }
 
     #[test]
     fn test_build_verity_params_custom_block_sizes() {
-        let mut opts = VerityOptions::default();
-        opts.data_block_size = 512;
-        opts.hash_block_size = 512;
+        let opts = VerityOptions {
+            data_block_size: 512,
+            hash_block_size: 512,
+            ..Default::default()
+        };
         let params = build_verity_params(&opts, "/dev/sda1", "/dev/sda2", "aabb", 1024);
         // 1024 sectors * 512 bytes / 512 block_size = 1024 blocks
         assert!(params.contains(" 512 512 1024 "));

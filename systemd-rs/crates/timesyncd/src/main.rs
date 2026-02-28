@@ -2378,8 +2378,10 @@ NTS=1
 
     #[test]
     fn test_config_parse_nts_no() {
-        let mut config = TimesyncdConfig::default();
-        config.nts_enabled = true;
+        let mut config = TimesyncdConfig {
+            nts_enabled: true,
+            ..Default::default()
+        };
         config.parse_config(
             r#"
 [Time]

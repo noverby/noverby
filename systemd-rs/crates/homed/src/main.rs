@@ -6415,7 +6415,7 @@ mod tests {
     fn test_recovery_key_verify() {
         let key = generate_recovery_key();
         let hashed = hash_password(&key);
-        assert!(verify_recovery_key(&key, &[hashed.clone()]));
+        assert!(verify_recovery_key(&key, std::slice::from_ref(&hashed)));
         assert!(!verify_recovery_key("wrong-key-value", &[hashed]));
     }
 
@@ -7225,7 +7225,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mut reg = make_registry(&tmp);
         let cmd = "CREATE cifsctl2 storage=cifs cifs-service=//server/share no-password-quality";
-        let resp = handle_control_command(&mut reg, &cmd);
+        let resp = handle_control_command(&mut reg, cmd);
         // Should succeed (just validates config, doesn't actually mount)
         assert!(!resp.starts_with("ERROR:"), "got: {}", resp);
         assert_eq!(reg.get("cifsctl2").unwrap().storage, Storage::Cifs);

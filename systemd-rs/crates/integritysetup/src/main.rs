@@ -2363,8 +2363,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_sha256() {
-        let mut opts = IntegrityOptions::default();
-        opts.algorithm = "sha256".to_string();
+        let opts = IntegrityOptions {
+            algorithm: "sha256".to_string(),
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         // Tag size for sha256 = 32.
@@ -2374,8 +2376,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_hmac_with_key() {
-        let mut opts = IntegrityOptions::default();
-        opts.algorithm = "hmac(sha256)".to_string();
+        let opts = IntegrityOptions {
+            algorithm: "hmac(sha256)".to_string(),
+            ..Default::default()
+        };
         let key = vec![0xab; 32];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.starts_with("/dev/sda1 0 32 J"));
@@ -2385,8 +2389,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_no_journal() {
-        let mut opts = IntegrityOptions::default();
-        opts.journal_mode = JournalMode::NoJournal;
+        let opts = IntegrityOptions {
+            journal_mode: JournalMode::NoJournal,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(
@@ -2398,8 +2404,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_bitmap() {
-        let mut opts = IntegrityOptions::default();
-        opts.journal_mode = JournalMode::Bitmap;
+        let opts = IntegrityOptions {
+            journal_mode: JournalMode::Bitmap,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.starts_with("/dev/sda1 0 4 B"));
@@ -2407,8 +2415,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_recovery() {
-        let mut opts = IntegrityOptions::default();
-        opts.recovery = true;
+        let opts = IntegrityOptions {
+            recovery: true,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.starts_with("/dev/sda1 0 4 R"));
@@ -2416,9 +2426,11 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_recovery_overrides_journal_mode() {
-        let mut opts = IntegrityOptions::default();
-        opts.recovery = true;
-        opts.journal_mode = JournalMode::NoJournal;
+        let opts = IntegrityOptions {
+            recovery: true,
+            journal_mode: JournalMode::NoJournal,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         // Recovery overrides journal mode.
@@ -2427,8 +2439,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_with_recalculate() {
-        let mut opts = IntegrityOptions::default();
-        opts.integrity_recalculate = true;
+        let opts = IntegrityOptions {
+            integrity_recalculate: true,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("recalculate"));
@@ -2436,8 +2450,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_with_recalculate_reset() {
-        let mut opts = IntegrityOptions::default();
-        opts.integrity_recalculate_reset = true;
+        let opts = IntegrityOptions {
+            integrity_recalculate_reset: true,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("reset_recalculate"));
@@ -2445,8 +2461,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_allow_discards() {
-        let mut opts = IntegrityOptions::default();
-        opts.allow_discards = true;
+        let opts = IntegrityOptions {
+            allow_discards: true,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("allow_discards"));
@@ -2454,8 +2472,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_fix_padding() {
-        let mut opts = IntegrityOptions::default();
-        opts.fix_padding = true;
+        let opts = IntegrityOptions {
+            fix_padding: true,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("fix_padding"));
@@ -2463,8 +2483,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_fix_hmac() {
-        let mut opts = IntegrityOptions::default();
-        opts.fix_hmac = true;
+        let opts = IntegrityOptions {
+            fix_hmac: true,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("fix_hmac"));
@@ -2472,8 +2494,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_legacy_recalculate() {
-        let mut opts = IntegrityOptions::default();
-        opts.legacy_recalculate = true;
+        let opts = IntegrityOptions {
+            legacy_recalculate: true,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("legacy_recalculate"));
@@ -2481,11 +2505,13 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_journal_options() {
-        let mut opts = IntegrityOptions::default();
-        opts.journal_commit_time = Some(5000);
-        opts.journal_watermark = Some(50);
-        opts.journal_integrity = Some("hmac(sha256)".to_string());
-        opts.journal_crypt = Some("aes-xts-plain64".to_string());
+        let opts = IntegrityOptions {
+            journal_commit_time: Some(5000),
+            journal_watermark: Some(50),
+            journal_integrity: Some("hmac(sha256)".to_string()),
+            journal_crypt: Some("aes-xts-plain64".to_string()),
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("journal_commit_time:5000"));
@@ -2496,8 +2522,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_data_device() {
-        let mut opts = IntegrityOptions::default();
-        opts.data_device = Some(PathBuf::from("/dev/sdb1"));
+        let opts = IntegrityOptions {
+            data_device: Some(PathBuf::from("/dev/sdb1")),
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("data_device:/dev/sdb1"));
@@ -2505,8 +2533,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_bitmap_flush_interval() {
-        let mut opts = IntegrityOptions::default();
-        opts.bitmap_flush_interval = Some(1000);
+        let opts = IntegrityOptions {
+            bitmap_flush_interval: Some(1000),
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("bitmap_flush_interval:1000"));
@@ -2514,8 +2544,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_block_size() {
-        let mut opts = IntegrityOptions::default();
-        opts.block_size = Some(4096);
+        let opts = IntegrityOptions {
+            block_size: Some(4096),
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("block_size:4096"));
@@ -2523,8 +2555,10 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_custom_sector_size() {
-        let mut opts = IntegrityOptions::default();
-        opts.sector_size = 4096;
+        let opts = IntegrityOptions {
+            sector_size: 4096,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("sectors_per_bit:4096"));
@@ -2532,13 +2566,15 @@ mod tests {
 
     #[test]
     fn test_build_integrity_params_all_flags() {
-        let mut opts = IntegrityOptions::default();
-        opts.integrity_recalculate = true;
-        opts.integrity_recalculate_reset = true;
-        opts.allow_discards = true;
-        opts.fix_padding = true;
-        opts.fix_hmac = true;
-        opts.legacy_recalculate = true;
+        let opts = IntegrityOptions {
+            integrity_recalculate: true,
+            integrity_recalculate_reset: true,
+            allow_discards: true,
+            fix_padding: true,
+            fix_hmac: true,
+            legacy_recalculate: true,
+            ..Default::default()
+        };
         let key: Vec<u8> = vec![];
         let params = build_integrity_params(&opts, "/dev/sda1", &key);
         assert!(params.contains("recalculate"));

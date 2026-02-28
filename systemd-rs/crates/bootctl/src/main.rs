@@ -2803,7 +2803,7 @@ mod tests {
     #[test]
     fn test_identify_kernel_random_data() {
         let tmp = std::env::temp_dir().join("bootctl_test_random_kernel");
-        fs::write(&tmp, &[0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33]).unwrap();
+        fs::write(&tmp, [0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33]).unwrap();
         let ktype = identify_kernel(&tmp);
         assert_eq!(ktype, KernelType::Unknown);
         let _ = fs::remove_file(&tmp);

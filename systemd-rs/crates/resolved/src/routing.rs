@@ -442,8 +442,10 @@ mod tests {
 
     #[test]
     fn test_router_no_routing_domains_uses_global() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            ..Default::default()
+        };
         let router = DnsRouter::from_config(&config);
         assert!(!router.has_routing_domains());
 
@@ -453,9 +455,11 @@ mod tests {
 
     #[test]
     fn test_router_fallback_when_no_global() {
-        let mut config = ResolvedConfig::default();
-        config.dns.clear();
-        config.fallback_dns = vec![dns_server([1, 1, 1, 1])];
+        let config = ResolvedConfig {
+            dns: vec![],
+            fallback_dns: vec![dns_server([1, 1, 1, 1])],
+            ..Default::default()
+        };
         let router = DnsRouter::from_config(&config);
 
         let servers = router.servers_for_name("example.com");
@@ -464,15 +468,17 @@ mod tests {
 
     #[test]
     fn test_router_single_routing_domain() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "eth0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["~corp.example.com"],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "eth0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["~corp.example.com"],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         assert!(router.has_routing_domains());
@@ -489,15 +495,17 @@ mod tests {
 
     #[test]
     fn test_router_exact_routing_domain_match() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "eth0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["~example.com"],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "eth0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["~example.com"],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -508,24 +516,26 @@ mod tests {
 
     #[test]
     fn test_router_longest_suffix_wins() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![
-            make_link(
-                2,
-                "vpn0",
-                vec![dns_server([10, 0, 0, 1])],
-                vec!["~example.com"],
-                false,
-            ),
-            make_link(
-                3,
-                "vpn1",
-                vec![dns_server([10, 1, 0, 1])],
-                vec!["~corp.example.com"],
-                false,
-            ),
-        ];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![
+                make_link(
+                    2,
+                    "vpn0",
+                    vec![dns_server([10, 0, 0, 1])],
+                    vec!["~example.com"],
+                    false,
+                ),
+                make_link(
+                    3,
+                    "vpn1",
+                    vec![dns_server([10, 1, 0, 1])],
+                    vec!["~corp.example.com"],
+                    false,
+                ),
+            ],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -541,24 +551,26 @@ mod tests {
 
     #[test]
     fn test_router_same_specificity_merges_servers() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![
-            make_link(
-                2,
-                "vpn0",
-                vec![dns_server([10, 0, 0, 1])],
-                vec!["~example.com"],
-                false,
-            ),
-            make_link(
-                3,
-                "vpn1",
-                vec![dns_server([10, 1, 0, 1])],
-                vec!["~example.com"],
-                false,
-            ),
-        ];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![
+                make_link(
+                    2,
+                    "vpn0",
+                    vec![dns_server([10, 0, 0, 1])],
+                    vec!["~example.com"],
+                    false,
+                ),
+                make_link(
+                    3,
+                    "vpn1",
+                    vec![dns_server([10, 1, 0, 1])],
+                    vec!["~example.com"],
+                    false,
+                ),
+            ],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -570,15 +582,17 @@ mod tests {
 
     #[test]
     fn test_router_catch_all_routing_domain() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "vpn0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["~."],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "vpn0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["~."],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         assert!(router.has_routing_domains());
@@ -590,23 +604,25 @@ mod tests {
 
     #[test]
     fn test_router_specific_beats_catch_all() {
-        let mut config = ResolvedConfig::default();
-        config.link_dns = vec![
-            make_link(
-                2,
-                "vpn0",
-                vec![dns_server([10, 0, 0, 1])],
-                vec!["~."],
-                false,
-            ),
-            make_link(
-                3,
-                "vpn1",
-                vec![dns_server([10, 1, 0, 1])],
-                vec!["~corp.local"],
-                false,
-            ),
-        ];
+        let config = ResolvedConfig {
+            link_dns: vec![
+                make_link(
+                    2,
+                    "vpn0",
+                    vec![dns_server([10, 0, 0, 1])],
+                    vec!["~."],
+                    false,
+                ),
+                make_link(
+                    3,
+                    "vpn1",
+                    vec![dns_server([10, 1, 0, 1])],
+                    vec!["~corp.local"],
+                    false,
+                ),
+            ],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -621,16 +637,18 @@ mod tests {
 
     #[test]
     fn test_router_default_route_link() {
-        let mut config = ResolvedConfig::default();
-        config.dns.clear();
-        config.fallback_dns.clear();
-        config.link_dns = vec![make_link(
-            2,
-            "eth0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec![], // no routing domains
-            true,   // default_route = true
-        )];
+        let config = ResolvedConfig {
+            dns: vec![],
+            fallback_dns: vec![],
+            link_dns: vec![make_link(
+                2,
+                "eth0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec![], // no routing domains
+                true,   // default_route = true
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -641,25 +659,27 @@ mod tests {
 
     #[test]
     fn test_router_default_route_not_used_when_routing_matches() {
-        let mut config = ResolvedConfig::default();
-        config.dns.clear();
-        config.fallback_dns.clear();
-        config.link_dns = vec![
-            make_link(
-                2,
-                "eth0",
-                vec![dns_server([10, 0, 0, 1])],
-                vec![],
-                true, // default_route
-            ),
-            make_link(
-                3,
-                "vpn0",
-                vec![dns_server([10, 1, 0, 1])],
-                vec!["~corp.local"],
-                false,
-            ),
-        ];
+        let config = ResolvedConfig {
+            dns: vec![],
+            fallback_dns: vec![],
+            link_dns: vec![
+                make_link(
+                    2,
+                    "eth0",
+                    vec![dns_server([10, 0, 0, 1])],
+                    vec![],
+                    true, // default_route
+                ),
+                make_link(
+                    3,
+                    "vpn0",
+                    vec![dns_server([10, 1, 0, 1])],
+                    vec!["~corp.local"],
+                    false,
+                ),
+            ],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -674,15 +694,17 @@ mod tests {
 
     #[test]
     fn test_router_search_domains_not_routing() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "eth0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["example.com"], // search domain, NOT routing domain (no ~)
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "eth0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["example.com"], // search domain, NOT routing domain (no ~)
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -696,9 +718,11 @@ mod tests {
 
     #[test]
     fn test_router_global_routing_domains() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.domains = vec!["~internal.test".to_string()];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            domains: vec!["~internal.test".to_string()],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         assert!(router.has_routing_domains());
@@ -710,15 +734,17 @@ mod tests {
 
     #[test]
     fn test_router_link_without_servers_ignored() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "eth0",
-            vec![], // no DNS servers
-            vec!["~corp.local"],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "eth0",
+                vec![], // no DNS servers
+                vec!["~corp.local"],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -728,16 +754,18 @@ mod tests {
 
     #[test]
     fn test_router_all_servers() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.fallback_dns = vec![dns_server([1, 1, 1, 1])];
-        config.link_dns = vec![make_link(
-            2,
-            "vpn0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["~corp.local"],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            fallback_dns: vec![dns_server([1, 1, 1, 1])],
+            link_dns: vec![make_link(
+                2,
+                "vpn0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["~corp.local"],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         let all = router.all_servers();
@@ -748,16 +776,18 @@ mod tests {
 
     #[test]
     fn test_router_all_servers_deduplicates() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.fallback_dns = vec![dns_server([8, 8, 8, 8])]; // same as global
-        config.link_dns = vec![make_link(
-            2,
-            "eth0",
-            vec![dns_server([8, 8, 8, 8])], // also same
-            vec!["~."],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            fallback_dns: vec![dns_server([8, 8, 8, 8])], // same as global
+            link_dns: vec![make_link(
+                2,
+                "eth0",
+                vec![dns_server([8, 8, 8, 8])], // also same
+                vec!["~."],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         let all = router.all_servers();
@@ -775,15 +805,17 @@ mod tests {
 
     #[test]
     fn test_router_case_insensitive_matching() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "vpn0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["~Corp.Example.COM"],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "vpn0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["~Corp.Example.COM"],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -793,15 +825,17 @@ mod tests {
 
     #[test]
     fn test_router_trailing_dot_domain() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "vpn0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["~example.com."],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "vpn0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["~example.com."],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -811,15 +845,17 @@ mod tests {
 
     #[test]
     fn test_router_multiple_routing_domains_per_link() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "vpn0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["~corp.local", "~internal.test"],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "vpn0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["~corp.local", "~internal.test"],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         assert_eq!(router.route_count(), 2);
@@ -837,15 +873,17 @@ mod tests {
 
     #[test]
     fn test_router_mixed_search_and_routing_domains() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])];
-        config.link_dns = vec![make_link(
-            2,
-            "eth0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["search.example.com", "~route.example.com"],
-            false,
-        )];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],
+            link_dns: vec![make_link(
+                2,
+                "eth0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["search.example.com", "~route.example.com"],
+                false,
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         // Only the routing domain should create a route.
@@ -861,12 +899,12 @@ mod tests {
 
     #[test]
     fn test_router_empty_returns_empty() {
-        let config = ResolvedConfig::default();
-        // Default config has fallback DNS, so let's clear everything.
-        let mut config = config;
-        config.dns.clear();
-        config.fallback_dns.clear();
-        config.link_dns.clear();
+        let config = ResolvedConfig {
+            dns: vec![],
+            fallback_dns: vec![],
+            link_dns: vec![],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         let servers = router.servers_for_name("anything.test");
@@ -876,32 +914,34 @@ mod tests {
     #[test]
     fn test_router_priority_order() {
         // Verify: routing match > catch-all > default-route > global > fallback
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![dns_server([8, 8, 8, 8])]; // global
-        config.fallback_dns = vec![dns_server([1, 1, 1, 1])]; // fallback
-        config.link_dns = vec![
-            make_link(
-                2,
-                "eth0",
-                vec![dns_server([192, 168, 0, 1])],
-                vec![],
-                true, // default route
-            ),
-            make_link(
-                3,
-                "vpn0",
-                vec![dns_server([10, 0, 0, 1])],
-                vec!["~."], // catch-all
-                false,
-            ),
-            make_link(
-                4,
-                "vpn1",
-                vec![dns_server([10, 1, 0, 1])],
-                vec!["~corp.local"], // specific routing
-                false,
-            ),
-        ];
+        let config = ResolvedConfig {
+            dns: vec![dns_server([8, 8, 8, 8])],          // global
+            fallback_dns: vec![dns_server([1, 1, 1, 1])], // fallback
+            link_dns: vec![
+                make_link(
+                    2,
+                    "eth0",
+                    vec![dns_server([192, 168, 0, 1])],
+                    vec![],
+                    true, // default route
+                ),
+                make_link(
+                    3,
+                    "vpn0",
+                    vec![dns_server([10, 0, 0, 1])],
+                    vec!["~."], // catch-all
+                    false,
+                ),
+                make_link(
+                    4,
+                    "vpn1",
+                    vec![dns_server([10, 1, 0, 1])],
+                    vec!["~corp.local"], // specific routing
+                    false,
+                ),
+            ],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
 
@@ -920,16 +960,18 @@ mod tests {
         // the routing domains take effect, and it should NOT be in the
         // default_route_servers pool (it has routing domains so it's
         // considered a routing link).
-        let mut config = ResolvedConfig::default();
-        config.dns.clear();
-        config.fallback_dns.clear();
-        config.link_dns = vec![make_link(
-            2,
-            "eth0",
-            vec![dns_server([10, 0, 0, 1])],
-            vec!["~corp.local"],
-            true, // default_route + routing domain
-        )];
+        let config = ResolvedConfig {
+            dns: vec![],
+            fallback_dns: vec![],
+            link_dns: vec![make_link(
+                2,
+                "eth0",
+                vec![dns_server([10, 0, 0, 1])],
+                vec!["~corp.local"],
+                true, // default_route + routing domain
+            )],
+            ..Default::default()
+        };
 
         let router = DnsRouter::from_config(&config);
         assert!(router.has_routing_domains());

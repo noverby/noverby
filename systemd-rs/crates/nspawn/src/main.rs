@@ -5646,22 +5646,28 @@ VirtualEthernet=yes
 
     #[test]
     fn test_derive_machine_name_explicit() {
-        let mut args = NspawnArgs::default();
-        args.machine = Some("testbox".to_string());
+        let args = NspawnArgs {
+            machine: Some("testbox".to_string()),
+            ..Default::default()
+        };
         assert_eq!(derive_machine_name(&args), "testbox");
     }
 
     #[test]
     fn test_derive_machine_name_from_directory() {
-        let mut args = NspawnArgs::default();
-        args.directory = Some("/var/lib/machines/testbox".to_string());
+        let args = NspawnArgs {
+            directory: Some("/var/lib/machines/testbox".to_string()),
+            ..Default::default()
+        };
         assert_eq!(derive_machine_name(&args), "testbox");
     }
 
     #[test]
     fn test_derive_machine_name_from_image() {
-        let mut args = NspawnArgs::default();
-        args.image = Some("/images/testbox.raw".to_string());
+        let args = NspawnArgs {
+            image: Some("/images/testbox.raw".to_string()),
+            ..Default::default()
+        };
         assert_eq!(derive_machine_name(&args), "testbox");
     }
 
@@ -5678,16 +5684,20 @@ VirtualEthernet=yes
 
     #[test]
     fn test_compute_capabilities_add_extra() {
-        let mut args = NspawnArgs::default();
-        args.extra_capabilities = vec![Capability::NetAdmin];
+        let args = NspawnArgs {
+            extra_capabilities: vec![Capability::NetAdmin],
+            ..Default::default()
+        };
         let caps = compute_capabilities(&args);
         assert!(caps.contains(&Capability::NetAdmin));
     }
 
     #[test]
     fn test_compute_capabilities_drop() {
-        let mut args = NspawnArgs::default();
-        args.drop_capabilities = vec![Capability::SysAdmin];
+        let args = NspawnArgs {
+            drop_capabilities: vec![Capability::SysAdmin],
+            ..Default::default()
+        };
         let caps = compute_capabilities(&args);
         assert!(!caps.contains(&Capability::SysAdmin));
         assert!(caps.contains(&Capability::Chown)); // other caps still present
@@ -5695,9 +5705,11 @@ VirtualEthernet=yes
 
     #[test]
     fn test_compute_capabilities_add_and_drop() {
-        let mut args = NspawnArgs::default();
-        args.extra_capabilities = vec![Capability::NetAdmin];
-        args.drop_capabilities = vec![Capability::SysAdmin, Capability::NetAdmin];
+        let args = NspawnArgs {
+            extra_capabilities: vec![Capability::NetAdmin],
+            drop_capabilities: vec![Capability::SysAdmin, Capability::NetAdmin],
+            ..Default::default()
+        };
         let caps = compute_capabilities(&args);
         // NetAdmin was added then dropped
         assert!(!caps.contains(&Capability::NetAdmin));
@@ -5706,9 +5718,11 @@ VirtualEthernet=yes
 
     #[test]
     fn test_compute_capabilities_add_duplicate() {
-        let mut args = NspawnArgs::default();
-        // Chown is already in defaults
-        args.extra_capabilities = vec![Capability::Chown];
+        let args = NspawnArgs {
+            // Chown is already in defaults
+            extra_capabilities: vec![Capability::Chown],
+            ..Default::default()
+        };
         let caps = compute_capabilities(&args);
         let chown_count = caps.iter().filter(|c| **c == Capability::Chown).count();
         assert_eq!(chown_count, 1);
@@ -6181,8 +6195,10 @@ VirtualEthernet=yes
 
     #[test]
     fn test_resolve_root_nonexistent_directory() {
-        let mut args = NspawnArgs::default();
-        args.directory = Some("/nonexistent/path/for/nspawn/test".to_string());
+        let args = NspawnArgs {
+            directory: Some("/nonexistent/path/for/nspawn/test".to_string()),
+            ..Default::default()
+        };
         let result = resolve_root(&args);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));
@@ -6190,16 +6206,20 @@ VirtualEthernet=yes
 
     #[test]
     fn test_resolve_root_existing_directory() {
-        let mut args = NspawnArgs::default();
-        args.directory = Some("/tmp".to_string());
+        let args = NspawnArgs {
+            directory: Some("/tmp".to_string()),
+            ..Default::default()
+        };
         let result = resolve_root(&args);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_resolve_root_file_not_directory() {
-        let mut args = NspawnArgs::default();
-        args.directory = Some("/etc/hostname".to_string());
+        let args = NspawnArgs {
+            directory: Some("/etc/hostname".to_string()),
+            ..Default::default()
+        };
         let result = resolve_root(&args);
         // Either "not a directory" or "does not exist"
         assert!(result.is_err());
@@ -6207,8 +6227,10 @@ VirtualEthernet=yes
 
     #[test]
     fn test_resolve_root_image_nonexistent() {
-        let mut args = NspawnArgs::default();
-        args.image = Some("/nonexistent/path/to/image.raw".to_string());
+        let args = NspawnArgs {
+            image: Some("/nonexistent/path/to/image.raw".to_string()),
+            ..Default::default()
+        };
         let result = resolve_root(&args);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));
@@ -6216,8 +6238,10 @@ VirtualEthernet=yes
 
     #[test]
     fn test_resolve_root_oci_nonexistent() {
-        let mut args = NspawnArgs::default();
-        args.oci_bundle = Some("/nonexistent/path/to/bundle".to_string());
+        let args = NspawnArgs {
+            oci_bundle: Some("/nonexistent/path/to/bundle".to_string()),
+            ..Default::default()
+        };
         let result = resolve_root(&args);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));

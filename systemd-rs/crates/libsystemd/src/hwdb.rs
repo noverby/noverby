@@ -1153,7 +1153,7 @@ mod tests {
         assert_eq!(out.len(), header_size as usize);
 
         // Write nodes.
-        for (_ni, n) in nodes.iter().enumerate() {
+        for n in nodes.iter() {
             let prefix_off = if n.prefix.is_empty() {
                 0u64
             } else {

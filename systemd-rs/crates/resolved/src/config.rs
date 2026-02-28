@@ -1334,8 +1334,10 @@ mod tests {
 
     #[test]
     fn test_parse_negative_trust_anchors_empty_clears() {
-        let mut config = ResolvedConfig::default();
-        config.negative_trust_anchors = vec!["old.example".to_string()];
+        let mut config = ResolvedConfig {
+            negative_trust_anchors: vec!["old.example".to_string()],
+            ..Default::default()
+        };
         config.parse_config("[Resolve]\nNegativeTrustAnchors=\n");
         assert!(config.negative_trust_anchors.is_empty());
     }
@@ -1366,23 +1368,29 @@ mod tests {
 
     #[test]
     fn test_is_negative_trust_anchor_exact_match() {
-        let mut config = ResolvedConfig::default();
-        config.negative_trust_anchors = vec!["example.com".to_string()];
+        let config = ResolvedConfig {
+            negative_trust_anchors: vec!["example.com".to_string()],
+            ..Default::default()
+        };
         assert!(config.is_negative_trust_anchor("example.com"));
     }
 
     #[test]
     fn test_is_negative_trust_anchor_subdomain_match() {
-        let mut config = ResolvedConfig::default();
-        config.negative_trust_anchors = vec!["example.com".to_string()];
+        let config = ResolvedConfig {
+            negative_trust_anchors: vec!["example.com".to_string()],
+            ..Default::default()
+        };
         assert!(config.is_negative_trust_anchor("host.example.com"));
         assert!(config.is_negative_trust_anchor("deep.host.example.com"));
     }
 
     #[test]
     fn test_is_negative_trust_anchor_no_match() {
-        let mut config = ResolvedConfig::default();
-        config.negative_trust_anchors = vec!["example.com".to_string()];
+        let config = ResolvedConfig {
+            negative_trust_anchors: vec!["example.com".to_string()],
+            ..Default::default()
+        };
         assert!(!config.is_negative_trust_anchor("other.com"));
         assert!(!config.is_negative_trust_anchor("notexample.com"));
         assert!(!config.is_negative_trust_anchor("com"));
@@ -1390,16 +1398,20 @@ mod tests {
 
     #[test]
     fn test_is_negative_trust_anchor_case_insensitive() {
-        let mut config = ResolvedConfig::default();
-        config.negative_trust_anchors = vec!["example.com".to_string()];
+        let config = ResolvedConfig {
+            negative_trust_anchors: vec!["example.com".to_string()],
+            ..Default::default()
+        };
         assert!(config.is_negative_trust_anchor("EXAMPLE.COM"));
         assert!(config.is_negative_trust_anchor("Host.Example.COM"));
     }
 
     #[test]
     fn test_is_negative_trust_anchor_trailing_dot() {
-        let mut config = ResolvedConfig::default();
-        config.negative_trust_anchors = vec!["example.com".to_string()];
+        let config = ResolvedConfig {
+            negative_trust_anchors: vec!["example.com".to_string()],
+            ..Default::default()
+        };
         assert!(config.is_negative_trust_anchor("example.com."));
         assert!(config.is_negative_trust_anchor("host.example.com."));
     }
@@ -1412,9 +1424,13 @@ mod tests {
 
     #[test]
     fn test_is_negative_trust_anchor_multiple_anchors() {
-        let mut config = ResolvedConfig::default();
-        config.negative_trust_anchors =
-            vec!["corp.local".to_string(), "internal.example.com".to_string()];
+        let config = ResolvedConfig {
+            negative_trust_anchors: vec![
+                "corp.local".to_string(),
+                "internal.example.com".to_string(),
+            ],
+            ..Default::default()
+        };
         assert!(config.is_negative_trust_anchor("host.corp.local"));
         assert!(config.is_negative_trust_anchor("srv.internal.example.com"));
         assert!(!config.is_negative_trust_anchor("example.com"));
