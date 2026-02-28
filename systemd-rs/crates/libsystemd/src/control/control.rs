@@ -7,6 +7,7 @@ use crate::units::{
 };
 
 use std::fmt::Write as _;
+use std::os::unix::fs::PermissionsExt;
 
 use log::{info, trace};
 use serde_json::Value;
@@ -26,7 +27,19 @@ pub fn open_all_sockets(run_info: ArcMutRuntimeInfo, conf: &crate::config::Confi
     }
     use std::os::unix::net::UnixListener;
     std::fs::create_dir_all(&conf.notification_sockets_dir).unwrap();
+    // Ensure the notification sockets directory is world-traversable so
+    // non-root users can reach the control socket inside it.
+    let _ = std::fs::set_permissions(
+        &conf.notification_sockets_dir,
+        std::fs::Permissions::from_mode(0o755),
+    );
     let unixsock = UnixListener::bind(&control_sock_path).unwrap();
+    // Default socket mode after bind() inherits the process umask (typically
+    // 0022 → mode 0755), which prevents non-root users from connecting
+    // (write permission is required to connect to a Unix socket).  Set the
+    // socket to 0666 so any user can issue control commands — matching real
+    // systemd's /run/systemd/private socket behaviour.
+    let _ = std::fs::set_permissions(&control_sock_path, std::fs::Permissions::from_mode(0o666));
     accept_control_connections_unix_socket(run_info, unixsock);
     //let tcpsock = std::net::TcpListener::bind("127.0.0.1:8080").unwrap();
     //accept_control_connections_tcp(
