@@ -15,6 +15,24 @@
 //!   systemd-integritysetup detach VOLUME
 //!       Tear down a previously attached dm-integrity device.
 //!
+//!   systemd-integritysetup format DEVICE [OPTIONS]
+//!       Initialize an integrity superblock on DEVICE. This writes the
+//!       dm-integrity on-disk superblock header and zeroes the journal area,
+//!       preparing the device for use with attach.
+//!
+//!   systemd-integritysetup wipe DEVICE
+//!       Wipe (zero) the integrity superblock on DEVICE, removing all
+//!       dm-integrity metadata.
+//!
+//!   systemd-integritysetup dump DEVICE
+//!       Read and display the dm-integrity superblock from DEVICE.
+//!
+//!   systemd-integritysetup resize VOLUME [DEVICE]
+//!       Resize an active dm-integrity device after the underlying block
+//!       device has been resized. Reloads the device-mapper table with
+//!       the new device size. If DEVICE is not specified, it is read from
+//!       the current DM table status.
+//!
 //!   systemd-integritysetup --help | -h
 //!       Show help.
 //!
@@ -57,6 +75,7 @@
 use std::fmt;
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process;
@@ -112,6 +131,278 @@ const DEFAULT_SECTOR_SIZE: u32 = 512;
 /// Exit code for integrity check failures.
 #[allow(dead_code)]
 const EXIT_INTEGRITY_ERROR: i32 = 4;
+
+// ---------------------------------------------------------------------------
+// Integrity superblock constants
+// ---------------------------------------------------------------------------
+
+/// Magic bytes at the start of a dm-integrity superblock: "integrit" (8 bytes).
+const SB_MAGIC: &[u8; 8] = b"integrit";
+
+/// Superblock version 1 — base format.
+const SB_VERSION_1: u8 = 1;
+
+/// Superblock version 2 — adds `log2_blocks_per_bitmap_bit`.
+const SB_VERSION_2: u8 = 2;
+
+/// Superblock version 3 — adds `recalc_sector`.
+#[allow(dead_code)]
+const SB_VERSION_3: u8 = 3;
+
+/// Superblock version 4 — adds fix_padding flag support.
+#[allow(dead_code)]
+const SB_VERSION_4: u8 = 4;
+
+/// Superblock version 5 — adds fix_hmac flag support.
+#[allow(dead_code)]
+const SB_VERSION_5: u8 = 5;
+
+/// Total on-disk size of the superblock structure (padded to 512 bytes for
+/// sector alignment). The logical fields occupy 40 bytes; the remaining
+/// bytes are zero-filled padding.
+const SB_SIZE: usize = 512;
+
+// Field offsets within the superblock.
+const SB_MAGIC_OFFSET: usize = 0;
+const SB_MAGIC_SIZE: usize = 8;
+const SB_VERSION_OFFSET: usize = 8;
+const SB_LOG2_INTERLEAVE_OFFSET: usize = 9;
+const SB_TAG_SIZE_OFFSET: usize = 10;
+const SB_JOURNAL_SECTIONS_OFFSET: usize = 12;
+const SB_PROVIDED_DATA_SECTORS_OFFSET: usize = 16;
+const SB_FLAGS_OFFSET: usize = 24;
+const SB_LOG2_SECTORS_PER_BLOCK_OFFSET: usize = 28;
+const SB_LOG2_BLOCKS_PER_BITMAP_BIT_OFFSET: usize = 29;
+// offset 30-31: pad
+const SB_RECALC_SECTOR_OFFSET: usize = 32;
+
+// Superblock flags.
+const SB_FLAG_HAVE_JOURNAL_MAC: u32 = 0x1;
+const SB_FLAG_RECALCULATING: u32 = 0x2;
+const SB_FLAG_DIRTY_BITMAP: u32 = 0x4;
+const SB_FLAG_FIXED_PADDING: u32 = 0x8;
+const SB_FLAG_FIXED_HMAC: u32 = 0x10;
+
+/// Default number of journal sections written during format.
+const DEFAULT_JOURNAL_SECTIONS: u32 = 8;
+
+/// Default log2 of interleave sectors (e.g. 15 → 32768 sectors).
+const DEFAULT_LOG2_INTERLEAVE: u8 = 15;
+
+/// Default log2 of sectors per block (0 → 1 sector per block = 512 bytes).
+#[allow(dead_code)]
+const DEFAULT_LOG2_SECTORS_PER_BLOCK: u8 = 0;
+
+/// Default log2 of blocks per bitmap bit.
+const DEFAULT_LOG2_BLOCKS_PER_BITMAP_BIT: u8 = 0;
+
+/// DM_TABLE_STATUS ioctl command number.
+const DM_TABLE_STATUS_CMD: u32 = 11;
+
+/// Parsed representation of the dm-integrity on-disk superblock.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct IntegritySuperblock {
+    /// Superblock version (1–5).
+    version: u8,
+    /// Log2 of interleave sectors.
+    log2_interleave_sectors: u8,
+    /// Tag (checksum) size in bytes.
+    tag_size: u16,
+    /// Number of journal sections.
+    journal_sections: u32,
+    /// Number of data sectors provided to upper layers.
+    provided_data_sectors: u64,
+    /// Flags (SB_FLAG_*).
+    flags: u32,
+    /// Log2 of sectors per block.
+    log2_sectors_per_block: u8,
+    /// Log2 of blocks per bitmap bit (version ≥ 2).
+    log2_blocks_per_bitmap_bit: u8,
+    /// Next sector to recalculate (version ≥ 3).
+    recalc_sector: u64,
+}
+
+impl IntegritySuperblock {
+    /// Decode a superblock from a raw 512-byte sector buffer.
+    fn from_bytes(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < SB_SIZE {
+            return Err(format!(
+                "Buffer too small for superblock: {} < {SB_SIZE}",
+                buf.len()
+            ));
+        }
+
+        // Check magic.
+        if &buf[SB_MAGIC_OFFSET..SB_MAGIC_OFFSET + SB_MAGIC_SIZE] != SB_MAGIC {
+            return Err("Not a dm-integrity superblock (bad magic).".to_string());
+        }
+
+        let version = buf[SB_VERSION_OFFSET];
+        if version == 0 || version > SB_VERSION_5 {
+            return Err(format!("Unsupported superblock version: {version}"));
+        }
+
+        let log2_interleave_sectors = buf[SB_LOG2_INTERLEAVE_OFFSET];
+        let tag_size = u16::from_le_bytes(
+            buf[SB_TAG_SIZE_OFFSET..SB_TAG_SIZE_OFFSET + 2]
+                .try_into()
+                .unwrap(),
+        );
+        let journal_sections = u32::from_le_bytes(
+            buf[SB_JOURNAL_SECTIONS_OFFSET..SB_JOURNAL_SECTIONS_OFFSET + 4]
+                .try_into()
+                .unwrap(),
+        );
+        let provided_data_sectors = u64::from_le_bytes(
+            buf[SB_PROVIDED_DATA_SECTORS_OFFSET..SB_PROVIDED_DATA_SECTORS_OFFSET + 8]
+                .try_into()
+                .unwrap(),
+        );
+        let flags = u32::from_le_bytes(
+            buf[SB_FLAGS_OFFSET..SB_FLAGS_OFFSET + 4]
+                .try_into()
+                .unwrap(),
+        );
+        let log2_sectors_per_block = buf[SB_LOG2_SECTORS_PER_BLOCK_OFFSET];
+        let log2_blocks_per_bitmap_bit = if version >= SB_VERSION_2 {
+            buf[SB_LOG2_BLOCKS_PER_BITMAP_BIT_OFFSET]
+        } else {
+            0
+        };
+        let recalc_sector = if version >= SB_VERSION_3 {
+            u64::from_le_bytes(
+                buf[SB_RECALC_SECTOR_OFFSET..SB_RECALC_SECTOR_OFFSET + 8]
+                    .try_into()
+                    .unwrap(),
+            )
+        } else {
+            0
+        };
+
+        Ok(Self {
+            version,
+            log2_interleave_sectors,
+            tag_size,
+            journal_sections,
+            provided_data_sectors,
+            flags,
+            log2_sectors_per_block,
+            log2_blocks_per_bitmap_bit,
+            recalc_sector,
+        })
+    }
+
+    /// Encode the superblock into a 512-byte sector buffer.
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = vec![0u8; SB_SIZE];
+
+        // Magic.
+        buf[SB_MAGIC_OFFSET..SB_MAGIC_OFFSET + SB_MAGIC_SIZE].copy_from_slice(SB_MAGIC);
+
+        // Version.
+        buf[SB_VERSION_OFFSET] = self.version;
+
+        // Fields.
+        buf[SB_LOG2_INTERLEAVE_OFFSET] = self.log2_interleave_sectors;
+        buf[SB_TAG_SIZE_OFFSET..SB_TAG_SIZE_OFFSET + 2]
+            .copy_from_slice(&self.tag_size.to_le_bytes());
+        buf[SB_JOURNAL_SECTIONS_OFFSET..SB_JOURNAL_SECTIONS_OFFSET + 4]
+            .copy_from_slice(&self.journal_sections.to_le_bytes());
+        buf[SB_PROVIDED_DATA_SECTORS_OFFSET..SB_PROVIDED_DATA_SECTORS_OFFSET + 8]
+            .copy_from_slice(&self.provided_data_sectors.to_le_bytes());
+        buf[SB_FLAGS_OFFSET..SB_FLAGS_OFFSET + 4].copy_from_slice(&self.flags.to_le_bytes());
+        buf[SB_LOG2_SECTORS_PER_BLOCK_OFFSET] = self.log2_sectors_per_block;
+
+        if self.version >= SB_VERSION_2 {
+            buf[SB_LOG2_BLOCKS_PER_BITMAP_BIT_OFFSET] = self.log2_blocks_per_bitmap_bit;
+        }
+
+        if self.version >= SB_VERSION_3 {
+            buf[SB_RECALC_SECTOR_OFFSET..SB_RECALC_SECTOR_OFFSET + 8]
+                .copy_from_slice(&self.recalc_sector.to_le_bytes());
+        }
+
+        buf
+    }
+
+    /// Return a human-readable description of the flags field.
+    fn flags_description(&self) -> String {
+        let mut parts = Vec::new();
+        if self.flags & SB_FLAG_HAVE_JOURNAL_MAC != 0 {
+            parts.push("HAVE_JOURNAL_MAC");
+        }
+        if self.flags & SB_FLAG_RECALCULATING != 0 {
+            parts.push("RECALCULATING");
+        }
+        if self.flags & SB_FLAG_DIRTY_BITMAP != 0 {
+            parts.push("DIRTY_BITMAP");
+        }
+        if self.flags & SB_FLAG_FIXED_PADDING != 0 {
+            parts.push("FIXED_PADDING");
+        }
+        if self.flags & SB_FLAG_FIXED_HMAC != 0 {
+            parts.push("FIXED_HMAC");
+        }
+        if parts.is_empty() {
+            "(none)".to_string()
+        } else {
+            parts.join(" | ")
+        }
+    }
+
+    /// Format for display (used by the dump command).
+    fn format_dump(&self) -> String {
+        let mut out = String::new();
+        out.push_str("Info for integrity device\n");
+        out.push_str(&format!("superblock_version:         {}\n", self.version));
+        out.push_str(&format!(
+            "log2_interleave_sectors:    {}\n",
+            self.log2_interleave_sectors
+        ));
+        out.push_str(&format!("integrity_tag_size:         {}\n", self.tag_size));
+        out.push_str(&format!(
+            "journal_sections:           {}\n",
+            self.journal_sections
+        ));
+        out.push_str(&format!(
+            "provided_data_sectors:      {}\n",
+            self.provided_data_sectors
+        ));
+        out.push_str(&format!(
+            "sector_size:                {}\n",
+            512u32 << self.log2_sectors_per_block
+        ));
+        out.push_str(&format!(
+            "log2_sectors_per_block:     {}\n",
+            self.log2_sectors_per_block
+        ));
+        if self.version >= SB_VERSION_2 {
+            out.push_str(&format!(
+                "log2_blocks_per_bitmap_bit: {}\n",
+                self.log2_blocks_per_bitmap_bit
+            ));
+        }
+        out.push_str(&format!(
+            "flags:                      0x{:x} [{}]\n",
+            self.flags,
+            self.flags_description()
+        ));
+        if self.version >= SB_VERSION_3 {
+            out.push_str(&format!(
+                "recalc_sector:              {}\n",
+                self.recalc_sector
+            ));
+        }
+        out
+    }
+}
+
+/// Compute the log2-of-sectors-per-block value from a sector size.
+/// `sector_size` must be a power of two ≥ 512.
+fn log2_sectors_per_block(sector_size: u32) -> u8 {
+    assert!(sector_size >= 512 && sector_size.is_power_of_two());
+    (sector_size / 512).trailing_zeros() as u8
+}
 
 // ---------------------------------------------------------------------------
 // Journal mode
@@ -370,13 +661,30 @@ enum Command {
     Detach {
         volume: String,
     },
+    Format {
+        device: String,
+        options: String,
+    },
+    Wipe {
+        device: String,
+    },
+    Dump {
+        device: String,
+    },
+    Resize {
+        volume: String,
+        device: Option<String>,
+    },
     Help,
     Version,
 }
 
 fn parse_args(args: &[String]) -> Result<Command, String> {
     if args.is_empty() {
-        return Err("No command specified. Use 'attach' or 'detach'.".to_string());
+        return Err(
+            "No command specified. Use 'attach', 'detach', 'format', 'wipe', 'dump', or 'resize'."
+                .to_string(),
+        );
     }
 
     let mut iter = args.iter();
@@ -409,6 +717,30 @@ fn parse_args(args: &[String]) -> Result<Command, String> {
                 .ok_or("detach: missing VOLUME argument")?
                 .clone();
             Ok(Command::Detach { volume })
+        }
+        "format" => {
+            let device = iter
+                .next()
+                .ok_or("format: missing DEVICE argument")?
+                .clone();
+            let options = iter.next().cloned().unwrap_or_default();
+            Ok(Command::Format { device, options })
+        }
+        "wipe" => {
+            let device = iter.next().ok_or("wipe: missing DEVICE argument")?.clone();
+            Ok(Command::Wipe { device })
+        }
+        "dump" => {
+            let device = iter.next().ok_or("dump: missing DEVICE argument")?.clone();
+            Ok(Command::Dump { device })
+        }
+        "resize" => {
+            let volume = iter
+                .next()
+                .ok_or("resize: missing VOLUME argument")?
+                .clone();
+            let device = iter.next().cloned();
+            Ok(Command::Resize { volume, device })
         }
         other => Err(format!("Unknown command: {other}")),
     }
@@ -734,6 +1066,296 @@ fn integrity_tag_size(algorithm: &str) -> u32 {
 // Attach / Detach operations
 // ---------------------------------------------------------------------------
 
+/// Read a raw superblock from a device or file path.
+fn read_superblock(device: &str) -> Result<IntegritySuperblock, String> {
+    let data = fs::read(device).map_err(|e| format!("Failed to read {device}: {e}"))?;
+    if data.len() < SB_SIZE {
+        return Err(format!(
+            "Device/file too small for integrity superblock: {} bytes",
+            data.len()
+        ));
+    }
+    IntegritySuperblock::from_bytes(&data)
+}
+
+/// Write a raw superblock to a device or file path.
+///
+/// Opens the device/file for writing and writes exactly 512 bytes at offset 0.
+fn write_superblock(device: &str, sb: &IntegritySuperblock) -> Result<(), String> {
+    let bytes = sb.to_bytes();
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .open(device)
+        .map_err(|e| format!("Failed to open {device} for writing: {e}"))?;
+    file.write_all(&bytes)
+        .map_err(|e| format!("Failed to write superblock to {device}: {e}"))?;
+    file.flush()
+        .map_err(|e| format!("Failed to flush {device}: {e}"))?;
+    Ok(())
+}
+
+/// Format a device with a dm-integrity superblock.
+///
+/// This initializes the on-disk superblock header, preparing the device for
+/// use with `attach`. Options control the algorithm, tag size, sector size,
+/// journal configuration, and flags written into the superblock.
+fn cmd_format(device: &str, options_str: &str) -> Result<(), String> {
+    let opts = parse_options(options_str)?;
+
+    // Validate device exists and is readable.
+    let meta = fs::metadata(device).map_err(|e| format!("Cannot access device {device}: {e}"))?;
+    if meta.len() < SB_SIZE as u64 {
+        return Err(format!(
+            "Device {device} too small ({} bytes) for integrity superblock",
+            meta.len()
+        ));
+    }
+
+    let tag_size = integrity_tag_size(&opts.algorithm) as u16;
+    let l2spb = log2_sectors_per_block(opts.sector_size);
+
+    // Compute provided data sectors. The real kernel does complex maths
+    // involving journal size, interleave, and tag overhead. We provide a
+    // conservative estimate: total sectors minus 1 (superblock) minus
+    // journal reservation, minus per-sector tag overhead.
+    let total_bytes = meta.len();
+    let total_sectors = total_bytes / 512;
+
+    if total_sectors < 2 {
+        return Err(format!("Device {device} too small to format."));
+    }
+
+    // Reserve 1 sector for the superblock.
+    let sectors_after_sb = total_sectors - 1;
+
+    // Calculate journal reservation (in sectors).
+    let journal_sections = if opts.journal_mode == JournalMode::NoJournal {
+        0u32
+    } else {
+        DEFAULT_JOURNAL_SECTIONS
+    };
+    // Each journal section is roughly 128 sectors (64 KiB). Cap the total
+    // journal reservation to at most 1/4 of the space after the superblock
+    // so that small devices still have room for data.
+    let raw_journal_sectors = journal_sections as u64 * 128;
+    let journal_sectors = raw_journal_sectors.min(sectors_after_sb / 4);
+
+    let remaining = sectors_after_sb.saturating_sub(journal_sectors);
+    // Each data sector has an associated tag, so the usable data sectors is
+    // approximately: remaining * sector_size / (sector_size + tag_size).
+    let sector_sz = opts.sector_size as u64;
+    let tag_sz = tag_size as u64;
+    let provided_data_sectors = if remaining > 0 && sector_sz + tag_sz > 0 {
+        remaining * sector_sz / (sector_sz + tag_sz)
+    } else {
+        0
+    };
+
+    // Build flags.
+    let mut flags: u32 = 0;
+    if opts.journal_integrity.is_some() {
+        flags |= SB_FLAG_HAVE_JOURNAL_MAC;
+    }
+    if opts.integrity_recalculate {
+        flags |= SB_FLAG_RECALCULATING;
+    }
+    if opts.journal_mode == JournalMode::Bitmap {
+        flags |= SB_FLAG_DIRTY_BITMAP;
+    }
+    if opts.fix_padding {
+        flags |= SB_FLAG_FIXED_PADDING;
+    }
+    if opts.fix_hmac {
+        flags |= SB_FLAG_FIXED_HMAC;
+    }
+
+    // Determine version based on which features are used.
+    let version = if opts.fix_hmac {
+        SB_VERSION_5
+    } else if opts.fix_padding {
+        SB_VERSION_4
+    } else if opts.integrity_recalculate || opts.integrity_recalculate_reset {
+        SB_VERSION_3
+    } else if opts.journal_mode == JournalMode::Bitmap {
+        SB_VERSION_2
+    } else {
+        SB_VERSION_1
+    };
+
+    let sb = IntegritySuperblock {
+        version,
+        log2_interleave_sectors: DEFAULT_LOG2_INTERLEAVE,
+        tag_size,
+        journal_sections,
+        provided_data_sectors,
+        flags,
+        log2_sectors_per_block: l2spb,
+        log2_blocks_per_bitmap_bit: if version >= SB_VERSION_2 {
+            DEFAULT_LOG2_BLOCKS_PER_BITMAP_BIT
+        } else {
+            0
+        },
+        recalc_sector: 0,
+    };
+
+    write_superblock(device, &sb)?;
+
+    eprintln!(
+        "Formatted integrity device {device} (version {version}, algorithm {}, tag size {tag_size} bytes, \
+         {} provided data sectors, {} journal sections).",
+        opts.algorithm, provided_data_sectors, journal_sections
+    );
+    Ok(())
+}
+
+/// Wipe the integrity superblock from a device by zeroing the first sector.
+fn cmd_wipe(device: &str) -> Result<(), String> {
+    let meta = fs::metadata(device).map_err(|e| format!("Cannot access device {device}: {e}"))?;
+    if meta.len() < SB_SIZE as u64 {
+        return Err(format!(
+            "Device {device} too small ({} bytes) to contain a superblock",
+            meta.len()
+        ));
+    }
+
+    // Verify there is actually a superblock before wiping.
+    let data = fs::read(device).map_err(|e| format!("Failed to read {device}: {e}"))?;
+    if data.len() < SB_SIZE || &data[SB_MAGIC_OFFSET..SB_MAGIC_OFFSET + SB_MAGIC_SIZE] != SB_MAGIC {
+        return Err(format!(
+            "No dm-integrity superblock found on {device}; nothing to wipe."
+        ));
+    }
+
+    // Write zeros over the superblock sector.
+    let zeros = vec![0u8; SB_SIZE];
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .open(device)
+        .map_err(|e| format!("Failed to open {device} for writing: {e}"))?;
+    file.write_all(&zeros)
+        .map_err(|e| format!("Failed to wipe superblock on {device}: {e}"))?;
+    file.flush()
+        .map_err(|e| format!("Failed to flush {device}: {e}"))?;
+
+    eprintln!("Wiped integrity superblock from {device}.");
+    Ok(())
+}
+
+/// Dump (display) the integrity superblock from a device.
+fn cmd_dump(device: &str) -> Result<(), String> {
+    let sb = read_superblock(device)?;
+    print!("{}", sb.format_dump());
+    Ok(())
+}
+
+/// Resize an active dm-integrity device.
+///
+/// This reloads the device-mapper table with the updated size of the
+/// underlying block device. If `device` is not provided the command
+/// attempts to query the current table status.
+fn cmd_resize(volume: &str, device: Option<&str>) -> Result<(), String> {
+    // If the caller supplied a device path, use it directly to obtain the
+    // new sector count. Otherwise try DM_TABLE_STATUS to discover the
+    // device from the running table.
+    let dev_path = match device {
+        Some(d) => d.to_string(),
+        None => {
+            // Attempt to read the current table status.
+            let mut buf = vec![0u8; DM_IOCTL_BUF_SIZE];
+            dm_ioctl_init(&mut buf, volume, "", 0);
+            dm_ioctl(DM_TABLE_STATUS_CMD, &mut buf).map_err(|e| {
+                format!(
+                    "Cannot query table status for {volume}: {e}. \
+                     Specify the DEVICE argument explicitly."
+                )
+            })?;
+
+            // Parse the status response. The target params start after the
+            // dm_target_spec (40 bytes) at data_start. The first token in
+            // the params string is the device path.
+            let data_start = read_u32(&buf, DM_DATA_START_OFFSET) as usize;
+            let params_off = data_start + 40;
+            if params_off >= buf.len() {
+                return Err("Invalid table status response.".to_string());
+            }
+            let params_end = buf[params_off..]
+                .iter()
+                .position(|&b| b == 0)
+                .map(|p| params_off + p)
+                .unwrap_or(buf.len());
+            let params_str = String::from_utf8_lossy(&buf[params_off..params_end]).to_string();
+            params_str
+                .split_whitespace()
+                .next()
+                .ok_or("Cannot determine device from table status.")?
+                .to_string()
+        }
+    };
+
+    // Get the new total sector count.
+    let new_total_sectors = device_size_sectors(&dev_path)
+        .map_err(|e| format!("Failed to get device size for {dev_path}: {e}"))?;
+    if new_total_sectors == 0 {
+        return Err(format!("Device {dev_path} has zero size."));
+    }
+
+    let uuid_str = format!("CRYPT-INTEGRITY-{volume}");
+
+    // Read the current superblock from the device to obtain parameters for
+    // rebuilding the table (we need algorithm / tag_size / journal mode).
+    // If that fails we fall back to defaults — the kernel will reconcile.
+    let (tag_size, mode_char) = match read_superblock(&dev_path) {
+        Ok(sb) => {
+            let mode = if sb.flags & SB_FLAG_DIRTY_BITMAP != 0 {
+                "B"
+            } else if sb.journal_sections == 0 {
+                "D"
+            } else {
+                "J"
+            };
+            (sb.tag_size as u32, mode.to_string())
+        }
+        Err(_) => (integrity_tag_size(DEFAULT_ALGORITHM), "J".to_string()),
+    };
+
+    // Rebuild a minimal integrity params string.
+    let params = format!("{dev_path} 0 {tag_size} {mode_char} 1 internal_hash:{DEFAULT_ALGORITHM}");
+
+    // 1. Suspend the device.
+    let mut buf = vec![0u8; DM_IOCTL_BUF_SIZE];
+    dm_ioctl_init(&mut buf, volume, &uuid_str, DM_SUSPEND_FLAG);
+    dm_ioctl(DM_DEV_SUSPEND_CMD, &mut buf)
+        .map_err(|e| format!("DM_DEV_SUSPEND failed for {volume}: {e}"))?;
+
+    // 2. Clear old table.
+    dm_ioctl_init(&mut buf, volume, &uuid_str, 0);
+    dm_ioctl(DM_TABLE_CLEAR_CMD, &mut buf)
+        .map_err(|e| format!("DM_TABLE_CLEAR failed for {volume}: {e}"))?;
+
+    // 3. Load new table with updated size.
+    dm_ioctl_init(&mut buf, volume, &uuid_str, 0);
+    write_u32(&mut buf, DM_TARGET_COUNT_OFFSET, 1);
+    let data_start = read_u32(&buf, DM_DATA_START_OFFSET) as usize;
+    append_target(
+        &mut buf,
+        data_start,
+        0,
+        new_total_sectors,
+        "integrity",
+        &params,
+    );
+    dm_ioctl(DM_TABLE_LOAD_CMD, &mut buf)
+        .map_err(|e| format!("DM_TABLE_LOAD failed for {volume}: {e}"))?;
+
+    // 4. Resume.
+    dm_ioctl_init(&mut buf, volume, &uuid_str, 0);
+    dm_ioctl(DM_DEV_SUSPEND_CMD, &mut buf)
+        .map_err(|e| format!("DM_DEV_SUSPEND (resume) failed for {volume}: {e}"))?;
+
+    eprintln!("Resized integrity device /dev/mapper/{volume} to {new_total_sectors} sectors.");
+    Ok(())
+}
+
 /// Attach a dm-integrity block device via device-mapper.
 fn cmd_attach(
     volume: &str,
@@ -884,6 +1506,23 @@ Commands:
   detach VOLUME
       Tear down a previously attached dm-integrity device.
 
+  format DEVICE [OPTIONS]
+      Initialize an integrity superblock on DEVICE.
+      Writes the on-disk superblock header and prepares the device for use
+      with the attach command. OPTIONS is the same comma-separated format.
+
+  wipe DEVICE
+      Wipe (zero) the integrity superblock from DEVICE, removing all
+      dm-integrity metadata.
+
+  dump DEVICE
+      Read and display the dm-integrity superblock from DEVICE.
+
+  resize VOLUME [DEVICE]
+      Resize an active dm-integrity device after the underlying block
+      device has been resized. If DEVICE is not given, the current device
+      is discovered from the running table status.
+
 Options (comma-separated in the OPTIONS argument):
   algorithm=ALG                Integrity algorithm (default: crc32c)
   journal-commit-time=MS       Journal commit interval (ms)
@@ -942,6 +1581,12 @@ fn run() -> Result<(), (String, i32)> {
             options,
         } => cmd_attach(&volume, &device, key.as_deref(), &options).map_err(|e| (e, 1)),
         Command::Detach { volume } => cmd_detach(&volume).map_err(|e| (e, 1)),
+        Command::Format { device, options } => cmd_format(&device, &options).map_err(|e| (e, 1)),
+        Command::Wipe { device } => cmd_wipe(&device).map_err(|e| (e, 1)),
+        Command::Dump { device } => cmd_dump(&device).map_err(|e| (e, 1)),
+        Command::Resize { volume, device } => {
+            cmd_resize(&volume, device.as_deref()).map_err(|e| (e, 1))
+        }
     }
 }
 
@@ -962,9 +1607,31 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     fn args(strs: &[&str]) -> Vec<String> {
         strs.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Create a temporary file pre-filled with `size` zero bytes.
+    fn temp_file_zeros(size: usize) -> tempfile::NamedTempFile {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(&vec![0u8; size]).unwrap();
+        f.flush().unwrap();
+        f
+    }
+
+    /// Create a temporary file containing a valid integrity superblock.
+    fn temp_file_with_superblock(sb: &IntegritySuperblock) -> tempfile::NamedTempFile {
+        let bytes = sb.to_bytes();
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        // Write superblock + extra space so the file is large enough for format.
+        f.write_all(&bytes).unwrap();
+        // Pad to at least 1 MiB so format has room.
+        let pad = vec![0u8; 1024 * 1024 - bytes.len()];
+        f.write_all(&pad).unwrap();
+        f.flush().unwrap();
+        f
     }
 
     // -----------------------------------------------------------------------
@@ -1067,6 +1734,105 @@ mod tests {
     #[test]
     fn test_parse_args_unknown_command() {
         assert!(parse_args(&args(&["frobnicate"])).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_args — format / wipe / dump / resize
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_args_format_minimal() {
+        let cmd = parse_args(&args(&["format", "/dev/sda1"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Format {
+                device: "/dev/sda1".to_string(),
+                options: String::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_format_with_options() {
+        let cmd = parse_args(&args(&[
+            "format",
+            "/dev/sda1",
+            "algorithm=sha256,no-journal",
+        ]))
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Format {
+                device: "/dev/sda1".to_string(),
+                options: "algorithm=sha256,no-journal".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_format_missing_device() {
+        assert!(parse_args(&args(&["format"])).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_wipe() {
+        let cmd = parse_args(&args(&["wipe", "/dev/sda1"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Wipe {
+                device: "/dev/sda1".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_wipe_missing_device() {
+        assert!(parse_args(&args(&["wipe"])).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_dump() {
+        let cmd = parse_args(&args(&["dump", "/dev/sda1"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Dump {
+                device: "/dev/sda1".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_dump_missing_device() {
+        assert!(parse_args(&args(&["dump"])).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_resize_minimal() {
+        let cmd = parse_args(&args(&["resize", "myvol"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Resize {
+                volume: "myvol".to_string(),
+                device: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_resize_with_device() {
+        let cmd = parse_args(&args(&["resize", "myvol", "/dev/sda1"])).unwrap();
+        assert_eq!(
+            cmd,
+            Command::Resize {
+                volume: "myvol".to_string(),
+                device: Some("/dev/sda1".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_resize_missing_volume() {
+        assert!(parse_args(&args(&["resize"])).is_err());
     }
 
     // -----------------------------------------------------------------------
@@ -2210,5 +2976,753 @@ mod tests {
     #[test]
     fn test_exit_integrity_error_code() {
         assert_eq!(EXIT_INTEGRITY_ERROR, 4);
+    }
+
+    // -----------------------------------------------------------------------
+    // Superblock constants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_sb_magic() {
+        assert_eq!(SB_MAGIC, b"integrit");
+        assert_eq!(SB_MAGIC.len(), 8);
+    }
+
+    #[test]
+    fn test_sb_size() {
+        assert_eq!(SB_SIZE, 512);
+    }
+
+    #[test]
+    fn test_sb_versions() {
+        assert_eq!(SB_VERSION_1, 1);
+        assert_eq!(SB_VERSION_2, 2);
+        assert_eq!(SB_VERSION_3, 3);
+        assert_eq!(SB_VERSION_4, 4);
+        assert_eq!(SB_VERSION_5, 5);
+    }
+
+    #[test]
+    fn test_sb_flags() {
+        assert_eq!(SB_FLAG_HAVE_JOURNAL_MAC, 0x1);
+        assert_eq!(SB_FLAG_RECALCULATING, 0x2);
+        assert_eq!(SB_FLAG_DIRTY_BITMAP, 0x4);
+        assert_eq!(SB_FLAG_FIXED_PADDING, 0x8);
+        assert_eq!(SB_FLAG_FIXED_HMAC, 0x10);
+    }
+
+    // -----------------------------------------------------------------------
+    // IntegritySuperblock roundtrip tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_superblock_roundtrip_v1() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_1,
+            log2_interleave_sectors: 15,
+            tag_size: 4,
+            journal_sections: 8,
+            provided_data_sectors: 1000,
+            flags: 0,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+
+        let bytes = sb.to_bytes();
+        assert_eq!(bytes.len(), SB_SIZE);
+        assert_eq!(&bytes[0..8], SB_MAGIC);
+        assert_eq!(bytes[SB_VERSION_OFFSET], SB_VERSION_1);
+
+        let sb2 = IntegritySuperblock::from_bytes(&bytes).unwrap();
+        assert_eq!(sb, sb2);
+    }
+
+    #[test]
+    fn test_superblock_roundtrip_v2() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_2,
+            log2_interleave_sectors: 12,
+            tag_size: 32,
+            journal_sections: 4,
+            provided_data_sectors: 50000,
+            flags: SB_FLAG_DIRTY_BITMAP,
+            log2_sectors_per_block: 3,
+            log2_blocks_per_bitmap_bit: 2,
+            recalc_sector: 0,
+        };
+
+        let bytes = sb.to_bytes();
+        let sb2 = IntegritySuperblock::from_bytes(&bytes).unwrap();
+        assert_eq!(sb, sb2);
+        assert_eq!(sb2.log2_blocks_per_bitmap_bit, 2);
+    }
+
+    #[test]
+    fn test_superblock_roundtrip_v3() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_3,
+            log2_interleave_sectors: 15,
+            tag_size: 32,
+            journal_sections: 8,
+            provided_data_sectors: 999999,
+            flags: SB_FLAG_RECALCULATING,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 42,
+        };
+
+        let bytes = sb.to_bytes();
+        let sb2 = IntegritySuperblock::from_bytes(&bytes).unwrap();
+        assert_eq!(sb, sb2);
+        assert_eq!(sb2.recalc_sector, 42);
+    }
+
+    #[test]
+    fn test_superblock_roundtrip_v5_all_flags() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_5,
+            log2_interleave_sectors: 10,
+            tag_size: 64,
+            journal_sections: 16,
+            provided_data_sectors: 123456789,
+            flags: SB_FLAG_HAVE_JOURNAL_MAC
+                | SB_FLAG_RECALCULATING
+                | SB_FLAG_DIRTY_BITMAP
+                | SB_FLAG_FIXED_PADDING
+                | SB_FLAG_FIXED_HMAC,
+            log2_sectors_per_block: 2,
+            log2_blocks_per_bitmap_bit: 4,
+            recalc_sector: 100,
+        };
+
+        let bytes = sb.to_bytes();
+        let sb2 = IntegritySuperblock::from_bytes(&bytes).unwrap();
+        assert_eq!(sb, sb2);
+    }
+
+    #[test]
+    fn test_superblock_from_bytes_bad_magic() {
+        let mut buf = vec![0u8; SB_SIZE];
+        buf[0..8].copy_from_slice(b"BADMAGIC");
+        assert!(IntegritySuperblock::from_bytes(&buf).is_err());
+    }
+
+    #[test]
+    fn test_superblock_from_bytes_too_small() {
+        let buf = vec![0u8; 100];
+        assert!(IntegritySuperblock::from_bytes(&buf).is_err());
+    }
+
+    #[test]
+    fn test_superblock_from_bytes_version_zero() {
+        let mut buf = vec![0u8; SB_SIZE];
+        buf[0..8].copy_from_slice(SB_MAGIC);
+        buf[SB_VERSION_OFFSET] = 0;
+        assert!(IntegritySuperblock::from_bytes(&buf).is_err());
+    }
+
+    #[test]
+    fn test_superblock_from_bytes_version_too_high() {
+        let mut buf = vec![0u8; SB_SIZE];
+        buf[0..8].copy_from_slice(SB_MAGIC);
+        buf[SB_VERSION_OFFSET] = 99;
+        assert!(IntegritySuperblock::from_bytes(&buf).is_err());
+    }
+
+    #[test]
+    fn test_superblock_v1_ignores_v2_fields() {
+        // A version 1 superblock should have log2_blocks_per_bitmap_bit = 0
+        // even if that byte is non-zero on disk.
+        let mut buf = vec![0u8; SB_SIZE];
+        buf[0..8].copy_from_slice(SB_MAGIC);
+        buf[SB_VERSION_OFFSET] = SB_VERSION_1;
+        buf[SB_LOG2_BLOCKS_PER_BITMAP_BIT_OFFSET] = 5;
+        let sb = IntegritySuperblock::from_bytes(&buf).unwrap();
+        assert_eq!(sb.log2_blocks_per_bitmap_bit, 0);
+    }
+
+    #[test]
+    fn test_superblock_v1_ignores_recalc_sector() {
+        let mut buf = vec![0u8; SB_SIZE];
+        buf[0..8].copy_from_slice(SB_MAGIC);
+        buf[SB_VERSION_OFFSET] = SB_VERSION_1;
+        // Write a non-zero recalc_sector.
+        buf[SB_RECALC_SECTOR_OFFSET..SB_RECALC_SECTOR_OFFSET + 8]
+            .copy_from_slice(&42u64.to_le_bytes());
+        let sb = IntegritySuperblock::from_bytes(&buf).unwrap();
+        assert_eq!(sb.recalc_sector, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Superblock flags_description
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_flags_description_none() {
+        let sb = IntegritySuperblock {
+            version: 1,
+            log2_interleave_sectors: 0,
+            tag_size: 4,
+            journal_sections: 0,
+            provided_data_sectors: 0,
+            flags: 0,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+        assert_eq!(sb.flags_description(), "(none)");
+    }
+
+    #[test]
+    fn test_flags_description_all() {
+        let sb = IntegritySuperblock {
+            version: 1,
+            log2_interleave_sectors: 0,
+            tag_size: 4,
+            journal_sections: 0,
+            provided_data_sectors: 0,
+            flags: SB_FLAG_HAVE_JOURNAL_MAC
+                | SB_FLAG_RECALCULATING
+                | SB_FLAG_DIRTY_BITMAP
+                | SB_FLAG_FIXED_PADDING
+                | SB_FLAG_FIXED_HMAC,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+        let desc = sb.flags_description();
+        assert!(desc.contains("HAVE_JOURNAL_MAC"));
+        assert!(desc.contains("RECALCULATING"));
+        assert!(desc.contains("DIRTY_BITMAP"));
+        assert!(desc.contains("FIXED_PADDING"));
+        assert!(desc.contains("FIXED_HMAC"));
+    }
+
+    #[test]
+    fn test_flags_description_single() {
+        let sb = IntegritySuperblock {
+            version: 1,
+            log2_interleave_sectors: 0,
+            tag_size: 4,
+            journal_sections: 0,
+            provided_data_sectors: 0,
+            flags: SB_FLAG_RECALCULATING,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+        assert_eq!(sb.flags_description(), "RECALCULATING");
+    }
+
+    // -----------------------------------------------------------------------
+    // Superblock format_dump
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_format_dump_v1() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_1,
+            log2_interleave_sectors: 15,
+            tag_size: 4,
+            journal_sections: 8,
+            provided_data_sectors: 1000,
+            flags: 0,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+        let dump = sb.format_dump();
+        assert!(dump.contains("superblock_version:         1"));
+        assert!(dump.contains("log2_interleave_sectors:    15"));
+        assert!(dump.contains("integrity_tag_size:         4"));
+        assert!(dump.contains("journal_sections:           8"));
+        assert!(dump.contains("provided_data_sectors:      1000"));
+        assert!(dump.contains("sector_size:                512"));
+        assert!(dump.contains("log2_sectors_per_block:     0"));
+        assert!(dump.contains("flags:                      0x0 [(none)]"));
+        // v1 should not have log2_blocks_per_bitmap_bit or recalc_sector.
+        assert!(!dump.contains("log2_blocks_per_bitmap_bit"));
+        assert!(!dump.contains("recalc_sector"));
+    }
+
+    #[test]
+    fn test_format_dump_v2() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_2,
+            log2_interleave_sectors: 12,
+            tag_size: 32,
+            journal_sections: 4,
+            provided_data_sectors: 50000,
+            flags: SB_FLAG_DIRTY_BITMAP,
+            log2_sectors_per_block: 3,
+            log2_blocks_per_bitmap_bit: 2,
+            recalc_sector: 0,
+        };
+        let dump = sb.format_dump();
+        assert!(dump.contains("superblock_version:         2"));
+        assert!(dump.contains("sector_size:                4096"));
+        assert!(dump.contains("log2_blocks_per_bitmap_bit: 2"));
+        assert!(!dump.contains("recalc_sector"));
+    }
+
+    #[test]
+    fn test_format_dump_v3_with_recalc() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_3,
+            log2_interleave_sectors: 15,
+            tag_size: 32,
+            journal_sections: 8,
+            provided_data_sectors: 999999,
+            flags: SB_FLAG_RECALCULATING,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 42,
+        };
+        let dump = sb.format_dump();
+        assert!(dump.contains("recalc_sector:              42"));
+        assert!(dump.contains("RECALCULATING"));
+    }
+
+    // -----------------------------------------------------------------------
+    // log2_sectors_per_block
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_log2_sectors_per_block_512() {
+        assert_eq!(log2_sectors_per_block(512), 0);
+    }
+
+    #[test]
+    fn test_log2_sectors_per_block_1024() {
+        assert_eq!(log2_sectors_per_block(1024), 1);
+    }
+
+    #[test]
+    fn test_log2_sectors_per_block_4096() {
+        assert_eq!(log2_sectors_per_block(4096), 3);
+    }
+
+    // -----------------------------------------------------------------------
+    // read_superblock / write_superblock roundtrip
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_read_write_superblock_roundtrip() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_2,
+            log2_interleave_sectors: 15,
+            tag_size: 32,
+            journal_sections: 8,
+            provided_data_sectors: 12345,
+            flags: SB_FLAG_DIRTY_BITMAP,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 1,
+            recalc_sector: 0,
+        };
+
+        let f = temp_file_zeros(SB_SIZE);
+        let path = f.path().to_str().unwrap();
+        write_superblock(path, &sb).unwrap();
+        let sb2 = read_superblock(path).unwrap();
+        assert_eq!(sb, sb2);
+    }
+
+    #[test]
+    fn test_read_superblock_nonexistent() {
+        assert!(read_superblock("/nonexistent/device/path").is_err());
+    }
+
+    #[test]
+    fn test_read_superblock_too_small() {
+        let f = temp_file_zeros(100);
+        let result = read_superblock(f.path().to_str().unwrap());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_superblock_bad_magic() {
+        let f = temp_file_zeros(SB_SIZE);
+        let result = read_superblock(f.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("bad magic"));
+    }
+
+    #[test]
+    fn test_write_superblock_nonexistent() {
+        let sb = IntegritySuperblock {
+            version: 1,
+            log2_interleave_sectors: 0,
+            tag_size: 4,
+            journal_sections: 0,
+            provided_data_sectors: 0,
+            flags: 0,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+        assert!(write_superblock("/nonexistent/path", &sb).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // cmd_format tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_format_default_options() {
+        // Create a 2 MiB file.
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert_eq!(sb.version, SB_VERSION_1);
+        assert_eq!(sb.tag_size, 4); // crc32c
+        assert_eq!(sb.journal_sections, DEFAULT_JOURNAL_SECTIONS);
+        assert!(sb.provided_data_sectors > 0);
+        assert_eq!(sb.flags, 0);
+        assert_eq!(sb.log2_sectors_per_block, 0); // 512
+        assert_eq!(sb.log2_interleave_sectors, DEFAULT_LOG2_INTERLEAVE);
+    }
+
+    #[test]
+    fn test_format_sha256() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "algorithm=sha256").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert_eq!(sb.tag_size, 32);
+    }
+
+    #[test]
+    fn test_format_no_journal() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "no-journal").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert_eq!(sb.journal_sections, 0);
+    }
+
+    #[test]
+    fn test_format_bitmap_mode() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "bitmap").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert_eq!(sb.version, SB_VERSION_2);
+        assert_ne!(sb.flags & SB_FLAG_DIRTY_BITMAP, 0);
+    }
+
+    #[test]
+    fn test_format_with_recalculate() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "integrity-recalculate").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert!(sb.version >= SB_VERSION_3);
+        assert_ne!(sb.flags & SB_FLAG_RECALCULATING, 0);
+    }
+
+    #[test]
+    fn test_format_fix_padding() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "fix-padding").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert!(sb.version >= SB_VERSION_4);
+        assert_ne!(sb.flags & SB_FLAG_FIXED_PADDING, 0);
+    }
+
+    #[test]
+    fn test_format_fix_hmac() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "fix-hmac").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert_eq!(sb.version, SB_VERSION_5);
+        assert_ne!(sb.flags & SB_FLAG_FIXED_HMAC, 0);
+    }
+
+    #[test]
+    fn test_format_sector_size_4096() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "sector-size=4096").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert_eq!(sb.log2_sectors_per_block, 3);
+    }
+
+    #[test]
+    fn test_format_journal_integrity_flag() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(path, "journal-integrity=hmac(sha256)").unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert_ne!(sb.flags & SB_FLAG_HAVE_JOURNAL_MAC, 0);
+    }
+
+    #[test]
+    fn test_format_combined_options() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+        cmd_format(
+            path,
+            "algorithm=sha256,no-journal,fix-padding,fix-hmac,sector-size=4096",
+        )
+        .unwrap();
+
+        let sb = read_superblock(path).unwrap();
+        assert_eq!(sb.version, SB_VERSION_5);
+        assert_eq!(sb.tag_size, 32);
+        assert_eq!(sb.journal_sections, 0);
+        assert_ne!(sb.flags & SB_FLAG_FIXED_PADDING, 0);
+        assert_ne!(sb.flags & SB_FLAG_FIXED_HMAC, 0);
+        assert_eq!(sb.log2_sectors_per_block, 3);
+    }
+
+    #[test]
+    fn test_format_nonexistent_device() {
+        let result = cmd_format("/nonexistent/device", "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Cannot access"));
+    }
+
+    #[test]
+    fn test_format_device_too_small() {
+        let f = temp_file_zeros(256);
+        let result = cmd_format(f.path().to_str().unwrap(), "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("too small"));
+    }
+
+    // -----------------------------------------------------------------------
+    // cmd_wipe tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_wipe_valid_superblock() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_1,
+            log2_interleave_sectors: 15,
+            tag_size: 4,
+            journal_sections: 8,
+            provided_data_sectors: 1000,
+            flags: 0,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+        let f = temp_file_with_superblock(&sb);
+        let path = f.path().to_str().unwrap();
+
+        // Verify superblock exists.
+        assert!(read_superblock(path).is_ok());
+
+        // Wipe.
+        cmd_wipe(path).unwrap();
+
+        // Verify superblock is gone.
+        let result = read_superblock(path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("bad magic"));
+    }
+
+    #[test]
+    fn test_wipe_no_superblock() {
+        let f = temp_file_zeros(SB_SIZE);
+        let result = cmd_wipe(f.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No dm-integrity superblock"));
+    }
+
+    #[test]
+    fn test_wipe_nonexistent_device() {
+        let result = cmd_wipe("/nonexistent/device");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wipe_too_small() {
+        let f = temp_file_zeros(100);
+        let result = cmd_wipe(f.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("too small"));
+    }
+
+    #[test]
+    fn test_wipe_zeros_entire_superblock_sector() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_1,
+            log2_interleave_sectors: 15,
+            tag_size: 4,
+            journal_sections: 8,
+            provided_data_sectors: 1000,
+            flags: 0,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+        let f = temp_file_with_superblock(&sb);
+        let path = f.path().to_str().unwrap();
+
+        cmd_wipe(path).unwrap();
+
+        let data = fs::read(path).unwrap();
+        // First 512 bytes should all be zero.
+        assert!(data[..SB_SIZE].iter().all(|&b| b == 0));
+    }
+
+    // -----------------------------------------------------------------------
+    // cmd_dump tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_dump_valid_superblock() {
+        let sb = IntegritySuperblock {
+            version: SB_VERSION_1,
+            log2_interleave_sectors: 15,
+            tag_size: 4,
+            journal_sections: 8,
+            provided_data_sectors: 1000,
+            flags: 0,
+            log2_sectors_per_block: 0,
+            log2_blocks_per_bitmap_bit: 0,
+            recalc_sector: 0,
+        };
+        let f = temp_file_with_superblock(&sb);
+        let path = f.path().to_str().unwrap();
+
+        // cmd_dump should succeed (output goes to stdout).
+        cmd_dump(path).unwrap();
+    }
+
+    #[test]
+    fn test_dump_nonexistent_device() {
+        let result = cmd_dump("/nonexistent/device");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_dump_no_superblock() {
+        let f = temp_file_zeros(SB_SIZE);
+        let result = cmd_dump(f.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("bad magic"));
+    }
+
+    // -----------------------------------------------------------------------
+    // cmd_resize tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resize_nonexistent_volume() {
+        // Without a device arg, it tries DM_TABLE_STATUS which will fail.
+        let result = cmd_resize("nonexistent_vol_999", None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resize_nonexistent_device() {
+        // With a device arg, it tries device_size_sectors which will fail.
+        let result = cmd_resize("nonexistent_vol_999", Some("/nonexistent/dev"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to get device size"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Format → Dump → Wipe integration
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_format_dump_wipe_cycle() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+
+        // 1. Format.
+        cmd_format(path, "algorithm=sha256,no-journal").unwrap();
+
+        // 2. Dump — read back and verify fields.
+        let sb = read_superblock(path).unwrap();
+        assert_eq!(sb.tag_size, 32);
+        assert_eq!(sb.journal_sections, 0);
+        let dump = sb.format_dump();
+        assert!(dump.contains("integrity_tag_size:         32"));
+        assert!(dump.contains("journal_sections:           0"));
+
+        // 3. Wipe.
+        cmd_wipe(path).unwrap();
+
+        // 4. Verify wiped.
+        assert!(read_superblock(path).is_err());
+    }
+
+    #[test]
+    fn test_format_then_reformat() {
+        let f = temp_file_zeros(2 * 1024 * 1024);
+        let path = f.path().to_str().unwrap();
+
+        // Format with crc32c.
+        cmd_format(path, "").unwrap();
+        let sb1 = read_superblock(path).unwrap();
+        assert_eq!(sb1.tag_size, 4);
+
+        // Re-format with sha256.
+        cmd_format(path, "algorithm=sha256").unwrap();
+        let sb2 = read_superblock(path).unwrap();
+        assert_eq!(sb2.tag_size, 32);
+    }
+
+    // -----------------------------------------------------------------------
+    // Full-flow argument parsing for new commands
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_full_format_parse() {
+        let cmd = parse_args(&args(&[
+            "format",
+            "/dev/nvme0n1p3",
+            "algorithm=sha256,no-journal,sector-size=4096",
+        ]))
+        .unwrap();
+
+        if let Command::Format { device, options } = cmd {
+            assert_eq!(device, "/dev/nvme0n1p3");
+            let opts = parse_options(&options).unwrap();
+            assert_eq!(opts.algorithm, "sha256");
+            assert_eq!(opts.journal_mode, JournalMode::NoJournal);
+            assert_eq!(opts.sector_size, 4096);
+        } else {
+            panic!("Expected Format command");
+        }
+    }
+
+    #[test]
+    fn test_full_resize_parse_no_device() {
+        let cmd = parse_args(&args(&["resize", "integrity_vol"])).unwrap();
+        if let Command::Resize { volume, device } = cmd {
+            assert_eq!(volume, "integrity_vol");
+            assert!(device.is_none());
+        } else {
+            panic!("Expected Resize command");
+        }
+    }
+
+    #[test]
+    fn test_full_resize_parse_with_device() {
+        let cmd = parse_args(&args(&["resize", "integrity_vol", "/dev/sda1"])).unwrap();
+        if let Command::Resize { volume, device } = cmd {
+            assert_eq!(volume, "integrity_vol");
+            assert_eq!(device, Some("/dev/sda1".to_string()));
+        } else {
+            panic!("Expected Resize command");
+        }
     }
 }
