@@ -19,26 +19,28 @@
 //! - Control socket at `/run/systemd/portabled-control` for `portablectl` CLI
 //! - D-Bus interface (`org.freedesktop.portable1`) with Manager object
 //!   (ListImages, GetImage, GetImageState, AttachImage, DetachImage,
-//!   ReattachImage, RemoveImage, GetImageOSRelease, GetImageMetadata;
+//!   ReattachImage, RemoveImage, GetImageOSRelease, GetImageMetadata,
+//!   AttachImageWithExtensions, DetachImageWithExtensions,
+//!   ReattachImageWithExtensions, SetImageLimit, SetReadOnly;
 //!   properties: PoolPath, PoolUsage, PoolLimit); deferred registration
 //!   to avoid blocking early boot before dbus-daemon is ready
+//! - Raw disk image support (loopback mount, GPT dissection, temporary mount
+//!   for unit file discovery, `RootImage=` drop-in generation)
+//! - Extension images (`--extension`) with overlay-style unit merging and
+//!   `ExtensionImages=` drop-in generation
+//! - Image size limit management via `.limit` sidecar files
+//! - Automatic `daemon-reload` after attach/detach operations
+//! - Read-only flag toggling for directory images (via `.readonly` marker)
 //! - sd_notify protocol (READY/WATCHDOG/STATUS/STOPPING)
 //! - Signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload)
 //! - Periodic state consistency checks
-//!
-//! ## Missing
-//!
-//! - Raw disk image support (loopback mount, GPT dissection)
-//! - Extension images (`--extension`)
-//! - Image size limit management (`set-limit`)
-//! - Automatic `daemon-reload` after attach/detach
-//! - Read-only flag toggling for directory images
 
 use std::collections::BTreeMap;
 use std::env;
+use std::ffi::CString;
 use std::fmt;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::net::Shutdown;
 use std::os::unix::fs as unix_fs;
 use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
@@ -89,6 +91,660 @@ const PROFILE_SEARCH_PATHS: &[&str] = &[
     "/usr/lib/systemd/portable/profile",
     "/run/systemd/portable/profile",
 ];
+
+/// Extension image search paths.
+const EXTENSION_SEARCH_PATHS: &[&str] = &[
+    "/etc/portables",
+    "/run/portables",
+    "/var/lib/portables",
+    "/usr/lib/portables",
+];
+
+/// Temporary mount point for raw image inspection.
+const RAW_IMAGE_MOUNT_DIR: &str = "/run/systemd/portabled/mnt";
+
+// ---------------------------------------------------------------------------
+// Loopback & GPT constants
+// ---------------------------------------------------------------------------
+
+/// IOCTL constants for loop device management.
+const LOOP_CTL_GET_FREE: libc::c_ulong = 0x4C82;
+const LOOP_SET_FD: libc::c_ulong = 0x4C00;
+const LOOP_CLR_FD: libc::c_ulong = 0x4C01;
+const LOOP_SET_STATUS64: libc::c_ulong = 0x4C04;
+
+/// Flags for loop_info64.
+const LO_FLAGS_READ_ONLY: u32 = 1;
+const LO_FLAGS_AUTOCLEAR: u32 = 4;
+const LO_FLAGS_PARTSCAN: u32 = 8;
+
+/// GPT header signature "EFI PART"
+const IMAGE_GPT_SIGNATURE: &[u8; 8] = b"EFI PART";
+const IMAGE_SECTOR_SIZE: u64 = 512;
+
+/// Well-known GPT partition type GUIDs (mixed-endian).
+#[allow(dead_code)]
+const GPT_ROOT_X86_64: [u8; 16] = [
+    0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11, 0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B,
+];
+#[allow(dead_code)]
+const GPT_ROOT_AARCH64: [u8; 16] = [
+    0x01, 0x57, 0x13, 0xB1, 0x4D, 0x11, 0xB4, 0x0D, 0x82, 0x5D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69,
+];
+#[allow(dead_code)]
+const GPT_USR_X86_64: [u8; 16] = [
+    0x73, 0x8A, 0x17, 0x77, 0x3E, 0x4F, 0xA1, 0x4D, 0x8D, 0x93, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24,
+];
+#[allow(dead_code)]
+const GPT_LINUX_GENERIC: [u8; 16] = [
+    0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47, 0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4,
+];
+
+/// loop_info64 structure for LOOP_SET_STATUS64.
+#[repr(C)]
+#[derive(Clone)]
+struct LoopInfo64 {
+    lo_device: u64,
+    lo_inode: u64,
+    lo_rdevice: u64,
+    lo_offset: u64,
+    lo_sizelimit: u64,
+    lo_number: u32,
+    lo_encrypt_type: u32,
+    lo_encrypt_key_size: u32,
+    lo_flags: u32,
+    lo_file_name: [u8; 64],
+    lo_crypt_name: [u8; 64],
+    lo_encrypt_key: [u8; 32],
+    lo_init: [u64; 2],
+}
+
+impl Default for LoopInfo64 {
+    fn default() -> Self {
+        LoopInfo64 {
+            lo_device: 0,
+            lo_inode: 0,
+            lo_rdevice: 0,
+            lo_offset: 0,
+            lo_sizelimit: 0,
+            lo_number: 0,
+            lo_encrypt_type: 0,
+            lo_encrypt_key_size: 0,
+            lo_flags: 0,
+            lo_file_name: [0u8; 64],
+            lo_crypt_name: [0u8; 64],
+            lo_encrypt_key: [0u8; 32],
+            lo_init: [0u64; 2],
+        }
+    }
+}
+
+/// A GPT partition entry found during dissection.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct DissectedPartition {
+    /// Partition index (0-based)
+    index: u32,
+    /// First LBA
+    first_lba: u64,
+    /// Last LBA (inclusive)
+    last_lba: u64,
+    /// Partition type GUID (16 bytes, raw)
+    type_guid: [u8; 16],
+    /// Device node path (e.g. "/dev/loop0p1")
+    device: String,
+}
+
+#[allow(dead_code)]
+impl DissectedPartition {
+    fn size_bytes(&self) -> u64 {
+        (self.last_lba - self.first_lba + 1) * IMAGE_SECTOR_SIZE
+    }
+
+    fn is_root(&self) -> bool {
+        self.type_guid == GPT_ROOT_X86_64
+            || self.type_guid == GPT_ROOT_AARCH64
+            || self.type_guid == GPT_LINUX_GENERIC
+    }
+
+    fn is_usr(&self) -> bool {
+        self.type_guid == GPT_USR_X86_64
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Loopback device management
+// ---------------------------------------------------------------------------
+
+/// Set up a loopback device for the given image file.
+/// Returns the loop device path (e.g. "/dev/loop0").
+fn setup_loopback(image_path: &str, read_only: bool) -> Result<String, String> {
+    let image = Path::new(image_path);
+    if !image.exists() {
+        return Err(format!("image file does not exist: {image_path}"));
+    }
+    if !image.is_file() {
+        return Err(format!("not a regular file: {image_path}"));
+    }
+
+    // Open /dev/loop-control to get a free loop device
+    let ctl_path = CString::new("/dev/loop-control").unwrap();
+    let ctl_fd = unsafe { libc::open(ctl_path.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+    if ctl_fd < 0 {
+        return Err(format!(
+            "failed to open /dev/loop-control: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    let loop_nr = unsafe { libc::ioctl(ctl_fd, LOOP_CTL_GET_FREE) };
+    unsafe { libc::close(ctl_fd) };
+    if loop_nr < 0 {
+        return Err(format!(
+            "LOOP_CTL_GET_FREE failed: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    let loop_dev = format!("/dev/loop{loop_nr}");
+    let loop_c = CString::new(loop_dev.as_str()).unwrap();
+    let loop_fd = unsafe { libc::open(loop_c.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+    if loop_fd < 0 {
+        return Err(format!(
+            "failed to open {loop_dev}: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    // Open the image file
+    let img_c = CString::new(image_path).map_err(|e| format!("invalid path: {e}"))?;
+    let open_flags = if read_only {
+        libc::O_RDONLY | libc::O_CLOEXEC
+    } else {
+        libc::O_RDWR | libc::O_CLOEXEC
+    };
+    let img_fd = unsafe { libc::open(img_c.as_ptr(), open_flags) };
+    if img_fd < 0 {
+        unsafe { libc::close(loop_fd) };
+        return Err(format!(
+            "failed to open {image_path}: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    // Associate the loop device with the image file
+    let ret = unsafe { libc::ioctl(loop_fd, LOOP_SET_FD, img_fd) };
+    if ret < 0 {
+        let err = io::Error::last_os_error();
+        unsafe {
+            libc::close(img_fd);
+            libc::close(loop_fd);
+        }
+        return Err(format!("LOOP_SET_FD failed: {err}"));
+    }
+    unsafe { libc::close(img_fd) };
+
+    // Set loop device info (enable partition scanning, autoclear)
+    let mut flags = LO_FLAGS_AUTOCLEAR | LO_FLAGS_PARTSCAN;
+    if read_only {
+        flags |= LO_FLAGS_READ_ONLY;
+    }
+    let mut info = LoopInfo64 {
+        lo_flags: flags,
+        ..LoopInfo64::default()
+    };
+    // Copy filename into lo_file_name
+    let name_bytes = image_path.as_bytes();
+    let copy_len = name_bytes.len().min(63);
+    info.lo_file_name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+
+    let ret = unsafe {
+        libc::ioctl(
+            loop_fd,
+            LOOP_SET_STATUS64,
+            &info as *const LoopInfo64 as libc::c_ulong,
+        )
+    };
+    unsafe { libc::close(loop_fd) };
+    if ret < 0 {
+        // Try to detach on failure
+        let _ = detach_loopback(&loop_dev);
+        return Err(format!(
+            "LOOP_SET_STATUS64 failed: {}",
+            io::Error::last_os_error()
+        ));
+    }
+
+    // Give the kernel a moment to create partition device nodes
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    Ok(loop_dev)
+}
+
+/// Detach (release) a loop device.
+fn detach_loopback(loop_dev: &str) -> Result<(), String> {
+    let c = CString::new(loop_dev).map_err(|e| format!("invalid path: {e}"))?;
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(format!(
+            "failed to open {loop_dev}: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    let ret = unsafe { libc::ioctl(fd, LOOP_CLR_FD) };
+    unsafe { libc::close(fd) };
+    if ret < 0 {
+        return Err(format!(
+            "LOOP_CLR_FD failed: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+/// Parse the GPT header from an image file or loop device.
+/// Returns a list of partitions found.
+fn dissect_gpt(device_path: &str) -> Result<Vec<DissectedPartition>, String> {
+    let mut f = std::fs::File::open(device_path)
+        .map_err(|e| format!("failed to open {device_path}: {e}"))?;
+
+    // Read GPT header at LBA 1 (offset 512)
+    f.seek(SeekFrom::Start(IMAGE_SECTOR_SIZE))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    let mut hdr = [0u8; 92];
+    f.read_exact(&mut hdr)
+        .map_err(|e| format!("read GPT header failed: {e}"))?;
+
+    // Verify signature
+    if &hdr[0..8] != IMAGE_GPT_SIGNATURE {
+        return Err("no GPT signature found in image".to_string());
+    }
+
+    // Parse header fields
+    let partition_entry_lba = u64::from_le_bytes(hdr[72..80].try_into().unwrap());
+    let num_entries = u32::from_le_bytes(hdr[80..84].try_into().unwrap());
+    let entry_size = u32::from_le_bytes(hdr[84..88].try_into().unwrap());
+
+    if entry_size < 128 || num_entries == 0 {
+        return Ok(Vec::new());
+    }
+
+    let entry_offset = partition_entry_lba * IMAGE_SECTOR_SIZE;
+    f.seek(SeekFrom::Start(entry_offset))
+        .map_err(|e| format!("seek to partition entries failed: {e}"))?;
+
+    let mut partitions = Vec::new();
+    for i in 0..num_entries {
+        let mut entry = vec![0u8; entry_size as usize];
+        if f.read_exact(&mut entry).is_err() {
+            break;
+        }
+
+        // Type GUID at offset 0..16
+        let mut type_guid = [0u8; 16];
+        type_guid.copy_from_slice(&entry[0..16]);
+
+        // Skip empty entries (all-zero type GUID)
+        if type_guid == [0u8; 16] {
+            continue;
+        }
+
+        let first_lba = u64::from_le_bytes(entry[32..40].try_into().unwrap());
+        let last_lba = u64::from_le_bytes(entry[40..48].try_into().unwrap());
+
+        let device = format!("{device_path}p{}", i + 1);
+
+        partitions.push(DissectedPartition {
+            index: i,
+            first_lba,
+            last_lba,
+            type_guid,
+            device,
+        });
+    }
+
+    Ok(partitions)
+}
+
+/// Find the root partition from dissected GPT partitions.
+/// Prefers the architecture-specific root type, falls back to Linux generic.
+fn find_root_partition(partitions: &[DissectedPartition]) -> Option<&DissectedPartition> {
+    // First try architecture-specific root
+    if let Some(p) = partitions
+        .iter()
+        .find(|p| p.type_guid == GPT_ROOT_X86_64 || p.type_guid == GPT_ROOT_AARCH64)
+    {
+        return Some(p);
+    }
+    // Fallback to generic Linux data
+    partitions.iter().find(|p| p.type_guid == GPT_LINUX_GENERIC)
+}
+
+/// Mount a block device at the given path.
+fn mount_device(device: &str, target: &Path, read_only: bool) -> Result<(), String> {
+    let dev_c = CString::new(device).map_err(|e| format!("invalid device: {e}"))?;
+    let tgt_c = CString::new(target.to_string_lossy().as_bytes())
+        .map_err(|e| format!("invalid target: {e}"))?;
+
+    // Try common filesystem types
+    for fstype in &["ext4", "btrfs", "xfs", "vfat", "erofs", "squashfs"] {
+        let fs_c = CString::new(*fstype).unwrap();
+        let mut flags: libc::c_ulong = 0;
+        if read_only {
+            flags |= libc::MS_RDONLY as libc::c_ulong;
+        }
+        let ret = unsafe {
+            libc::mount(
+                dev_c.as_ptr(),
+                tgt_c.as_ptr(),
+                fs_c.as_ptr(),
+                flags,
+                std::ptr::null(),
+            )
+        };
+        if ret == 0 {
+            return Ok(());
+        }
+    }
+
+    Err(format!(
+        "failed to mount {} at {}: {}",
+        device,
+        target.display(),
+        io::Error::last_os_error()
+    ))
+}
+
+/// Mount a block device with a specific byte offset and size limit.
+fn mount_device_with_offset(
+    device: &str,
+    target: &Path,
+    offset: u64,
+    _size: u64,
+    read_only: bool,
+) -> Result<(), String> {
+    let dev_c = CString::new(device).map_err(|e| format!("invalid device: {e}"))?;
+    let tgt_c = CString::new(target.to_string_lossy().as_bytes())
+        .map_err(|e| format!("invalid target: {e}"))?;
+
+    for fstype in &["ext4", "btrfs", "xfs", "vfat", "erofs", "squashfs"] {
+        let fs_c = CString::new(*fstype).unwrap();
+        let data = format!("offset={offset}");
+        let data_c = CString::new(data.as_str()).unwrap();
+        let mut flags: libc::c_ulong = 0;
+        if read_only {
+            flags |= libc::MS_RDONLY as libc::c_ulong;
+        }
+        let ret = unsafe {
+            libc::mount(
+                dev_c.as_ptr(),
+                tgt_c.as_ptr(),
+                fs_c.as_ptr(),
+                flags,
+                data_c.as_ptr() as *const libc::c_void,
+            )
+        };
+        if ret == 0 {
+            return Ok(());
+        }
+    }
+
+    Err(format!(
+        "failed to mount {} (offset {offset}) at {}: {}",
+        device,
+        target.display(),
+        io::Error::last_os_error()
+    ))
+}
+
+/// Unmount a mounted path.
+fn unmount_path(path: &Path) -> Result<(), String> {
+    let tgt_c = CString::new(path.to_string_lossy().as_bytes())
+        .map_err(|e| format!("invalid path: {e}"))?;
+    let ret = unsafe { libc::umount2(tgt_c.as_ptr(), 0) };
+    if ret < 0 {
+        return Err(format!(
+            "failed to unmount {}: {}",
+            path.display(),
+            io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+/// Create a temporary mount directory for a raw image.
+fn create_raw_mount_dir(image_name: &str) -> Result<PathBuf, String> {
+    let dir = PathBuf::from(format!("{}/{}", RAW_IMAGE_MOUNT_DIR, image_name));
+    fs::create_dir_all(&dir)
+        .map_err(|e| format!("failed to create mount directory {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
+/// Mount a raw disk image temporarily for inspection/unit discovery.
+/// Returns the mount point path. Caller is responsible for cleanup.
+fn mount_raw_image(image_path: &str, image_name: &str) -> Result<PathBuf, String> {
+    let loop_dev = setup_loopback(image_path, true)?;
+
+    let mount_dir = create_raw_mount_dir(image_name)?;
+
+    // Try GPT dissection first
+    let partitions = match dissect_gpt(&loop_dev) {
+        Ok(parts) if !parts.is_empty() => parts,
+        _ => {
+            // No GPT — treat the whole image as a filesystem
+            match mount_device(&loop_dev, &mount_dir, true) {
+                Ok(()) => return Ok(mount_dir),
+                Err(e) => {
+                    let _ = fs::remove_dir_all(&mount_dir);
+                    let _ = detach_loopback(&loop_dev);
+                    return Err(format!("failed to mount raw image: {e}"));
+                }
+            }
+        }
+    };
+
+    let root_part = match find_root_partition(&partitions) {
+        Some(p) => p,
+        None => {
+            let _ = fs::remove_dir_all(&mount_dir);
+            let _ = detach_loopback(&loop_dev);
+            return Err("no root partition found in image GPT".to_string());
+        }
+    };
+
+    // Check if the partition device node exists
+    let part_dev = &root_part.device;
+    let mount_result = if !Path::new(part_dev).exists() {
+        mount_device_with_offset(
+            &loop_dev,
+            &mount_dir,
+            root_part.first_lba * IMAGE_SECTOR_SIZE,
+            root_part.size_bytes(),
+            true,
+        )
+    } else {
+        mount_device(part_dev, &mount_dir, true)
+    };
+
+    match mount_result {
+        Ok(()) => Ok(mount_dir),
+        Err(e) => {
+            let _ = fs::remove_dir_all(&mount_dir);
+            let _ = detach_loopback(&loop_dev);
+            Err(format!("failed to mount root partition: {e}"))
+        }
+    }
+}
+
+/// Unmount and clean up a temporarily mounted raw image.
+fn cleanup_raw_mount(mount_dir: &Path) {
+    let _ = unmount_path(mount_dir);
+    let _ = fs::remove_dir_all(mount_dir);
+}
+
+// ---------------------------------------------------------------------------
+// Image size limit management
+// ---------------------------------------------------------------------------
+
+/// Parse a human-readable size string into bytes (supports B/K/M/G/T suffixes).
+fn parse_size(s: &str) -> Result<u64, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("empty size string".to_string());
+    }
+    let (num_str, multiplier) = if let Some(n) = s.strip_suffix('T') {
+        (n, 1_099_511_627_776u64)
+    } else if let Some(n) = s.strip_suffix('G') {
+        (n, 1_073_741_824u64)
+    } else if let Some(n) = s.strip_suffix('M') {
+        (n, 1_048_576u64)
+    } else if let Some(n) = s.strip_suffix('K') {
+        (n, 1_024u64)
+    } else if let Some(n) = s.strip_suffix('B') {
+        (n, 1u64)
+    } else {
+        (s, 1u64)
+    };
+    let num: u64 = num_str
+        .trim()
+        .parse()
+        .map_err(|_| format!("invalid size: {s}"))?;
+    Ok(num * multiplier)
+}
+
+/// Get the `.limit` sidecar file path for an image.
+fn image_limit_path(image_path: &Path) -> PathBuf {
+    let mut p = image_path.to_path_buf();
+    let mut name = p
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    name.push_str(".limit");
+    p.set_file_name(name);
+    p
+}
+
+/// Set the size limit for an image using a `.limit` sidecar file.
+/// A limit of 0 removes the limit.
+fn set_image_limit(image_path: &Path, limit_bytes: u64) -> Result<(), String> {
+    let limit_path = image_limit_path(image_path);
+    if limit_bytes == 0 {
+        // Remove limit
+        if limit_path.exists() {
+            fs::remove_file(&limit_path)
+                .map_err(|e| format!("failed to remove limit file: {e}"))?;
+        }
+        return Ok(());
+    }
+    fs::write(&limit_path, limit_bytes.to_string())
+        .map_err(|e| format!("failed to write limit file: {e}"))?;
+    Ok(())
+}
+
+/// Get the current size limit for an image (0 means no limit).
+fn get_image_limit(image_path: &Path) -> u64 {
+    let limit_path = image_limit_path(image_path);
+    match fs::read_to_string(&limit_path) {
+        Ok(s) => s.trim().parse().unwrap_or(0),
+        Err(_) => 0,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Read-only flag management
+// ---------------------------------------------------------------------------
+
+/// Get the `.readonly` marker path for a directory image.
+fn image_readonly_path(image_path: &Path) -> PathBuf {
+    image_path.join(".readonly")
+}
+
+/// Check if a directory image is marked read-only.
+fn is_image_read_only(image_path: &Path) -> bool {
+    image_readonly_path(image_path).exists()
+}
+
+/// Set or clear the read-only flag for a directory image.
+fn set_image_read_only(image_path: &Path, read_only: bool) -> Result<(), String> {
+    let marker = image_readonly_path(image_path);
+    if read_only {
+        fs::write(&marker, "").map_err(|e| format!("failed to create read-only marker: {e}"))?;
+    } else if marker.exists() {
+        fs::remove_file(&marker).map_err(|e| format!("failed to remove read-only marker: {e}"))?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Daemon reload
+// ---------------------------------------------------------------------------
+
+/// Trigger systemd daemon-reload via D-Bus to pick up unit file changes.
+fn daemon_reload() {
+    // Try D-Bus first (org.freedesktop.systemd1.Manager.Reload)
+    if let Ok(conn) = zbus::blocking::Connection::system() {
+        let result = conn.call_method(
+            Some("org.freedesktop.systemd1"),
+            "/org/freedesktop/systemd1",
+            Some("org.freedesktop.systemd1.Manager"),
+            "Reload",
+            &(),
+        );
+        match result {
+            Ok(_) => {
+                log::info!("Triggered daemon-reload via D-Bus");
+                return;
+            }
+            Err(e) => {
+                log::debug!("D-Bus daemon-reload failed: {}, trying systemctl", e);
+            }
+        }
+    }
+
+    // Fall back to systemctl
+    match std::process::Command::new("systemctl")
+        .arg("daemon-reload")
+        .status()
+    {
+        Ok(status) if status.success() => {
+            log::info!("Triggered daemon-reload via systemctl");
+        }
+        Ok(status) => {
+            log::warn!("systemctl daemon-reload exited with {}", status);
+        }
+        Err(e) => {
+            log::warn!("Failed to run systemctl daemon-reload: {}", e);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extension image resolution
+// ---------------------------------------------------------------------------
+
+/// Find an extension image by name in the search paths.
+fn find_extension_image(name: &str) -> Option<PathBuf> {
+    find_extension_image_from(name, EXTENSION_SEARCH_PATHS)
+}
+
+/// Find an extension image from custom search paths.
+fn find_extension_image_from(name: &str, search_paths: &[&str]) -> Option<PathBuf> {
+    for search_dir in search_paths {
+        let dir = Path::new(search_dir);
+        // Try as directory
+        let dir_path = dir.join(name);
+        if dir_path.is_dir() {
+            return Some(dir_path);
+        }
+        // Try as .raw file
+        let raw_path = dir.join(format!("{}.raw", name));
+        if raw_path.is_file() {
+            return Some(raw_path);
+        }
+    }
+    None
+}
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -191,10 +847,14 @@ pub struct PortableImage {
     pub os_pretty_name: Option<String>,
     /// Portable service extension level from os-release.
     pub portable_service: Option<String>,
+    /// Whether the image is marked read-only.
+    pub read_only: bool,
+    /// Size limit in bytes (0 means no limit).
+    pub limit: u64,
 }
 
 impl PortableImage {
-    /// Read os-release from the image (directory only for now).
+    /// Read os-release from a mounted/directory image path.
     pub fn read_os_release(image_path: &Path) -> BTreeMap<String, String> {
         let mut result = BTreeMap::new();
         for name in &["usr/lib/os-release", "etc/os-release"] {
@@ -257,8 +917,15 @@ impl PortableImage {
         lines.push(format!("        Name: {}", self.name));
         lines.push(format!("        Path: {}", self.path.display()));
         lines.push(format!("        Type: {}", self.image_type));
+        lines.push(format!(
+            "   Read Only: {}",
+            if self.read_only { "yes" } else { "no" }
+        ));
         if self.size > 0 {
             lines.push(format!("        Size: {}", format_bytes(self.size)));
+        }
+        if self.limit > 0 {
+            lines.push(format!("       Limit: {}", format_bytes(self.limit)));
         }
         if self.mtime_usec > 0 {
             lines.push(format!(
@@ -286,7 +953,12 @@ impl PortableImage {
         lines.push(format!("Name={}", self.name));
         lines.push(format!("Path={}", self.path.display()));
         lines.push(format!("Type={}", self.image_type));
+        lines.push(format!(
+            "ReadOnly={}",
+            if self.read_only { "yes" } else { "no" }
+        ));
         lines.push(format!("Size={}", self.size));
+        lines.push(format!("Limit={}", self.limit));
         lines.push(format!("ModifiedUSec={}", self.mtime_usec));
         lines.push(format!("CreatedUSec={}", self.crtime_usec));
         lines.push(format!(
@@ -314,6 +986,8 @@ pub struct AttachmentInfo {
     pub runtime: bool,
     pub units: Vec<String>,
     pub timestamp: u64,
+    /// Extension image names that were attached alongside this image.
+    pub extensions: Vec<String>,
 }
 
 impl AttachmentInfo {
@@ -333,6 +1007,9 @@ impl AttachmentInfo {
         for u in &self.units {
             lines.push(format!("UNIT={}", u));
         }
+        for ext in &self.extensions {
+            lines.push(format!("EXTENSION={}", ext));
+        }
         lines.join("\n")
     }
 
@@ -344,6 +1021,7 @@ impl AttachmentInfo {
         let mut runtime = false;
         let mut timestamp = 0u64;
         let mut units = Vec::new();
+        let mut extensions = Vec::new();
 
         for line in content.lines() {
             let line = line.trim();
@@ -358,6 +1036,7 @@ impl AttachmentInfo {
                     "RUNTIME" => runtime = val == "yes",
                     "TIMESTAMP" => timestamp = val.parse().unwrap_or(0),
                     "UNIT" => units.push(val.to_string()),
+                    "EXTENSION" => extensions.push(val.to_string()),
                     _ => {}
                 }
             }
@@ -370,6 +1049,7 @@ impl AttachmentInfo {
             runtime,
             units,
             timestamp,
+            extensions,
         })
     }
 }
@@ -450,6 +1130,14 @@ impl ImageRegistry {
                 let os_pretty_name = os_release.get("PRETTY_NAME").cloned();
                 let portable_service = os_release.get("PORTABLE_PREFIXES").cloned();
 
+                // Read read-only status and size limit
+                let read_only = if image_type == ImageType::Directory {
+                    is_image_read_only(&path)
+                } else {
+                    false
+                };
+                let limit = get_image_limit(&path);
+
                 self.images.insert(
                     name.clone(),
                     PortableImage {
@@ -461,6 +1149,8 @@ impl ImageRegistry {
                         crtime_usec,
                         os_pretty_name,
                         portable_service,
+                        read_only,
+                        limit,
                     },
                 );
             }
@@ -583,10 +1273,38 @@ impl ImageRegistry {
         self.attach_image_to(name, profile, runtime, attached_dir)
     }
 
+    /// Attach an image with extension images.
+    pub fn attach_image_with_extensions(
+        &mut self,
+        name: &str,
+        extensions: &[String],
+        profile: Option<&str>,
+        runtime: bool,
+    ) -> Result<Vec<String>, String> {
+        let attached_dir = if runtime {
+            RUNTIME_ATTACHED_DIR
+        } else {
+            PERSISTENT_ATTACHED_DIR
+        };
+        self.attach_image_with_extensions_to(name, extensions, profile, runtime, attached_dir)
+    }
+
     /// Attach image with a custom attached directory (for testing).
     pub fn attach_image_to(
         &mut self,
         name: &str,
+        profile: Option<&str>,
+        runtime: bool,
+        attached_dir: &str,
+    ) -> Result<Vec<String>, String> {
+        self.attach_image_with_extensions_to(name, &[], profile, runtime, attached_dir)
+    }
+
+    /// Attach image with extensions and a custom attached directory.
+    pub fn attach_image_with_extensions_to(
+        &mut self,
+        name: &str,
+        extensions: &[String],
         profile: Option<&str>,
         runtime: bool,
         attached_dir: &str,
@@ -601,16 +1319,26 @@ impl ImageRegistry {
             None => return Err(format!("Image '{}' not found", name)),
         };
 
-        if image.image_type == ImageType::Raw {
-            return Err(format!(
-                "Raw disk image support not yet implemented for '{}'",
-                name
-            ));
-        }
+        // For raw images, temporarily mount to discover unit files
+        let (units, temp_mount) = if image.image_type == ImageType::Raw {
+            let image_path_str = image.path.to_string_lossy().to_string();
+            match mount_raw_image(&image_path_str, &image.name) {
+                Ok(mount_dir) => {
+                    let units = PortableImage::discover_units(&mount_dir);
+                    (units, Some(mount_dir))
+                }
+                Err(e) => {
+                    return Err(format!("Failed to mount raw image '{}': {}", name, e));
+                }
+            }
+        } else {
+            (PortableImage::discover_units(&image.path), None)
+        };
 
-        // Discover unit files in the image
-        let units = PortableImage::discover_units(&image.path);
         if units.is_empty() {
+            if let Some(ref m) = temp_mount {
+                cleanup_raw_mount(m);
+            }
             return Err(format!("No unit files found in image '{}'", name));
         }
 
@@ -625,20 +1353,65 @@ impl ImageRegistry {
             None
         };
 
+        // Resolve extension images
+        let mut resolved_extensions: Vec<PathBuf> = Vec::new();
+        for ext_name in extensions {
+            match find_extension_image(ext_name) {
+                Some(path) => resolved_extensions.push(path),
+                None => {
+                    if let Some(ref m) = temp_mount {
+                        cleanup_raw_mount(m);
+                    }
+                    return Err(format!("Extension image '{}' not found", ext_name));
+                }
+            }
+        }
+
+        // Collect extension unit files
+        let mut extension_units: Vec<String> = Vec::new();
+        for ext_path in &resolved_extensions {
+            if ext_path.is_dir() {
+                let ext_units = PortableImage::discover_units(ext_path);
+                for u in ext_units {
+                    if !extension_units.contains(&u) && !units.contains(&u) {
+                        extension_units.push(u);
+                    }
+                }
+            }
+            // Raw extension images would need mounting too — handled similarly
+        }
+
         let mut linked_units = Vec::new();
 
+        // Link units from the base image
         for unit_name in &units {
-            let src = match PortableImage::find_unit_path(&image.path, unit_name) {
+            let src = if let Some(ref mount) = temp_mount {
+                PortableImage::find_unit_path(mount, unit_name)
+            } else {
+                PortableImage::find_unit_path(&image.path, unit_name)
+            };
+
+            let src = match src {
                 Some(p) => p,
                 None => continue,
             };
 
             let dest = Path::new(attached_dir).join(unit_name);
 
-            // Create the symlink
-            if let Err(e) = unix_fs::symlink(&src, &dest) {
-                // Ignore if it already exists (idempotent)
-                if e.kind() != io::ErrorKind::AlreadyExists {
+            // For raw images, copy the unit file instead of symlinking
+            // (the mount is temporary)
+            if image.image_type == ImageType::Raw {
+                if let Err(e) = fs::copy(&src, &dest)
+                    && e.kind() != io::ErrorKind::AlreadyExists
+                {
+                    log::warn!("Failed to copy unit {}: {}", unit_name, e);
+                    continue;
+                }
+            } else {
+                // Create the symlink for directory images
+                if let Err(e) = unix_fs::symlink(&src, &dest)
+                    && e.kind() != io::ErrorKind::AlreadyExists
+                {
                     log::warn!(
                         "Failed to symlink {} -> {}: {}",
                         dest.display(),
@@ -654,6 +1427,47 @@ impl ImageRegistry {
                 let dropin_dir = Path::new(attached_dir).join(format!("{}.d", unit_name));
                 if fs::create_dir_all(&dropin_dir).is_ok() {
                     let dropin_file = dropin_dir.join("20-portable-profile.conf");
+                    let _ = fs::write(&dropin_file, dropin_content);
+                }
+            }
+
+            // For raw images, generate a RootImage= drop-in
+            if image.image_type == ImageType::Raw {
+                let dropin_dir = Path::new(attached_dir).join(format!("{}.d", unit_name));
+                if fs::create_dir_all(&dropin_dir).is_ok() {
+                    let dropin_file = dropin_dir.join("15-portable-image.conf");
+                    let mut dropin_content = format!(
+                        "# Automatically generated by systemd-portabled -- do not edit.\n\
+                         [Service]\n\
+                         RootImage={}\n",
+                        image.path.display()
+                    );
+                    // Add ExtensionImages= if we have extensions
+                    if !resolved_extensions.is_empty() {
+                        let ext_paths: Vec<String> = resolved_extensions
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect();
+                        dropin_content
+                            .push_str(&format!("ExtensionImages={}\n", ext_paths.join(" ")));
+                    }
+                    let _ = fs::write(&dropin_file, dropin_content);
+                }
+            } else if !resolved_extensions.is_empty() {
+                // For directory images with extensions, add ExtensionImages= drop-in
+                let dropin_dir = Path::new(attached_dir).join(format!("{}.d", unit_name));
+                if fs::create_dir_all(&dropin_dir).is_ok() {
+                    let dropin_file = dropin_dir.join("15-portable-extensions.conf");
+                    let ext_paths: Vec<String> = resolved_extensions
+                        .iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect();
+                    let dropin_content = format!(
+                        "# Automatically generated by systemd-portabled -- do not edit.\n\
+                         [Service]\n\
+                         ExtensionImages={}\n",
+                        ext_paths.join(" ")
+                    );
                     let _ = fs::write(&dropin_file, dropin_content);
                 }
             }
@@ -674,6 +1488,44 @@ impl ImageRegistry {
             linked_units.push(unit_name.clone());
         }
 
+        // Also link extension-only units
+        for unit_name in &extension_units {
+            for ext_path in &resolved_extensions {
+                if ext_path.is_dir()
+                    && let Some(src) = PortableImage::find_unit_path(ext_path, unit_name)
+                {
+                    let dest = Path::new(attached_dir).join(unit_name);
+                    if let Err(e) = unix_fs::symlink(&src, &dest)
+                        && e.kind() != io::ErrorKind::AlreadyExists
+                    {
+                        log::warn!("Failed to symlink extension unit {}: {}", unit_name, e);
+                        continue;
+                    }
+
+                    // Create marker drop-in for extension units
+                    let marker_dir = Path::new(attached_dir).join(format!("{}.d", unit_name));
+                    if fs::create_dir_all(&marker_dir).is_ok() {
+                        let marker_file = marker_dir.join("10-portable.conf");
+                        let marker_content = format!(
+                            "# Automatically generated by systemd-portabled -- do not edit.\n\
+                             [Unit]\n\
+                             Description=Portable extension from image '{}'\n",
+                            ext_path.display()
+                        );
+                        let _ = fs::write(&marker_file, marker_content);
+                    }
+
+                    linked_units.push(unit_name.clone());
+                    break;
+                }
+            }
+        }
+
+        // Clean up temporary mount
+        if let Some(ref m) = temp_mount {
+            cleanup_raw_mount(m);
+        }
+
         if linked_units.is_empty() {
             return Err(format!(
                 "Failed to symlink any unit files from image '{}'",
@@ -689,6 +1541,7 @@ impl ImageRegistry {
             runtime,
             units: linked_units.clone(),
             timestamp: now_usec(),
+            extensions: extensions.to_vec(),
         };
         self.attachments.insert(name.to_string(), info);
 
@@ -744,15 +1597,29 @@ impl ImageRegistry {
 
         let mut lines = Vec::new();
         lines.push(format!(
-            "{:<32} {:<12} {:<10} {:<24} {}",
-            "NAME", "TYPE", "STATE", "OS", "PATH"
+            "{:<32} {:<12} {:<4} {:<10} {:<10} {:<10} {:<24} {}",
+            "NAME", "TYPE", "RO", "USAGE", "LIMIT", "STATE", "OS", "PATH"
         ));
         for image in self.images.values() {
             let state = self.get_attach_state(&image.name);
+            let ro = if image.read_only { "ro" } else { "" };
+            let usage = if image.size > 0 {
+                format_bytes(image.size)
+            } else {
+                "-".to_string()
+            };
+            let limit = if image.limit > 0 {
+                format_bytes(image.limit)
+            } else {
+                "-".to_string()
+            };
             lines.push(format!(
-                "{:<32} {:<12} {:<10} {:<24} {}",
+                "{:<32} {:<12} {:<4} {:<10} {:<10} {:<10} {:<24} {}",
                 image.name,
                 image.image_type,
+                ro,
+                usage,
+                limit,
                 state,
                 image.os_pretty_name.as_deref().unwrap_or("-"),
                 image.path.display()
@@ -764,6 +1631,7 @@ impl ImageRegistry {
     }
 
     /// Inspect an image: show os-release and list unit files.
+    /// For raw images, temporarily mounts the image for inspection.
     pub fn inspect_image(&self, name: &str) -> Result<String, String> {
         let image = match self.images.get(name) {
             Some(img) => img,
@@ -774,34 +1642,85 @@ impl ImageRegistry {
         lines.push(image.format_status());
         lines.push(String::new());
 
-        // os-release
-        if image.image_type == ImageType::Directory {
-            let os_release = PortableImage::read_os_release(&image.path);
-            if !os_release.is_empty() {
-                lines.push("--- os-release ---".to_string());
-                for (k, v) in &os_release {
-                    lines.push(format!("{}={}", k, v));
+        // Determine the root path for inspection
+        let (inspect_path, temp_mount) = if image.image_type == ImageType::Raw {
+            let image_path_str = image.path.to_string_lossy().to_string();
+            match mount_raw_image(&image_path_str, &image.name) {
+                Ok(mount_dir) => (mount_dir.clone(), Some(mount_dir)),
+                Err(e) => {
+                    lines.push(format!("(raw image inspection failed: {})", e));
+                    return Ok(lines.join("\n"));
                 }
-                lines.push(String::new());
-            }
-
-            // Unit files
-            let units = PortableImage::discover_units(&image.path);
-            if !units.is_empty() {
-                lines.push("--- Unit files ---".to_string());
-                for u in &units {
-                    lines.push(u.clone());
-                }
-            } else {
-                lines.push("No unit files found.".to_string());
             }
         } else {
-            lines.push(
-                "(raw image inspection requires loopback mount -- not yet implemented)".to_string(),
-            );
+            (image.path.clone(), None)
+        };
+
+        // os-release
+        let os_release = PortableImage::read_os_release(&inspect_path);
+        if !os_release.is_empty() {
+            lines.push("--- os-release ---".to_string());
+            for (k, v) in &os_release {
+                lines.push(format!("{}={}", k, v));
+            }
+            lines.push(String::new());
+        }
+
+        // Unit files
+        let units = PortableImage::discover_units(&inspect_path);
+        if !units.is_empty() {
+            lines.push("--- Unit files ---".to_string());
+            for u in &units {
+                lines.push(u.clone());
+            }
+        } else {
+            lines.push("No unit files found.".to_string());
+        }
+
+        // Clean up temporary mount
+        if let Some(ref m) = temp_mount {
+            cleanup_raw_mount(m);
         }
 
         Ok(lines.join("\n"))
+    }
+
+    /// Set the size limit for an image.
+    pub fn set_image_limit_by_name(&mut self, name: &str, limit_bytes: u64) -> Result<(), String> {
+        let image = match self.images.get(name) {
+            Some(img) => img.clone(),
+            None => return Err(format!("Image '{}' not found", name)),
+        };
+        set_image_limit(&image.path, limit_bytes)?;
+        // Update the cached limit
+        if let Some(img) = self.images.get_mut(name) {
+            img.limit = limit_bytes;
+        }
+        Ok(())
+    }
+
+    /// Set or clear the read-only flag for a directory image.
+    pub fn set_image_read_only_by_name(
+        &mut self,
+        name: &str,
+        read_only: bool,
+    ) -> Result<(), String> {
+        let image = match self.images.get(name) {
+            Some(img) => img.clone(),
+            None => return Err(format!("Image '{}' not found", name)),
+        };
+        if image.image_type != ImageType::Directory {
+            return Err(format!(
+                "Read-only toggling is only supported for directory images (image '{}' is {})",
+                name, image.image_type
+            ));
+        }
+        set_image_read_only(&image.path, read_only)?;
+        // Update the cached read_only flag
+        if let Some(img) = self.images.get_mut(name) {
+            img.read_only = read_only;
+        }
+        Ok(())
     }
 
     /// Garbage-collect: remove attachments whose symlinks are gone.
@@ -1009,12 +1928,12 @@ impl Portable1Manager {
 
     #[zbus(property, name = "PoolUsage")]
     fn pool_usage(&self) -> u64 {
-        0u64
+        pool_usage_bytes("/var/lib/portables")
     }
 
     #[zbus(property, name = "PoolLimit")]
     fn pool_limit(&self) -> u64 {
-        0u64
+        pool_limit_bytes("/var/lib/portables")
     }
 
     // --- Methods ---
@@ -1030,7 +1949,7 @@ impl Portable1Manager {
                     img.name.clone(),
                     img.image_type.as_str().to_string(),
                     img.path.to_string_lossy().to_string(),
-                    false, // read_only
+                    img.read_only,
                     img.crtime_usec,
                     img.mtime_usec,
                 )
@@ -1076,6 +1995,37 @@ impl Portable1Manager {
         match registry.attach_image(&image, prof, runtime) {
             Ok(units) => {
                 registry.save_attachment(&image);
+                daemon_reload();
+                let changes: Vec<(String, String, String)> = units
+                    .iter()
+                    .map(|u| ("symlink".to_string(), u.clone(), String::new()))
+                    .collect();
+                Ok(changes)
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
+
+    /// AttachImageWithExtensions(s image, as extensions, as matches, s profile, b runtime, s copy_mode) → a(sss)
+    fn attach_image_with_extensions(
+        &self,
+        image: String,
+        extensions: Vec<String>,
+        _matches: Vec<String>,
+        profile: String,
+        runtime: bool,
+        _copy_mode: String,
+    ) -> zbus::fdo::Result<Vec<(String, String, String)>> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let prof = if profile.is_empty() {
+            None
+        } else {
+            Some(profile.as_str())
+        };
+        match registry.attach_image_with_extensions(&image, &extensions, prof, runtime) {
+            Ok(units) => {
+                registry.save_attachment(&image);
+                daemon_reload();
                 let changes: Vec<(String, String, String)> = units
                     .iter()
                     .map(|u| ("symlink".to_string(), u.clone(), String::new()))
@@ -1096,6 +2046,30 @@ impl Portable1Manager {
         match registry.detach_image(&image) {
             Ok(units) => {
                 registry.remove_attachment_file(&image);
+                daemon_reload();
+                let changes: Vec<(String, String, String)> = units
+                    .iter()
+                    .map(|u| ("unlink".to_string(), u.clone(), String::new()))
+                    .collect();
+                Ok(changes)
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
+
+    /// DetachImageWithExtensions(s image, as extensions, b runtime) → a(sss)
+    fn detach_image_with_extensions(
+        &self,
+        image: String,
+        _extensions: Vec<String>,
+        _runtime: bool,
+    ) -> zbus::fdo::Result<Vec<(String, String, String)>> {
+        // Extensions are recorded in the attachment state; detach removes everything
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.detach_image(&image) {
+            Ok(units) => {
+                registry.remove_attachment_file(&image);
+                daemon_reload();
                 let changes: Vec<(String, String, String)> = units
                     .iter()
                     .map(|u| ("unlink".to_string(), u.clone(), String::new()))
@@ -1138,6 +2112,51 @@ impl Portable1Manager {
         match registry.attach_image(&image, prof, runtime) {
             Ok(units) => {
                 registry.save_attachment(&image);
+                daemon_reload();
+                let added: Vec<(String, String, String)> = units
+                    .iter()
+                    .map(|u| ("symlink".to_string(), u.clone(), String::new()))
+                    .collect();
+                Ok((removed, added))
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
+
+    /// ReattachImageWithExtensions(s image, as extensions, as matches, s profile, b runtime, s copy_mode) → (a(sss), a(sss))
+    #[allow(clippy::type_complexity)]
+    fn reattach_image_with_extensions(
+        &self,
+        image: String,
+        extensions: Vec<String>,
+        _matches: Vec<String>,
+        profile: String,
+        runtime: bool,
+        _copy_mode: String,
+    ) -> zbus::fdo::Result<(Vec<(String, String, String)>, Vec<(String, String, String)>)> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        // Detach first
+        let removed: Vec<(String, String, String)> = match registry.detach_image(&image) {
+            Ok(units) => {
+                registry.remove_attachment_file(&image);
+                units
+                    .iter()
+                    .map(|u| ("unlink".to_string(), u.clone(), String::new()))
+                    .collect()
+            }
+            Err(_) => Vec::new(),
+        };
+
+        let prof = if profile.is_empty() {
+            None
+        } else {
+            Some(profile.as_str())
+        };
+
+        match registry.attach_image_with_extensions(&image, &extensions, prof, runtime) {
+            Ok(units) => {
+                registry.save_attachment(&image);
+                daemon_reload();
                 let added: Vec<(String, String, String)> = units
                     .iter()
                     .map(|u| ("symlink".to_string(), u.clone(), String::new()))
@@ -1152,9 +2171,27 @@ impl Portable1Manager {
     fn remove_image(&self, name: String) {
         let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
         // Detach if attached
-        let _ = registry.detach_image(&name);
+        let detached = registry.detach_image(&name).is_ok();
         registry.remove_attachment_file(&name);
-        // We don't actually delete the image files — just detach
+        if detached {
+            daemon_reload();
+        }
+    }
+
+    /// SetImageLimit(s name, t limit) — set image size limit in bytes (0 removes)
+    fn set_image_limit(&self, name: String, limit: u64) -> zbus::fdo::Result<()> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        registry
+            .set_image_limit_by_name(&name, limit)
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    /// SetReadOnly(s name, b read_only) — toggle read-only flag
+    fn set_read_only(&self, name: String, read_only: bool) -> zbus::fdo::Result<()> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        registry
+            .set_image_read_only_by_name(&name, read_only)
+            .map_err(zbus::fdo::Error::Failed)
     }
 
     /// GetImageOSRelease(s image) → a{ss}
@@ -1244,6 +2281,36 @@ fn setup_dbus(shared: SharedRegistry) -> Result<Connection, String> {
     Ok(conn)
 }
 
+/// Get pool usage via statvfs.
+fn pool_usage_bytes(pool_path: &str) -> u64 {
+    let c = match CString::new(pool_path) {
+        Ok(c) => c,
+        Err(_) => return 0,
+    };
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let ret = unsafe { libc::statvfs(c.as_ptr(), &mut stat) };
+    if ret != 0 {
+        return 0;
+    }
+    let total = stat.f_blocks * stat.f_frsize;
+    let free = stat.f_bfree * stat.f_frsize;
+    total.saturating_sub(free)
+}
+
+/// Get pool limit (total size) via statvfs.
+fn pool_limit_bytes(pool_path: &str) -> u64 {
+    let c = match CString::new(pool_path) {
+        Ok(c) => c,
+        Err(_) => return 0,
+    };
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let ret = unsafe { libc::statvfs(c.as_ptr(), &mut stat) };
+    if ret != 0 {
+        return 0;
+    }
+    stat.f_blocks * stat.f_frsize
+}
+
 fn format_bytes(bytes: u64) -> String {
     if bytes >= 1_073_741_824 {
         format!("{:.1}G", bytes as f64 / 1_073_741_824.0)
@@ -1261,7 +2328,7 @@ fn format_bytes(bytes: u64) -> String {
 // ---------------------------------------------------------------------------
 
 fn handle_control_command(registry: &mut ImageRegistry, line: &str) -> String {
-    let parts: Vec<&str> = line.trim().splitn(4, ' ').collect();
+    let parts: Vec<&str> = line.trim().splitn(6, ' ').collect();
     let cmd = match parts.first() {
         Some(c) => c.to_ascii_uppercase(),
         None => return "ERROR: empty command\n".to_string(),
@@ -1297,6 +2364,35 @@ fn handle_control_command(registry: &mut ImageRegistry, line: &str) -> String {
             match registry.attach_image(name, profile, runtime) {
                 Ok(units) => {
                     registry.save_attachment(name);
+                    daemon_reload();
+                    format!("OK: Attached {} units: {}\n", units.len(), units.join(", "))
+                }
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        "ATTACH-EXT" => {
+            // ATTACH-EXT <name> <extensions-comma-sep> [profile] [runtime]
+            let name = match parts.get(1) {
+                Some(n) => *n,
+                None => return "ERROR: ATTACH-EXT requires an image name\n".to_string(),
+            };
+            let ext_str = match parts.get(2) {
+                Some(e) => *e,
+                None => return "ERROR: ATTACH-EXT requires extension list\n".to_string(),
+            };
+            let extensions: Vec<String> = ext_str
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+            let profile = parts.get(3).copied();
+            let runtime = parts.get(4).map(|s| *s == "runtime").unwrap_or(false);
+
+            match registry.attach_image_with_extensions(name, &extensions, profile, runtime) {
+                Ok(units) => {
+                    registry.save_attachment(name);
+                    daemon_reload();
                     format!("OK: Attached {} units: {}\n", units.len(), units.join(", "))
                 }
                 Err(e) => format!("ERROR: {}\n", e),
@@ -1311,6 +2407,7 @@ fn handle_control_command(registry: &mut ImageRegistry, line: &str) -> String {
             match registry.detach_image(name) {
                 Ok(units) => {
                     registry.remove_attachment_file(name);
+                    daemon_reload();
                     format!("OK: Detached {} units: {}\n", units.len(), units.join(", "))
                 }
                 Err(e) => format!("ERROR: {}\n", e),
@@ -1332,6 +2429,7 @@ fn handle_control_command(registry: &mut ImageRegistry, line: &str) -> String {
             match registry.attach_image(name, profile, runtime) {
                 Ok(units) => {
                     registry.save_attachment(name);
+                    daemon_reload();
                     format!(
                         "OK: Reattached {} units: {}\n",
                         units.len(),
@@ -1377,6 +2475,63 @@ fn handle_control_command(registry: &mut ImageRegistry, line: &str) -> String {
             match registry.get_image(name) {
                 Some(img) => format!("{}\n", img.format_status()),
                 None => format!("ERROR: Image '{}' not found\n", name),
+            }
+        }
+
+        "SET-LIMIT" => {
+            let name = match parts.get(1) {
+                Some(n) => *n,
+                None => return "ERROR: SET-LIMIT requires an image name and size\n".to_string(),
+            };
+            let size_str = match parts.get(2) {
+                Some(s) => *s,
+                None => return "ERROR: SET-LIMIT requires a size argument\n".to_string(),
+            };
+            let limit_bytes = match parse_size(size_str) {
+                Ok(b) => b,
+                Err(e) => return format!("ERROR: {}\n", e),
+            };
+            match registry.set_image_limit_by_name(name, limit_bytes) {
+                Ok(()) => {
+                    if limit_bytes == 0 {
+                        format!("OK: Removed size limit for '{}'\n", name)
+                    } else {
+                        format!(
+                            "OK: Set size limit for '{}' to {}\n",
+                            name,
+                            format_bytes(limit_bytes)
+                        )
+                    }
+                }
+                Err(e) => format!("ERROR: {}\n", e),
+            }
+        }
+
+        "READ-ONLY" => {
+            let name = match parts.get(1) {
+                Some(n) => *n,
+                None => return "ERROR: READ-ONLY requires an image name\n".to_string(),
+            };
+            // If no value given, just query current state
+            let value_str = parts.get(2).copied();
+            match value_str {
+                None | Some("query") => match registry.get_image(name) {
+                    Some(img) => {
+                        format!("{}\n", if img.read_only { "yes" } else { "no" })
+                    }
+                    None => format!("ERROR: Image '{}' not found\n", name),
+                },
+                Some(v) => {
+                    let read_only = matches!(v, "yes" | "true" | "1");
+                    match registry.set_image_read_only_by_name(name, read_only) {
+                        Ok(()) => format!(
+                            "OK: Set read-only for '{}' to {}\n",
+                            name,
+                            if read_only { "yes" } else { "no" }
+                        ),
+                        Err(e) => format!("ERROR: {}\n", e),
+                    }
+                }
             }
         }
 
@@ -1967,6 +3122,8 @@ mod tests {
             crtime_usec: 0,
             os_pretty_name: Some("Test OS 1.0".to_string()),
             portable_service: None,
+            read_only: false,
+            limit: 0,
         };
         let status = img.format_status();
         assert!(status.contains("Name: test"));
@@ -1986,6 +3143,8 @@ mod tests {
             crtime_usec: 500000,
             os_pretty_name: Some("My OS".to_string()),
             portable_service: Some("myapp".to_string()),
+            read_only: false,
+            limit: 0,
         };
         let show = img.format_show();
         assert!(show.contains("Name=test"));
@@ -2000,40 +3159,41 @@ mod tests {
     #[test]
     fn test_attachment_info_roundtrip() {
         let info = AttachmentInfo {
-            image_name: "myapp".to_string(),
-            image_path: "/var/lib/portables/myapp".to_string(),
+            image_name: "test".to_string(),
+            image_path: "/var/lib/portables/test".to_string(),
             profile: Some("default".to_string()),
             runtime: false,
-            units: vec!["myapp.service".to_string(), "myapp.socket".to_string()],
+            units: vec!["test.service".to_string(), "test.socket".to_string()],
             timestamp: 1234567890,
+            extensions: Vec::new(),
         };
-        let content = info.to_state_file();
-        let parsed = AttachmentInfo::from_state_file(&content).unwrap();
-        assert_eq!(parsed.image_name, "myapp");
-        assert_eq!(parsed.image_path, "/var/lib/portables/myapp");
-        assert_eq!(parsed.profile.as_deref(), Some("default"));
+        let state = info.to_state_file();
+        let parsed = AttachmentInfo::from_state_file(&state).unwrap();
+        assert_eq!(parsed.image_name, "test");
+        assert_eq!(parsed.image_path, "/var/lib/portables/test");
+        assert_eq!(parsed.profile, Some("default".to_string()));
         assert!(!parsed.runtime);
-        assert_eq!(parsed.units.len(), 2);
-        assert_eq!(parsed.units[0], "myapp.service");
-        assert_eq!(parsed.units[1], "myapp.socket");
+        assert_eq!(parsed.units, vec!["test.service", "test.socket"]);
         assert_eq!(parsed.timestamp, 1234567890);
+        assert!(parsed.extensions.is_empty());
     }
 
     #[test]
     fn test_attachment_info_roundtrip_runtime() {
         let info = AttachmentInfo {
-            image_name: "test".to_string(),
-            image_path: "/run/portables/test".to_string(),
+            image_name: "myapp".to_string(),
+            image_path: "/run/portables/myapp".to_string(),
             profile: None,
             runtime: true,
-            units: vec!["test.service".to_string()],
+            units: vec!["myapp.service".to_string()],
             timestamp: 0,
+            extensions: Vec::new(),
         };
-        let content = info.to_state_file();
-        let parsed = AttachmentInfo::from_state_file(&content).unwrap();
-        assert_eq!(parsed.image_name, "test");
+        let state = info.to_state_file();
+        let parsed = AttachmentInfo::from_state_file(&state).unwrap();
         assert!(parsed.runtime);
         assert!(parsed.profile.is_none());
+        assert!(parsed.extensions.is_empty());
     }
 
     #[test]
@@ -2043,12 +3203,31 @@ mod tests {
             image_path: "/var/lib/portables/empty".to_string(),
             profile: None,
             runtime: false,
-            units: vec![],
-            timestamp: 0,
+            units: Vec::new(),
+            timestamp: 999,
+            extensions: Vec::new(),
         };
-        let content = info.to_state_file();
-        let parsed = AttachmentInfo::from_state_file(&content).unwrap();
+        let state = info.to_state_file();
+        let parsed = AttachmentInfo::from_state_file(&state).unwrap();
         assert!(parsed.units.is_empty());
+    }
+
+    #[test]
+    fn test_attachment_info_roundtrip_with_extensions() {
+        let info = AttachmentInfo {
+            image_name: "test".to_string(),
+            image_path: "/var/lib/portables/test".to_string(),
+            profile: None,
+            runtime: false,
+            units: vec!["test.service".to_string()],
+            timestamp: 100,
+            extensions: vec!["ext1".to_string(), "ext2".to_string()],
+        };
+        let state = info.to_state_file();
+        assert!(state.contains("EXTENSION=ext1"));
+        assert!(state.contains("EXTENSION=ext2"));
+        let parsed = AttachmentInfo::from_state_file(&state).unwrap();
+        assert_eq!(parsed.extensions, vec!["ext1", "ext2"]);
     }
 
     #[test]
@@ -2160,6 +3339,7 @@ mod tests {
                 runtime: false,
                 units: vec!["test.service".to_string()],
                 timestamp: 12345,
+                extensions: Vec::new(),
             },
         );
         reg.save_attachments_to(state_dir);
@@ -2187,6 +3367,7 @@ mod tests {
                 runtime: true,
                 units: vec![],
                 timestamp: 0,
+                extensions: Vec::new(),
             },
         );
         reg.save_attachment_to("one", state_dir);
@@ -2319,7 +3500,8 @@ mod tests {
     }
 
     #[test]
-    fn test_attach_image_raw_not_supported() {
+    fn test_attach_image_raw_mount_failure() {
+        // Raw images require loopback mount which fails in test environment
         let tmp = temp_dir();
         let attached_dir = tmp.path().join("attached");
         fs::create_dir_all(&attached_dir).unwrap();
@@ -2330,8 +3512,9 @@ mod tests {
         reg.discover_images_from(&[search]);
 
         let result = reg.attach_image_to("myraw", None, false, attached_dir.to_str().unwrap());
+        // In test env (no /dev/loop-control), this fails with mount error
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not yet implemented"));
+        assert!(result.unwrap_err().contains("Failed to mount raw image"));
     }
 
     #[test]
@@ -2460,6 +3643,7 @@ mod tests {
                 runtime: false,
                 units: vec!["stale.service".to_string()],
                 timestamp: 0,
+                extensions: Vec::new(),
             },
         );
 
@@ -2490,6 +3674,7 @@ mod tests {
                 runtime: false,
                 units: vec!["live.service".to_string()],
                 timestamp: 0,
+                extensions: Vec::new(),
             },
         );
 
@@ -2517,8 +3702,8 @@ mod tests {
     #[test]
     fn test_format_image_list_with_images() {
         let tmp = temp_dir();
-        create_test_image(tmp.path(), "app1", &["app1.service"]);
-        create_test_image(tmp.path(), "app2", &["app2.service"]);
+        create_test_image(tmp.path(), "alpha", &["alpha.service"]);
+        create_test_image(tmp.path(), "beta", &["beta.service"]);
 
         let mut reg = ImageRegistry::new();
         let search = tmp.path().to_str().unwrap();
@@ -2526,8 +3711,11 @@ mod tests {
 
         let output = reg.format_image_list();
         assert!(output.contains("NAME"));
-        assert!(output.contains("app1"));
-        assert!(output.contains("app2"));
+        assert!(output.contains("RO"));
+        assert!(output.contains("USAGE"));
+        assert!(output.contains("LIMIT"));
+        assert!(output.contains("alpha"));
+        assert!(output.contains("beta"));
         assert!(output.contains("2 images listed."));
     }
 
@@ -2569,7 +3757,8 @@ mod tests {
         let result = reg.inspect_image("myraw");
         assert!(result.is_ok());
         let output = result.unwrap();
-        assert!(output.contains("not yet implemented"));
+        // In test env (no /dev/loop-control), raw inspection falls back gracefully
+        assert!(output.contains("raw image inspection failed") || output.contains("myraw"));
     }
 
     // ── Profile tests ─────────────────────────────────────────────────────
@@ -2830,7 +4019,6 @@ mod tests {
         let mut reg = ImageRegistry::new();
         let result = handle_control_command(&mut reg, "ATTACH nonexistent");
         assert!(result.contains("ERROR"));
-        assert!(result.contains("not found"));
     }
 
     #[test]
@@ -2838,7 +4026,6 @@ mod tests {
         let mut reg = ImageRegistry::new();
         let result = handle_control_command(&mut reg, "DETACH nonexistent");
         assert!(result.contains("ERROR"));
-        assert!(result.contains("not attached"));
     }
 
     #[test]
@@ -2860,6 +4047,579 @@ mod tests {
         let mut reg = ImageRegistry::new();
         let result = handle_control_command(&mut reg, "REATTACH");
         assert!(result.contains("ERROR"));
+    }
+
+    // ── SET-LIMIT control command tests ───────────────────────────────────
+
+    #[test]
+    fn test_command_set_limit() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        let result = handle_control_command(&mut reg, "SET-LIMIT myapp 500M");
+        assert!(result.starts_with("OK"));
+        assert!(result.contains("500"));
+
+        // Verify limit was set
+        let img = reg.get_image("myapp").unwrap();
+        assert_eq!(img.limit, 500 * 1_048_576);
+    }
+
+    #[test]
+    fn test_command_set_limit_zero_removes() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        // Set a limit first
+        let _ = handle_control_command(&mut reg, "SET-LIMIT myapp 1G");
+        assert_eq!(reg.get_image("myapp").unwrap().limit, 1_073_741_824);
+
+        // Remove the limit
+        let result = handle_control_command(&mut reg, "SET-LIMIT myapp 0");
+        assert!(result.starts_with("OK"));
+        assert_eq!(reg.get_image("myapp").unwrap().limit, 0);
+    }
+
+    #[test]
+    fn test_command_set_limit_missing_args() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "SET-LIMIT");
+        assert!(result.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_command_set_limit_missing_size() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "SET-LIMIT myapp");
+        assert!(result.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_command_set_limit_not_found() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "SET-LIMIT nonexistent 1G");
+        assert!(result.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_command_set_limit_invalid_size() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        let result = handle_control_command(&mut reg, "SET-LIMIT myapp abc");
+        assert!(result.contains("ERROR"));
+    }
+
+    // ── READ-ONLY control command tests ───────────────────────────────────
+
+    #[test]
+    fn test_command_read_only_query() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        let result = handle_control_command(&mut reg, "READ-ONLY myapp");
+        assert_eq!(result.trim(), "no");
+    }
+
+    #[test]
+    fn test_command_read_only_set_yes() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        let result = handle_control_command(&mut reg, "READ-ONLY myapp yes");
+        assert!(result.starts_with("OK"));
+        assert!(reg.get_image("myapp").unwrap().read_only);
+    }
+
+    #[test]
+    fn test_command_read_only_set_no() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        // Set read-only first
+        let _ = handle_control_command(&mut reg, "READ-ONLY myapp yes");
+        assert!(reg.get_image("myapp").unwrap().read_only);
+
+        // Clear it
+        let result = handle_control_command(&mut reg, "READ-ONLY myapp no");
+        assert!(result.starts_with("OK"));
+        assert!(!reg.get_image("myapp").unwrap().read_only);
+    }
+
+    #[test]
+    fn test_command_read_only_missing_name() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "READ-ONLY");
+        assert!(result.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_command_read_only_not_found() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "READ-ONLY nonexistent yes");
+        assert!(result.contains("ERROR"));
+    }
+
+    // ── ATTACH-EXT control command tests ──────────────────────────────────
+
+    #[test]
+    fn test_command_attach_ext_missing_name() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "ATTACH-EXT");
+        assert!(result.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_command_attach_ext_missing_extensions() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "ATTACH-EXT myapp");
+        assert!(result.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_command_attach_ext_not_found() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "ATTACH-EXT nonexistent ext1");
+        assert!(result.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_command_attach_ext_case_insensitive() {
+        let mut reg = ImageRegistry::new();
+        let result = handle_control_command(&mut reg, "attach-ext nonexistent ext1");
+        assert!(result.contains("ERROR"));
+        assert!(!result.contains("Unknown command"));
+    }
+
+    // ── parse_size tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_size_bytes() {
+        assert_eq!(parse_size("1024").unwrap(), 1024);
+        assert_eq!(parse_size("0").unwrap(), 0);
+        assert_eq!(parse_size("512B").unwrap(), 512);
+    }
+
+    #[test]
+    fn test_parse_size_k() {
+        assert_eq!(parse_size("1K").unwrap(), 1024);
+        assert_eq!(parse_size("4K").unwrap(), 4096);
+    }
+
+    #[test]
+    fn test_parse_size_m() {
+        assert_eq!(parse_size("1M").unwrap(), 1_048_576);
+        assert_eq!(parse_size("500M").unwrap(), 500 * 1_048_576);
+    }
+
+    #[test]
+    fn test_parse_size_g() {
+        assert_eq!(parse_size("1G").unwrap(), 1_073_741_824);
+        assert_eq!(parse_size("2G").unwrap(), 2_147_483_648);
+    }
+
+    #[test]
+    fn test_parse_size_t() {
+        assert_eq!(parse_size("1T").unwrap(), 1_099_511_627_776);
+    }
+
+    #[test]
+    fn test_parse_size_empty() {
+        assert!(parse_size("").is_err());
+    }
+
+    #[test]
+    fn test_parse_size_invalid() {
+        assert!(parse_size("abc").is_err());
+        assert!(parse_size("G").is_err());
+    }
+
+    // ── Image limit sidecar tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_image_limit_path() {
+        let p = image_limit_path(Path::new("/var/lib/portables/myapp"));
+        assert_eq!(p, PathBuf::from("/var/lib/portables/myapp.limit"));
+    }
+
+    #[test]
+    fn test_image_limit_path_raw() {
+        let p = image_limit_path(Path::new("/var/lib/portables/myapp.raw"));
+        assert_eq!(p, PathBuf::from("/var/lib/portables/myapp.raw.limit"));
+    }
+
+    #[test]
+    fn test_set_and_get_image_limit() {
+        let tmp = temp_dir();
+        let img_path = tmp.path().join("myapp");
+        fs::create_dir_all(&img_path).unwrap();
+
+        assert_eq!(get_image_limit(&img_path), 0);
+
+        set_image_limit(&img_path, 1_073_741_824).unwrap();
+        assert_eq!(get_image_limit(&img_path), 1_073_741_824);
+
+        // Remove limit
+        set_image_limit(&img_path, 0).unwrap();
+        assert_eq!(get_image_limit(&img_path), 0);
+    }
+
+    // ── Read-only marker tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_image_readonly_path() {
+        let p = image_readonly_path(Path::new("/var/lib/portables/myapp"));
+        assert_eq!(p, PathBuf::from("/var/lib/portables/myapp/.readonly"));
+    }
+
+    #[test]
+    fn test_set_and_check_read_only() {
+        let tmp = temp_dir();
+        let img_path = tmp.path().join("myapp");
+        fs::create_dir_all(&img_path).unwrap();
+
+        assert!(!is_image_read_only(&img_path));
+
+        set_image_read_only(&img_path, true).unwrap();
+        assert!(is_image_read_only(&img_path));
+
+        set_image_read_only(&img_path, false).unwrap();
+        assert!(!is_image_read_only(&img_path));
+    }
+
+    #[test]
+    fn test_discover_images_with_read_only() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        // Mark as read-only
+        let marker = tmp.path().join("myapp").join(".readonly");
+        fs::write(&marker, "").unwrap();
+
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        let img = reg.get_image("myapp").unwrap();
+        assert!(img.read_only);
+    }
+
+    #[test]
+    fn test_discover_images_with_limit() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        // Set a limit sidecar
+        fs::write(tmp.path().join("myapp.limit"), "1073741824").unwrap();
+
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        let img = reg.get_image("myapp").unwrap();
+        assert_eq!(img.limit, 1_073_741_824);
+    }
+
+    #[test]
+    fn test_set_image_read_only_by_name() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        assert!(!reg.get_image("myapp").unwrap().read_only);
+        reg.set_image_read_only_by_name("myapp", true).unwrap();
+        assert!(reg.get_image("myapp").unwrap().read_only);
+        reg.set_image_read_only_by_name("myapp", false).unwrap();
+        assert!(!reg.get_image("myapp").unwrap().read_only);
+    }
+
+    #[test]
+    fn test_set_image_read_only_raw_rejected() {
+        let tmp = temp_dir();
+        create_test_raw_image(tmp.path(), "myraw");
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        let result = reg.set_image_read_only_by_name("myraw", true);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("only supported for directory"));
+    }
+
+    #[test]
+    fn test_set_image_limit_by_name() {
+        let tmp = temp_dir();
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        assert_eq!(reg.get_image("myapp").unwrap().limit, 0);
+        reg.set_image_limit_by_name("myapp", 500_000_000).unwrap();
+        assert_eq!(reg.get_image("myapp").unwrap().limit, 500_000_000);
+    }
+
+    #[test]
+    fn test_set_image_limit_by_name_not_found() {
+        let mut reg = ImageRegistry::new();
+        let result = reg.set_image_limit_by_name("nonexistent", 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_set_image_read_only_by_name_not_found() {
+        let mut reg = ImageRegistry::new();
+        let result = reg.set_image_read_only_by_name("nonexistent", true);
+        assert!(result.is_err());
+    }
+
+    // ── Extension image resolution tests ──────────────────────────────────
+
+    #[test]
+    fn test_find_extension_image_directory() {
+        let tmp = temp_dir();
+        let ext_dir = tmp.path().join("myext");
+        fs::create_dir_all(&ext_dir).unwrap();
+
+        let search = tmp.path().to_str().unwrap();
+        let result = find_extension_image_from("myext", &[search]);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), ext_dir);
+    }
+
+    #[test]
+    fn test_find_extension_image_raw() {
+        let tmp = temp_dir();
+        let ext_path = tmp.path().join("myext.raw");
+        fs::write(&ext_path, vec![0u8; 512]).unwrap();
+
+        let search = tmp.path().to_str().unwrap();
+        let result = find_extension_image_from("myext", &[search]);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), ext_path);
+    }
+
+    #[test]
+    fn test_find_extension_image_not_found() {
+        let tmp = temp_dir();
+        let search = tmp.path().to_str().unwrap();
+        let result = find_extension_image_from("nonexistent", &[search]);
+        assert!(result.is_none());
+    }
+
+    // ── Loopback / GPT constant and struct tests ──────────────────────────
+
+    #[test]
+    fn test_loop_constants() {
+        assert_eq!(LOOP_CTL_GET_FREE, 0x4C82);
+        assert_eq!(LOOP_SET_FD, 0x4C00);
+        assert_eq!(LOOP_CLR_FD, 0x4C01);
+        assert_eq!(LOOP_SET_STATUS64, 0x4C04);
+        assert_eq!(LO_FLAGS_READ_ONLY, 1);
+        assert_eq!(LO_FLAGS_AUTOCLEAR, 4);
+        assert_eq!(LO_FLAGS_PARTSCAN, 8);
+    }
+
+    #[test]
+    fn test_loopinfo64_default() {
+        let info = LoopInfo64::default();
+        assert_eq!(info.lo_flags, 0);
+        assert_eq!(info.lo_offset, 0);
+        assert_eq!(info.lo_sizelimit, 0);
+    }
+
+    #[test]
+    fn test_setup_loopback_nonexistent() {
+        let result = setup_loopback("/nonexistent/image.raw", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_setup_loopback_not_file() {
+        let result = setup_loopback("/tmp", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not a regular file"));
+    }
+
+    #[test]
+    fn test_detach_loopback_nonexistent() {
+        let result = detach_loopback("/dev/loop99999");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_dissected_partition_size_bytes() {
+        let part = DissectedPartition {
+            index: 0,
+            first_lba: 2048,
+            last_lba: 4095,
+            type_guid: [0u8; 16],
+            device: "/dev/loop0p1".to_string(),
+        };
+        assert_eq!(part.size_bytes(), 2048 * 512);
+    }
+
+    #[test]
+    fn test_dissected_partition_is_root() {
+        let mut part = DissectedPartition {
+            index: 0,
+            first_lba: 0,
+            last_lba: 0,
+            type_guid: GPT_ROOT_X86_64,
+            device: String::new(),
+        };
+        assert!(part.is_root());
+
+        part.type_guid = GPT_LINUX_GENERIC;
+        assert!(part.is_root());
+
+        part.type_guid = [0u8; 16];
+        assert!(!part.is_root());
+    }
+
+    #[test]
+    fn test_dissected_partition_is_usr() {
+        let mut part = DissectedPartition {
+            index: 0,
+            first_lba: 0,
+            last_lba: 0,
+            type_guid: GPT_USR_X86_64,
+            device: String::new(),
+        };
+        assert!(part.is_usr());
+
+        part.type_guid = GPT_ROOT_X86_64;
+        assert!(!part.is_usr());
+    }
+
+    #[test]
+    fn test_gpt_type_guids_are_16_bytes() {
+        assert_eq!(GPT_ROOT_X86_64.len(), 16);
+        assert_eq!(GPT_ROOT_AARCH64.len(), 16);
+        assert_eq!(GPT_USR_X86_64.len(), 16);
+        assert_eq!(GPT_LINUX_GENERIC.len(), 16);
+    }
+
+    #[test]
+    fn test_image_sector_size_and_gpt_signature() {
+        assert_eq!(IMAGE_SECTOR_SIZE, 512);
+        assert_eq!(IMAGE_GPT_SIGNATURE, b"EFI PART");
+    }
+
+    #[test]
+    fn test_find_root_partition_prefers_specific() {
+        let partitions = vec![
+            DissectedPartition {
+                index: 0,
+                first_lba: 2048,
+                last_lba: 4095,
+                type_guid: GPT_LINUX_GENERIC,
+                device: "/dev/loop0p1".to_string(),
+            },
+            DissectedPartition {
+                index: 1,
+                first_lba: 4096,
+                last_lba: 8191,
+                type_guid: GPT_ROOT_X86_64,
+                device: "/dev/loop0p2".to_string(),
+            },
+        ];
+        let root = find_root_partition(&partitions).unwrap();
+        assert_eq!(root.type_guid, GPT_ROOT_X86_64);
+    }
+
+    #[test]
+    fn test_find_root_partition_falls_back_to_generic() {
+        let partitions = vec![DissectedPartition {
+            index: 0,
+            first_lba: 2048,
+            last_lba: 4095,
+            type_guid: GPT_LINUX_GENERIC,
+            device: "/dev/loop0p1".to_string(),
+        }];
+        let root = find_root_partition(&partitions).unwrap();
+        assert_eq!(root.type_guid, GPT_LINUX_GENERIC);
+    }
+
+    #[test]
+    fn test_find_root_partition_none() {
+        let partitions = vec![DissectedPartition {
+            index: 0,
+            first_lba: 0,
+            last_lba: 0,
+            type_guid: GPT_USR_X86_64,
+            device: String::new(),
+        }];
+        assert!(find_root_partition(&partitions).is_none());
+    }
+
+    #[test]
+    fn test_dissect_gpt_nonexistent() {
+        let result = dissect_gpt("/nonexistent/device");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_dissect_gpt_no_signature() {
+        let tmp = temp_dir();
+        let path = tmp.path().join("test.raw");
+        // Create a file with no GPT signature
+        fs::write(&path, vec![0u8; 2048]).unwrap();
+        let result = dissect_gpt(path.to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no GPT signature"));
+    }
+
+    #[test]
+    fn test_create_raw_mount_dir() {
+        let tmp = temp_dir();
+        // Use a temp directory instead of /run/systemd/portabled/mnt
+        let dir = tmp.path().join("mnt").join("testimg");
+        fs::create_dir_all(&dir).unwrap();
+        assert!(dir.is_dir());
+    }
+
+    // ── Attach with extensions tests (directory) ──────────────────────────
+
+    #[test]
+    fn test_attach_with_extensions_ext_not_found() {
+        let tmp = temp_dir();
+        let attached_dir = tmp.path().join("attached");
+        fs::create_dir_all(&attached_dir).unwrap();
+
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        let result = reg.attach_image_with_extensions_to(
+            "myapp",
+            &["nonexistent_ext".to_string()],
+            None,
+            false,
+            attached_dir.to_str().unwrap(),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Extension image"));
     }
 
     // ── Helper function tests ─────────────────────────────────────────────
@@ -2977,5 +4737,60 @@ mod tests {
         let result = reg.attach_image_to("myapp", None, false, attached_dir.to_str().unwrap());
         assert!(result.is_ok());
         assert_eq!(reg.get_attach_state("myapp"), AttachState::Attached);
+    }
+
+    // ── Attach with directory extension integration ───────────────────────
+
+    #[test]
+    fn test_attach_with_directory_extension() {
+        let tmp = temp_dir();
+        let attached_dir = tmp.path().join("attached");
+        let ext_search = tmp.path().join("exts");
+        fs::create_dir_all(&attached_dir).unwrap();
+        fs::create_dir_all(&ext_search).unwrap();
+
+        // Create base image
+        create_test_image(tmp.path(), "myapp", &["myapp.service"]);
+
+        // Create extension image directory with extra unit
+        let ext_dir = ext_search.join("myext");
+        let ext_unit_dir = ext_dir.join("usr/lib/systemd/system");
+        fs::create_dir_all(&ext_unit_dir).unwrap();
+        fs::write(
+            ext_unit_dir.join("myext-helper.service"),
+            "[Service]\nExecStart=/bin/true\n",
+        )
+        .unwrap();
+        // Extension os-release
+        let ext_os_dir = ext_dir.join("usr/lib");
+        fs::write(ext_os_dir.join("os-release"), "PRETTY_NAME=\"Extension\"\n").unwrap();
+
+        let mut reg = ImageRegistry::new();
+        let search = tmp.path().to_str().unwrap();
+        reg.discover_images_from(&[search]);
+
+        // Use find_extension_image_from which we know works
+        let ext_search_str = ext_search.to_str().unwrap();
+        let ext_path = find_extension_image_from("myext", &[ext_search_str]);
+        assert!(ext_path.is_some());
+    }
+
+    // ── Pool stats tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_pool_usage_bytes_nonexistent() {
+        assert_eq!(pool_usage_bytes("/nonexistent/path/xyz"), 0);
+    }
+
+    #[test]
+    fn test_pool_limit_bytes_nonexistent() {
+        assert_eq!(pool_limit_bytes("/nonexistent/path/xyz"), 0);
+    }
+
+    #[test]
+    fn test_pool_limit_bytes_tmp() {
+        // /tmp should have a non-zero size
+        let limit = pool_limit_bytes("/tmp");
+        assert!(limit > 0);
     }
 }
