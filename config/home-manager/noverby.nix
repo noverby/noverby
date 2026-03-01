@@ -10,5 +10,5 @@
     inherit inputs src;
     stateVersion = "24.05";
   };
-  modules = [inputs.self.homeModules.noverby];
+  modules = [inputs.self.users.noverby];
 }
