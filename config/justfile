@@ -4,5 +4,14 @@ build host:
 switch host:
     sudo nixos-rebuild switch --flake .#{{ host }} --print-build-logs
 
+deploy host:
+    colmena apply --on {{ host }} --verbose --impure
+
+deploy-build-on-target host:
+    colmena apply --on {{ host }} --build-on-target --verbose --impure
+
+deploy-all:
+    colmena apply --verbose --impure
+
 rekey:
     cd secrets && agenix --rekey

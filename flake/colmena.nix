@@ -34,7 +34,7 @@ in {
     // builtins.mapAttrs (name: cfg: {
       deployment = {
         targetHost = "${name}.overby.me";
-        targetUser = "root";
+        targetUser = "noverby";
       };
       imports =
         [
