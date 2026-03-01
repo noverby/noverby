@@ -164,14 +164,14 @@
       flakelight.builtinFormatters = false;
 
       imports = [
-        ./flake/libBuiltins.nix
-        ./flake/secrets.nix
-        ./flake/users.nix
-        ./flake/hardware.nix
-        ./flake/desktops.nix
-        ./flake/devenvModules.nix
-        ./flake/devenvConfigurations.nix
-        ./flake/colmena.nix
+        ./flakelight-modules/libBuiltins.nix
+        ./flakelight-modules/secrets.nix
+        ./flakelight-modules/users.nix
+        ./flakelight-modules/hardware.nix
+        ./flakelight-modules/desktops.nix
+        ./flakelight-modules/devenvModules.nix
+        ./flakelight-modules/devenvConfigurations.nix
+        ./flakelight-modules/colmena.nix
 
         ./nix-workspace
 
@@ -193,13 +193,13 @@
       ];
       nixDirAliases = {
         packages = ["pkgs"];
-        flakelightModules = ["flake"];
+        flakelightModules = ["flakelight-modules"];
         nixosConfigurations = inputs.nixpkgs.lib.mkForce ["config/nixos"];
-        nixosModules = ["nixos"];
+        nixosModules = ["nixos-modules"];
         homeConfigurations = ["config/home-manager"];
-        homeModules = ["home-manager"];
+        homeModules = ["home-manager-modules"];
         devenvConfiguration = ["config/devenv"];
-        devenvModules = ["devenv"];
+        devenvModules = ["devenv-modules"];
         secrets = ["config/secrets"];
         users = ["config/users"];
         hardware = ["config/hardware"];
