@@ -6,7 +6,7 @@
   imports = ["${modulesPath}/profiles/qemu-guest.nix"];
 
   system = {
-    name = "oxidized";
+    name = "nixos-rs";
     stateVersion = "25.11";
   };
 
