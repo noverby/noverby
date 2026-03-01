@@ -25,6 +25,7 @@
     home-manager
     cloud-hypervisor
     {
+      security.sudo.wheelNeedsPassword = false;
       networking = {
         hostName = "home";
         interfaces.enp0s13f0u3u4.ipv4.addresses = [
