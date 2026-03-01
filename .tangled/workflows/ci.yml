@@ -14,10 +14,10 @@ steps:
       nix-env -iA cachix -f https://cachix.org/api/v1/install
       mkdir -p /tangled/home/.config/nix
       echo -e "experimental-features = nix-command flakes ca-derivations dynamic-derivations recursive-nix\nmax-jobs = auto" > /tangled/home/.config/nix/nix.conf
+      nix upgrade-nix
       cachix use $CACHIX_NAME
   - name: "Nix flake check"
     command: |
-      rm -rf /homeless-shelter
       ulimit -n 65536
       printf '{"PWD":"%s"}' "$PWD" > .env
       cachix watch-exec $CACHIX_NAME -- nix flake check --override-input env path:$(realpath $PWD/.env)
