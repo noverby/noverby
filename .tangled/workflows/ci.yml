@@ -17,5 +17,6 @@ steps:
       cachix use $CACHIX_NAME
   - name: "Nix flake check"
     command: |
+      ulimit -n 65536
       printf '{"PWD":"%s"}' "$PWD" > .env
       cachix watch-exec $CACHIX_NAME -- nix flake check --override-input env path:$(realpath $PWD/.env)
