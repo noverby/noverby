@@ -1,5 +1,6 @@
 {
   config,
+  inputs,
   lib,
   pkgs,
   ...
@@ -62,11 +63,11 @@
         mkdir -p "$dev_ext_dir"
 
         rm -rf "$dev_ext_dir/mojo"
-        cp -rL ${pkgs.zed-mojo} "$dev_ext_dir/mojo"
+        cp -rL ${inputs.self.zedExtensions.zed-mojo} "$dev_ext_dir/mojo"
         chmod -R u+w "$dev_ext_dir/mojo"
 
         rm -rf "$dev_ext_dir/nickel"
-        cp -rL ${pkgs.zed-nickel} "$dev_ext_dir/nickel"
+        cp -rL ${inputs.self.zedExtensions.zed-nickel} "$dev_ext_dir/nickel"
         chmod -R u+w "$dev_ext_dir/nickel"
       '';
     };
