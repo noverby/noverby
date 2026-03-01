@@ -11,7 +11,7 @@
     };
     pipelines = {
       nixery = "nixery.tangled.sh";
-      workflowTimeout = "10m";
+      workflowTimeout = "2h";
     };
   };
 
