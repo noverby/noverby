@@ -4,6 +4,12 @@
   lib,
   ...
 }: {
+  # Disable logrotate config validation at build time — the check runs
+  # `logrotate --debug` which calls `id` to resolve user/group names,
+  # but /etc/passwd doesn't exist inside the Nix build sandbox, causing:
+  #   "id: cannot find name for user ID 0"
+  services.logrotate.checkConfig = false;
+
   system = {
     inherit stateVersion;
     # Store copy of all Nix files in /nix/var/nix/profiles/system/full-config
