@@ -68,12 +68,22 @@
     };
   };
 
-  # Enable systemd-resolved for DNS resolution (tests the Rust resolved)
-  services.resolved = {
-    enable = true;
-    dnssec = "allow-downgrade";
-    llmnr = "true";
-    fallbackDns = ["1.1.1.1" "8.8.8.8"];
+  services = {
+    # Disable logrotate config validation at build time — the check runs
+    # `logrotate --debug` which calls `id` to resolve user/group names,
+    # but /etc/passwd doesn't exist inside the Nix build sandbox, causing:
+    #   "id: cannot find name for user ID 0"
+    logrotate.checkConfig = false;
+
+    # Enable systemd-resolved for DNS resolution (tests the Rust resolved)
+    resolved = {
+      enable = true;
+      dnssec = "allow-downgrade";
+      llmnr = "true";
+      fallbackDns = ["1.1.1.1" "8.8.8.8"];
+    };
+
+    getty.autologinUser = "nixos";
   };
 
   users.users = {
@@ -83,6 +93,4 @@
       password = "nixos";
     };
   };
-
-  services.getty.autologinUser = "nixos";
 })
