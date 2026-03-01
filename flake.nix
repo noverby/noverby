@@ -178,6 +178,7 @@
         ./flakelight-modules/devenvModules.nix
         ./flakelight-modules/devenvConfigurations.nix
         ./flakelight-modules/colmena.nix
+        ./flakelight-modules/zedExtensions.nix
 
         ./nix-workspace
 

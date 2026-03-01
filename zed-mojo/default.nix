@@ -1,6 +1,5 @@
-{
-  packages.zed-mojo = {lib}:
-    lib.cleanSource ./.;
+{lib, ...}: {
+  zedExtensions.zed-mojo = lib.cleanSource ./.;
 
   devShells.zed-mojo = pkgs: {
     packages = with pkgs; [
