@@ -75,17 +75,17 @@
 | Project | Description |
 |-|-|
 | [Homepage 🐒➡️🔥](https://tangled.org/@overby.me/overby.me/tree/main/homepage) | Personal website and portfolio |
-| [Wiki 🐒➡️🔥🌀](https://tangled.org/@overby.me/overby.me/tree/main/wiki) | Platform for political conference & beyond |
+| [Wiki 🐒➡️🔥🌀](https://tangled.org/@overby.me/overby.me/tree/main/wiki) | Political conference and discussion platform |
 | [Wasm-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasm-mojo) | WebAssembly interop layer for Mojo |
-| [Wasmtime-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasmtime-mojo) | Mojo FFI bindings for the Wasmtime WebAssembly runtime |
+| [Wasmtime-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasmtime-mojo) | Wasmtime WebAssembly runtime bindings for Mojo |
 | [Zed-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/zed-mojo) | Mojo language extension for Zed |
 | [Zed-nickel ❄️](https://tangled.org/@overby.me/overby.me/tree/main/zed-nickel) | Nickel language extension for Zed |
-| [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-rs) | NixOS with Rust user space |
-| [Nixpkgs-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixpkgs-rs) | Rust replacements for the C toolchain that builds Nix packages |
-| [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | A Systemd replacement in Rust |
-| [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | A pkg-config implementation in Rust |
-| [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | A Nickel-powered workspace manager for Nix flakes |
-| [Nu-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nu-plugin-tramp) | A TRAMP-inspired remote filesystem plugin for Nushell |
+| [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-rs) | NixOS distribution with Rust user space |
+| [Nixpkgs-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixpkgs-rs) | Rust-based C toolchain replacements for Nix package builds |
+| [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | Systemd replacement |
+| [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | pkg-config reimplementation |
+| [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | Nickel-powered workspace manager for Nix flakes |
+| [Nu-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nu-plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
 
 </details>
 
@@ -99,16 +99,16 @@
 
 | Package | Homepage | Description |
 |-|-|-|
-| [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | [IronClaw](https://www.ironclaw.com) | Secure personal AI assistant (OpenClaw-inspired) |
+| [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | [IronClaw](https://www.ironclaw.com) | OpenClaw-inspired secure personal AI assistant |
 
 #### Development
 
 | Package | Homepage | Description |
 |-|-|-|
 | [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/mojo.nix) | [Modular](https://www.modular.com/mojo) | Mojo development toolchain |
-| [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/envy.nix) | [GitHub](https://github.com/mre/envy) | Environment loader CLI tool |
+| [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/envy.nix) | [GitHub](https://github.com/mre/envy) | Environment variable loader |
 | [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/nix-sweep.nix) | [GitHub](https://github.com/jzbor/nix-sweep) | Nix garbage collector |
-| [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/rcgen.nix) | [GitHub](https://github.com/rustls/rcgen) | X.509 certificate generation CLI tool |
+| [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/rcgen.nix) | [GitHub](https://github.com/rustls/rcgen) | X.509 certificate generator |
 | [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/starship-jj.nix) | [GitLab](https://gitlab.com/lanastara_foss/starship-jj) | Starship plugin for jj |
 
 #### Jupyter
@@ -126,34 +126,34 @@
 
 | Package | Homepage | Description |
 |-|-|-|
-| [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cavif-rs/default.nix) | [GitHub](https://github.com/kornelski/cavif-rs) | AVIF image encoder CLI tool |
+| [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cavif-rs/default.nix) | [GitHub](https://github.com/kornelski/cavif-rs) | AVIF image encoder |
 | [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/layout/default.nix) | [GitHub](https://github.com/nadavrot/layout) | Graphviz dot renderer |
-| [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/vibe.nix) | [GitHub](https://github.com/TornaxO7/vibe) | A desktop audio visualizer |
-| [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/wondermagick/default.nix) | [GitHub](https://github.com/Shnatsel/wondermagick) | Memory-safe replacement for Imagemagick |
+| [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/vibe.nix) | [GitHub](https://github.com/TornaxO7/vibe) | Desktop audio visualizer |
+| [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/wondermagick/default.nix) | [GitHub](https://github.com/Shnatsel/wondermagick) | Memory-safe ImageMagick replacement |
 
 #### Security
 
 | Package | Homepage | Description |
 |-|-|-|
 | [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/age-plugin-fido2prf.nix) | [GitHub](https://github.com/FiloSottile/typage) | FIDO2 PRF plugin for age |
-| [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/forkfs.nix) | [GitHub](https://github.com/SUPERCILEX/forkfs) | Sandbox a process's changes to file system |
-| [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/hakoniwa.nix) | [GitHub](https://github.com/souk4711/hakoniwa) | Process isolation CLI tool |
+| [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/forkfs.nix) | [GitHub](https://github.com/SUPERCILEX/forkfs) | Filesystem change sandbox for processes |
+| [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/hakoniwa.nix) | [GitHub](https://github.com/souk4711/hakoniwa) | Process isolation tool |
 
 #### Social
 
 | Package | Homepage | Description |
 |-|-|-|
-| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | [Microcosm](https://microcosm.blue) | Rust atproto crates and services for microcosm |
+| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | [Microcosm](https://microcosm.blue) | AT Protocol crates and services for Microcosm |
 | [Perch 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | [Perch](https://perch.ricardodantas.me/) | AT Protocol social client |
 
 #### System
 
 | Package | Homepage | Description |
 |-|-|-|
-| [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/busd.nix) | [GitHub](https://github.com/dbus2/busd) | A D-Bus bus implementation in Rust |
-| [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cpx.nix) | [GitHub](https://github.com/11happy/cpx) | Cp reimagined |
-| [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/lacy.nix) | [GitHub](https://github.com/timothebot/lacy) | Fast magical cd alternative |
-| [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sunsetc.nix) | [GitHub](https://github.com/mkj/sunset) | SSH in Rust |
+| [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/busd.nix) | [GitHub](https://github.com/dbus2/busd) | D-Bus bus implementation |
+| [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cpx.nix) | [GitHub](https://github.com/11happy/cpx) | Reimagined cp command |
+| [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/lacy.nix) | [GitHub](https://github.com/timothebot/lacy) | Fast cd alternative |
+| [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sunsetc.nix) | [GitHub](https://github.com/mkj/sunset) | SSH client and server |
 
 </details>
 
