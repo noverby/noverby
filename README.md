@@ -96,63 +96,63 @@
 
 #### AI
 
-| Package | Description |
-|-|-|
-| [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | Secure personal AI assistant (OpenClaw-inspired) |
+| Package | Homepage | Description |
+|-|-|-|
+| [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | [GitHub](https://github.com/nearai/ironclaw) | Secure personal AI assistant (OpenClaw-inspired) |
 
 #### Development
 
-| Package | Description |
-|-|-|
-| [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/mojo.nix) | Mojo development toolchain |
-| [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/envy.nix) | Environment loader CLI tool |
-| [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/nix-sweep.nix) | Nix garbage collector |
-| [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/rcgen.nix) | X.509 certificate generation CLI tool |
-| [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/starship-jj.nix) | Starship plugin for jj |
+| Package | Homepage | Description |
+|-|-|-|
+| [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/mojo.nix) | [Modular](https://www.modular.com/mojo) | Mojo development toolchain |
+| [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/envy.nix) | [GitHub](https://github.com/mre/envy) | Environment loader CLI tool |
+| [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/nix-sweep.nix) | [GitHub](https://github.com/jzbor/nix-sweep) | Nix garbage collector |
+| [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/rcgen.nix) | [GitHub](https://github.com/rustls/rcgen) | X.509 certificate generation CLI tool |
+| [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/starship-jj.nix) | [GitLab](https://gitlab.com/lanastara_foss/starship-jj) | Starship plugin for jj |
 
 #### Jupyter
 
-| Package | Description |
-|-|-|
-| [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/deno-jupyter-kernel.nix) | Jupyter Notebook kernel for Deno |
-| [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/mojo-jupyter-kernel.nix) | Jupyter Notebook kernel for Mojo |
-| [Nu-jupyter-kernel 🦪](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/nu-jupyter-kernel.nix) | Jupyter Notebook kernel for Nushell |
-| [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/Rust-jupyter-kernel.nix) | Jupyter Notebook kernel for Rust |
-| [Sidecar 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sidecar/default.nix) | Jupyter Notebook viewer |
-| [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/xeus-lix/default.nix) | Jupyter Notebook kernel for Nix |
+| Package | Homepage | Description |
+|-|-|-|
+| [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/deno-jupyter-kernel.nix) | [Deno Docs](https://docs.deno.com/runtime/reference/cli/jupyter/) | Jupyter Notebook kernel for Deno |
+| [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/mojo-jupyter-kernel.nix) | [Modular](https://www.modular.com/mojo) | Jupyter Notebook kernel for Mojo |
+| [Nu-jupyter-kernel 🦪](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/nu-jupyter-kernel.nix) | [GitHub](https://github.com/cptpiepmatz/nu-jupyter-kernel) | Jupyter Notebook kernel for Nushell |
+| [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/Rust-jupyter-kernel.nix) | [GitHub](https://github.com/evcxr/evcxr) | Jupyter Notebook kernel for Rust |
+| [Sidecar 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sidecar/default.nix) | [GitHub](https://github.com/runtimed/runtimed/) | Jupyter Notebook viewer |
+| [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/xeus-lix/default.nix) | [GitHub](https://github.com/ptrpaws/xeus-lix) | Jupyter Notebook kernel for Nix |
 
 #### Media
 
-| Package | Description |
-|-|-|
-| [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cavif-rs/default.nix) | AVIF image encoder CLI tool |
-| [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/layout/default.nix) | Graphviz dot renderer |
-| [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/vibe.nix) | A desktop audio visualizer |
-| [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/wondermagick/default.nix) | Memory-safe replacement for Imagemagick |
+| Package | Homepage | Description |
+|-|-|-|
+| [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cavif-rs/default.nix) | [GitHub](https://github.com/kornelski/cavif-rs) | AVIF image encoder CLI tool |
+| [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/layout/default.nix) | [GitHub](https://github.com/nadavrot/layout) | Graphviz dot renderer |
+| [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/vibe.nix) | [GitHub](https://github.com/TornaxO7/vibe) | A desktop audio visualizer |
+| [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/wondermagick/default.nix) | [GitHub](https://github.com/Shnatsel/wondermagick) | Memory-safe replacement for Imagemagick |
 
 #### Security
 
-| Package | Description |
-|-|-|
-| [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/age-plugin-fido2prf.nix) | FIDO2 PRF plugin for age |
-| [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/forkfs.nix) | Sandbox a process's changes to file system |
-| [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/hakoniwa.nix) | Process isolation CLI tool |
+| Package | Homepage | Description |
+|-|-|-|
+| [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/age-plugin-fido2prf.nix) | [GitHub](https://github.com/FiloSottile/typage) | FIDO2 PRF plugin for age |
+| [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/forkfs.nix) | [GitHub](https://github.com/SUPERCILEX/forkfs) | Sandbox a process's changes to file system |
+| [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/hakoniwa.nix) | [GitHub](https://github.com/souk4711/hakoniwa) | Process isolation CLI tool |
 
 #### Social
 
-| Package | Description |
-|-|-|
-| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | Rust atproto crates and services for microcosm |
-| [Perch 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | AT Protocol social client |
+| Package | Homepage | Description |
+|-|-|-|
+| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | [GitHub](https://github.com/at-microcosm/microcosm-rs) | Rust atproto crates and services for microcosm |
+| [Perch 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | [GitHub](https://github.com/ricardodantas/perch) | AT Protocol social client |
 
 #### System
 
-| Package | Description |
-|-|-|
-| [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/busd.nix) | A D-Bus bus implementation in Rust |
-| [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cpx.nix) | Cp reimagined |
-| [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/lacy.nix) | Fast magical cd alternative |
-| [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sunsetc.nix) | SSH in Rust |
+| Package | Homepage | Description |
+|-|-|-|
+| [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/busd.nix) | [GitHub](https://github.com/dbus2/busd) | A D-Bus bus implementation in Rust |
+| [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cpx.nix) | [GitHub](https://github.com/11happy/cpx) | Cp reimagined |
+| [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/lacy.nix) | [GitHub](https://github.com/timothebot/lacy) | Fast magical cd alternative |
+| [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sunsetc.nix) | [GitHub](https://github.com/mkj/sunset) | SSH in Rust |
 
 </details>
 
