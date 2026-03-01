@@ -22,25 +22,4 @@ rules:
     level: error
     optional: false
     options:
-      - backend
-      - homepage
-      - config
-      - nixos
-      - home-manager
-      - devenv
-      - flake
-      - nixos-rs
-      - nixpkgs-rs
-      - pkgs
-      - pkg-config-rs
-      - readme
-      - slides
-      - systemd-rs
-      - tangled
-      - wasm-mojo
-      - wasmtime-mojo
-      - zed-mojo
-      - zed-nickel
-      - nix-workspace
-      - nu-plugin-tramp
-      - wiki
+@SCOPE_OPTIONS@

@@ -1,5 +1,11 @@
 # Run `direnv reload` to apply changes to the repository.
-{pkgs, ...}: {
+{
+  pkgs,
+  lib,
+  ...
+}: let
+  commitlintrc = import ./configs/commitlintrc.nix {inherit pkgs lib;};
+in {
   git-hooks = {
     package = pkgs.prek;
     hooks = {
@@ -243,7 +249,7 @@
         enable = true;
         package = pkgs.commitlint-rs;
         name = "prepare-commit-msg-commitlint-rs";
-        entry = "${pkgs.commitlint-rs}/bin/commitlint --config ${./configs/commitlintrc.yml} --edit";
+        entry = "${pkgs.commitlint-rs}/bin/commitlint --config ${commitlintrc} --edit";
         stages = ["prepare-commit-msg"];
       };
     };
