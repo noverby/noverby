@@ -7,6 +7,7 @@
     devenv-root
     git-hooks
     configs
+    cachix
   ];
 
   packages = with pkgs.pkgsUnstable; [
