@@ -1,6 +1,5 @@
-{
-  packages.zed-nickel = {lib}:
-    lib.cleanSource ./.;
+{lib, ...}: {
+  zedExtensions.zed-nickel = lib.cleanSource ./.;
 
   devShells.zed-nickel = pkgs: {
     packages = with pkgs; [
