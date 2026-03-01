@@ -8,4 +8,5 @@ exclude = [
   'https://github.com/example/',
   'https://fuchsia.googlesource.com/',
   'https://xcancel.com/',
+  'https://smokesignal.events/',
 ]
