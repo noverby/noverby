@@ -98,7 +98,7 @@
 
 | Package | Homepage | Description |
 |-|-|-|
-| [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | [GitHub](https://github.com/nearai/ironclaw) | Secure personal AI assistant (OpenClaw-inspired) |
+| [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | [IronClaw](https://www.ironclaw.com) | Secure personal AI assistant (OpenClaw-inspired) |
 
 #### Development
 
@@ -142,8 +142,8 @@
 
 | Package | Homepage | Description |
 |-|-|-|
-| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | [GitHub](https://github.com/at-microcosm/microcosm-rs) | Rust atproto crates and services for microcosm |
-| [Perch 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | [GitHub](https://github.com/ricardodantas/perch) | AT Protocol social client |
+| [Microcosm-rs 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/microcosm-rs) | [Microcosm](https://microcosm.blue) | Rust atproto crates and services for microcosm |
+| [Perch 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/perch.nix) | [Perch](https://perch.ricardodantas.me/) | AT Protocol social client |
 
 #### System
 
@@ -164,7 +164,7 @@
 
 | Configuration | Homepage | Description |
 |-|-|-|
-| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager) | [GitHub](https://github.com/nix-community/home-manager) | Home Manager configurations |
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager) | [Home Manager](https://nix-community.github.io/home-manager/) | Home Manager configurations |
 | [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos) | [NixOS](https://nixos.org) | NixOS configurations |
 | [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devenv) | [Devenv](https://devenv.sh) | Devenv configurations |
 
@@ -179,7 +179,7 @@
 | Module | Homepage | Description |
 |-|-|-|
 | [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/flakelight-modules) | [GitHub](https://github.com/accelbread/flakelight) | Flakelight modules |
-| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager-modules) | [GitHub](https://github.com/nix-community/home-manager) | Home Manager modules |
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager-modules) | [Home Manager](https://nix-community.github.io/home-manager/) | Home Manager modules |
 | [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-modules) | [NixOS](https://nixos.org) | NixOS modules |
 | [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devenv-modules) | [Devenv](https://devenv.sh) | Devenv modules |
 
