@@ -162,11 +162,11 @@
 
 <details open>
 
-| Configuration | Description |
-|-|-|
-| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager) | Home Manager configurations |
-| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos) | NixOS configurations |
-| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devenv) | Devenv configurations |
+| Configuration | Homepage | Description |
+|-|-|-|
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager) | [GitHub](https://github.com/nix-community/home-manager) | Home Manager configurations |
+| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos) | [NixOS](https://nixos.org) | NixOS configurations |
+| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devenv) | [Devenv](https://devenv.sh) | Devenv configurations |
 
 </details>
 
@@ -176,12 +176,12 @@
 
 <details open>
 
-| Module | Description |
-|-|-|
-| [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/flakelight-modules) | Flakelight modules |
-| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager-modules) | Home Manager modules |
-| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-modules) | NixOS modules |
-| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devenv-modules) | Devenv modules |
+| Module | Homepage | Description |
+|-|-|-|
+| [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/flakelight-modules) | [GitHub](https://github.com/accelbread/flakelight) | Flakelight modules |
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager-modules) | [GitHub](https://github.com/nix-community/home-manager) | Home Manager modules |
+| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-modules) | [NixOS](https://nixos.org) | NixOS modules |
+| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devenv-modules) | [Devenv](https://devenv.sh) | Devenv modules |
 
 </details>
 
