@@ -24,6 +24,7 @@
     catppuccin
     home-manager
     cloud-hypervisor
+    tangled-spindle
     {
       security.sudo.wheelNeedsPassword = false;
       networking = {

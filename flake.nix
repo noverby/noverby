@@ -94,6 +94,12 @@
         flake-parts.follows = "flake-parts";
       };
     };
+    tangled = {
+      url = "git+https://tangled.org/tangled.org/core";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+      };
+    };
     nxv = {
       url = "github:jamesbrink/nxv";
       inputs = {
