@@ -5,4 +5,4 @@ test:
     cargo test --workspace
 
 test-diff *args:
-    ./tests/differential.sh {{ args }}
+    nu tests/differential.nu {{ args }}

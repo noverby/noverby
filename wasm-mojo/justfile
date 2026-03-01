@@ -11,27 +11,25 @@ build:
 
 # Incremental build — skip if out.wasm is newer than all source files.
 build-if-changed:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mkdir -p build
-    if [ -f build/out.wasm ] && [ -z "$(find src/ examples/ -name '*.mojo' -newer build/out.wasm 2>/dev/null)" ]; then
-      echo "build: out.wasm is up-to-date, skipping."
-    else
-      just build
-    fi
+    #!/usr/bin/env nu
+    mkdir build
+    if ("build/out.wasm" | path exists) and (glob "src/**/*.mojo" "examples/**/*.mojo" | where { |f| (ls $f | get 0.modified) > (ls "build/out.wasm" | get 0.modified) } | is-empty) {
+      print "build: out.wasm is up-to-date, skipping."
+    } else {
+      ^just build
+    }
 
 precompile: build
     wasmtime compile -o build/out.cwasm build/out.wasm
 
 # Incremental precompile — skip if cwasm is newer than wasm.
 precompile-if-changed: build-if-changed
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -f build/out.cwasm ] && [ build/out.cwasm -nt build/out.wasm ]; then
-      echo "precompile: out.cwasm is up-to-date, skipping."
-    else
-      just precompile
-    fi
+    #!/usr/bin/env nu
+    if ("build/out.cwasm" | path exists) and ((ls "build/out.cwasm" | get 0.modified) > (ls "build/out.wasm" | get 0.modified)) {
+      print "precompile: out.cwasm is up-to-date, skipping."
+    } else {
+      ^just precompile
+    }
 
 # Build precompiled test binaries (parallel, incremental).
 # Depends on precompile-if-changed so .cwasm exists for fast WASM loading.
@@ -40,7 +38,7 @@ precompile-if-changed: build-if-changed
 
 # just test-build signals mut   # build test_signals + test_mutations
 test-build *FILTER: precompile-if-changed
-    bash scripts/build_test_binaries.sh {{ FILTER }}
+    nu scripts/build-test-binaries.nu {{ FILTER }}
 
 # Run precompiled test binaries (parallel, ~10s).
 # Pass optional filter args to run only matching modules:
@@ -48,7 +46,7 @@ test-build *FILTER: precompile-if-changed
 
 # just test-run -v dsl          # verbose, only test_dsl
 test-run *FILTER:
-    bash scripts/run_test_binaries.sh {{ FILTER }}
+    nu scripts/run-test-binaries.nu {{ FILTER }}
 
 # Build + run precompiled test binaries (fastest full Mojo test cycle).
 # Pass optional filter args to target specific modules:
@@ -64,15 +62,15 @@ test-all: test test-js
 
 # End-to-end browser tests via headless Servo + WebDriver
 test-browser:
-    bash test-browser.sh
+    nu test-browser.nu
 
 # Browser tests with verbose Servo output (debugging)
 test-browser-verbose:
-    bash test-browser.sh --verbose
+    nu test-browser.nu --verbose
 
 # Single app browser test
 test-browser-app app:
-    bash test-browser.sh --app {{ app }}
+    nu test-browser.nu --app {{ app }}
 
 serve: build
     @echo "Open http://localhost:4507/examples/counter/"
