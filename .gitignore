@@ -1,39 +1,46 @@
+# Nix
 .devenv
 .direnv
-.env
 result*
+
+# Environment
+.env
 tmp
+
+# Build artifacts
 build
 dist
-node_modules
-.rumdl_cache
+target/
+deployment.zip
 
+# Compiled files
 *.ll
 *.o
 *.wasm
 
-# Rust
-target/
-deployment.zip
+# Disk images
+*.img
+*.qcow2
+*.raw
 
-.pre-commit-config.yaml
+# JavaScript
+node_modules
 
-
+# Profiling & tracing
 flamegraph.svg
+kgen.trace.json.*
 
-# Configs
+# Linting & formatting caches
+.rumdl_cache
+
+# Generated configs
+/.commitlintrc.yml
+/.pre-commit-config.yaml
 /.rules
+/.secretsignore
 /.zed
 /biome.jsonc
 /deno.jsonc
+/lychee.toml
 /rumdl.toml
 /typos.toml
-/lychee.toml
-/.commitlintrc.yml
-/.secretsignore
-
-*.qcow2
-*.img
-*.raw
-
-kgen.trace.json.*
