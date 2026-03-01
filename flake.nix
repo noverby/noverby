@@ -181,7 +181,6 @@
 
         ./nix-workspace
 
-        ./backend
         ./homepage
         ./wiki
 
