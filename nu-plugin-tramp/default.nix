@@ -76,15 +76,14 @@
         };
       };
 
-    tramp-agent-cache = {
-      lib,
-      runCommand,
-      nixpkgs ? null,
-    }: let
-      cross = import ./cross.nix {inherit nixpkgs lib;};
+    tramp-agent-cache = pkgs: let
+      cross = import ./cross.nix {
+        nixpkgs = pkgs.path;
+        inherit (pkgs) lib;
+      };
       linux = cross.allLinuxFrom "x86_64-linux";
     in
-      runCommand "tramp-agent-cache" {} ''
+      pkgs.runCommand "tramp-agent-cache" {} ''
         mkdir -p $out/x86_64-unknown-linux-musl
         mkdir -p $out/aarch64-unknown-linux-musl
         cp ${linux.x86_64-linux}/bin/tramp-agent $out/x86_64-unknown-linux-musl/
