@@ -11,7 +11,7 @@
         path = "/etc/systemd/resolved.conf.d/9-secret.conf";
         owner = "systemd-resolve";
         group = "systemd-resolve";
-        mode = "599";
+        mode = "600";
       };
     }
   ];
