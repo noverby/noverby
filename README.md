@@ -73,8 +73,8 @@
 
 | Project | Description |
 |-|-|
-| [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/homepage) | Personal website and portfolio |
-| [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/wiki) | Platform for political conference & beyond |
+| [Homepage 🐒➡️🔥](https://tangled.org/@overby.me/overby.me/tree/main/homepage) | Personal website and portfolio |
+| [Wiki 🐒➡️🔥🌀](https://tangled.org/@overby.me/overby.me/tree/main/wiki) | Platform for political conference & beyond |
 | [Wasm-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasm-mojo) | WebAssembly interop layer for Mojo |
 | [Wasmtime-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasmtime-mojo) | Mojo FFI bindings for the Wasmtime WebAssembly runtime |
 | [Zed-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/zed-mojo) | Mojo language extension for Zed |
