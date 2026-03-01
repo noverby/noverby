@@ -2,6 +2,7 @@
   imports = [
     ./audio.nix
     ./boot.nix
+    ./secrets.nix
     ./console.nix
     ./environment.nix
     ./fonts.nix
