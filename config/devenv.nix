@@ -9,7 +9,7 @@
     configs
   ];
 
-  packages = with pkgs; [
+  packages = with pkgs.pkgsUnstable; [
     # IDE
     harper
     # Common
