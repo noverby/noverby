@@ -5,6 +5,7 @@
   lib,
 }: let
   flakeSrc = ../..;
+  files = ["git" "readme" "license"];
   entries = builtins.readDir flakeSrc;
   ignoreDirs = ["target"];
   allDirs = builtins.attrNames (lib.filterAttrs (_: type: type == "directory") entries);
@@ -18,7 +19,7 @@
       && !(lib.hasPrefix "." name && !builtins.elem (lib.removePrefix "." name) ["tangled"]))
     allDirs)
   );
-  scopeOptionsYaml = lib.concatMapStringsSep "\n" (s: "      - ${s}") dirs;
+  scopeOptionsYaml = lib.concatMapStringsSep "\n" (s: "      - ${s}") (dirs ++ files);
   commitlintrcContent =
     builtins.replaceStrings
     ["@SCOPE_OPTIONS@"]
