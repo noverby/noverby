@@ -76,40 +76,30 @@ export function useAuthenticated(): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the Hasura user UUID for the authenticated user, or `null`.
+ * Returns the Hasura user UUID for the authenticated user, or `undefined`.
  *
  * - For NHost users: the UUID comes directly from the NHost JWT claims.
  * - For atproto users: the auth webhook maps the DID → UUID via the
- *   `user_providers` table, and the Hasura session contains the mapped
- *   UUID. However, on the client side we don't have direct access to
- *   the webhook-resolved UUID from context alone. Instead, we store
- *   the resolved user ID in the atproto session after the first
- *   authenticated GraphQL request. As a fallback, the DID is returned
- *   (the webhook will still resolve it server-side).
+ *   `user_providers` table. On session activation the
+ *   `AtprotoAuthProvider` makes a DPoP-authenticated GraphQL query
+ *   (`{ users { id } }`) to fetch the resolved UUID and stores it as
+ *   `hasuraUserId`. This hook returns that UUID so components can pass
+ *   it into GraphQL queries that expect a `uuid!` variable.
  *
- * In practice, the NHost `useUserId` hook reads from the JWT. For atproto
- * users, the atproto DID serves as the identifier on the client and the
- * webhook translates it to a UUID for Hasura. Components that pass the
- * user ID into GraphQL queries will get the correct results because
- * Hasura's `X-Hasura-User-Id` is set by the webhook, not the client.
+ *   Returns `undefined` while the UUID is still being resolved (briefly
+ *   after login) or if the resolution fails.
  */
 export function useUserId(): string | undefined {
 	const atproto = useAtprotoAuth();
 	const nhostUserId = useNhostUserId();
 
-	if (atproto.isAuthenticated && atproto.did) {
-		// Prefer the atproto DID. The auth webhook maps this to a UUID
-		// server-side, so GraphQL permission checks work correctly.
-		// If we later store the resolved UUID in the session, prefer that.
-		const raw = atproto.session?.raw;
-		const resolvedUserId =
-			raw && typeof raw === "object"
-				? (raw as Record<string, unknown>).hasuraUserId
-				: undefined;
-		if (typeof resolvedUserId === "string") {
-			return resolvedUserId;
-		}
-		return atproto.did;
+	if (atproto.isAuthenticated) {
+		// The auth webhook maps the atproto DID → a Hasura UUID via the
+		// `user_providers` table. After session activation the provider
+		// fetches this UUID and stores it as `hasuraUserId`. We return
+		// that so GraphQL queries that pass the user ID as a `uuid!`
+		// variable get a real UUID, not a DID string.
+		return atproto.hasuraUserId ?? undefined;
 	}
 
 	return nhostUserId ?? undefined;
@@ -162,7 +152,8 @@ export function useUserDisplayName(): string | undefined {
 			atprotoProfile.displayName ??
 			atprotoProfile.handle ??
 			atproto.handle ??
-			atproto.did
+			atproto.did ??
+			undefined
 		);
 	}
 

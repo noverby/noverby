@@ -250,7 +250,7 @@ export default function AccountLinkDialog({
 				const message = err instanceof Error ? err.message : String(err);
 				console.error("Failed to link atproto account:", err);
 				setError(
-					t("auth.linkError", "Kunne ikke knytte Bluesky-konto: {{message}}", {
+					t("auth.linkError", "Could not link Bluesky account: {{message}}", {
 						message,
 					}),
 				);
@@ -283,7 +283,7 @@ export default function AccountLinkDialog({
 			setError(
 				t(
 					"auth.invalidHandle",
-					"Ugyldigt Bluesky-handle (f.eks. alice.bsky.social)",
+					"Invalid Bluesky handle (e.g. alice.bsky.social)",
 				),
 			);
 			return;
@@ -305,7 +305,7 @@ export default function AccountLinkDialog({
 			setError(
 				t(
 					"auth.blueskySignInError",
-					"Kunne ikke logge ind med Bluesky: {{message}}",
+					"Could not sign in with Bluesky: {{message}}",
 					{ message },
 				),
 			);
@@ -319,7 +319,7 @@ export default function AccountLinkDialog({
 			await fetchLinkedProviders();
 		} catch (err) {
 			console.error("Failed to unlink provider:", err);
-			setError(t("auth.unlinkError", "Kunne ikke fjerne tilknytning"));
+			setError(t("auth.unlinkError", "Could not unlink account"));
 		}
 	};
 
@@ -336,12 +336,12 @@ export default function AccountLinkDialog({
 
 	return (
 		<Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-			<DialogTitle>{t("auth.accountLinkTitle", "Tilknyt konti")}</DialogTitle>
+			<DialogTitle>{t("auth.accountLinkTitle", "Link accounts")}</DialogTitle>
 			<DialogContent>
 				<DialogContentText sx={{ mb: 2 }}>
 					{t(
 						"auth.accountLinkDescription",
-						"Tilknyt din Bluesky-konto, så du kan logge ind med begge metoder.",
+						"Link your Bluesky account so you can log in with either method.",
 					)}
 				</DialogContentText>
 
@@ -354,7 +354,7 @@ export default function AccountLinkDialog({
 				) : linkedProviders.length > 0 ? (
 					<>
 						<Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }}>
-							{t("auth.linkedAccounts", "Tilknyttede konti")}
+							{t("auth.linkedAccounts", "Linked accounts")}
 						</Typography>
 						<List dense>
 							{linkedProviders.map((p) => (
@@ -368,7 +368,7 @@ export default function AccountLinkDialog({
 												startIcon={<LinkOff />}
 												onClick={() => handleUnlink(p.id)}
 											>
-												{t("auth.unlink", "Fjern")}
+												{t("auth.unlink", "Unlink")}
 											</Button>
 										) : null
 									}
@@ -380,7 +380,7 @@ export default function AccountLinkDialog({
 										primary={
 											p.provider === "atproto"
 												? `Bluesky${p.handle ? ` (@${p.handle})` : ""}`
-												: "E-mail / adgangskode"
+												: t("auth.emailPasswordProvider", "Email / password")
 										}
 										secondary={p.provider === "atproto" ? p.provider_id : null}
 									/>
@@ -395,7 +395,7 @@ export default function AccountLinkDialog({
 					<form onSubmit={handleLink}>
 						<TextField
 							fullWidth
-							label={t("auth.blueskyHandle", "Bluesky-handle")}
+							label={t("auth.blueskyHandle", "Bluesky handle")}
 							placeholder="alice.bsky.social"
 							value={handle}
 							onChange={onHandleChange}
@@ -428,7 +428,7 @@ export default function AccountLinkDialog({
 							{loading ? (
 								<CircularProgress size={24} color="inherit" />
 							) : (
-								t("auth.linkBluesky", "Tilknyt Bluesky-konto")
+								t("auth.linkBluesky", "Link Bluesky account")
 							)}
 						</Button>
 					</form>
@@ -438,7 +438,7 @@ export default function AccountLinkDialog({
 					<Alert severity="success" sx={{ mt: 2 }}>
 						{t(
 							"auth.linkSuccess",
-							"Bluesky-konto tilknyttet! Du kan nu logge ind med begge metoder.",
+							"Bluesky account linked! You can now log in with either method.",
 						)}
 					</Alert>
 				)}
@@ -450,7 +450,7 @@ export default function AccountLinkDialog({
 				)}
 			</DialogContent>
 			<DialogActions>
-				<Button onClick={handleClose}>{t("common.close", "Luk")}</Button>
+				<Button onClick={handleClose}>{t("common.close", "Close")}</Button>
 			</DialogActions>
 		</Dialog>
 	);

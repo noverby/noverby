@@ -54,6 +54,8 @@ interface AtprotoAuthState {
 	isLoading: boolean;
 	did: string | null;
 	handle: string | null;
+	/** The Hasura UUID resolved by the auth webhook for this DID. */
+	hasuraUserId: string | null;
 	session: AtprotoSession | null;
 	profile: AtprotoProfile;
 }
@@ -68,6 +70,66 @@ interface AtprotoAuthContextValue extends AtprotoAuthState {
 // ---------------------------------------------------------------------------
 
 const AtprotoAuthContext = createContext<AtprotoAuthContextValue | null>(null);
+
+// ---------------------------------------------------------------------------
+// Hasura user-ID resolver
+// ---------------------------------------------------------------------------
+
+const HASURA_URL = `https://${process.env.PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
+
+/**
+ * Fetch the current user's Hasura UUID using the DPoP-authenticated session.
+ *
+ * The auth webhook maps the atproto DID → UUID in `X-Hasura-User-Id`, so a
+ * simple `{ users { id } }` query (which Hasura restricts to the caller's
+ * own row) returns the resolved UUID.
+ */
+async function fetchHasuraUserId(
+	// biome-ignore lint/suspicious/noExplicitAny: atproto session type is opaque
+	rawSession: any,
+): Promise<string | null> {
+	// Identify which fetch method the session exposes, but call it *on*
+	// the session object so `this` (needed for `getTokenSet` etc.) is
+	// preserved.  Extracting the method first would lose the binding.
+	const method: string | undefined = [
+		"fetchHandler",
+		"dpopFetch",
+		"fetch",
+	].find((m) => typeof rawSession?.[m] === "function");
+
+	if (!method) {
+		console.warn("No dpopFetch available — cannot resolve Hasura user ID");
+		return null;
+	}
+
+	try {
+		const res: Response = await rawSession[method](HASURA_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				query: `query ResolveUserId { users { id } }`,
+			}),
+		});
+
+		if (!res.ok) {
+			console.warn(`Hasura user-ID query failed (${res.status})`);
+			return null;
+		}
+
+		const json = (await res.json()) as {
+			data?: { users?: { id: string }[] };
+		};
+
+		const id = json.data?.users?.[0]?.id;
+		if (typeof id === "string") return id;
+
+		console.warn("Hasura user-ID query returned no user row");
+		return null;
+	} catch (err) {
+		console.warn("Failed to fetch Hasura user ID:", err);
+		return null;
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Bluesky profile fetcher
@@ -105,6 +167,7 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 		isLoading: true,
 		did: null,
 		handle: null,
+		hasuraUserId: null,
 		session: null,
 		profile: { displayName: null, avatarUrl: null, handle: null },
 	});
@@ -143,8 +206,15 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 				session,
 			}));
 
-			// Fetch profile asynchronously — don't block auth
-			const profile = await fetchBlueskyProfile(did);
+			// Fetch Hasura UUID and Bluesky profile in parallel — don't block auth
+			const [hasuraUserId, profile] = await Promise.all([
+				fetchHasuraUserId(rawSession),
+				fetchBlueskyProfile(did),
+			]);
+
+			if (hasuraUserId) {
+				setState((s) => ({ ...s, hasuraUserId }));
+			}
 			setState((s) => ({
 				...s,
 				profile: {
@@ -224,6 +294,7 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 			isLoading: false,
 			did: null,
 			handle: null,
+			hasuraUserId: null,
 			session: null,
 			profile: { displayName: null, avatarUrl: null, handle: null },
 		});
@@ -267,9 +338,9 @@ function useAtprotoContext(): AtprotoAuthContextValue {
  * Core atproto auth state.
  */
 export function useAtprotoAuth() {
-	const { isAuthenticated, isLoading, did, handle, session } =
+	const { isAuthenticated, isLoading, did, handle, hasuraUserId, session } =
 		useAtprotoContext();
-	return { isAuthenticated, isLoading, did, handle, session };
+	return { isAuthenticated, isLoading, did, handle, hasuraUserId, session };
 }
 
 /**

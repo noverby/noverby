@@ -27,23 +27,37 @@
  *   session (or null) for use in `core/gql/index.ts`.
  */
 
-import { BrowserOAuthClient } from "@atproto/oauth-client-browser";
+import {
+	BrowserOAuthClient,
+	type BrowserOAuthClientOptions,
+} from "@atproto/oauth-client-browser";
 
 const origin = typeof window !== "undefined" ? window.location.origin : "";
 
 /**
  * The atproto OAuth client configured for RadikalWiki.
  *
- * `clientMetadata` mirrors the build-generated `client-metadata.json`
- * (see `pluginClientMetadata` in `rsbuild.config.ts`) but uses
- * `window.location.origin` so it works across environments
- * (localhost dev, staging, production).
+ * On **https** origins (production / staging) we pass explicit
+ * `clientMetadata` that mirrors the build-generated
+ * `client-metadata.json` (see `pluginClientMetadata` in
+ * `rsbuild.config.ts`), using `window.location.origin` so the same
+ * build works on any deployment domain.
+ *
+ * On **http** origins (local dev) we omit `clientMetadata` entirely so
+ * the library falls back to its built-in loopback-client logic
+ * (`atprotoLoopbackClientMetadata`), which satisfies the strict Zod
+ * validation (no `localhost`, no plain-http `client_id`, no IP in
+ * `client_id`, etc.).
  *
  * `handleResolver` points to the default Bluesky AppView which can
  * resolve handles to DIDs for any PDS in the AT Protocol network.
  */
-const atprotoClient = new BrowserOAuthClient({
-	clientMetadata: {
+const options: BrowserOAuthClientOptions = {
+	handleResolver: "https://bsky.social",
+};
+
+if (origin.startsWith("https:")) {
+	options.clientMetadata = {
 		client_id: `${origin}/client-metadata.json`,
 		redirect_uris: [`${origin}/auth/callback`],
 		scope: "atproto transition:generic",
@@ -52,9 +66,10 @@ const atprotoClient = new BrowserOAuthClient({
 		token_endpoint_auth_method: "none",
 		application_type: "web",
 		dpop_bound_access_tokens: true,
-	},
-	handleResolver: "https://bsky.social",
-});
+	};
+}
+
+const atprotoClient = new BrowserOAuthClient(options);
 
 // ---------------------------------------------------------------------------
 // Module-level session holder

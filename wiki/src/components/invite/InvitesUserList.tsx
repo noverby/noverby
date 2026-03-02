@@ -26,19 +26,25 @@ const ListSuspense = () => {
 	const sub = useSubscription();
 	const userId = useUserId();
 	const email = useUserEmail();
-	const invites = sub
-		.members({
-			where: {
-				_and: [
-					{ accepted: { _eq: false } },
-					{
-						_or: [{ nodeId: { _eq: userId } }, { email: { _eq: email } }],
-					},
-					{ parent: { mimeId: { _in: ["wiki/group", "wiki/event"] } } },
-				],
-			},
-		})
-		.filter((invite) => invite.parent?.id);
+	const invites =
+		userId || email
+			? sub
+					.members({
+						where: {
+							_and: [
+								{ accepted: { _eq: false } },
+								{
+									_or: [
+										...(userId ? [{ nodeId: { _eq: userId } }] : []),
+										...(email ? [{ email: { _eq: email } }] : []),
+									],
+								},
+								{ parent: { mimeId: { _in: ["wiki/group", "wiki/event"] } } },
+							],
+						},
+					})
+					.filter((invite) => invite.parent?.id)
+			: [];
 	const events = !userId
 		? []
 		: sub.nodes({

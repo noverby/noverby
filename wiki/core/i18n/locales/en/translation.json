@@ -60,7 +60,20 @@
 		"emailSentMessage": "We have sent a verification email to {{email}}. Click the link in the email to confirm your email address.",
 		"emailSentHint": "The link expires in 1 hour. Check your spam filter if you cannot find the email.",
 		"emailTaken": "This email address is already in use by another account",
-		"emailSendError": "Could not send verification email: {{message}}"
+		"emailSendError": "Could not send verification email: {{message}}",
+		"accountLinkTitle": "Link accounts",
+		"accountLinkDescription": "Link your Bluesky account so you can log in with either method.",
+		"linkedAccounts": "Linked accounts",
+		"linkAccounts": "Link accounts",
+		"linkBluesky": "Link Bluesky account",
+		"linkSuccess": "Bluesky account linked! You can now log in with either method.",
+		"linkError": "Could not link Bluesky account: {{message}}",
+		"unlink": "Unlink",
+		"unlinkError": "Could not unlink account",
+		"blueskyHandle": "Bluesky handle",
+		"blueskySignInError": "Could not sign in with Bluesky: {{message}}",
+		"invalidHandle": "Invalid Bluesky handle (e.g. alice.bsky.social)",
+		"emailPasswordProvider": "Email / password"
 	},
 	"content": {
 		"addContent": "Add content",

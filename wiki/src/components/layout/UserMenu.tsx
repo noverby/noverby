@@ -20,6 +20,7 @@ import {
 	useTheme,
 } from "@mui/material";
 import { AccountLinkDialog } from "comps";
+import { useAtprotoAuth } from "core/hooks/useAtproto";
 import { ThemeModeContext } from "core/theme/ThemeModeContext";
 import { client } from "gql";
 import { useAuthenticationStatus, useSignOut } from "hooks";
@@ -35,6 +36,7 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 	>(null);
 	const { isAuthenticated } = useAuthenticationStatus();
 	const signOut = useSignOut();
+	const atproto = useAtprotoAuth();
 	const [linkDialogOpen, setLinkDialogOpen] = useState(false);
 	const { toggleThemeMode } = useContext(ThemeModeContext);
 	const { palette } = useTheme();
@@ -107,20 +109,24 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 						</ListItemIcon>
 						<ListItemText>{t("auth.setPassword")}</ListItemText>
 					</MenuItem>,
-					<MenuItem
-						key="link"
-						onClick={() => {
-							setAnchorEl(null);
-							setLinkDialogOpen(true);
-						}}
-					>
-						<ListItemIcon>
-							<LinkIcon />
-						</ListItemIcon>
-						<ListItemText>
-							{t("auth.linkAccounts", "Tilknyt konti")}
-						</ListItemText>
-					</MenuItem>,
+					...(!atproto.isAuthenticated
+						? [
+								<MenuItem
+									key="link"
+									onClick={() => {
+										setAnchorEl(null);
+										setLinkDialogOpen(true);
+									}}
+								>
+									<ListItemIcon>
+										<LinkIcon />
+									</ListItemIcon>
+									<ListItemText>
+										{t("auth.linkAccounts", "Link accounts")}
+									</ListItemText>
+								</MenuItem>,
+							]
+						: []),
 					<MenuItem key="logout" onClick={handleLogout}>
 						<ListItemIcon>
 							<Logout />

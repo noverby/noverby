@@ -49,25 +49,28 @@ const useApps = () => {
 			mimeId: "app/home",
 			active: ["home"].includes(currentApp),
 			onClick: handleClick([]),
-			notifications: isAuthenticated
-				? sub
-						.membersAggregate({
-							where: {
-								_and: [
-									{ accepted: { _eq: false } },
-									{
-										_or: [
-											{ nodeId: { _eq: userId } },
-											{ email: { _eq: email } },
-										],
-									},
+			notifications:
+				isAuthenticated && userId
+					? sub
+							.membersAggregate({
+								where: {
+									_and: [
+										{ accepted: { _eq: false } },
+										{
+											_or: [
+												{ nodeId: { _eq: userId } },
+												{ email: { _eq: email } },
+											],
+										},
 
-									{ parent: { mimeId: { _in: ["wiki/group", "wiki/event"] } } },
-								],
-							},
-						})
-						.aggregate?.count()
-				: 0,
+										{
+											parent: { mimeId: { _in: ["wiki/group", "wiki/event"] } },
+										},
+									],
+								},
+							})
+							.aggregate?.count()
+					: 0,
 		},
 		...(currentApp !== "home"
 			? [

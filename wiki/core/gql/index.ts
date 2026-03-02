@@ -71,26 +71,55 @@ const queryFetcher: QueryFetcher = async (
 		// The session object from BrowserOAuthClient exposes a `fetchHandler`
 		// that wraps the global fetch and adds Authorization + DPoP headers.
 		// Some versions of the library also expose it as `dpopFetch`.
-		const dpopFetch: typeof fetch | undefined =
-			session?.fetchHandler ?? session?.dpopFetch ?? session?.fetch;
+		// We must call it *on* the session object to preserve `this` (the
+		// method internally accesses `this.getTokenSet()` etc.).
+		const method: string | undefined = [
+			"fetchHandler",
+			"dpopFetch",
+			"fetch",
+		].find((m) => typeof session?.[m] === "function");
 
-		if (typeof dpopFetch === "function") {
-			const response = await dpopFetch(url, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body,
-				mode: "cors" as RequestMode,
-				...fetchOptions,
-			});
-			return await response.json();
+		if (method) {
+			try {
+				const response: Response = await session[method](url, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body,
+					mode: "cors" as RequestMode,
+					...fetchOptions,
+				});
+				const json = await response.json();
+
+				// If Hasura returned GraphQL-level auth errors (e.g. the auth
+				// webhook isn't deployed yet and Hasura rejects the DPoP
+				// Authorization header), fall through to public fetch instead
+				// of surfacing a hard error.
+				const gqlErrors: { message: string }[] | undefined = json.errors;
+				const isAuthError = gqlErrors?.some(
+					(e) =>
+						/malformed authorization/i.test(e.message) ||
+						/unauthorized/i.test(e.message),
+				);
+				if (!isAuthError) return json;
+
+				console.warn(
+					"atproto DPoP auth rejected by Hasura — falling back to public access. " +
+						"Ensure the auth webhook is deployed and Hasura is configured with " +
+						"HASURA_GRAPHQL_AUTH_HOOK.",
+					gqlErrors,
+				);
+			} catch (err) {
+				console.warn(
+					"atproto DPoP fetch failed — falling back to public access:",
+					err,
+				);
+			}
+			// Fall through to unauthenticated fetch below.
+		} else {
+			console.warn(
+				"atproto session active but no fetchHandler found — falling back to plain fetch",
+			);
 		}
-
-		// Fallback: if the session doesn't expose a fetch wrapper (shouldn't
-		// happen in practice), log a warning and fall through to plain fetch
-		// with whatever headers we can build.
-		console.warn(
-			"atproto session active but no fetchHandler found — falling back to plain fetch",
-		);
 	}
 
 	// --- NHost JWT / admin / public path -------------------------------------

@@ -61,7 +61,20 @@
 		"emailSentMessage": "Vi har sendt en bekræftelsesmail til {{email}}. Klik på linket i mailen for at bekræfte din e-mailadresse.",
 		"emailSentHint": "Linket udløber om 1 time. Tjek eventuelt dit spamfilter, hvis du ikke kan finde mailen.",
 		"emailTaken": "Denne e-mailadresse bruges allerede af en anden konto",
-		"emailSendError": "Kunne ikke sende bekræftelsesmail: {{message}}"
+		"emailSendError": "Kunne ikke sende bekræftelsesmail: {{message}}",
+		"accountLinkTitle": "Tilknyt konti",
+		"accountLinkDescription": "Tilknyt din Bluesky-konto, så du kan logge ind med begge metoder.",
+		"linkedAccounts": "Tilknyttede konti",
+		"linkAccounts": "Tilknyt konti",
+		"linkBluesky": "Tilknyt Bluesky-konto",
+		"linkSuccess": "Bluesky-konto tilknyttet! Du kan nu logge ind med begge metoder.",
+		"linkError": "Kunne ikke tilknytte Bluesky-konto: {{message}}",
+		"unlink": "Fjern",
+		"unlinkError": "Kunne ikke fjerne tilknytning",
+		"blueskyHandle": "Bluesky-handle",
+		"blueskySignInError": "Kunne ikke logge ind med Bluesky: {{message}}",
+		"invalidHandle": "Ugyldigt Bluesky-handle (f.eks. alice.bsky.social)",
+		"emailPasswordProvider": "E-mail / adgangskode"
 	},
 	"content": {
 		"addContent": "Tilføj indhold",
