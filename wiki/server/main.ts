@@ -15,6 +15,10 @@
  *   HASURA_ADMIN_SECRET - Hasura admin secret for user management
  */
 
+import { validateAtprotoToken } from "./atproto.ts";
+import { handleRequestVerification, handleVerifyEmail } from "./email.ts";
+import { validateNhostJwt } from "./nhost.ts";
+import { findOrCreateAtprotoUser } from "./users.ts";
 import { handleValidate } from "./validate.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? "4180");
@@ -132,8 +136,63 @@ async function handleReady(): Promise<Response> {
 	);
 }
 
+/**
+ * Extract the authenticated user ID from an incoming request.
+ *
+ * This reuses the same token validation logic as /validate but returns
+ * just the user ID string (or null) for use by non-Hasura endpoints
+ * like the email verification flow.
+ */
+async function extractUserId(request: Request): Promise<string | null> {
+	const authHeader = request.headers.get("authorization");
+	const dpopHeader = request.headers.get("dpop");
+
+	const token = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
+	if (!token) return null;
+
+	// Path 1: atproto DPoP token
+	if (dpopHeader) {
+		const hasuraEndpoint = Deno.env.get("HASURA_ENDPOINT");
+		if (!hasuraEndpoint) return null;
+
+		const result = await validateAtprotoToken(
+			token,
+			dpopHeader,
+			"POST",
+			hasuraEndpoint,
+		);
+		if (!result) return null;
+
+		return await findOrCreateAtprotoUser(result.did, undefined, result.handle);
+	}
+
+	// Path 2: NHost JWT
+	const result = await validateNhostJwt(token);
+	if (!result) return null;
+
+	return result.userId;
+}
+
+/**
+ * Add CORS headers for requests from the wiki frontend.
+ */
+function corsHeaders(): Record<string, string> {
+	const wikiUrl = Deno.env.get("WIKI_URL") ?? "https://radikal.wiki";
+	return {
+		"Access-Control-Allow-Origin": wikiUrl,
+		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+		"Access-Control-Allow-Headers": "Content-Type, Authorization, DPoP",
+		"Access-Control-Max-Age": "86400",
+	};
+}
+
 function handleRequest(request: Request): Promise<Response> | Response {
 	const url = new URL(request.url);
+
+	// CORS preflight
+	if (request.method === "OPTIONS") {
+		return new Response(null, { status: 204, headers: corsHeaders() });
+	}
 
 	// Shallow health check — is the process alive?
 	if (url.pathname === "/healthz" || url.pathname === "/health") {
@@ -150,10 +209,61 @@ function handleRequest(request: Request): Promise<Response> | Response {
 		return handleValidate(request);
 	}
 
+	// Email verification: request a verification email (authenticated)
+	if (
+		url.pathname === "/email/request-verification" &&
+		request.method === "POST"
+	) {
+		return handleEmailRequest(request);
+	}
+
+	// Email verification: verify token from email link (unauthenticated)
+	if (url.pathname === "/email/verify" && request.method === "GET") {
+		const token = url.searchParams.get("token");
+		return handleVerifyEmail(token);
+	}
+
 	// Not found
 	return new Response(JSON.stringify({ error: "not found" }), {
 		status: 404,
 		headers: { "Content-Type": "application/json" },
+	});
+}
+
+/**
+ * Handle POST /email/request-verification.
+ * Authenticates the request, parses the body, then delegates to the email module.
+ */
+async function handleEmailRequest(request: Request): Promise<Response> {
+	const userId = await extractUserId(request);
+	if (!userId) {
+		return new Response(JSON.stringify({ error: "unauthorized" }), {
+			status: 401,
+			headers: { "Content-Type": "application/json", ...corsHeaders() },
+		});
+	}
+
+	let body: { email?: string };
+	try {
+		body = await request.json();
+	} catch {
+		return new Response(JSON.stringify({ error: "invalid JSON body" }), {
+			status: 400,
+			headers: { "Content-Type": "application/json", ...corsHeaders() },
+		});
+	}
+
+	const response = await handleRequestVerification(userId, body);
+
+	// Add CORS headers to the response from the email module
+	const headers = new Headers(response.headers);
+	for (const [k, v] of Object.entries(corsHeaders())) {
+		headers.set(k, v);
+	}
+
+	return new Response(response.body, {
+		status: response.status,
+		headers,
 	});
 }
 
@@ -163,9 +273,15 @@ Deno.serve(
 		onListen({ hostname, port }) {
 			const host = hostname === "0.0.0.0" ? "localhost" : hostname;
 			console.log(`Wiki auth webhook listening on http://${host}:${port}`);
-			console.log(`  GET /validate      — Hasura auth webhook`);
-			console.log(`  GET /healthz       — Liveness check`);
-			console.log(`  GET /healthz/ready — Readiness check (JWKS + Hasura)`);
+			console.log(`  GET  /validate                    — Hasura auth webhook`);
+			console.log(
+				`  POST /email/request-verification  — Request email verification`,
+			);
+			console.log(
+				`  GET  /email/verify?token=...      — Verify email from link`,
+			);
+			console.log(`  GET  /healthz                     — Liveness check`);
+			console.log(`  GET  /healthz/ready               — Readiness check`);
 		},
 	},
 	handleRequest,

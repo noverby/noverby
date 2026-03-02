@@ -30,12 +30,52 @@ in {
       description = "Hasura GraphQL endpoint URL for user management.";
     };
 
+    publicUrl = lib.mkOption {
+      type = lib.types.str;
+      description = "Public URL of the auth webhook (for email verification links).";
+      default = "https://wiki-auth.overby.me";
+    };
+
+    wikiUrl = lib.mkOption {
+      type = lib.types.str;
+      description = "Public URL of the wiki frontend (for redirects after verification).";
+      default = "https://radikal.wiki";
+    };
+
+    smtpHost = lib.mkOption {
+      type = lib.types.str;
+      default = "localhost";
+      description = "SMTP server hostname for sending verification emails.";
+    };
+
+    smtpPort = lib.mkOption {
+      type = lib.types.port;
+      default = 25;
+      description = "SMTP server port.";
+    };
+
+    smtpFrom = lib.mkOption {
+      type = lib.types.str;
+      default = "noreply@overby.me";
+      description = "Sender address for verification emails.";
+    };
+
+    smtpSecure = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Use direct TLS (SMTPS) instead of STARTTLS.";
+    };
+
     environmentFile = lib.mkOption {
       type = lib.types.path;
       description = ''
         Path to an environment file containing secrets.
         Must define at minimum:
           HASURA_ADMIN_SECRET=<secret>
+        Optionally:
+          SMTP_USER=<user>
+          SMTP_PASS=<password>
+          EMAIL_SECRET=<secret>
       '';
     };
 
@@ -66,6 +106,16 @@ in {
           "NHOST_SUBDOMAIN=${cfg.nhostSubdomain}"
           "NHOST_REGION=${cfg.nhostRegion}"
           "HASURA_ENDPOINT=${cfg.hasuraEndpoint}"
+          "PUBLIC_URL=${cfg.publicUrl}"
+          "WIKI_URL=${cfg.wikiUrl}"
+          "SMTP_HOST=${cfg.smtpHost}"
+          "SMTP_PORT=${toString cfg.smtpPort}"
+          "SMTP_FROM=${cfg.smtpFrom}"
+          "SMTP_SECURE=${
+            if cfg.smtpSecure
+            then "true"
+            else "false"
+          }"
         ];
         DynamicUser = true;
         Restart = "on-failure";

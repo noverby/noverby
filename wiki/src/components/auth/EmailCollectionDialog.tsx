@@ -4,16 +4,26 @@
  * Shown to atproto users after their first login when they have no email
  * on record. The email is used for wiki invitations and notifications.
  *
+ * Security: The `auth.users.email` column is used as an identity key for
+ * the invite/membership system. Allowing users to self-set their email
+ * without verification would let them claim other users' pending invites.
+ * Instead of a direct Hasura mutation, this dialog sends the email to the
+ * auth webhook server, which sends a verification link. The email is only
+ * written to the database after the user clicks the link.
+ *
+ * Flow:
+ *  1. User enters their email address in the dialog
+ *  2. Frontend POSTs to /email/request-verification on the auth webhook
+ *  3. Server sends a verification email with a signed token link
+ *  4. Dialog shows "check your inbox" confirmation
+ *  5. User clicks the link → server verifies token → writes email to DB
+ *
  * The dialog is skippable — the user can dismiss it and provide their
  * email later from settings. It stores a flag in localStorage so it
  * doesn't re-prompt on every page load (only once per session until
  * the user provides an email or explicitly skips).
  *
- * Note: The `auth.users` table is not directly exposed in the GQty
- * generated schema, so we use raw GraphQL queries via fetch instead
- * of the typed GQL client for user email operations.
- *
- * Phase 3.3 of the atproto auth migration plan.
+ * Phase 3.3 / 9.3 of the atproto auth migration plan.
  */
 
 import {
@@ -38,22 +48,32 @@ import {
 import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
-// Raw GraphQL helpers (users table not in GQty schema)
+// Config
 // ---------------------------------------------------------------------------
+
+/**
+ * Base URL of the auth webhook server.
+ * In production this is the deployed webhook; in dev it can be overridden.
+ */
+const AUTH_SERVER_URL =
+	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://wiki-auth.overby.me";
 
 const HASURA_URL = `https://${process.env.PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
 
 const SKIP_KEY = "atproto-email-collection-skipped";
 
+// ---------------------------------------------------------------------------
+// Auth-aware fetch helpers
+// ---------------------------------------------------------------------------
+
 /**
- * Execute an authenticated GraphQL query against Hasura.
- * Uses the atproto DPoP fetch if available, otherwise falls back to
- * NHost JWT auth.
+ * Build authorization headers for the current session.
+ * Uses atproto DPoP fetch if available, otherwise NHost JWT.
  */
-async function gqlFetch<T = unknown>(
-	query: string,
-	variables: Record<string, unknown> = {},
-): Promise<T> {
+function getAuthHeaders(): {
+	headers: Record<string, string>;
+	fetchFn: typeof fetch;
+} {
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
 	};
@@ -70,6 +90,19 @@ async function gqlFetch<T = unknown>(
 	} else if (nhost.auth.isAuthenticated()) {
 		headers.authorization = `Bearer ${nhost.auth.getAccessToken()}`;
 	}
+
+	return { headers, fetchFn };
+}
+
+/**
+ * Execute an authenticated GraphQL query against Hasura.
+ * Used only for reading the current user's email (not writing).
+ */
+async function gqlFetch<T = unknown>(
+	query: string,
+	variables: Record<string, unknown> = {},
+): Promise<T> {
+	const { headers, fetchFn } = getAuthHeaders();
 
 	const response = await fetchFn(HASURA_URL, {
 		method: "POST",
@@ -89,6 +122,10 @@ async function gqlFetch<T = unknown>(
 	return json.data as T;
 }
 
+// ---------------------------------------------------------------------------
+// API calls
+// ---------------------------------------------------------------------------
+
 /**
  * Check whether the current user already has an email address stored.
  */
@@ -107,17 +144,33 @@ async function fetchUserEmail(userId: string): Promise<string | null> {
 }
 
 /**
- * Update the current user's email address.
+ * Request a verification email from the auth webhook server.
+ *
+ * The server validates the auth token, creates a signed verification JWT,
+ * and sends an email with a confirmation link. The email is only written
+ * to auth.users.email after the user clicks the link.
  */
-async function updateUserEmail(userId: string, email: string): Promise<void> {
-	await gqlFetch(
-		`mutation UpdateUserEmail($userId: uuid!, $email: citext!) {
-			updateUser(pk_columns: { id: $userId }, _set: { email: $email }) {
-				id
-			}
-		}`,
-		{ userId, email },
+async function requestEmailVerification(
+	email: string,
+): Promise<{ ok: boolean; error?: string }> {
+	const { headers, fetchFn } = getAuthHeaders();
+
+	const response = await fetchFn(
+		`${AUTH_SERVER_URL}/email/request-verification`,
+		{
+			method: "POST",
+			headers,
+			body: JSON.stringify({ email }),
+		},
 	);
+
+	const json = (await response.json()) as { ok?: boolean; error?: string };
+
+	if (!response.ok) {
+		return { ok: false, error: json.error ?? `HTTP ${response.status}` };
+	}
+
+	return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -182,17 +235,17 @@ function isValidEmail(value: string): boolean {
 // Component
 // ---------------------------------------------------------------------------
 
+type DialogState = "input" | "sending" | "sent" | "error";
+
 export default function EmailCollectionDialog() {
 	const { t } = useTranslation();
 	const { did } = useAtprotoAuth();
-	const userId = useUserId();
 	const shouldShow = useShowEmailCollection();
 
 	const [open, setOpen] = useState(false);
 	const [email, setEmail] = useState("");
 	const [error, setError] = useState("");
-	const [saving, setSaving] = useState(false);
-	const [success, setSuccess] = useState(false);
+	const [state, setState] = useState<DialogState>("input");
 
 	// Open when the hook says we should show
 	useEffect(() => {
@@ -204,6 +257,7 @@ export default function EmailCollectionDialog() {
 	const onEmailChange: ChangeEventHandler<HTMLInputElement> = (e) => {
 		setEmail(e.target.value.trim());
 		if (error) setError("");
+		if (state === "error") setState("input");
 	};
 
 	const handleSkip = () => {
@@ -213,71 +267,122 @@ export default function EmailCollectionDialog() {
 		setOpen(false);
 	};
 
-	const handleSave = async (e?: FormEvent) => {
+	const handleSend = async (e?: FormEvent) => {
 		e?.preventDefault();
 
 		if (!email) {
-			setError(t("auth.missingEmail", "Indtast venligst en e-mailadresse"));
+			setError(t("auth.missingEmail", "Email required"));
 			return;
 		}
 
 		if (!isValidEmail(email)) {
-			setError(t("auth.invalidEmail", "Ugyldig e-mailadresse"));
+			setError(t("auth.invalidEmail", "Invalid email"));
 			return;
 		}
 
-		if (!userId) {
-			setError("Bruger-ID mangler");
-			return;
-		}
-
-		setSaving(true);
+		setState("sending");
 		setError("");
 
 		try {
-			await updateUserEmail(userId, email.toLowerCase());
+			const result = await requestEmailVerification(email.toLowerCase());
 
-			setSuccess(true);
-			// Close after a brief delay so the user sees the success state
-			setTimeout(() => {
-				setOpen(false);
-			}, 1500);
+			if (result.ok) {
+				setState("sent");
+			} else {
+				setState("error");
+				setError(
+					result.error ===
+						"this email address is already in use by another account"
+						? t(
+								"auth.emailTaken",
+								"This email address is already in use by another account",
+							)
+						: t(
+								"auth.emailSendError",
+								"Could not send verification email: {{message}}",
+								{
+									message: result.error,
+								},
+							),
+				);
+			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			console.error("Failed to save email:", err);
+			console.error("Failed to request email verification:", err);
+			setState("error");
 			setError(
 				t(
-					"auth.emailSaveError",
-					"Kunne ikke gemme e-mailadresse: {{message}}",
-					{ message },
+					"auth.emailSendError",
+					"Could not send verification email: {{message}}",
+					{
+						message,
+					},
 				),
 			);
-		} finally {
-			setSaving(false);
 		}
+	};
+
+	const handleClose = () => {
+		if (did && state !== "sent") {
+			// If they close without completing, treat as skip
+			localStorage.setItem(SKIP_KEY, did);
+		}
+		setOpen(false);
 	};
 
 	if (!shouldShow && !open) return null;
 
+	// "Check your inbox" state after successful send
+	if (state === "sent") {
+		return (
+			<Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+				<DialogTitle>
+					{t("auth.emailSentTitle", "Check your inbox")}
+				</DialogTitle>
+				<DialogContent>
+					<Alert severity="success" sx={{ mb: 2 }}>
+						{t(
+							"auth.emailSentMessage",
+							"We have sent a verification email to {{email}}. Click the link in the email to confirm your email address.",
+							{ email },
+						)}
+					</Alert>
+					<DialogContentText>
+						{t(
+							"auth.emailSentHint",
+							"The link expires in 1 hour. Check your spam filter if you cannot find the email.",
+						)}
+					</DialogContentText>
+				</DialogContent>
+				<DialogActions>
+					<Button onClick={handleClose} variant="contained">
+						{t("common.ok", "OK")}
+					</Button>
+				</DialogActions>
+			</Dialog>
+		);
+	}
+
+	// Input / error state
 	return (
 		<Dialog
 			open={open}
-			onClose={handleSkip}
+			onClose={handleClose}
 			maxWidth="sm"
 			fullWidth
 			PaperProps={{
 				component: "form",
-				onSubmit: handleSave,
+				onSubmit: handleSend,
 			}}
 		>
 			<DialogTitle>
-				{t("auth.emailCollectionTitle", "Tilføj e-mailadresse")}
+				{t("auth.emailCollectionTitle", "Add email address")}
 			</DialogTitle>
 			<DialogContent>
 				<DialogContentText sx={{ mb: 2 }}>
 					{t(
 						"auth.emailCollectionDescription",
-						"Din e-mailadresse bruges til invitationer og notifikationer i wikien. Du kan altid tilføje den senere.",
+						"Your email address is used for invitations and notifications in the wiki. We will send a verification email — your address is only saved once you click the link. You can always add it later.",
 					)}
 				</DialogContentText>
 
@@ -285,31 +390,27 @@ export default function EmailCollectionDialog() {
 					autoFocus
 					fullWidth
 					type="email"
-					label={t("auth.email", "E-mail")}
-					placeholder="din@email.dk"
+					label={t("auth.email", "Email")}
+					placeholder="you@email.com"
 					value={email}
 					onChange={onEmailChange}
 					error={!!error}
 					helperText={error || undefined}
-					disabled={saving || success}
+					disabled={state === "sending"}
 				/>
-
-				{success && (
-					<Alert severity="success" sx={{ mt: 2 }}>
-						{t("auth.emailSaved", "E-mailadresse gemt!")}
-					</Alert>
-				)}
 			</DialogContent>
 			<DialogActions>
-				<Button onClick={handleSkip} disabled={saving}>
-					{t("common.skip", "Spring over")}
+				<Button onClick={handleSkip} disabled={state === "sending"}>
+					{t("common.skip", "Skip")}
 				</Button>
 				<Button
 					type="submit"
 					variant="contained"
-					disabled={saving || success || !email}
+					disabled={state === "sending" || !email}
 				>
-					{saving ? t("common.saving", "Gemmer...") : t("common.save", "Gem")}
+					{state === "sending"
+						? t("common.sending", "Sending...")
+						: t("auth.sendVerification", "Send verification email")}
 				</Button>
 			</DialogActions>
 		</Dialog>

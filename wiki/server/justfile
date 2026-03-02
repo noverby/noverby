@@ -91,6 +91,39 @@ verify: verify-health verify-ready test-unauth test-nhost-jwt
     @echo "========================================"
 
 # --------------------------------------------------------------------------
+# Email verification
+#
+# Test the server-side email verification flow. Requires a running
+# webhook server and valid auth credentials.
+# --------------------------------------------------------------------------
+
+# Request a verification email for the given address (uses NHOST_TEST_JWT).
+test-email-request email:
+    @echo "==> Requesting email verification for {{ email }}"
+    @test -n "$NHOST_TEST_JWT" || (echo "ERROR: Set NHOST_TEST_JWT to a valid NHost JWT first" && exit 1)
+    curl -sf -X POST "{{ WEBHOOK_URL }}/email/request-verification" \
+        -H "Authorization: Bearer $NHOST_TEST_JWT" \
+        -H "Content-Type: application/json" \
+        -d '{"email": "{{ email }}"}' \
+        | deno eval --ext=ts 'const j=JSON.parse(await new Response(Deno.stdin.readable).text()); console.log(JSON.stringify(j,null,2)); if(!j.ok) { console.error("FAIL:", j.error); Deno.exit(1); } else { console.log("OK: verification email sent"); }'
+    @echo ""
+
+# Verify a token (paste from the verification email link).
+test-email-verify token:
+    @echo "==> Verifying email token"
+    curl -sf "{{ WEBHOOK_URL }}/email/verify?token={{ token }}"
+    @echo ""
+
+# Confirm unauthenticated email requests are rejected.
+test-email-unauth:
+    @echo "==> Testing unauthenticated email request returns 401"
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        "{{ WEBHOOK_URL }}/email/request-verification" \
+        -H "Content-Type: application/json" \
+        -d '{"email": "test@example.com"}'); \
+    if [ "$STATUS" = "401" ]; then echo "OK: got 401"; else echo "FAIL: expected 401, got $STATUS"; exit 1; fi
+
+# --------------------------------------------------------------------------
 # Hasura auth mode switchover
 #
 # These tasks change the Hasura auth mode via the metadata/environment
@@ -159,3 +192,5 @@ hasura-rollback-env:
 NHOST_SUBDOMAIN := env("NHOST_SUBDOMAIN", "")
 NHOST_REGION := env("NHOST_REGION", "")
 HASURA_ENDPOINT := env("HASURA_ENDPOINT", "")
+PUBLIC_URL := env("PUBLIC_URL", env("WEBHOOK_URL", "https://wiki-auth.overby.me"))
+WIKI_URL := env("WIKI_URL", "https://radikal.wiki")

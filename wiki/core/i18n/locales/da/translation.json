@@ -5,6 +5,10 @@
 		"delete": "Slet",
 		"edit": "Rediger",
 		"save": "Gem",
+		"saving": "Gemmer...",
+		"sending": "Sender...",
+		"skip": "Spring over",
+		"ok": "OK",
 		"search": "Søg",
 		"close": "Luk",
 		"home": "Hjem",
@@ -49,7 +53,15 @@
 		"checkSpam": "Tjek eventuelt om emailen er endt i spam.",
 		"checkEmail": "Tjek din email",
 		"passwordResetSent": "Du skulle gerne have modtaget en email.",
-		"useToResetPassword": "Brug den til at nulstille dit kodeord."
+		"useToResetPassword": "Brug den til at nulstille dit kodeord.",
+		"emailCollectionTitle": "Tilføj e-mailadresse",
+		"emailCollectionDescription": "Din e-mailadresse bruges til invitationer og notifikationer i wikien. Vi sender en bekræftelsesmail — din adresse gemmes først, når du klikker på linket. Du kan altid tilføje den senere.",
+		"sendVerification": "Send bekræftelsesmail",
+		"emailSentTitle": "Tjek din indbakke",
+		"emailSentMessage": "Vi har sendt en bekræftelsesmail til {{email}}. Klik på linket i mailen for at bekræfte din e-mailadresse.",
+		"emailSentHint": "Linket udløber om 1 time. Tjek eventuelt dit spamfilter, hvis du ikke kan finde mailen.",
+		"emailTaken": "Denne e-mailadresse bruges allerede af en anden konto",
+		"emailSendError": "Kunne ikke sende bekræftelsesmail: {{message}}"
 	},
 	"content": {
 		"addContent": "Tilføj indhold",

@@ -323,12 +323,21 @@ Implementation:
 - Else if NHost session is active → use NHost values (existing behavior)
 - `useUserId()` always returns the Hasura UUID (the webhook maps DID → UUID)
 
-### 3.3 Profile Email Collection
+### 3.3 Profile Email Collection (Verified)
 
 After a new atproto user's first login, if they have no email on record,
-show a one-time dialog asking for their email address. This is stored in
-the `users.email` column via a Hasura mutation. The dialog is skippable
-but can be prompted again from settings.
+show a one-time dialog asking for their email address. The dialog submits
+the email to the auth webhook server (`POST /email/request-verification`),
+which sends a verification email with a signed token link. The email is
+only written to `auth.users.email` after the user clicks the link.
+
+**Security rationale:** The `members` table uses `email` as an identity
+key for invites — `members.email` is matched against `users.email` to
+resolve pending invitations. If users could self-set their email without
+verification, they could claim another user's pending invites by setting
+their email to the victim's address.
+
+The dialog is skippable but can be prompted again from settings.
 
 ---
 
@@ -641,14 +650,47 @@ SELECT id, 'nhost', id::text FROM auth.users;
 - Add array relationship on `users` → `user_providers`
 - Set permissions: users can read their own providers, admin can write
 
-### 9.3 Add Email Column Usage
+### 9.3 Server-Side Verified Email Flow
 
 The existing `users.email` column works for NHost users (set on registration).
-For atproto users, this column starts as `null` and is populated when the
-user provides their email in the collection dialog (Phase 3.3).
+For atproto users, this column starts as `null` and is populated only after
+the user verifies their email address via a confirmation link.
 
-No schema changes needed — just a Hasura permission update to allow users
-to update their own email.
+**Security constraint:** The `members` table uses `email` as an identity key
+for the invite system (`members_parent_id_email_key` unique constraint,
+`emailUser` relationship). Allowing users to self-set their email via a
+Hasura permission would let them claim other users' pending invites.
+**Do NOT grant the `user` role update permission on `auth.users.email`.**
+
+Instead, email updates go through the auth webhook server:
+
+1. **`POST /email/request-verification`** (authenticated)
+   - Validates the auth token (NHost JWT or atproto DPoP)
+   - Checks the email isn't already taken by another user
+   - Creates a signed JWT: `{ sub: userId, email, aud: "email-verify", exp: +1h }`
+   - Sends a verification email with a link to `/email/verify?token=<jwt>`
+   - Returns `200 { ok: true }`
+
+2. **`GET /email/verify?token=<jwt>`** (unauthenticated, from email link)
+   - Verifies the JWT signature and expiry
+   - Re-checks email uniqueness (race condition guard)
+   - Writes the email to `auth.users` via the **admin secret** (the only write path)
+   - Returns an HTML confirmation page with a link back to the wiki
+
+**Files:**
+
+- `wiki/server/email.ts` — token creation/verification, SMTP sending, Hasura admin writes
+- `wiki/server/main.ts` — routes + auth extraction for the email endpoints
+- `wiki/src/components/auth/EmailCollectionDialog.tsx` — calls the server endpoint,
+  shows "check your inbox" state instead of direct mutation
+
+**Environment variables** (added to NixOS module + env file):
+
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_SECURE` — SMTP configuration
+- `SMTP_USER`, `SMTP_PASS` — SMTP credentials (optional for local MTA)
+- `EMAIL_SECRET` — signing secret (falls back to `HASURA_ADMIN_SECRET`)
+- `PUBLIC_URL` — webhook base URL for building verification links
+- `WIKI_URL` — frontend URL for redirect after verification
 
 ---
 
@@ -669,7 +711,7 @@ to update their own email.
 | 10 | 6 | Update `AuthForm.tsx` — add Bluesky sign-in | Step 9 | Medium |
 | — | — | **Checkpoint: atproto login works alongside NHost** | — | — |
 | 11 | 7 | Migrate all component imports to `useAuth` facade | Step 7 | Medium (mechanical) |
-| 12 | 3.3 | Add email collection dialog for atproto users | Step 10 | Small |
+| 12 | 9.3+3.3 | Server-side verified email flow + collection dialog | Step 2, 10 | Medium |
 | 13 | 6.3 | Add account linking UI | Steps 10–11 | Medium |
 
 ---
@@ -708,6 +750,7 @@ Once all users have migrated to atproto, the NHost auth path can be removed:
 | `wiki/core/hooks/useAuth.ts` | Unified dual-auth facade hooks |
 | `wiki/src/pages/auth/callback.tsx` | OAuth callback page |
 | `wiki/src/components/auth/BlueskySignIn.tsx` | Bluesky handle input + sign-in button |
+| `wiki/server/email.ts` | Server-side email verification (tokens, SMTP, DB writes) |
 | `wiki/src/components/auth/EmailCollectionDialog.tsx` | Post-login email prompt for atproto users |
 | `wiki/src/components/auth/AccountLinkDialog.tsx` | Link NHost ↔ atproto accounts |
 | `nixos-modules/services/wiki-auth.nix` | NixOS module for the webhook |

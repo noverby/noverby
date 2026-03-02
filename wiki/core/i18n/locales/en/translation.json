@@ -5,6 +5,10 @@
 		"delete": "Delete",
 		"edit": "Edit",
 		"save": "Save",
+		"saving": "Saving...",
+		"sending": "Sending...",
+		"skip": "Skip",
+		"ok": "OK",
 		"search": "Search",
 		"close": "Close",
 		"home": "Home",
@@ -48,7 +52,15 @@
 		"checkSpam": "Check if the email ended up in spam.",
 		"checkEmail": "Check your email",
 		"passwordResetSent": "You should have received an email.",
-		"useToResetPassword": "Use it to reset your password."
+		"useToResetPassword": "Use it to reset your password.",
+		"emailCollectionTitle": "Add email address",
+		"emailCollectionDescription": "Your email address is used for invitations and notifications in the wiki. We will send a verification email — your address is only saved once you click the link. You can always add it later.",
+		"sendVerification": "Send verification email",
+		"emailSentTitle": "Check your inbox",
+		"emailSentMessage": "We have sent a verification email to {{email}}. Click the link in the email to confirm your email address.",
+		"emailSentHint": "The link expires in 1 hour. Check your spam filter if you cannot find the email.",
+		"emailTaken": "This email address is already in use by another account",
+		"emailSendError": "Could not send verification email: {{message}}"
 	},
 	"content": {
 		"addContent": "Add content",
