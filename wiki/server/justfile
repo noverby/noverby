@@ -1,9 +1,19 @@
 # Wiki auth webhook server
 #
 # Requires: deno, psql (postgresql)
-# Set DATABASE_URL to your NHost Postgres connection string.
-
+#
+# Environment variables:
+#   DATABASE_URL        — Postgres connection string for migrations
+#   NHOST_SUBDOMAIN     — NHost project subdomain
+#   NHOST_REGION        — NHost project region
+#   HASURA_ENDPOINT     — Hasura GraphQL endpoint URL
+#   HASURA_ADMIN_SECRET — Hasura admin secret
+#   WEBHOOK_URL         — Public URL of the deployed webhook (e.g. https://wiki-auth.overby.me)
+#   NHOST_TEST_JWT      — A valid NHost JWT for testing (grab from browser devtools)
+# --------------------------------------------------------------------------
 # Development
+# --------------------------------------------------------------------------
+
 dev:
     deno run --watch --allow-net --allow-env main.ts
 
@@ -16,7 +26,10 @@ install:
 check:
     deno check main.ts
 
+# --------------------------------------------------------------------------
 # Database
+# --------------------------------------------------------------------------
+
 psql:
     psql "$DATABASE_URL"
 
@@ -33,3 +46,116 @@ migrate-dry-run:
 
 migrate-status:
     psql "$DATABASE_URL" -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_providers');"
+
+# --------------------------------------------------------------------------
+# Webhook verification
+#
+# Run these BEFORE switching Hasura to webhook mode to confirm the
+# webhook handles NHost JWTs correctly. The shared Hasura instance
+# stays in JWT mode until all checks pass.
+# --------------------------------------------------------------------------
+
+# Quick liveness check — is the server process running?
+verify-health:
+    @echo "==> Liveness check"
+    curl -sf "{{ WEBHOOK_URL }}/healthz" | deno eval --ext=ts 'const j=JSON.parse(await new Response(Deno.stdin.readable).text()); console.log(JSON.stringify(j,null,2)); if(j.status!=="ok") Deno.exit(1);'
+    @echo ""
+
+# Deep readiness check — can the webhook reach JWKS + Hasura?
+verify-ready:
+    @echo "==> Readiness check (JWKS + Hasura reachability)"
+    curl -sf "{{ WEBHOOK_URL }}/healthz/ready" | deno eval --ext=ts 'const j=JSON.parse(await new Response(Deno.stdin.readable).text()); console.log(JSON.stringify(j,null,2)); if(j.status!=="ready") Deno.exit(1);'
+    @echo ""
+
+# Validate a real NHost JWT against the webhook (must return 200 with X-Hasura-User-Id).
+
+# Set NHOST_TEST_JWT to a valid token from an existing radikal.wiki session.
+test-nhost-jwt:
+    @echo "==> Testing NHost JWT validation against webhook"
+    @test -n "$NHOST_TEST_JWT" || (echo "ERROR: Set NHOST_TEST_JWT to a valid NHost JWT first" && exit 1)
+    curl -sf -H "Authorization: Bearer $NHOST_TEST_JWT" "{{ WEBHOOK_URL }}/validate" \
+        | deno eval --ext=ts 'const j=JSON.parse(await new Response(Deno.stdin.readable).text()); console.log(JSON.stringify(j,null,2)); if(!j["X-Hasura-User-Id"]) { console.error("FAIL: no X-Hasura-User-Id in response"); Deno.exit(1); } else { console.log("OK: user " + j["X-Hasura-User-Id"]); }'
+    @echo ""
+
+# Confirm unauthenticated requests get a 401 (Hasura falls back to public role).
+test-unauth:
+    @echo "==> Testing unauthenticated request returns 401"
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "{{ WEBHOOK_URL }}/validate"); \
+    if [ "$STATUS" = "401" ]; then echo "OK: got 401"; else echo "FAIL: expected 401, got $STATUS"; exit 1; fi
+
+# Run all verification checks. Gate the Hasura switchover on this.
+verify: verify-health verify-ready test-unauth test-nhost-jwt
+    @echo "========================================"
+    @echo "All checks passed. Safe to switch Hasura"
+    @echo "to webhook mode."
+    @echo "========================================"
+
+# --------------------------------------------------------------------------
+# Hasura auth mode switchover
+#
+# These tasks change the Hasura auth mode via the metadata/environment
+# API. The shared instance serves both radikal.wiki and rebuild.radikal.wiki,
+# so the webhook MUST be verified first.
+#
+# The webhook's NHost JWT path produces the exact same session variables
+# that Hasura's built-in JWT mode does, so existing radikal.wiki users
+# are unaffected by the switch.
+# --------------------------------------------------------------------------
+
+WEBHOOK_URL := env("WEBHOOK_URL", "https://wiki-auth.overby.me")
+
+# Switch Hasura from JWT mode to webhook mode.
+
+# Removes HASURA_GRAPHQL_JWT_SECRET and sets HASURA_GRAPHQL_AUTH_HOOK.
+hasura-switch-to-webhook:
+    @echo "==> Switching Hasura to webhook mode ({{ WEBHOOK_URL }}/validate)"
+    @echo "    This affects ALL sites sharing this Hasura instance."
+    @echo ""
+    @echo "    Press Ctrl-C to abort, or Enter to continue..."
+    @head -n1 > /dev/null
+    curl -sf "{{ HASURA_ENDPOINT }}/v1/metadata" \
+        -H "x-hasura-admin-secret: $HASURA_ADMIN_SECRET" \
+        -H "Content-Type: application/json" \
+        -d '{ \
+            "type": "replace_metadata", \
+            "args": { \
+                "allow_inconsistent_metadata": true, \
+                "metadata": { \
+                    "version": 3, \
+                    "sources": [] \
+                } \
+            } \
+        }' > /dev/null
+    @echo "NOTE: Use the NHost dashboard or Hasura Cloud console to set:"
+    @echo "  HASURA_GRAPHQL_AUTH_HOOK={{ WEBHOOK_URL }}/validate"
+    @echo "  HASURA_GRAPHQL_AUTH_HOOK_MODE=GET"
+    @echo "  HASURA_GRAPHQL_UNAUTHORIZED_ROLE=public"
+    @echo "  (and remove HASURA_GRAPHQL_JWT_SECRET)"
+    @echo ""
+    @echo "If using NHost managed Hasura, change these in the NHost dashboard"
+    @echo "under Settings > Environment Variables."
+
+# Print the env vars needed for webhook mode (copy-paste into NHost dashboard).
+hasura-webhook-env:
+    @echo "# Webhook mode environment variables for Hasura"
+    @echo "# Replace the JWT_SECRET var with these:"
+    @echo ""
+    @echo "HASURA_GRAPHQL_AUTH_HOOK={{ WEBHOOK_URL }}/validate"
+    @echo "HASURA_GRAPHQL_AUTH_HOOK_MODE=GET"
+    @echo "HASURA_GRAPHQL_UNAUTHORIZED_ROLE=public"
+
+# Print the env var needed to rollback to JWT mode (copy-paste into NHost dashboard).
+hasura-rollback-env:
+    @echo "# JWT mode environment variables for Hasura"
+    @echo "# Remove the AUTH_HOOK vars and restore JWT_SECRET:"
+    @echo ""
+    @echo "HASURA_GRAPHQL_JWT_SECRET={\"type\":\"RS256\",\"jwk_url\":\"https://{{ NHOST_SUBDOMAIN }}.auth.{{ NHOST_REGION }}.nhost.run/v1/.well-known/jwks.json\"}"
+    @echo "HASURA_GRAPHQL_UNAUTHORIZED_ROLE=public"
+    @echo ""
+    @echo "# Also REMOVE these:"
+    @echo "#   HASURA_GRAPHQL_AUTH_HOOK"
+    @echo "#   HASURA_GRAPHQL_AUTH_HOOK_MODE"
+
+NHOST_SUBDOMAIN := env("NHOST_SUBDOMAIN", "")
+NHOST_REGION := env("NHOST_REGION", "")
+HASURA_ENDPOINT := env("HASURA_ENDPOINT", "")
