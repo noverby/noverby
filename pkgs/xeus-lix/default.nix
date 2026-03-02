@@ -37,7 +37,7 @@ python3.pkgs.toPythonModule (stdenv.mkDerivation {
   ];
 
   buildInputs = [
-    lix.dev
+    (lix.overrideAttrs {doCheck = false;}).dev
     capnproto
     xeus
     xeus-zmq
