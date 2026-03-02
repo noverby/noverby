@@ -227,16 +227,23 @@ The unauthorized role stays `public` for unauthenticated requests.
 Create the browser-side atproto OAuth client. This replaces `core/nhost.tsx`
 for authentication (but `nhost.tsx` stays for storage).
 
-The app must serve a `client-metadata.json` at a public URL
-(e.g. `https://radikalwiki.dk/client-metadata.json`). This is the OAuth
-client ID document required by atproto:
+The app must serve a `client-metadata.json` at its public URL. The AT
+Protocol authorization server fetches this `client_id` URL to verify
+the OAuth client's identity, so the metadata **must match the origin
+where the app is served**. A static file hardcoding one domain would
+break on other origins (e.g. `rebuild.radikal.wiki` vs `radikal.wiki`).
+
+Instead of a static file, an rsbuild plugin (`pluginClientMetadata` in
+`rsbuild.config.ts`) generates `client-metadata.json` at build time
+using the `PUBLIC_SITE_URL` environment variable (defaults to
+`https://radikal.wiki`). The generated document looks like:
 
 ```json
 {
-  "client_id": "https://radikalwiki.dk/client-metadata.json",
+  "client_id": "${PUBLIC_SITE_URL}/client-metadata.json",
   "client_name": "RadikalWiki",
-  "client_uri": "https://radikalwiki.dk",
-  "redirect_uris": ["https://radikalwiki.dk/auth/callback"],
+  "client_uri": "${PUBLIC_SITE_URL}",
+  "redirect_uris": ["${PUBLIC_SITE_URL}/auth/callback"],
   "scope": "atproto transition:generic",
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
@@ -246,17 +253,28 @@ client ID document required by atproto:
 }
 ```
 
-Place this as a static file in `wiki/public/client-metadata.json`.
+For multi-origin deployments, set `PUBLIC_SITE_URL` per build target:
 
-The `core/atproto.ts` module:
+- `PUBLIC_SITE_URL=https://radikal.wiki` for production
+- `PUBLIC_SITE_URL=https://rebuild.radikal.wiki` for staging
+
+In dev mode (`http://localhost`), atproto treats the client as a
+loopback client and skips the metadata fetch, so no special config
+is needed.
+
+The `core/atproto.ts` module mirrors the build-generated metadata but
+uses `window.location.origin` so it works across environments without
+relying on the static file at runtime:
 
 ```typescript
 import { BrowserOAuthClient } from "@atproto/oauth-client-browser";
 
+const origin = typeof window !== "undefined" ? window.location.origin : "";
+
 const atprotoClient = new BrowserOAuthClient({
   clientMetadata: {
-    client_id: `${window.location.origin}/client-metadata.json`,
-    redirect_uris: [`${window.location.origin}/auth/callback`],
+    client_id: `${origin}/client-metadata.json`,
+    redirect_uris: [`${origin}/auth/callback`],
     scope: "atproto transition:generic",
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
@@ -744,7 +762,6 @@ Once all users have migrated to atproto, the NHost auth path can be removed:
 | `wiki/server/hasura.ts` | Hasura session variable builders |
 | `wiki/server/users.ts` | User lookup/creation via Hasura admin |
 | `wiki/server/deno.json` | Deno config for server |
-| `wiki/public/client-metadata.json` | atproto OAuth client metadata document |
 | `wiki/core/atproto.ts` | Browser atproto OAuth client |
 | `wiki/core/hooks/useAtproto.tsx` | atproto auth provider + hooks |
 | `wiki/core/hooks/useAuth.ts` | Unified dual-auth facade hooks |
@@ -759,6 +776,7 @@ Once all users have migrated to atproto, the NHost auth path can be removed:
 
 | File | Change |
 |---|---|
+| `wiki/rsbuild.config.ts` | Add `pluginClientMetadata` — generates `client-metadata.json` at build time from `PUBLIC_SITE_URL` |
 | `wiki/package.json` | Add `@atproto/oauth-client-browser`, `@atproto/api` |
 | `wiki/core/gql/index.ts` | Dual-auth `getHeaders()` + DPoP support |
 | `wiki/core/nhost.tsx` | No changes (kept for storage) |

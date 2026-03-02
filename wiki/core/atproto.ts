@@ -34,8 +34,9 @@ const origin = typeof window !== "undefined" ? window.location.origin : "";
 /**
  * The atproto OAuth client configured for RadikalWiki.
  *
- * `clientMetadata` mirrors the static `public/client-metadata.json` but
- * uses `window.location.origin` so it works across environments
+ * `clientMetadata` mirrors the build-generated `client-metadata.json`
+ * (see `pluginClientMetadata` in `rsbuild.config.ts`) but uses
+ * `window.location.origin` so it works across environments
  * (localhost dev, staging, production).
  *
  * `handleResolver` points to the default Bluesky AppView which can
