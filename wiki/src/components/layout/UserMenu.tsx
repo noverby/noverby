@@ -3,6 +3,7 @@ import {
 	Brightness7,
 	HowToReg,
 	Language,
+	Link as LinkIcon,
 	LockReset,
 	Login,
 	Logout,
@@ -18,10 +19,10 @@ import {
 	useMediaQuery,
 	useTheme,
 } from "@mui/material";
-import { useAuthenticationStatus } from "@nhost/react";
+import { AccountLinkDialog } from "comps";
 import { ThemeModeContext } from "core/theme/ThemeModeContext";
 import { client } from "gql";
-import { nhost } from "nhost";
+import { useAuthenticationStatus, useSignOut } from "hooks";
 import { type MouseEventHandler, useContext, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +34,8 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 		HTMLButtonElement | HTMLDivElement | null
 	>(null);
 	const { isAuthenticated } = useAuthenticationStatus();
+	const signOut = useSignOut();
+	const [linkDialogOpen, setLinkDialogOpen] = useState(false);
 	const { toggleThemeMode } = useContext(ThemeModeContext);
 	const { palette } = useTheme();
 	const largeScreen = useMediaQuery("(min-width:1200px)");
@@ -48,7 +51,7 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 	};
 
 	const handleLogout = async () => {
-		await nhost.auth.signOut();
+		await signOut();
 		// Delete cache
 		// eslint-disable-next-line functional/immutable-data
 		client.cache.clear();
@@ -104,6 +107,20 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 						</ListItemIcon>
 						<ListItemText>{t("auth.setPassword")}</ListItemText>
 					</MenuItem>,
+					<MenuItem
+						key="link"
+						onClick={() => {
+							setAnchorEl(null);
+							setLinkDialogOpen(true);
+						}}
+					>
+						<ListItemIcon>
+							<LinkIcon />
+						</ListItemIcon>
+						<ListItemText>
+							{t("auth.linkAccounts", "Tilknyt konti")}
+						</ListItemText>
+					</MenuItem>,
 					<MenuItem key="logout" onClick={handleLogout}>
 						<ListItemIcon>
 							<Logout />
@@ -146,6 +163,10 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 					</ListItemText>
 				</MenuItem>
 			</Menu>
+			<AccountLinkDialog
+				open={linkDialogOpen}
+				onClose={() => setLinkDialogOpen(false)}
+			/>
 		</>
 	);
 };

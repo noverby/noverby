@@ -1,7 +1,7 @@
 import { MarkEmailRead } from "@mui/icons-material";
 import { Avatar, CardContent, Container, Typography } from "@mui/material";
-import { useAuthenticationStatus } from "@nhost/react";
 import { HeaderCard } from "comps";
+import { useAuthenticationStatus } from "hooks";
 import { startTransition, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";

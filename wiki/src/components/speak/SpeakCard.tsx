@@ -15,10 +15,9 @@ import {
 	Tooltip,
 	Typography,
 } from "@mui/material";
-import { useUserId } from "@nhost/react";
 import { avatars, getAvatarName } from "comps";
 import { order_by } from "gql";
-import { type Node, useScreen } from "hooks";
+import { type Node, useScreen, useUserId } from "hooks";
 import { useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 

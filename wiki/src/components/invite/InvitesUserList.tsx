@@ -8,7 +8,6 @@ import {
 	ListItemText,
 	Tooltip,
 } from "@mui/material";
-import { useUserEmail, useUserId } from "@nhost/react";
 import { HeaderCard, MimeAvatarId } from "comps";
 import {
 	client,
@@ -18,6 +17,7 @@ import {
 	useMutation,
 	useSubscription,
 } from "gql";
+import { useUserEmail, useUserId } from "hooks";
 import { startTransition } from "react";
 import { useTranslation } from "react-i18next";
 

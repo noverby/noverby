@@ -10,10 +10,9 @@ import {
 	TextField,
 	Typography,
 } from "@mui/material";
-import { useAuthenticationStatus } from "@nhost/react";
 import { BlueskySignIn } from "comps";
 import { client } from "gql";
-import { useSession } from "hooks";
+import { useAuthenticationStatus, useSession } from "hooks";
 import { nhost } from "nhost";
 import {
 	type ChangeEventHandler,

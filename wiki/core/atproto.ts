@@ -18,6 +18,13 @@
  *   await atprotoClient.signIn("alice.bsky.social");
  *   // Restore session on page load / handle callback:
  *   const result = await atprotoClient.init();
+ *
+ * Session holder:
+ *   The module also exports a module-level session holder that bridges
+ *   the React context (AtprotoAuthProvider) with non-React code like
+ *   the GQL module. The provider calls `setAtprotoSession()` when the
+ *   session changes, and `getAtprotoSession()` returns the current
+ *   session (or null) for use in `core/gql/index.ts`.
  */
 
 import { BrowserOAuthClient } from "@atproto/oauth-client-browser";
@@ -47,5 +54,49 @@ const atprotoClient = new BrowserOAuthClient({
 	},
 	handleResolver: "https://bsky.social",
 });
+
+// ---------------------------------------------------------------------------
+// Module-level session holder
+// ---------------------------------------------------------------------------
+// Bridges the React AtprotoAuthProvider with the module-level GQL fetcher.
+// The provider calls setAtprotoSession() on login/logout, and the GQL
+// module calls getAtprotoSession() to decide how to authenticate requests.
+
+/**
+ * The raw session object from BrowserOAuthClient.
+ *
+ * When present, the session exposes a `fetchHandler` (or can be used
+ * via the client's `fetch()` method) that automatically attaches
+ * DPoP-bound Authorization headers to outgoing requests.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: atproto session type is opaque — its shape varies across versions
+let currentSession: any | null = null;
+
+/**
+ * Store the current atproto session (called by AtprotoAuthProvider).
+ * Pass `null` to clear on sign-out.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: atproto session type is opaque
+export function setAtprotoSession(session: any | null): void {
+	currentSession = session;
+}
+
+/**
+ * Get the current atproto session, or `null` if not authenticated.
+ * Used by `core/gql/index.ts` to build authenticated fetch requests.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: atproto session type is opaque
+export function getAtprotoSession(): any | null {
+	return currentSession;
+}
+
+/**
+ * Check whether an atproto session is currently active.
+ * Lightweight check for the GQL headers logic — avoids importing
+ * React context in a non-React module.
+ */
+export function isAtprotoAuthenticated(): boolean {
+	return currentSession != null;
+}
 
 export { atprotoClient };

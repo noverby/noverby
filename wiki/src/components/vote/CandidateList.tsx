@@ -6,9 +6,8 @@ import {
 	useMediaQuery,
 } from "@mui/material";
 import { Box } from "@mui/system";
-import { useUserId } from "@nhost/react";
 import { Image } from "comps";
-import { type Node, useFiles, useLink, useScreen } from "hooks";
+import { type Node, useFiles, useLink, useScreen, useUserId } from "hooks";
 import { IconId } from "mime";
 import { useTranslation } from "react-i18next";
 

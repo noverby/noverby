@@ -93,7 +93,7 @@ export function useAuthenticated(): boolean {
  * user ID into GraphQL queries will get the correct results because
  * Hasura's `X-Hasura-User-Id` is set by the webhook, not the client.
  */
-export function useUserId(): string | null {
+export function useUserId(): string | undefined {
 	const atproto = useAtprotoAuth();
 	const nhostUserId = useNhostUserId();
 
@@ -112,7 +112,7 @@ export function useUserId(): string | null {
 		return atproto.did;
 	}
 
-	return nhostUserId ?? null;
+	return nhostUserId ?? undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,17 +128,17 @@ export function useUserId(): string | null {
  *   `users.email` column and could be fetched from a GraphQL query,
  *   but for now we return `null` for atproto users on the client side.
  */
-export function useUserEmail(): string | null {
+export function useUserEmail(): string | undefined {
 	const atproto = useAtprotoAuth();
 	const nhostEmail = useNhostUserEmail();
 
 	if (atproto.isAuthenticated) {
 		// atproto doesn't provide email — it must be collected separately.
 		// A future enhancement could query the users table for the stored email.
-		return null;
+		return undefined;
 	}
 
-	return nhostEmail ?? null;
+	return nhostEmail ?? undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,13 +146,13 @@ export function useUserEmail(): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the user's display name, or `null`.
+ * Returns the user's display name, or `undefined`.
  *
  * - NHost users: display name from the NHost session.
  * - atproto users: display name from the Bluesky profile, falling back
  *   to the handle.
  */
-export function useUserDisplayName(): string | null {
+export function useUserDisplayName(): string | undefined {
 	const atproto = useAtprotoAuth();
 	const atprotoProfile = useAtprotoProfile();
 	const nhostDisplayName = useNhostUserDisplayName();
@@ -166,7 +166,7 @@ export function useUserDisplayName(): string | null {
 		);
 	}
 
-	return nhostDisplayName ?? null;
+	return nhostDisplayName ?? undefined;
 }
 
 // ---------------------------------------------------------------------------

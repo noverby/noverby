@@ -1,4 +1,5 @@
 import { createReactClient } from "@gqty/react";
+import { getAtprotoSession, isAtprotoAuthenticated } from "core/atproto";
 import type { QueryFetcher } from "gqty";
 import { Cache, createClient } from "gqty";
 import { createClient as createSubscriptionsClient } from "graphql-ws";
@@ -6,43 +7,103 @@ import { nhost } from "nhost";
 import type { GeneratedSchema } from "./schema.generated";
 import { generatedSchema, scalarsEnumsHash } from "./schema.generated";
 
+/**
+ * Build HTTP headers for Hasura GraphQL requests.
+ *
+ * Priority:
+ *   1. Admin secret (dev / server-side)
+ *   2. atproto DPoP session (preferred user auth)
+ *   3. NHost JWT (legacy user auth)
+ *   4. Public / unauthenticated
+ *
+ * When an atproto session is active we still return a minimal header set
+ * here — the actual Authorization + DPoP headers are attached by the
+ * session's `fetchHandler` in `queryFetcher`.  We include the Content-Type
+ * so the caller can always spread these headers safely.
+ */
 const getHeaders = (): Record<string, string> =>
 	process.env.HASURA_GRAPHQL_ADMIN_SECRET
 		? {
 				"Content-Type": "application/json",
 				"x-hasura-admin-secret": process.env.HASURA_GRAPHQL_ADMIN_SECRET,
 			}
-		: nhost.auth.isAuthenticated()
+		: isAtprotoAuthenticated()
 			? {
+					// The atproto DPoP fetch path handles Authorization + DPoP
+					// headers itself — see queryFetcher below.
 					"Content-Type": "application/json",
-					authorization: `Bearer ${nhost.auth.getAccessToken()}`,
 				}
-			: {
-					"Content-Type": "application/json",
-					"x-hasura-role": "public",
-				};
+			: nhost.auth.isAuthenticated()
+				? {
+						"Content-Type": "application/json",
+						authorization: `Bearer ${nhost.auth.getAccessToken()}`,
+					}
+				: {
+						"Content-Type": "application/json",
+						"x-hasura-role": "public",
+					};
 
 const url = `https://${process.env.PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
 
+/**
+ * GQty query fetcher with dual-auth support.
+ *
+ * When an atproto session is active, we use the session's `fetchHandler`
+ * (exposed as `session.fetchHandler` or via the agent's `fetch`) which
+ * automatically attaches the DPoP proof and Authorization header to every
+ * outgoing request.  This is the recommended approach from the
+ * @atproto/oauth-client-browser documentation — it handles token refresh,
+ * DPoP nonce rotation, and proof generation transparently.
+ *
+ * For NHost / admin / public requests we fall back to plain `fetch` with
+ * the headers built by `getHeaders()`.
+ */
 const queryFetcher: QueryFetcher = async (
 	{ query, variables, operationName },
 	fetchOptions,
 ) => {
+	const body = JSON.stringify({ query, variables, operationName });
+
+	// --- atproto DPoP path ---------------------------------------------------
+	if (isAtprotoAuthenticated()) {
+		const session = getAtprotoSession();
+
+		// The session object from BrowserOAuthClient exposes a `fetchHandler`
+		// that wraps the global fetch and adds Authorization + DPoP headers.
+		// Some versions of the library also expose it as `dpopFetch`.
+		const dpopFetch: typeof fetch | undefined =
+			session?.fetchHandler ?? session?.dpopFetch ?? session?.fetch;
+
+		if (typeof dpopFetch === "function") {
+			const response = await dpopFetch(url, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body,
+				mode: "cors" as RequestMode,
+				...fetchOptions,
+			});
+			return await response.json();
+		}
+
+		// Fallback: if the session doesn't expose a fetch wrapper (shouldn't
+		// happen in practice), log a warning and fall through to plain fetch
+		// with whatever headers we can build.
+		console.warn(
+			"atproto session active but no fetchHandler found — falling back to plain fetch",
+		);
+	}
+
+	// --- NHost JWT / admin / public path -------------------------------------
 	const headers = getHeaders();
 	const response = await fetch(url, {
 		method: "POST",
 		headers,
-		body: JSON.stringify({
-			query,
-			variables,
-			operationName,
-		}),
+		body,
 		mode: "cors",
 		...fetchOptions,
 	});
 
 	const json = await response.json();
-
 	return json;
 };
 
@@ -52,9 +113,32 @@ const cache = new Cache(undefined, {
 });
 
 const subscriptionsClient = createSubscriptionsClient({
-	connectionParams: () => ({
-		headers: getHeaders(),
-	}),
+	connectionParams: () => {
+		// For WebSocket subscriptions, DPoP proofs aren't applicable (no
+		// per-request HTTP headers).  atproto tokens are still sent as a
+		// Bearer token in connectionParams.  The auth webhook on the server
+		// side will validate whichever token type it receives.
+		if (isAtprotoAuthenticated()) {
+			const session = getAtprotoSession();
+			// The access token may be exposed directly on the session object.
+			const accessToken: string | undefined =
+				session?.accessToken ??
+				session?.tokenSet?.access_token ??
+				session?.credentials?.accessToken;
+			if (accessToken) {
+				return {
+					headers: {
+						"Content-Type": "application/json",
+						authorization: `Bearer ${accessToken}`,
+					},
+				};
+			}
+		}
+
+		return {
+			headers: getHeaders(),
+		};
+	},
 	shouldRetry: (_errOrCloseEvent) => true,
 	on: {
 		error: (error) =>

@@ -1,20 +1,22 @@
 import { Box, Container, useMediaQuery } from "@mui/material";
 import {
-	useAuthenticationStatus,
-	useUserDisplayName,
-	useUserEmail,
-	useUserId,
-} from "@nhost/react";
-import {
 	AppDrawer,
 	BottomBar,
 	Drawer,
+	EmailCollectionDialog,
 	MobileMenu,
 	OldBrowser,
 	Scroll,
 } from "comps";
 import { checkVersion } from "core/util";
-import { usePath, useSession } from "hooks";
+import {
+	useAuthenticationStatus,
+	usePath,
+	useSession,
+	useUserDisplayName,
+	useUserEmail,
+	useUserId,
+} from "hooks";
 import type React from "react";
 import { Suspense, startTransition, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -118,6 +120,8 @@ const Layout = ({ children }: { children: React.ReactElement }) => {
 					<MobileMenu />
 				</Suspense>
 			)}
+
+			<EmailCollectionDialog />
 		</Box>
 	);
 };

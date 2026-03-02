@@ -1,6 +1,5 @@
-import { useAuthenticationStatus } from "@nhost/react";
 import { Loader, PathLoader } from "comps";
-import { usePathList } from "hooks";
+import { useAuthenticationStatus, usePathList } from "hooks";
 import { Suspense } from "react";
 
 const Path = () => {

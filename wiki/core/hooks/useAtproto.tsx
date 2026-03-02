@@ -18,7 +18,7 @@
  *   useAtprotoProfile()     → { displayName, avatarUrl, handle }
  */
 
-import { atprotoClient } from "core/atproto";
+import { atprotoClient, setAtprotoSession } from "core/atproto";
 import type { ReactNode } from "react";
 import {
 	createContext,
@@ -130,6 +130,10 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 
 			const session: AtprotoSession = { did, handle, raw: rawSession };
 
+			// Update module-level session holder so the GQL fetcher can
+			// access the DPoP-bound fetch outside of React context.
+			setAtprotoSession(rawSession);
+
 			setState((s) => ({
 				...s,
 				isAuthenticated: true,
@@ -211,6 +215,9 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 		} catch (err) {
 			console.warn("atproto signOut/revoke error (non-fatal):", err);
 		}
+
+		// Clear module-level session holder
+		setAtprotoSession(null);
 
 		setState({
 			isAuthenticated: false,

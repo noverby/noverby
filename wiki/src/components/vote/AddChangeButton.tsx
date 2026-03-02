@@ -1,7 +1,7 @@
 import { PlusOne } from "@mui/icons-material";
-import { useUserDisplayName } from "@nhost/react";
 import { AddContentDialog, AutoButton } from "comps";
 import type { Node } from "hooks";
+import { useUserDisplayName } from "hooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 

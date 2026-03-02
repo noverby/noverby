@@ -19,9 +19,8 @@ import {
 	Stack,
 	Tooltip,
 } from "@mui/material";
-import { useUserId } from "@nhost/react";
 import { HeaderCard, MimeAvatarId, MimeLoader } from "comps";
-import { type Node, useSession } from "hooks";
+import { type Node, useSession, useUserId } from "hooks";
 import {
 	type ChangeEventHandler,
 	type FormEvent,

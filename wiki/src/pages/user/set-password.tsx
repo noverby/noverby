@@ -1,8 +1,8 @@
 import { MarkEmailRead } from "@mui/icons-material";
 import { Avatar, CardContent, Typography } from "@mui/material";
 import { Container, Stack } from "@mui/system";
-import { useAuthenticationStatus } from "@nhost/react";
 import { AuthForm, HeaderCard } from "comps";
+import { useAuthenticationStatus } from "hooks";
 import { useTranslation } from "react-i18next";
 
 const Reset = () => {

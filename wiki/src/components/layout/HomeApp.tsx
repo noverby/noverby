@@ -10,9 +10,8 @@ import {
 	Typography,
 	useMediaQuery,
 } from "@mui/material";
-import { useAuthenticationStatus, useUserDisplayName } from "@nhost/react";
 import { AddContentFab, HeaderCard, HomeList, InvitesUserList } from "comps";
-import { useNode } from "hooks";
+import { useAuthenticationStatus, useNode, useUserDisplayName } from "hooks";
 import { Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";

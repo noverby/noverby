@@ -12,10 +12,9 @@ import {
 	Tooltip,
 	Typography,
 } from "@mui/material";
-import { useUserId } from "@nhost/react";
 import { MimeAvatar } from "comps";
 import { order_by } from "gql";
-import { type Node, useLink, useSession } from "hooks";
+import { type Node, useLink, useSession, useUserId } from "hooks";
 import type { MouseEventHandler } from "react";
 import { useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";

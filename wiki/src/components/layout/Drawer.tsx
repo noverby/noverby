@@ -25,12 +25,11 @@ import {
 	useMediaQuery,
 } from "@mui/material";
 import { Box } from "@mui/system";
-import { useUserId } from "@nhost/react";
 import { Bar, HomeList, MimeAvatar, MimeIcon } from "comps";
 import { drawerWidth } from "core/constants";
 import { fromId } from "core/path";
 import { order_by, resolve } from "gql";
-import { useLink, useNode, usePathList, useSession } from "hooks";
+import { useLink, useNode, usePathList, useSession, useUserId } from "hooks";
 import {
 	Suspense,
 	startTransition,

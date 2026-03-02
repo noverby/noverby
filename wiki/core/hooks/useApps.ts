@@ -1,8 +1,8 @@
 import { useMediaQuery } from "@mui/material";
-import { useAuthenticated, useUserEmail, useUserId } from "@nhost/react";
 import { useSubscription } from "gql";
 import { useLink, usePath, useSession } from "hooks";
 import { useLocation, useSearchParams } from "react-router-dom";
+import { useAuthenticated, useUserEmail, useUserId } from "./useAuth";
 
 const useApps = () => {
 	const pathname = usePath();

@@ -8,10 +8,9 @@ import {
 	ListItemText,
 	Typography,
 } from "@mui/material";
-import { useUserId } from "@nhost/react";
 import { fromId } from "core/path";
 import { order_by, resolve, useQuery } from "gql";
-import { useLink, useSession } from "hooks";
+import { useLink, useSession, useUserId } from "hooks";
 import { Fragment, startTransition } from "react";
 import { useTranslation } from "react-i18next";
 
