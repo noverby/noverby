@@ -25,6 +25,7 @@
     home-manager
     cloud-hypervisor
     tangled-spindle
+    wiki-auth
     {
       security.sudo.wheelNeedsPassword = false;
       networking = {
