@@ -1,0 +1,19 @@
+{
+	"imports": {
+		"jose": "npm:jose@^6.0.0"
+	},
+	"compilerOptions": {
+		"lib": [
+			"deno.ns",
+			"deno.unstable",
+			"dom",
+			"dom.iterable",
+			"dom.asynciterable"
+		],
+		"strict": true
+	},
+	"tasks": {
+		"start": "deno run --allow-net --allow-env main.ts",
+		"dev": "deno run --watch --allow-net --allow-env main.ts"
+	}
+}

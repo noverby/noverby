@@ -8,6 +8,7 @@ import M3ThemeProvider from "core/theme/M3ThemeProvider";
 import ThemeModeProvider from "core/theme/ThemeModeContext";
 import ThemeSchemeProvider from "core/theme/ThemeSchemeContext";
 import { da, enUS } from "date-fns/locale";
+import { AtprotoAuthProvider } from "hooks";
 import { nhost } from "nhost";
 import { useEffect } from "react";
 import { ErrorBoundary } from "react-error-boundary";
@@ -15,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
 import { Index } from "./pages";
 import Path from "./pages/[...path]";
+import AuthCallback from "./pages/auth/callback";
 import Login from "./pages/user/login";
 import Register from "./pages/user/register";
 import ResetPassword from "./pages/user/reset-password";
@@ -57,44 +59,53 @@ const App = () => {
 	return (
 		<ErrorBoundary FallbackComponent={FallbackComponent}>
 			<NhostProvider nhost={nhost}>
-				<LocalizationProvider
-					dateAdapter={AdapterDateFns}
-					adapterLocale={dateFnsLocale}
-					localeText={pickersLocaleText}
-				>
-					<SessionProvider>
-						<ThemeModeProvider>
-							<ThemeSchemeProvider>
-								<M3ThemeProvider>
-									<SnackbarProvider>
-										<Router>
-											<Layout>
-												<Routes>
-													<Route path="/" element={<Index />} />
-													<Route path="/user/login" element={<Login />} />
-													<Route path="/user/register" element={<Register />} />
-													<Route
-														path="/user/reset-password"
-														element={<ResetPassword />}
-													/>
-													<Route
-														path="/user/set-password"
-														element={<SetPassword />}
-													/>
-													<Route
-														path="/user/unverified"
-														element={<Unverified />}
-													/>
-													<Route path="/*" element={<Path />} />
-												</Routes>
-											</Layout>
-										</Router>
-									</SnackbarProvider>
-								</M3ThemeProvider>
-							</ThemeSchemeProvider>
-						</ThemeModeProvider>
-					</SessionProvider>
-				</LocalizationProvider>
+				<AtprotoAuthProvider>
+					<LocalizationProvider
+						dateAdapter={AdapterDateFns}
+						adapterLocale={dateFnsLocale}
+						localeText={pickersLocaleText}
+					>
+						<SessionProvider>
+							<ThemeModeProvider>
+								<ThemeSchemeProvider>
+									<M3ThemeProvider>
+										<SnackbarProvider>
+											<Router>
+												<Layout>
+													<Routes>
+														<Route path="/" element={<Index />} />
+														<Route path="/user/login" element={<Login />} />
+														<Route
+															path="/user/register"
+															element={<Register />}
+														/>
+														<Route
+															path="/user/reset-password"
+															element={<ResetPassword />}
+														/>
+														<Route
+															path="/user/set-password"
+															element={<SetPassword />}
+														/>
+														<Route
+															path="/user/unverified"
+															element={<Unverified />}
+														/>
+														<Route
+															path="/auth/callback"
+															element={<AuthCallback />}
+														/>
+														<Route path="/*" element={<Path />} />
+													</Routes>
+												</Layout>
+											</Router>
+										</SnackbarProvider>
+									</M3ThemeProvider>
+								</ThemeSchemeProvider>
+							</ThemeModeProvider>
+						</SessionProvider>
+					</LocalizationProvider>
+				</AtprotoAuthProvider>
 			</NhostProvider>
 		</ErrorBoundary>
 	);

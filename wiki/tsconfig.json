@@ -23,6 +23,7 @@
 			"core/document": ["core/document"],
 			"core/constants": ["core/constants"],
 			"core/util": ["core/util"],
+			"core/atproto": ["core/atproto"],
 			"core/bugfender": ["core/bugfender"],
 			"core/theme/*": ["core/theme/*"],
 			"i18n": ["core/i18n/i18n"]

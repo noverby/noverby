@@ -1,4 +1,19 @@
 export { default as useApps } from "./useApps";
+export {
+	AtprotoAuthProvider,
+	useAtprotoAuth,
+	useAtprotoProfile,
+	useAtprotoSignIn,
+	useAtprotoSignOut,
+} from "./useAtproto";
+export {
+	useAuthenticated,
+	useAuthenticationStatus,
+	useSignOut,
+	useUserDisplayName,
+	useUserEmail,
+	useUserId,
+} from "./useAuth";
 export { default as useEnv } from "./useEnv";
 export { default as useFile } from "./useFile";
 export { default as useFiles } from "./useFiles";

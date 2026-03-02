@@ -9,6 +9,7 @@
     ./openssh.nix
     ./printing.nix
     ./resolved.nix
+    ./wiki-auth.nix
     ./xserver.nix
   ];
 }

@@ -5,11 +5,13 @@ import {
 	Button,
 	CircularProgress,
 	Container,
+	Divider,
 	Stack,
 	TextField,
 	Typography,
 } from "@mui/material";
 import { useAuthenticationStatus } from "@nhost/react";
+import { BlueskySignIn } from "comps";
 import { client } from "gql";
 import { useSession } from "hooks";
 import { nhost } from "nhost";
@@ -264,6 +266,14 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 
 	return (
 		<Container sx={{ padding: 3 }} maxWidth="xs">
+			{mode === "login" && (
+				<Stack spacing={2} alignItems="center" sx={{ mb: 3 }}>
+					<BlueskySignIn />
+					<Divider sx={{ width: "100%" }}>
+						{t("auth.orSignInWith", "eller log ind med e-mail")}
+					</Divider>
+				</Stack>
+			)}
 			<form onSubmit={handleSubmit}>
 				<Stack spacing={2} alignItems="center">
 					<Avatar sx={{ bgcolor: "primary.main" }}>{icon}</Avatar>

@@ -1,5 +1,15 @@
 build: install build-gqty build-rsbuild
 
+# Auth webhook server
+server-dev:
+    cd server && deno run --watch --allow-net --allow-env main.ts
+
+server-start:
+    cd server && deno run --allow-net --allow-env main.ts
+
+server-install:
+    cd server && deno install
+
 build-rsbuild:
     export PUBLIC_GIT_COMMIT_SHA=$(git rev-parse HEAD)
     deno run -A npm:@rsbuild/core build
