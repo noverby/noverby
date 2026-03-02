@@ -547,7 +547,7 @@ storage is kept.
 
 ## Phase 8: NixOS Deployment
 
-### 8.1 NixOS Module: `nixos-modules/services/wiki-auth.nix`
+### 8.1 NixOS Module: `wiki/server/wiki-auth.nix`
 
 Create a NixOS module for the Deno auth webhook server, following the
 pattern established by `tangled-spindle.nix`:
@@ -770,7 +770,7 @@ Once all users have migrated to atproto, the NHost auth path can be removed:
 | `wiki/server/email.ts` | Server-side email verification (tokens, SMTP, DB writes) |
 | `wiki/src/components/auth/EmailCollectionDialog.tsx` | Post-login email prompt for atproto users |
 | `wiki/src/components/auth/AccountLinkDialog.tsx` | Link NHost ↔ atproto accounts |
-| `nixos-modules/services/wiki-auth.nix` | NixOS module for the webhook |
+| `wiki/server/wiki-auth.nix` | NixOS module for the webhook |
 
 ### Modified Files
 
