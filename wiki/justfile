@@ -28,3 +28,19 @@ start:
 
 lint:
     deno lint
+
+# End-to-end browser tests via headless Servo + WebDriver
+test-browser:
+    nu test-browser.nu
+
+# Browser tests with verbose Servo output (debugging)
+test-browser-verbose:
+    nu test-browser.nu --verbose
+
+# Single page browser test (home, login, register, js, routing)
+test-browser-page page:
+    nu test-browser.nu --page {{ page }}
+
+# Browser tests using existing dist/ (skip build check)
+test-browser-quick:
+    nu test-browser.nu --skip-build

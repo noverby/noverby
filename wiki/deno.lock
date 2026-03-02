@@ -1,6 +1,9 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/cli@1": "1.0.28",
+    "jsr:@std/internal@^1.0.12": "1.0.12",
+    "jsr:@std/path@1": "1.1.4",
     "npm:@atproto/api@0.13": "0.13.35",
     "npm:@atproto/oauth-client-browser@0.3": "0.3.41",
     "npm:@bugfender/sdk@^2.3.0": "2.3.0",
@@ -78,6 +81,20 @@
     "npm:utf-8-validate@^6.0.3": "6.0.5",
     "npm:uuid@^8.3.2": "8.3.2",
     "npm:xlsx@~0.18.5": "0.18.5"
+  },
+  "jsr": {
+    "@std/cli@1.0.28": {
+      "integrity": "74ef9b976db59ca6b23a5283469c9072be6276853807a83ec6c7ce412135c70a"
+    },
+    "@std/internal@1.0.12": {
+      "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
+    },
+    "@std/path@1.1.4": {
+      "integrity": "1d2d43f39efb1b42f0b1882a25486647cb851481862dc7313390b2bb044314b5",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    }
   },
   "npm": {
     "@ampproject/remapping@2.3.0": {

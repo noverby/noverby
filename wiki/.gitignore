@@ -39,3 +39,6 @@ devenv.local.nix
 
 # pre-commit
 .pre-commit-config.yaml
+
+# browser test artifacts
+test-browser-*.png

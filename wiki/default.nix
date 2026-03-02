@@ -4,6 +4,7 @@
     packages = with pkgs; [
       just
       deno
+      servo
     ];
   };
 }
