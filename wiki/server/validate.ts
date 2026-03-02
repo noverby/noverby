@@ -19,7 +19,7 @@ import {
 	userSession,
 } from "./hasura.ts";
 import { validateNhostJwt } from "./nhost.ts";
-import { findOrCreateAtprotoUser } from "./users.ts";
+import { findUserByProvider } from "./users.ts";
 
 /**
  * Extract the Bearer token from an Authorization header value.
@@ -29,35 +29,6 @@ function extractBearerToken(authHeader: string | null): string | null {
 	if (!authHeader) return null;
 	const match = authHeader.match(/^Bearer\s+(.+)$/i);
 	return match?.[1] ?? null;
-}
-
-/**
- * Fetch the Bluesky profile display name for a given DID.
- * This is a best-effort operation — returns undefined on failure.
- */
-async function fetchBlueskyDisplayName(
-	did: string,
-): Promise<string | undefined> {
-	try {
-		const response = await fetch(
-			`https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(did)}`,
-			{
-				headers: { Accept: "application/json" },
-				signal: AbortSignal.timeout(5000),
-			},
-		);
-
-		if (!response.ok) return undefined;
-
-		const profile = (await response.json()) as {
-			displayName?: string;
-			handle?: string;
-		};
-
-		return profile.displayName || undefined;
-	} catch {
-		return undefined;
-	}
 }
 
 /**
@@ -130,15 +101,24 @@ async function handleAtprotoAuth(
 	}
 
 	try {
-		// Fetch display name from Bluesky profile (best-effort, non-blocking for auth)
-		const displayName = await fetchBlueskyDisplayName(result.did);
+		// Look up an existing user linked to this DID.
+		// We intentionally do NOT auto-create a user here — if the DID
+		// is not linked, the caller must either link it to an existing
+		// account via POST /link-atproto or explicitly register a new
+		// account via POST /register-atproto.  Silent creation led to
+		// ghost duplicate accounts when users tried to link and the
+		// webhook raced ahead of the linking mutation.
+		const userId = await findUserByProvider("atproto", result.did);
 
-		// Find or create the user, mapping the DID to a Hasura UUID
-		const userId = await findOrCreateAtprotoUser(
-			result.did,
-			displayName,
-			result.handle,
-		);
+		if (!userId) {
+			console.info(
+				`atproto DID ${result.did} is not linked to any user — returning 401`,
+			);
+			return new Response(
+				JSON.stringify(unauthorizedResponse("atproto_not_linked")),
+				{ status: 401, headers: { "Content-Type": "application/json" } },
+			);
+		}
 
 		const session: HasuraSessionVariables = {
 			...userSession(userId),

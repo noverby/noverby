@@ -46,6 +46,12 @@ import {
 export function useAuthenticationStatus(): {
 	isAuthenticated: boolean;
 	isLoading: boolean;
+	/**
+	 * True when the user has a valid atproto OAuth session but
+	 * the DID is not linked to any Hasura user yet.  The UI
+	 * should show a registration / account-linking prompt.
+	 */
+	needsRegistration: boolean;
 } {
 	const nhost = useNhostAuthenticationStatus();
 	const atproto = useAtprotoAuth();
@@ -53,10 +59,18 @@ export function useAuthenticationStatus(): {
 	// We're loading if either provider is still initializing
 	const isLoading = nhost.isLoading || atproto.isLoading;
 
-	// Authenticated if either has a session
-	const isAuthenticated = atproto.isAuthenticated || nhost.isAuthenticated;
+	// An atproto session where the DID is not linked to a Hasura
+	// user is NOT fully authenticated — the user must either link
+	// an existing account or register a new one first.
+	const atprotoReady = atproto.isAuthenticated && !atproto.needsRegistration;
 
-	return { isAuthenticated, isLoading };
+	const isAuthenticated = atprotoReady || nhost.isAuthenticated;
+
+	return {
+		isAuthenticated,
+		isLoading,
+		needsRegistration: atproto.isAuthenticated && atproto.needsRegistration,
+	};
 }
 
 // ---------------------------------------------------------------------------

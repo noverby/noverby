@@ -10,13 +10,24 @@
  * 1. User is logged in via NHost (existing account)
  * 2. They open this dialog and enter their Bluesky handle
  * 3. The dialog initiates the atproto OAuth flow
- * 4. On successful auth, the server creates a `user_providers` row
- *    linking the atproto DID to their existing NHost user UUID
+ * 4. On successful auth, the client calls the server-side `/link-atproto`
+ *    endpoint which creates a `user_providers` row linking the atproto
+ *    DID to their existing NHost user UUID
  * 5. Future atproto logins resolve to the same user
  *
- * Note: The `user_providers` table is not yet tracked in the GQty
- * generated schema, so we use raw GraphQL queries via fetch instead
- * of the typed GQL client for provider operations.
+ * The linking is done server-side (via the wiki-auth `/link-atproto`
+ * endpoint) rather than via a direct Hasura mutation to avoid a race
+ * condition: if the client made an atproto-authenticated Hasura request
+ * first, the `/validate` webhook would call `findOrCreateAtprotoUser`
+ * and create a *new* duplicate user before the linking mutation could
+ * run. The server endpoint validates the NHost JWT (proving ownership
+ * of the existing account) and the atproto DPoP token (proving
+ * ownership of the Bluesky account) together, then links them
+ * atomically.
+ *
+ * If the wiki-auth server is not running the dialog detects this and
+ * shows a clear "server unavailable" message instead of letting the
+ * user hit cryptic network errors.
  *
  * Phase 6.3 of the atproto auth migration plan.
  */
@@ -39,6 +50,7 @@ import {
 	TextField,
 	Typography,
 } from "@mui/material";
+
 import { getAtprotoSession, isAtprotoAuthenticated } from "core/atproto";
 import {
 	useAtprotoAuth,
@@ -52,12 +64,13 @@ import {
 	type FormEvent,
 	useCallback,
 	useEffect,
+	useRef,
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
-// Raw GraphQL helpers for user_providers (not in GQty schema yet)
+// Helpers
 // ---------------------------------------------------------------------------
 
 interface LinkedProvider {
@@ -69,6 +82,33 @@ interface LinkedProvider {
 }
 
 const HASURA_URL = `https://${process.env.PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
+
+const AUTH_SERVER_URL =
+	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://wiki-auth.overby.me";
+
+/**
+ * Check whether a fetch error is a network-level failure (server
+ * unreachable, DNS error, CORS block, timeout) as opposed to an
+ * HTTP-level error (4xx/5xx with a JSON body).
+ */
+function isNetworkError(err: unknown): boolean {
+	if (err instanceof TypeError) return true; // fetch throws TypeError on network failure
+	if (err instanceof DOMException && err.name === "AbortError") return true;
+	return false;
+}
+
+/**
+ * Get the atproto DPoP-bound fetch function from the current session.
+ * Returns `null` if no atproto session is active or no fetch method
+ * is available.
+ */
+function getAtprotoDpopFetch(): typeof fetch | null {
+	if (!isAtprotoAuthenticated()) return null;
+	const session = getAtprotoSession();
+	const dpopFetch: typeof fetch | undefined =
+		session?.fetchHandler ?? session?.dpopFetch ?? session?.fetch;
+	return typeof dpopFetch === "function" ? dpopFetch : null;
+}
 
 /**
  * Execute an authenticated GraphQL query against Hasura.
@@ -85,13 +125,9 @@ async function gqlFetch<T = unknown>(
 
 	let fetchFn: typeof fetch = fetch;
 
-	if (isAtprotoAuthenticated()) {
-		const session = getAtprotoSession();
-		const dpopFetch: typeof fetch | undefined =
-			session?.fetchHandler ?? session?.dpopFetch ?? session?.fetch;
-		if (typeof dpopFetch === "function") {
-			fetchFn = dpopFetch;
-		}
+	const dpopFetch = getAtprotoDpopFetch();
+	if (dpopFetch) {
+		fetchFn = dpopFetch;
 	} else if (nhost.auth.isAuthenticated()) {
 		headers.authorization = `Bearer ${nhost.auth.getAccessToken()}`;
 	}
@@ -135,27 +171,58 @@ async function fetchUserProviders(userId: string): Promise<LinkedProvider[]> {
 	return data.user_providers ?? [];
 }
 
-async function insertUserProvider(
-	userId: string,
-	did: string,
-	handle: string | null,
-): Promise<string> {
-	const data = await gqlFetch<{
-		insert_user_providers_one: { id: string };
-	}>(
-		`mutation LinkAtproto($userId: uuid!, $did: String!, $handle: String) {
-			insert_user_providers_one(object: {
-				user_id: $userId
-				provider: "atproto"
-				provider_id: $did
-				handle: $handle
-			}) {
-				id
-			}
-		}`,
-		{ userId, did, handle },
-	);
-	return data.insert_user_providers_one.id;
+/**
+ * Link an atproto DID to the current NHost user via the server-side
+ * `/link-atproto` endpoint.
+ *
+ * The request is made using the atproto session's DPoP-bound fetch
+ * (which attaches `Authorization: DPoP <token>` and `DPoP: <proof>`
+ * headers automatically). The existing NHost user is identified via
+ * a separate `X-NHost-Authorization` header carrying the NHost JWT.
+ *
+ * The server validates both credentials and creates the
+ * `user_providers` row atomically, avoiding the race condition where
+ * the `/validate` webhook would create a duplicate user.
+ */
+async function linkAtprotoViaServer(): Promise<{
+	ok: boolean;
+	did?: string;
+	handle?: string | null;
+	alreadyLinked?: boolean;
+	error?: string;
+}> {
+	const dpopFetch = getAtprotoDpopFetch();
+	if (!dpopFetch) {
+		throw new Error("No atproto session available for linking");
+	}
+
+	const nhostToken = nhost.auth.getAccessToken();
+	if (!nhostToken) {
+		throw new Error("No NHost session available for linking");
+	}
+
+	const response = await dpopFetch(`${AUTH_SERVER_URL}/link-atproto`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"X-NHost-Authorization": `Bearer ${nhostToken}`,
+		},
+		// Empty body — credentials are entirely in headers
+		body: JSON.stringify({}),
+	});
+
+	const json = await response.json();
+
+	if (!response.ok) {
+		throw new Error(json.error ?? `Server returned ${response.status}`);
+	}
+
+	return json as {
+		ok: boolean;
+		did?: string;
+		handle?: string | null;
+		alreadyLinked?: boolean;
+	};
 }
 
 async function deleteUserProvider(providerId: string): Promise<void> {
@@ -203,6 +270,25 @@ export default function AccountLinkDialog({
 	const [linkedProviders, setLinkedProviders] = useState<LinkedProvider[]>([]);
 	const [loadingProviders, setLoadingProviders] = useState(false);
 	const [linkSuccess, setLinkSuccess] = useState(false);
+	const [serverAvailable, setServerAvailable] = useState<boolean | null>(null);
+
+	// Probe the wiki-auth server when the dialog opens so we can show
+	// a clear message instead of letting the user hit cryptic errors.
+	const healthChecked = useRef(false);
+	useEffect(() => {
+		if (!open || healthChecked.current) return;
+		healthChecked.current = true;
+		(async () => {
+			try {
+				const res = await fetch(`${AUTH_SERVER_URL}/healthz`, {
+					signal: AbortSignal.timeout(5000),
+				});
+				setServerAvailable(res.ok);
+			} catch {
+				setServerAvailable(false);
+			}
+		})();
+	}, [open]);
 
 	/**
 	 * Fetch the current user's linked providers from the user_providers table.
@@ -229,9 +315,13 @@ export default function AccountLinkDialog({
 
 	// If an atproto session becomes active while the dialog is open,
 	// that means the user just completed the OAuth flow for linking.
-	// Create the link automatically.
+	// Call the server-side /link-atproto endpoint to create the link
+	// atomically (avoiding the race condition with /validate).
 	useEffect(() => {
 		if (!open || !atproto.isAuthenticated || !atproto.did || !userId) return;
+
+		// Must also have an active NHost session for the server to verify
+		if (!nhost.auth.isAuthenticated()) return;
 
 		// Check if this DID is already linked
 		const alreadyLinked = linkedProviders.some(
@@ -239,21 +329,39 @@ export default function AccountLinkDialog({
 		);
 		if (alreadyLinked) return;
 
-		// Link the atproto DID to the current user
+		// Link via the server-side endpoint
 		(async () => {
 			setLoading(true);
 			try {
-				await insertUserProvider(userId, atproto.did!, atproto.handle ?? null);
-				setLinkSuccess(true);
-				await fetchLinkedProviders();
+				const result = await linkAtprotoViaServer();
+				if (result.ok) {
+					setLinkSuccess(true);
+					await fetchLinkedProviders();
+				} else {
+					setError(
+						t("auth.linkError", "Could not link Bluesky account: {{message}}", {
+							message: result.error ?? "unknown error",
+						}),
+					);
+				}
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
 				console.error("Failed to link atproto account:", err);
-				setError(
-					t("auth.linkError", "Could not link Bluesky account: {{message}}", {
-						message,
-					}),
-				);
+				if (isNetworkError(err)) {
+					setServerAvailable(false);
+					setError(
+						t(
+							"auth.authServerUnavailable",
+							"Wiki-auth-serveren er ikke tilgængelig. Bluesky-kontoforbindelse kræver at wiki-auth er sat op og kører.",
+						),
+					);
+				} else {
+					const message = err instanceof Error ? err.message : String(err);
+					setError(
+						t("auth.linkError", "Could not link Bluesky account: {{message}}", {
+							message,
+						}),
+					);
+				}
 			} finally {
 				setLoading(false);
 			}
@@ -296,7 +404,8 @@ export default function AccountLinkDialog({
 			// Initiate the atproto OAuth flow. This will redirect the user
 			// away to the Bluesky authorization server. When they return
 			// to the callback page and the session is restored, the
-			// useEffect above will complete the linking.
+			// useEffect above will call linkAtprotoViaServer() to complete
+			// the linking server-side.
 			await atprotoSignIn(validHandle);
 			// The page will redirect — we won't reach here normally
 		} catch (err) {
@@ -390,8 +499,18 @@ export default function AccountLinkDialog({
 					</>
 				) : null}
 
-				{/* Link Bluesky form — only show if not already linked */}
-				{!hasAtprotoLink && (
+				{/* Auth server unavailable warning */}
+				{serverAvailable === false && (
+					<Alert severity="warning" sx={{ mt: 2 }}>
+						{t(
+							"auth.authServerUnavailable",
+							"Wiki-auth-serveren er ikke tilgængelig. Bluesky-kontoforbindelse kræver at wiki-auth er sat op og kører.",
+						)}
+					</Alert>
+				)}
+
+				{/* Link Bluesky form — only show if not already linked and server is available */}
+				{!hasAtprotoLink && serverAvailable !== false && (
 					<form onSubmit={handleLink}>
 						<TextField
 							fullWidth

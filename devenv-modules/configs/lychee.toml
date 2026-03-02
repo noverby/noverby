@@ -9,4 +9,5 @@ exclude = [
   'https://fuchsia.googlesource.com/',
   'https://xcancel.com/',
   'https://smokesignal.events/',
+  'https://wiki-auth\.overby\.me',
 ]

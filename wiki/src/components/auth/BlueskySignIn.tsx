@@ -8,6 +8,11 @@
  *
  * Used inside AuthForm.tsx as the primary sign-in option above the
  * legacy NHost email/password form.
+ *
+ * The component probes the wiki-auth server (`/healthz`) on mount.
+ * If the server is unreachable the entire Bluesky section is hidden,
+ * since without wiki-auth Hasura cannot validate DPoP tokens and
+ * the register/link endpoints do not exist.
  */
 
 import {
@@ -16,12 +21,22 @@ import {
 	Box,
 	Button,
 	CircularProgress,
+	Divider,
 	InputAdornment,
+	Stack,
 	TextField,
 } from "@mui/material";
 import { useAtprotoSignIn } from "hooks";
-import { type ChangeEventHandler, type FormEvent, useState } from "react";
+import {
+	type ChangeEventHandler,
+	type FormEvent,
+	useEffect,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
+
+const AUTH_SERVER_URL =
+	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://wiki-auth.overby.me";
 
 /**
  * Bluesky butterfly SVG icon used as the button icon and avatar.
@@ -51,6 +66,32 @@ export default function BlueskySignIn() {
 	const [handle, setHandle] = useState("");
 	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(false);
+	const [serverAvailable, setServerAvailable] = useState<boolean | null>(null);
+
+	// Probe the wiki-auth server on mount. If it is unreachable the
+	// entire Bluesky sign-in section is hidden — without wiki-auth,
+	// Hasura cannot validate DPoP tokens and the register/link
+	// endpoints do not exist, so the atproto flow is a dead end.
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			try {
+				const res = await fetch(`${AUTH_SERVER_URL}/healthz`, {
+					signal: AbortSignal.timeout(5000),
+				});
+				if (!cancelled) setServerAvailable(res.ok);
+			} catch {
+				if (!cancelled) setServerAvailable(false);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	// While probing or if the server is down, render nothing —
+	// including the divider that separates Bluesky from the email form.
+	if (serverAvailable !== true) return null;
 
 	const onHandleChange: ChangeEventHandler<HTMLInputElement> = (e) => {
 		const value = e.target.value.trim();
@@ -115,75 +156,80 @@ export default function BlueskySignIn() {
 	};
 
 	return (
-		<Box component="form" onSubmit={handleSubmit} sx={{ width: "100%" }}>
-			<Box
-				sx={{
-					display: "flex",
-					flexDirection: "column",
-					alignItems: "center",
-					gap: 2,
-				}}
-			>
-				<Avatar sx={{ bgcolor: "#0085ff" }}>
-					<BlueskyIcon size={22} />
-				</Avatar>
-
-				<TextField
-					fullWidth
-					label={t("auth.blueskyHandle", "Bluesky-handle")}
-					placeholder="alice.bsky.social"
-					value={handle}
-					onChange={onHandleChange}
-					error={!!error}
-					helperText={error || undefined}
-					disabled={loading}
-					slotProps={{
-						input: {
-							startAdornment: (
-								<InputAdornment position="start">@</InputAdornment>
-							),
-						},
+		<Stack spacing={2} alignItems="center" sx={{ mb: 3 }}>
+			<Box component="form" onSubmit={handleSubmit} sx={{ width: "100%" }}>
+				<Box
+					sx={{
+						display: "flex",
+						flexDirection: "column",
+						alignItems: "center",
+						gap: 2,
 					}}
-				/>
+				>
+					<Avatar sx={{ bgcolor: "#0085ff" }}>
+						<BlueskyIcon size={22} />
+					</Avatar>
 
-				<Box sx={{ position: "relative", width: "100%" }}>
-					<Button
+					<TextField
 						fullWidth
-						type="submit"
-						variant="contained"
-						disabled={loading || !handle.trim()}
-						startIcon={<BlueskyIcon size={18} />}
-						sx={{
-							bgcolor: "#0085ff",
-							"&:hover": { bgcolor: "#0070dd" },
-							textTransform: "none",
-							fontWeight: 600,
-							py: 1.2,
+						label={t("auth.blueskyHandle", "Bluesky-handle")}
+						placeholder="alice.bsky.social"
+						value={handle}
+						onChange={onHandleChange}
+						error={!!error}
+						helperText={error || undefined}
+						disabled={loading}
+						slotProps={{
+							input: {
+								startAdornment: (
+									<InputAdornment position="start">@</InputAdornment>
+								),
+							},
 						}}
-					>
-						{t("auth.signInWithBluesky", "Log ind med Bluesky")}
-					</Button>
+					/>
 
-					{loading && (
-						<CircularProgress
-							size={24}
+					<Box sx={{ position: "relative", width: "100%" }}>
+						<Button
+							fullWidth
+							type="submit"
+							variant="contained"
+							disabled={loading || !handle.trim()}
+							startIcon={<BlueskyIcon size={18} />}
 							sx={{
-								position: "absolute",
-								top: "50%",
-								left: "50%",
-								marginTop: "-12px",
-								marginLeft: "-12px",
+								bgcolor: "#0085ff",
+								"&:hover": { bgcolor: "#0070dd" },
+								textTransform: "none",
+								fontWeight: 600,
+								py: 1.2,
 							}}
-						/>
+						>
+							{t("auth.signInWithBluesky", "Log ind med Bluesky")}
+						</Button>
+
+						{loading && (
+							<CircularProgress
+								size={24}
+								sx={{
+									position: "absolute",
+									top: "50%",
+									left: "50%",
+									marginTop: "-12px",
+									marginLeft: "-12px",
+								}}
+							/>
+						)}
+					</Box>
+
+					{error && (
+						<Alert severity="error" sx={{ width: "100%" }}>
+							{error}
+						</Alert>
 					)}
 				</Box>
-
-				{error && (
-					<Alert severity="error" sx={{ width: "100%" }}>
-						{error}
-					</Alert>
-				)}
 			</Box>
-		</Box>
+			<Divider sx={{ width: "100%" }}>
+				{t("auth.orSignInWith", "eller log ind med e-mail")}
+			</Divider>
+		</Stack>
 	);
 }

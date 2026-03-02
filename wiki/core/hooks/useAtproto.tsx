@@ -56,6 +56,12 @@ interface AtprotoAuthState {
 	handle: string | null;
 	/** The Hasura UUID resolved by the auth webhook for this DID. */
 	hasuraUserId: string | null;
+	/**
+	 * True when the atproto OAuth session is valid but the DID is not
+	 * linked to any Hasura user.  The UI should prompt the user to
+	 * either link an existing account or register a new one.
+	 */
+	needsRegistration: boolean;
 	session: AtprotoSession | null;
 	profile: AtprotoProfile;
 }
@@ -168,6 +174,7 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 		did: null,
 		handle: null,
 		hasuraUserId: null,
+		needsRegistration: false,
 		session: null,
 		profile: { displayName: null, avatarUrl: null, handle: null },
 	});
@@ -213,7 +220,16 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 			]);
 
 			if (hasuraUserId) {
-				setState((s) => ({ ...s, hasuraUserId }));
+				setState((s) => ({ ...s, hasuraUserId, needsRegistration: false }));
+			} else {
+				// DPoP auth succeeded but no Hasura user exists for this DID.
+				// The /validate webhook returns 401 for unlinked DIDs instead
+				// of silently creating a ghost account.  Flag it so the UI can
+				// prompt the user to link or register.
+				console.info(
+					`atproto DID ${did} is not linked to a wiki account — registration or linking required`,
+				);
+				setState((s) => ({ ...s, needsRegistration: true }));
 			}
 			setState((s) => ({
 				...s,
@@ -295,6 +311,7 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 			did: null,
 			handle: null,
 			hasuraUserId: null,
+			needsRegistration: false,
 			session: null,
 			profile: { displayName: null, avatarUrl: null, handle: null },
 		});
@@ -338,9 +355,24 @@ function useAtprotoContext(): AtprotoAuthContextValue {
  * Core atproto auth state.
  */
 export function useAtprotoAuth() {
-	const { isAuthenticated, isLoading, did, handle, hasuraUserId, session } =
-		useAtprotoContext();
-	return { isAuthenticated, isLoading, did, handle, hasuraUserId, session };
+	const {
+		isAuthenticated,
+		isLoading,
+		did,
+		handle,
+		hasuraUserId,
+		needsRegistration,
+		session,
+	} = useAtprotoContext();
+	return {
+		isAuthenticated,
+		isLoading,
+		did,
+		handle,
+		hasuraUserId,
+		needsRegistration,
+		session,
+	};
 }
 
 /**

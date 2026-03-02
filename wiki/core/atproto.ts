@@ -37,30 +37,53 @@ const origin = typeof window !== "undefined" ? window.location.origin : "";
 /**
  * The atproto OAuth client configured for RadikalWiki.
  *
- * On **https** origins (production / staging) we pass explicit
- * `clientMetadata` that mirrors the build-generated
- * `client-metadata.json` (see `pluginClientMetadata` in
- * `rsbuild.config.ts`), using `window.location.origin` so the same
- * build works on any deployment domain.
+ * We always provide explicit `clientMetadata` to avoid the library's
+ * built-in `buildLoopbackClientId(window.location)` helper which
+ * includes `location.pathname` in the loopback client ID.  The
+ * atproto loopback spec only allows `http://localhost` (+ optional
+ * query params), so any page path like `/user/login` causes:
  *
- * On **http** origins (local dev) we omit `clientMetadata` entirely so
- * the library falls back to its built-in loopback-client logic
- * (`atprotoLoopbackClientMetadata`), which satisfies the strict Zod
- * validation (no `localhost`, no plain-http `client_id`, no IP in
- * `client_id`, etc.).
+ *   TypeError: Invalid loopback client ID: Value must not contain a path component
+ *
+ * On **https** origins (production / staging) we use the standard
+ * discoverable client metadata pointing at `client-metadata.json`.
+ *
+ * On **http** origins (local dev) we build a loopback client ID
+ * ourselves: `http://localhost?redirect_uri=…&scope=…`.  The
+ * redirect URI uses `127.0.0.1` (required by the spec) and the
+ * `/auth/callback` path so the OAuth flow lands on the right page.
  *
  * `handleResolver` points to the default Bluesky AppView which can
  * resolve handles to DIDs for any PDS in the AT Protocol network.
  */
-const options: BrowserOAuthClientOptions = {
-	handleResolver: "https://bsky.social",
-};
+function buildClientMetadata(): BrowserOAuthClientOptions["clientMetadata"] {
+	if (origin.startsWith("https:")) {
+		return {
+			client_id: `${origin}/client-metadata.json`,
+			redirect_uris: [`${origin}/auth/callback`],
+			scope: "atproto transition:generic",
+			grant_types: ["authorization_code", "refresh_token"],
+			response_types: ["code"],
+			token_endpoint_auth_method: "none",
+			application_type: "web",
+			dpop_bound_access_tokens: true,
+		};
+	}
 
-if (origin.startsWith("https:")) {
-	options.clientMetadata = {
-		client_id: `${origin}/client-metadata.json`,
-		redirect_uris: [`${origin}/auth/callback`],
-		scope: "atproto transition:generic",
+	// Local dev (http://localhost:PORT) — construct a valid loopback
+	// client ID.  The spec requires the client_id to be
+	// `http://localhost` with scope/redirect_uri in query params, and
+	// the redirect URI host to be `127.0.0.1` (not `localhost`).
+	const loc = typeof window !== "undefined" ? window.location : undefined;
+	const port = loc?.port ? `:${loc.port}` : "";
+	const redirectUri = `http://127.0.0.1${port}/auth/callback`;
+	const scope = "atproto transition:generic";
+	const clientId = `http://localhost?redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}`;
+
+	return {
+		client_id: clientId,
+		redirect_uris: [redirectUri],
+		scope,
 		grant_types: ["authorization_code", "refresh_token"],
 		response_types: ["code"],
 		token_endpoint_auth_method: "none",
@@ -69,7 +92,10 @@ if (origin.startsWith("https:")) {
 	};
 }
 
-const atprotoClient = new BrowserOAuthClient(options);
+const atprotoClient = new BrowserOAuthClient({
+	handleResolver: "https://bsky.social",
+	clientMetadata: buildClientMetadata(),
+});
 
 // ---------------------------------------------------------------------------
 // Module-level session holder

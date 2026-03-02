@@ -18,8 +18,10 @@
 import { validateAtprotoToken } from "./atproto.ts";
 import { handleRequestVerification, handleVerifyEmail } from "./email.ts";
 import { validateNhostJwt } from "./nhost.ts";
-import { findOrCreateAtprotoUser } from "./users.ts";
+import { createUser, findUserByProvider, linkAtprotoToUser } from "./users.ts";
 import { handleValidate } from "./validate.ts";
+
+const HASURA_ENDPOINT = Deno.env.get("HASURA_ENDPOINT");
 
 const PORT = Number(Deno.env.get("PORT") ?? "4180");
 const NHOST_SUBDOMAIN = Deno.env.get("NHOST_SUBDOMAIN");
@@ -163,7 +165,7 @@ async function extractUserId(request: Request): Promise<string | null> {
 		);
 		if (!result) return null;
 
-		return await findOrCreateAtprotoUser(result.did, undefined, result.handle);
+		return await findUserByProvider("atproto", result.did);
 	}
 
 	// Path 2: NHost JWT
@@ -181,7 +183,8 @@ function corsHeaders(): Record<string, string> {
 	return {
 		"Access-Control-Allow-Origin": wikiUrl,
 		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-		"Access-Control-Allow-Headers": "Content-Type, Authorization, DPoP",
+		"Access-Control-Allow-Headers":
+			"Content-Type, Authorization, DPoP, X-NHost-Authorization",
 		"Access-Control-Max-Age": "86400",
 	};
 }
@@ -209,6 +212,16 @@ function handleRequest(request: Request): Promise<Response> | Response {
 		return handleValidate(request);
 	}
 
+	// Link atproto account to existing NHost user
+	if (url.pathname === "/link-atproto" && request.method === "POST") {
+		return handleLinkAtproto(request);
+	}
+
+	// Register a new user via atproto (explicit sign-up)
+	if (url.pathname === "/register-atproto" && request.method === "POST") {
+		return handleRegisterAtproto(request);
+	}
+
 	// Email verification: request a verification email (authenticated)
 	if (
 		url.pathname === "/email/request-verification" &&
@@ -228,6 +241,266 @@ function handleRequest(request: Request): Promise<Response> | Response {
 		status: 404,
 		headers: { "Content-Type": "application/json" },
 	});
+}
+
+/**
+ * Handle POST /link-atproto.
+ *
+ * Links an atproto DID to an existing NHost-authenticated user.
+ * This avoids the race condition where the /validate webhook would
+ * create a new user before the client-side linking mutation runs.
+ *
+ * The request is made using the atproto session's DPoP-bound fetch
+ * (which automatically attaches `Authorization: DPoP <token>` and
+ * `DPoP: <proof>` headers). The existing NHost user is identified
+ * via a separate `X-NHost-Authorization: Bearer <jwt>` header.
+ *
+ * Headers:
+ *   Authorization          — DPoP-bound atproto access token (set by dpopFetch)
+ *   DPoP                   — DPoP proof JWT (set by dpopFetch)
+ *   X-NHost-Authorization  — Bearer <NHost JWT> (proves ownership of existing account)
+ */
+async function handleLinkAtproto(request: Request): Promise<Response> {
+	const headers = { "Content-Type": "application/json", ...corsHeaders() };
+
+	// Step 1: Authenticate the existing user via NHost JWT from custom header
+	const nhostAuthHeader = request.headers.get("x-nhost-authorization");
+	const nhostToken = nhostAuthHeader?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
+	if (!nhostToken) {
+		return new Response(
+			JSON.stringify({ error: "missing X-NHost-Authorization header" }),
+			{ status: 401, headers },
+		);
+	}
+
+	const nhostResult = await validateNhostJwt(nhostToken);
+	if (!nhostResult) {
+		return new Response(
+			JSON.stringify({ error: "invalid or expired NHost token" }),
+			{ status: 401, headers },
+		);
+	}
+
+	const userId = nhostResult.userId;
+
+	// Step 2: Validate atproto DPoP token from standard headers
+	// The client's dpopFetch sets Authorization: DPoP <token> and DPoP: <proof>
+	const authHeader = request.headers.get("authorization");
+	const dpopHeader = request.headers.get("dpop");
+
+	const atprotoToken = authHeader?.match(/^DPoP\s+(.+)$/i)?.[1] ?? null;
+	if (!atprotoToken || !dpopHeader) {
+		return new Response(
+			JSON.stringify({
+				error: "missing atproto DPoP Authorization/DPoP headers",
+			}),
+			{ status: 401, headers },
+		);
+	}
+
+	if (!HASURA_ENDPOINT) {
+		return new Response(
+			JSON.stringify({ error: "server configuration error" }),
+			{ status: 500, headers },
+		);
+	}
+
+	// The DPoP proof is bound to the URL the client actually fetched,
+	// which is the public URL of this endpoint (e.g.
+	// https://wiki-auth.overby.me/link-atproto). Behind a reverse proxy
+	// request.url shows the internal origin, so prefer PUBLIC_URL.
+	const publicUrl = Deno.env.get("PUBLIC_URL");
+	const origin = publicUrl?.replace(/\/+$/, "") ?? new URL(request.url).origin;
+	const linkUrl = `${origin}/link-atproto`;
+
+	const atprotoResult = await validateAtprotoToken(
+		atprotoToken,
+		dpopHeader,
+		"POST",
+		linkUrl,
+	);
+
+	if (!atprotoResult) {
+		return new Response(JSON.stringify({ error: "invalid atproto token" }), {
+			status: 401,
+			headers,
+		});
+	}
+
+	// Step 3: Check if this DID is already linked to a different user
+	const existingUserId = await findUserByProvider("atproto", atprotoResult.did);
+	if (existingUserId && existingUserId !== userId) {
+		return new Response(
+			JSON.stringify({
+				error: "This Bluesky account is already linked to a different user",
+			}),
+			{ status: 409, headers },
+		);
+	}
+
+	if (existingUserId === userId) {
+		// Already linked to this user — idempotent success
+		return new Response(
+			JSON.stringify({
+				ok: true,
+				did: atprotoResult.did,
+				handle: atprotoResult.handle ?? null,
+				alreadyLinked: true,
+			}),
+			{ status: 200, headers },
+		);
+	}
+
+	// Step 4: Link the atproto DID to the existing user
+	try {
+		await linkAtprotoToUser(userId, atprotoResult.did, atprotoResult.handle);
+	} catch (err) {
+		console.error("Failed to link atproto to user:", err);
+		return new Response(JSON.stringify({ error: "failed to link account" }), {
+			status: 500,
+			headers,
+		});
+	}
+
+	console.log(
+		`Linked atproto DID ${atprotoResult.did} to NHost user ${userId} via /link-atproto`,
+	);
+
+	return new Response(
+		JSON.stringify({
+			ok: true,
+			did: atprotoResult.did,
+			handle: atprotoResult.handle ?? null,
+			alreadyLinked: false,
+		}),
+		{ status: 200, headers },
+	);
+}
+
+/**
+ * Handle POST /register-atproto.
+ *
+ * Explicitly creates a new wiki user for an atproto DID.
+ * This is the only path that creates users for Bluesky sign-ups —
+ * the /validate webhook deliberately refuses unlinked DIDs instead
+ * of silently creating ghost accounts.
+ *
+ * The request is made using the atproto session's DPoP-bound fetch
+ * (which automatically attaches `Authorization: DPoP <token>` and
+ * `DPoP: <proof>` headers).
+ *
+ * Headers:
+ *   Authorization  — DPoP-bound atproto access token (set by dpopFetch)
+ *   DPoP           — DPoP proof JWT (set by dpopFetch)
+ */
+async function handleRegisterAtproto(request: Request): Promise<Response> {
+	const headers = { "Content-Type": "application/json", ...corsHeaders() };
+
+	// Step 1: Validate atproto DPoP token
+	const authHeader = request.headers.get("authorization");
+	const dpopHeader = request.headers.get("dpop");
+
+	const atprotoToken = authHeader?.match(/^DPoP\s+(.+)$/i)?.[1] ?? null;
+	if (!atprotoToken || !dpopHeader) {
+		return new Response(
+			JSON.stringify({
+				error: "missing atproto DPoP Authorization/DPoP headers",
+			}),
+			{ status: 401, headers },
+		);
+	}
+
+	if (!HASURA_ENDPOINT) {
+		return new Response(
+			JSON.stringify({ error: "server configuration error" }),
+			{ status: 500, headers },
+		);
+	}
+
+	const publicUrl = Deno.env.get("PUBLIC_URL");
+	const origin = publicUrl?.replace(/\/+$/, "") ?? new URL(request.url).origin;
+	const registerUrl = `${origin}/register-atproto`;
+
+	const atprotoResult = await validateAtprotoToken(
+		atprotoToken,
+		dpopHeader,
+		"POST",
+		registerUrl,
+	);
+
+	if (!atprotoResult) {
+		return new Response(JSON.stringify({ error: "invalid atproto token" }), {
+			status: 401,
+			headers,
+		});
+	}
+
+	// Step 2: Check if this DID is already linked to a user
+	const existingUserId = await findUserByProvider("atproto", atprotoResult.did);
+	if (existingUserId) {
+		// Already registered — idempotent success
+		return new Response(
+			JSON.stringify({
+				ok: true,
+				userId: existingUserId,
+				did: atprotoResult.did,
+				handle: atprotoResult.handle ?? null,
+				alreadyRegistered: true,
+			}),
+			{ status: 200, headers },
+		);
+	}
+
+	// Step 3: Fetch display name from Bluesky profile (best-effort)
+	let displayName: string | undefined;
+	try {
+		const profileRes = await fetch(
+			`https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(atprotoResult.did)}`,
+			{
+				headers: { Accept: "application/json" },
+				signal: AbortSignal.timeout(5000),
+			},
+		);
+		if (profileRes.ok) {
+			const profile = (await profileRes.json()) as {
+				displayName?: string;
+			};
+			displayName = profile.displayName || undefined;
+		}
+	} catch {
+		// Non-fatal — proceed without display name
+	}
+
+	// Step 4: Create the user
+	try {
+		const userId = await createUser(
+			"atproto",
+			atprotoResult.did,
+			displayName,
+			atprotoResult.handle,
+		);
+
+		console.log(
+			`Registered new user ${userId} for atproto DID ${atprotoResult.did} via /register-atproto`,
+		);
+
+		return new Response(
+			JSON.stringify({
+				ok: true,
+				userId,
+				did: atprotoResult.did,
+				handle: atprotoResult.handle ?? null,
+				alreadyRegistered: false,
+			}),
+			{ status: 201, headers },
+		);
+	} catch (err) {
+		console.error("Failed to register atproto user:", err);
+		return new Response(JSON.stringify({ error: "failed to create user" }), {
+			status: 500,
+			headers,
+		});
+	}
 }
 
 /**
@@ -274,6 +547,12 @@ Deno.serve(
 			const host = hostname === "0.0.0.0" ? "localhost" : hostname;
 			console.log(`Wiki auth webhook listening on http://${host}:${port}`);
 			console.log(`  GET  /validate                    — Hasura auth webhook`);
+			console.log(
+				`  POST /register-atproto            — Register new account via Bluesky`,
+			);
+			console.log(
+				`  POST /link-atproto                — Link Bluesky to existing account`,
+			);
 			console.log(
 				`  POST /email/request-verification  — Request email verification`,
 			);

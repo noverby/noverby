@@ -5,12 +5,11 @@ import {
 	Button,
 	CircularProgress,
 	Container,
-	Divider,
 	Stack,
 	TextField,
 	Typography,
 } from "@mui/material";
-import { BlueskySignIn } from "comps";
+import { AtprotoRegistrationPrompt, BlueskySignIn } from "comps";
 import { client } from "gql";
 import { useAuthenticationStatus, useSession } from "hooks";
 import { nhost } from "nhost";
@@ -28,7 +27,7 @@ type Mode = "login" | "register" | "reset-password" | "set-password";
 const LoginForm = ({ mode }: { mode: Mode }) => {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
-	const { isAuthenticated } = useAuthenticationStatus();
+	const { isAuthenticated, needsRegistration } = useAuthenticationStatus();
 	const [_, setSession] = useSession();
 	const [loading, setLoading] = useState(false);
 	const [name, setName] = useState("");
@@ -263,16 +262,16 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 					? t("auth.resetPassword")
 					: t("auth.setPassword");
 
+	// If the user authenticated via Bluesky but their DID is not linked
+	// to any Hasura user, show the registration/linking prompt instead
+	// of the normal login form.
+	if (needsRegistration) {
+		return <AtprotoRegistrationPrompt />;
+	}
+
 	return (
 		<Container sx={{ padding: 3 }} maxWidth="xs">
-			{mode === "login" && (
-				<Stack spacing={2} alignItems="center" sx={{ mb: 3 }}>
-					<BlueskySignIn />
-					<Divider sx={{ width: "100%" }}>
-						{t("auth.orSignInWith", "eller log ind med e-mail")}
-					</Divider>
-				</Stack>
-			)}
+			{mode === "login" && <BlueskySignIn />}
 			<form onSubmit={handleSubmit}>
 				<Stack spacing={2} alignItems="center">
 					<Avatar sx={{ bgcolor: "primary.main" }}>{icon}</Avatar>
