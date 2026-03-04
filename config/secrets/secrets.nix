@@ -13,4 +13,7 @@ in {
   "id_rsa.age" = {
     inherit publicKeys;
   };
+  "wiki-auth-env.age" = {
+    inherit publicKeys;
+  };
 }

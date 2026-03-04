@@ -9,15 +9,17 @@
   specialArgs = {
     inherit src inputs lib;
     stateVersion = "25.05";
-    hasSecrets = false;
+    hasSecrets = true;
   };
 
   modules = with inputs.self.nixosModules; [
     inputs.catppuccin.nixosModules.catppuccin
     inputs.home-manager.nixosModules.home-manager
+    inputs.ragenix.nixosModules.default
     inputs.self.hardware.dell-xps-9320
     inputs.self.desktops.cosmic
     inputs.self.desktops.gnome
+    age
     core
     programs
     services
@@ -26,7 +28,27 @@
     cloud-hypervisor
     tangled-spindle
     wiki-auth
-    {
+    ({config, ...}: {
+      age.secrets."wiki-auth-env" = {
+        file = inputs.self.secrets.wiki-auth-env;
+        path = "/run/agenix/wiki-auth-env";
+        owner = "root";
+        group = "root";
+        mode = "600";
+      };
+      services.wiki-auth = {
+        enable = true;
+        nhostSubdomain = "pgvhpsenoifywhuxnybq";
+        nhostRegion = "eu-central-1";
+        hasuraEndpoint = "https://pgvhpsenoifywhuxnybq.hasura.eu-central-1.nhost.run/v1/graphql";
+        publicUrl = "https://auth.radikal.wiki";
+        smtpHost = "smtp.zoho.com";
+        smtpPort = 465;
+        smtpFrom = "noreply@radikal.wiki";
+        smtpSecure = true;
+        serverDir = "${src}/wiki/server";
+        environmentFile = config.age.secrets."wiki-auth-env".path;
+      };
       security.sudo.wheelNeedsPassword = false;
       networking = {
         hostName = "home";
@@ -40,6 +62,6 @@
         nameservers = ["194.242.2.2"];
         firewall.allowedTCPPorts = [22];
       };
-    }
+    })
   ];
 }
