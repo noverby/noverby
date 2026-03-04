@@ -324,7 +324,7 @@
 | 🚫 | Multimedia Server | [Pipewire 💣](https://gitlab.freedesktop.org/pipewire/pipewire) | [Pipewire-native-rs 🦀](https://gitlab.freedesktop.org/pipewire/pipewire-native-rs) | ⬅️ | [Pulseaudio 💣](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) |
 | 🚫 | XR Runtime | [Monado 💣](https://gitlab.freedesktop.org/monado/monado) | | [OpenXR 📖](https://www.khronos.org/openxr) | [Arcan 💣](https://github.com/letoram/arcan) |
 | ✅ | Filesystem | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | [Fxfs 🦀](https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/src/storage/fxfs) [Redoxfs 🦀](https://gitlab.redox-os.org/redox-os/redoxfs) | 🆗 | [Ext4 📖💣](https://docs.kernel.org/filesystems/ext4/) |
-| ✅ | Sandboxing | [Hakoniwa 🦀](https://github.com/souk4711/hakoniwa) | | | [Bubblewrap 💣](https://github.com/containers/bubblewrap) |
+| ✅ | Sandboxing | [Hakoniwa 🦀](https://github.com/souk4711/hakoniwa) | | 🆗 | [Bubblewrap 💣](https://github.com/containers/bubblewrap) |
 
 </details>
 
@@ -363,13 +363,13 @@
 | ✅ | WebAssembly Runtime | [Wasmtime 🦀](https://github.com/bytecodealliance/wasmtime) | | [WASI 📖](https://wasi.dev) | |
 | ✅ | ECMAScript Runtime | [Deno 🦀](https://github.com/denoland/deno) | | [Deno Node APIs](https://docs.deno.com/runtime/reference/node_apis) | [Node.js 💣](https://github.com/nodejs/node) |
 | ✅ | Container Runtime | [Youki 🦀](https://github.com/containers/youki) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Runc 🐹](https://github.com/opencontainers/runc) |
-| ✅ | Virtualization | [Cloud Hypervisor 🦀](https://github.com/cloud-hypervisor/cloud-hypervisor) | | | [QEMU 💣](https://github.com/qemu/qemu) |
+| ✅ | Virtualization | [Cloud Hypervisor 🦀](https://github.com/cloud-hypervisor/cloud-hypervisor) | | [KVM 📖](https://en.wikipedia.org/wiki/Kernel-based_Virtual_Machine) | [QEMU 💣](https://github.com/qemu/qemu) |
 | 🚧 | Meta Database | [Hasura λ➡️🦀](https://github.com/hasura/graphql-engine) | [Surrealdb ⏳🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) | |
 | 🚧 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | 🆗 | |
 | 🚧 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled), [Fjall 🦀](https://github.com/fjall-rs/fjall) | 🆗 | [RocksDB 💣](https://github.com/facebook/rocksdb) |
-| ✅ | Web Server | [Caddy 🐹](https://github.com/caddyserver/caddy) | [Moella 🦀](https://github.com/Icelk/moella) | | [Nginx 💣](https://github.com/nginx/nginx) |
+| ✅ | Web Server | [Caddy 🐹](https://github.com/caddyserver/caddy) | [Moella 🦀](https://github.com/Icelk/moella) | 🆗 | [Nginx 💣](https://github.com/nginx/nginx) |
 | ✅ | Email Server | [Stalwart 🦀](https://stalw.art) | | [IMAP 📖](https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol), [POP3 📖](https://en.wikipedia.org/wiki/Post_Office_Protocol) | [Postfix 💣](https://www.postfix.org), [Dovecot 💣](https://www.dovecot.org) |
-| ✅ | Virtual Private Network | [Tailscale 🐹](https://github.com/tailscale/tailscale) | [Innernet 🦀](https://github.com/tonarino/innernet) | | |
+| ✅ | Virtual Private Network | [Tailscale 🐹](https://github.com/tailscale/tailscale) | [Innernet 🦀](https://github.com/tonarino/innernet) | [WireGuard 📖](https://www.wireguard.com) | |
 
 </details>
 
@@ -388,9 +388,9 @@
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Build Script | [Just 🦀](https://github.com/casey/just) | | Rusty Make ([Rusty Bash 🦀](https://github.com/shellgei/rusty_bash)) | [GNU Make 💣](https://en.wikipedia.org/wiki/Make_(software)) |
-| 🚫 | Build System | | [Buck2 🦀](https://github.com/facebook/buck2) | | [Bazel ☕](https://github.com/bazelbuild/bazel), [Pants 🐍](https://github.com/pantsbuild/pants) |
+| 🚫 | Build System | | [Buck2 🦀](https://github.com/facebook/buck2) | 🆗 | [Bazel ☕](https://github.com/bazelbuild/bazel), [Pants 🐍](https://github.com/pantsbuild/pants) |
 | ✅ | Editor | [Helix 🦀](https://github.com/helix-editor/helix) | | 🆗 | [Neovim 💣](https://github.com/neovim/neovim) |
-| ✅ | IDE | [Zed 🦀](https://github.com/zed-industries/zed) | | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium 🐒💣](https://github.com/VSCodium/vscodium) |
+| ✅ | IDE | [Zed 🦀](https://github.com/zed-industries/zed) | | [LSP 📖](https://github.com/microsoft/language-server-protocol), [DAP 📖](https://github.com/Microsoft/debug-adapter-protocol), [BSP 📖](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium 🐒💣](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | [Lurk 🦀](https://github.com/JakWai01/lurk), [Tracexec 🦀](https://github.com/kxxt/tracexec) | | 🆗 | [Strace 💣](https://github.com/strace/strace) |
 | ✅ | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
@@ -402,13 +402,13 @@
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj), [Git 💣](https://github.com/git/git) | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Gix 🦀](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md#gix) | |
-| ✅ | Version Control TUI | [Lazyjj 🦀](https://github.com/Cretezy/lazyjj) | | | |
+| ✅ | Version Control TUI | [Lazyjj 🦀](https://github.com/Cretezy/lazyjj) | | 🆗 | |
 | ✅ | Merger | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | ⬅️ | |
-| ✅ | Pre-commit Manager | [Prek 🦀](https://github.com/j178/prek) | | | [Pre-commit 🐍](https://github.com/pre-commit/pre-commit) |
-| ✅ | Spell Checker | [Typos 🦀](https://github.com/crate-ci/typos) | | | |
-| ✅ | Commit Linter | [Commitlint-rs 🦀](https://github.com/KeisukeYamashita/commitlint-rs) | | | |
-| ✅ | Secret Scanner | [Ripsecrets 🦀](https://github.com/sirwart/ripsecrets) | | | |
-| ✅ | Markdown Linter | [Rumdl 🦀](https://github.com/rvben/rumdl) | | | |
+| ✅ | Pre-commit Manager | [Prek 🦀](https://github.com/j178/prek) | | ⬅️ | [Pre-commit 🐍](https://github.com/pre-commit/pre-commit) |
+| ✅ | Spell Checker | [Typos 🦀](https://github.com/crate-ci/typos) | | 🆗 | |
+| ✅ | Commit Linter | [Commitlint-rs 🦀](https://github.com/KeisukeYamashita/commitlint-rs) | | 🆗 | |
+| ✅ | Secret Scanner | [Ripsecrets 🦀](https://github.com/sirwart/ripsecrets) | | 🆗 | |
+| ✅ | Markdown Linter | [Rumdl 🦀](https://github.com/rvben/rumdl) | | 🆗 | |
 | 🚧 | Monorepo | | [Josh 🦀](https://github.com/josh-project/josh), [Mega 🦀🐒](https://github.com/web3infra-foundation/mega), [Google Piper 🔒](https://en.wikipedia.org/wiki/Piper_(source_control_system)) | 🆗 | |
 
 </details>
@@ -422,23 +422,23 @@
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Package Manager | [Nix 🌐💣](https://github.com/NixOS/nix) | [Snix 🦀](https://git.snix.dev/snix/snix) | ⬅️ | |
-| 🚧 | Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel), [Glistix 🦀](https://github.com/Glistix/glistix) | | |
-| ✅ | Formatter | [Alejandra 🦀](https://github.com/kamadorueda/alejandra) | | | [Nixfmt λ](https://github.com/NixOS/nixfmt) |
-| ✅ | Static Analyzer | [Statix 🦀](https://github.com/oppiliappan/statix), [Deadnix 🦀](https://github.com/astro/deadnix), [Nixpkgs-Lint 🦀](https://github.com/nix-community/nixpkgs-lint) | | | |
-| ✅ | Language Server | [Nil 🦀](https://github.com/oxalica/nil) | | | [Nixd 💣](https://github.com/nix-community/nixd) |
+| 🚧 | Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel), [Glistix 🦀](https://github.com/Glistix/glistix) | 🆗 | |
+| ✅ | Formatter | [Alejandra 🦀](https://github.com/kamadorueda/alejandra) | | 🆗 | [Nixfmt λ](https://github.com/NixOS/nixfmt) |
+| ✅ | Static Analyzer | [Statix 🦀](https://github.com/oppiliappan/statix), [Deadnix 🦀](https://github.com/astro/deadnix), [Nixpkgs-Lint 🦀](https://github.com/nix-community/nixpkgs-lint) | | 🆗 | |
+| ✅ | Language Server | [Nil 🦀](https://github.com/oxalica/nil) | | [LSP 📖](https://github.com/microsoft/language-server-protocol) | [Nixd 💣](https://github.com/nix-community/nixd) |
 | ✅ | Binary Cache | [Harmonia 🦀](https://github.com/nix-community/harmonia) | [Attic 🦀](https://github.com/zhaofengli/attic) | 🆗 | [Cachix 🔒λ](https://github.com/cachix/cachix) |
-| ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | | |
-| ✅ | Secret Manager | [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | | | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
-| ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | | | |
+| ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | 🆗 | |
+| ✅ | Secret Manager | [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | | ⬅️ | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
+| ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | | 🆗 | |
 | ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
-| 🚧 | Project Organization | [Flakelight ❄️](https://github.com/nix-community/flakelight) | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
-| ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | | |
-| ✅ | Rust Integration | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | | [Crane ❄️](https://github.com/ipetkov/crane) |
-| ✅ | Python Integration | [Uv2nix ❄️](https://github.com/pyproject-nix/uv2nix) | | | |
-| ✅ | Nodejs Integration | [Yarnix ❄️](https://github.com/FactbirdHQ/yarnix) | | | |
-| ✅ | Package Generation | [Nix-init 🦀](https://github.com/nix-community/nix-init) + [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
-| ✅ | Derivation Difference | [Nix-diff-rs 🦀](https://github.com/Mic92/nix-diff-rs) | | | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) |
-| ✅ | Dependency Explorer | [Nix-du 🦀](https://github.com/symphorien/nix-du) | | | [Nix-tree λ](https://github.com/utdemir/nix-tree) |
+| 🚧 | Project Organization | [Flakelight ❄️](https://github.com/nix-community/flakelight) | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | 🆗 | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
+| ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | 🆗 | |
+| ✅ | Rust Integration | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | 🆗 | [Crane ❄️](https://github.com/ipetkov/crane) |
+| ✅ | Python Integration | [Uv2nix ❄️](https://github.com/pyproject-nix/uv2nix) | | 🆗 | |
+| ✅ | Nodejs Integration | [Yarnix ❄️](https://github.com/FactbirdHQ/yarnix) | | 🆗 | |
+| ✅ | Package Generation | [Nix-init 🦀](https://github.com/nix-community/nix-init) + [Nurl 🦀](https://github.com/nix-community/nurl) | | 🆗 | |
+| ✅ | Derivation Difference | [Nix-diff-rs 🦀](https://github.com/Mic92/nix-diff-rs) | | 🆗 | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) |
+| ✅ | Dependency Explorer | [Nix-du 🦀](https://github.com/symphorien/nix-du) | | 🆗 | [Nix-tree λ](https://github.com/utdemir/nix-tree) |
 
 </details>
 
@@ -453,8 +453,8 @@
 | ✅ | Language | [Rust 🦀](https://github.com/rust-lang/rust) | | [cxx 🦀](https://github.com/dtolnay/cxx), [bindgen 🦀](https://github.com/rust-lang/rust-bindgen) | |
 | 🚧 | Compiler Framework | [Mlir 💣](https://github.com/llvm/llvm-project/tree/main/mlir), [LLVM 💣](https://github.com/llvm/llvm-project) | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | ⬅️ | |
 | 🚧 | Linker | [Mold 💣](https://github.com/rui314/mold) | [Wild 🦀](https://github.com/davidlattimore/wild) | ⬅️ | [GNU ld 💣](https://sourceware.org/binutils) |
-| ✅ | Formatter | [Rustfmt 🦀](https://github.com/rust-lang/rustfmt) | | | |
-| ✅ | Language Server | [Rust-analyzer 🦀](https://github.com/rust-lang/rust-analyzer) | | | |
+| ✅ | Formatter | [Rustfmt 🦀](https://github.com/rust-lang/rustfmt) | | 🆗 | |
+| ✅ | Language Server | [Rust-analyzer 🦀](https://github.com/rust-lang/rust-analyzer) | | [LSP 📖](https://github.com/microsoft/language-server-protocol) | |
 
 </details>
 
@@ -466,7 +466,7 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Language | [TypeScript 🐒](https://github.com/microsoft/TypeScript) | [Mojo 🔒🔥](https://github.com/modularml/mojo) | | |
+| ✅ | Language | [TypeScript 🐒](https://github.com/microsoft/TypeScript) | [Mojo 🔒🔥](https://github.com/modularml/mojo) | [ECMAScript 📖](https://ecma-international.org/publications-and-standards/standards/ecma-262/) | |
 | ✅ | Bundler | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild) | [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | [Webpack 🐒](https://github.com/webpack/webpack) |
 | ✅ | Formatter | [Biome 🦀](https://github.com/biomejs/biome) | | 🆗 | [Prettier 🐒](https://github.com/prettier/prettier) |
 | 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | 🆗 | |
@@ -508,7 +508,7 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Large Language Model | [Devstral 2 🇪🇺](https://mistral.ai/news/devstral-2-vibe-cli), [Claude Opus 4.6 🔒🇺🇸](https://claude.ai) | [EuroLLM 🇪🇺](https://eurollm.io) | | |
+| ✅ | Large Language Model | [Devstral 2 🇪🇺](https://mistral.ai/news/devstral-2-vibe-cli), [Claude Opus 4.6 🔒🇺🇸](https://claude.ai) | [EuroLLM 🇪🇺](https://eurollm.io) | 🆗 | |
 | ✅ | Provider | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai), [Anthropic Claude ⚖️🇺🇸](https://claude.ai) | [Lumo 🇪🇺](https://lumo.proton.me) | 🆗 | [OpenAI 🔒🇺🇸](https://openai.com) |
 
 #### Communication & Productivity
@@ -532,7 +532,7 @@
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Payment | [MobilePay 🇪🇺](https://mobilepay.dk) | [Wero 🇪🇺](https://wero-wallet.eu) | 🆗 | [PayPal 🇺🇸](https://paypal.com) |
-| 🚧 | Payment Medium | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | | |
+| 🚧 | Payment Medium | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | [EMV 📖](https://en.wikipedia.org/wiki/EMV) | |
 | 🚧 | Donation | [Ko-fi 🇬🇧](https://ko-fi.com) | [Liberapay 🌐🇪🇺](https://liberapay.com) | [GNU Taler 📖🇪🇺](https://taler.net) | [Patreon 🔒🇺🇸](https://patreon.com) |
 
 #### Media & Entertainment
@@ -575,9 +575,9 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
-| ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby), [Amazon IMDB 🔒🇺🇸](https://www.imdb.com) |
-| ✅ | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Rocksky 🇲🇬🌀](https://rocksky.app/profile/overby.me) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Spotify 🔒🇪🇺](https://open.spotify.com/user/1148979230) |
+| ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | 🆗 | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
+| ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | 🆗 | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby), [Amazon IMDB 🔒🇺🇸](https://www.imdb.com) |
+| ✅ | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Rocksky 🇲🇬🌀](https://rocksky.app/profile/overby.me) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | 🆗 | [Spotify 🔒🇪🇺](https://open.spotify.com/user/1148979230) |
 | 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Garmin Connect 🔒🇺🇸](https://connect.garmin.com) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) |
 | ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 👁️🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
 
@@ -595,7 +595,7 @@
 |:-:|-|-|-|-|-|
 | ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🔒🇪🇺🌀](https://github.com/birdsongapps/Flashes) | [AT Protocol 🌀](https://atproto.com) | [Meta Instagram (Flufi) 🔒🇺🇸](https://flufi.me) |
 | 🚧 | Long-form Video | [Alphabet YouTube 🔒🇺🇸](https://youtube.com) | [Skytube 🔒🇺🇸🌀](https://skytube.video) | [AT Protocol 🌀](https://atproto.com) | |
-| 🚧 | Short-form Video | | [SkyLight 🔒🇺🇸🌀](https://skylight.social), [Spark 🔒🇺🇸🌀](https://sprk.so) | | |
+| 🚧 | Short-form Video | | [SkyLight 🔒🇺🇸🌀](https://skylight.social), [Spark 🔒🇺🇸🌀](https://sprk.so) | [AT Protocol 🌀](https://atproto.com) | |
 | 🚧 | Live Streaming | [Stream.place 🌀](https://stream.place/) | | [AT Protocol 🌀](https://atproto.com) | [Twitch 🔒🇺🇸](https://twitch.tv) |
 
 #### Meetup
@@ -615,14 +615,14 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| 🚧 | Cloud Provider | [Amazon AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com), [UpCloud 🇪🇺](https://www.upcloud.com) | | |
-| ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
-| ✅ | Static Host | [Statichost 🇪🇺](https://statichost.eu) | [FastFront 🇪🇺](https://www.fastfront.io) | | [Vercel 🇺🇸](https://vercel.com) |
-| ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
-| 🚧 | Backend | [Nhost 🇪🇺](https://nhost.io) | WIP Backend 🔥 | | |
-| ✅ | Logging | [Bugfender 🇪🇺](https://bugfender.com) | | | [Sentry 🇺🇸](https://sentry.io) |
-| ✅ | Analytics | [Counter.dev 🇪🇺](https://counter.dev) | | | [Vercel Analytics 🇺🇸](https://vercel.com/analytics) |
-| ✅ | Content Delivery Network | [Bunny.net 🇪🇺](https://bunny.net) | | | |
+| 🚧 | Cloud Provider | [Amazon AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com), [UpCloud 🇪🇺](https://www.upcloud.com) | 🆗 | |
+| ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | 🆗 | |
+| ✅ | Static Host | [Statichost 🇪🇺](https://statichost.eu) | [FastFront 🇪🇺](https://www.fastfront.io) | 🆗 | [Vercel 🇺🇸](https://vercel.com) |
+| ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | 🆗 | |
+| 🚧 | Backend | [Nhost 🇪🇺](https://nhost.io) | WIP Backend 🔥 | 🆗 | |
+| ✅ | Logging | [Bugfender 🇪🇺](https://bugfender.com) | | 🆗 | [Sentry 🇺🇸](https://sentry.io) |
+| ✅ | Analytics | [Counter.dev 🇪🇺](https://counter.dev) | | 🆗 | [Vercel Analytics 🇺🇸](https://vercel.com/analytics) |
+| ✅ | Content Delivery Network | [Bunny.net 🇪🇺](https://bunny.net) | | 🆗 | |
 
 </details>
 
@@ -647,7 +647,7 @@
 | ✅ | Find Patterns | [Ripgrep 🦀](https://github.com/BurntSushi/ripgrep) | | 🆗 | [Grep 💣](https://en.wikipedia.org/wiki/Grep) |
 | ✅ | Find & Replace | [Ast-grep 🦀](https://github.com/ast-grep/ast-grep) | | 🆗 | [Sed 💣](https://en.wikipedia.org/wiki/Sed) |
 | ✅ | File Differences | [Batdiff 🦀](https://github.com/eth-p/bat-extras) + [Delta 🦀](https://github.com/dandavison/delta) | [Difftastic 🦀](https://github.com/wilfred/difftastic) | [Uutils Diffutils 🦀](https://github.com/uutils/diffutils) | [Diffutils 💣](https://en.wikipedia.org/wiki/List_of_GNU_packages#Base_system) |
-| ✅ | Hex Viewer | [Hyxel 🦀](https://github.com/hyxel/hyxel) | | | [Util Linux Hexdump 💣](https://github.com/util-linux/util-linux) |
+| ✅ | Hex Viewer | [Hyxel 🦀](https://github.com/hyxel/hyxel) | | 🆗 | [Util Linux Hexdump 💣](https://github.com/util-linux/util-linux) |
 | ✅ | Tree Viewer | [Tre 🦀](https://github.com/dduan/tre) | | 🆗 | [Tree 💣](https://oldmanprogrammer.net/source.php?dir=projects/tree) |
 
 #### Networking
@@ -655,7 +655,7 @@
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
-| ✅ | Ping | [Gping 🦀](https://github.com/orf/gping) | | | [Ping 💣](https://en.wikipedia.org/wiki/Ping_(networking_utility)) |
+| ✅ | Ping | [Gping 🦀](https://github.com/orf/gping) | | 🆗 | [Ping 💣](https://en.wikipedia.org/wiki/Ping_(networking_utility)) |
 | ✅ | Port Scanner | [RustScan 🦀](https://github.com/rustscan/rustscan) | | 🆗 | [Nmap 💣](https://github.com/nmap/nmap) |
 | 🚧 | PGP | [GnuPG 💣](https://gnupg.org) | [Sequoia-PGP 🦀](https://gitlab.com/sequoia-pgp/sequoia) | 🆗 | |
 | 🚧 | SSH | [OpenSSH 💣](https://github.com/openssh/openssh-portable) | [Sunset 🦀](https://github.com/mkj/sunset) | 🆗 | |
@@ -681,7 +681,7 @@
 | ✅ | Fortune | [Fortune-kind 🦀](https://github.com/cafkafk/fortune-kind) | | ⬅️ | [Fortune-mod 💣](https://github.com/shlomif/fortune-mod) |
 | ✅ | System Fetch | [Microfetch 🦀](https://github.com/NotAShelf/microfetch) | | 🆗 | |
 | ✅ | Fuzzy Finder | [Television 🦀](https://github.com/alexpasmantier/television) | | 🆗 | [Fzf 🐹](https://github.com/junegunn/fzf) |
-| ✅ | Benchmark | [Hyperfine 🦀](https://github.com/sharkdp/hyperfine) | | | [time 💣](https://en.wikipedia.org/wiki/Time_(Unix)) |
+| ✅ | Benchmark | [Hyperfine 🦀](https://github.com/sharkdp/hyperfine) | | 🆗 | [time 💣](https://en.wikipedia.org/wiki/Time_(Unix)) |
 
 </details>
 
