@@ -370,7 +370,6 @@
 | ✅ | Web Server | [Caddy 🐹](https://github.com/caddyserver/caddy) | [Moella 🦀](https://github.com/Icelk/moella) | | [Nginx 💣](https://github.com/nginx/nginx) |
 | ✅ | Email Server | [Stalwart 🦀](https://stalw.art) | | [IMAP 📖](https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol), [POP3 📖](https://en.wikipedia.org/wiki/Post_Office_Protocol) | [Postfix 💣](https://www.postfix.org), [Dovecot 💣](https://www.dovecot.org) |
 | ✅ | Virtual Private Network | [Tailscale 🐹](https://github.com/tailscale/tailscale) | [Innernet 🦀](https://github.com/tonarino/innernet) | | |
-| 🚧 | Monorepo | | [Josh 🦀](https://github.com/josh-project/josh), [Mega 🦀🐒](https://github.com/web3infra-foundation/mega), [Google Piper 🔒](https://en.wikipedia.org/wiki/Piper_(source_control_system)) | 🆗 | |
 
 </details>
 
@@ -410,6 +409,7 @@
 | ✅ | Commit Linter | [Commitlint-rs 🦀](https://github.com/KeisukeYamashita/commitlint-rs) | | | |
 | ✅ | Secret Scanner | [Ripsecrets 🦀](https://github.com/sirwart/ripsecrets) | | | |
 | ✅ | Markdown Linter | [Rumdl 🦀](https://github.com/rvben/rumdl) | | | |
+| 🚧 | Monorepo | | [Josh 🦀](https://github.com/josh-project/josh), [Mega 🦀🐒](https://github.com/web3infra-foundation/mega), [Google Piper 🔒](https://en.wikipedia.org/wiki/Piper_(source_control_system)) | 🆗 | |
 
 </details>
 
