@@ -645,9 +645,9 @@
 | ✅ | Directory Usage | [Dust 🦀](https://github.com/bootandy/dust) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://en.wikipedia.org/wiki/GNU_Core_Utilities) |
 | ✅ | Find Files | [Fd 🦀](https://github.com/sharkdp/fd) | | [Uutils Findutils 🦀](https://github.com/uutils/findutils) | [Findutils 💣](https://en.wikipedia.org/wiki/List_of_GNU_packages#Base_system) |
 | ✅ | Find Patterns | [Ripgrep 🦀](https://github.com/BurntSushi/ripgrep) | | 🆗 | [Grep 💣](https://en.wikipedia.org/wiki/Grep) |
-| ✅ | Find & Replace | [Ast-grep 🦀](https://github.com/ast-grep/ast-grep) | | 🆗 | [Sed 💣](https://en.wikipedia.org/wiki/Sed) |
+| ✅ | Find & Replace | [Ast-grep 🦀](https://github.com/ast-grep/ast-grep) | | [Uutils Sed 🦀](https://github.com/uutils/sed) | [Sed 💣](https://en.wikipedia.org/wiki/Sed) |
 | ✅ | File Differences | [Batdiff 🦀](https://github.com/eth-p/bat-extras) + [Delta 🦀](https://github.com/dandavison/delta) | [Difftastic 🦀](https://github.com/wilfred/difftastic) | [Uutils Diffutils 🦀](https://github.com/uutils/diffutils) | [Diffutils 💣](https://en.wikipedia.org/wiki/List_of_GNU_packages#Base_system) |
-| ✅ | Hex Viewer | [Hyxel 🦀](https://github.com/hyxel/hyxel) | | 🆗 | [Util Linux Hexdump 💣](https://github.com/util-linux/util-linux) |
+| ✅ | Hex Viewer | [Hyxel 🦀](https://github.com/hyxel/hyxel) | | [Uutils Util-linux 🦀](https://github.com/uutils/util-linux) | [Util Linux Hexdump 💣](https://github.com/util-linux/util-linux) |
 | ✅ | Tree Viewer | [Tre 🦀](https://github.com/dduan/tre) | | 🆗 | [Tree 💣](https://oldmanprogrammer.net/source.php?dir=projects/tree) |
 
 #### Networking
@@ -664,8 +664,8 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | 🆗 | [Ps 💣](https://gitlab.com/procps-ng/procps) |
-| ✅ | Process Monitor | [Bottom 🦀](https://github.com/ClementTsang/bottom) | | 🆗 | [Top 💣](https://gitlab.com/procps-ng/procps) |
+| ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | [Uutils Procps 🦀](https://github.com/uutils/procps) | [Ps 💣](https://gitlab.com/procps-ng/procps) |
+| ✅ | Process Monitor | [Bottom 🦀](https://github.com/ClementTsang/bottom) | | [Uutils Procps 🦀](https://github.com/uutils/procps) | [Top 💣](https://gitlab.com/procps-ng/procps) |
 | ✅ | Parallel Processing | [Rust Parallel 🦀](https://github.com/aaronriekenberg/rust-parallel) | | 🆗 | [GNU Parallel 💣](https://en.wikipedia.org/wiki/GNU_parallel) |
 | ✅ | Terminal Workspace | [Zellij 🦀](https://github.com/zellij-org/zellij) | | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
 
@@ -681,7 +681,7 @@
 | ✅ | Fortune | [Fortune-kind 🦀](https://github.com/cafkafk/fortune-kind) | | ⬅️ | [Fortune-mod 💣](https://github.com/shlomif/fortune-mod) |
 | ✅ | System Fetch | [Microfetch 🦀](https://github.com/NotAShelf/microfetch) | | 🆗 | |
 | ✅ | Fuzzy Finder | [Television 🦀](https://github.com/alexpasmantier/television) | | 🆗 | [Fzf 🐹](https://github.com/junegunn/fzf) |
-| ✅ | Benchmark | [Hyperfine 🦀](https://github.com/sharkdp/hyperfine) | | 🆗 | [time 💣](https://en.wikipedia.org/wiki/Time_(Unix)) |
+| ✅ | Benchmark | [Hyperfine 🦀](https://github.com/sharkdp/hyperfine) | | [Uutils Util-linux 🦀](https://github.com/uutils/util-linux) | [time 💣](https://en.wikipedia.org/wiki/Time_(Unix)) |
 
 </details>
 
