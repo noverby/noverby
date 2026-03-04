@@ -101,13 +101,19 @@
     };
 
     config = lib.mkIf cfg.enable {
+      services.caddy.virtualHosts.${cfg.publicUrl} = {
+        extraConfig = ''
+          reverse_proxy localhost:${toString cfg.port}
+        '';
+      };
+
       systemd.services.wiki-auth = {
         description = "RadikalWiki Auth Webhook";
         after = ["network.target"];
         wantedBy = ["multi-user.target"];
 
         serviceConfig = {
-          ExecStart = "${cfg.package}/bin/deno run --allow-net --allow-env ${cfg.serverDir}/main.ts";
+          ExecStart = "${cfg.package}/bin/deno run --allow-net --allow-env --allow-read ${cfg.serverDir}/main.ts";
           EnvironmentFile = cfg.environmentFile;
           Environment = [
             "PORT=${toString cfg.port}"
@@ -124,7 +130,9 @@
               then "true"
               else "false"
             }"
+            "DENO_DIR=/var/cache/wiki-auth"
           ];
+          CacheDirectory = "wiki-auth";
           DynamicUser = true;
           Restart = "on-failure";
           RestartSec = 5;

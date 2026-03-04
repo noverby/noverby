@@ -7,14 +7,21 @@
  * (either NHost JWT or atproto DPoP) and returns Hasura session
  * variables.
  *
+ * It also provides POST /token which exchanges an atproto DPoP-bound
+ * access token for a Hasura-compatible HS256 JWT. The client uses
+ * this JWT for all subsequent Hasura requests, avoiding the need
+ * for a Hasura authHook (which breaks the NHost auth service).
+ *
  * Environment variables:
  *   PORT              - Server port (default: 4180)
  *   NHOST_SUBDOMAIN   - NHost project subdomain
  *   NHOST_REGION      - NHost project region
+ *   NHOST_JWT_SECRET  - HS256 shared secret for NHost JWT validation
  *   HASURA_ENDPOINT   - Hasura GraphQL endpoint URL
  *   HASURA_ADMIN_SECRET - Hasura admin secret for user management
  */
 
+import * as jose from "jose";
 import { validateAtprotoToken } from "./atproto.ts";
 import { handleRequestVerification, handleVerifyEmail } from "./email.ts";
 import { validateNhostJwt } from "./nhost.ts";
@@ -24,20 +31,14 @@ import { handleValidate } from "./validate.ts";
 const HASURA_ENDPOINT = Deno.env.get("HASURA_ENDPOINT");
 
 const PORT = Number(Deno.env.get("PORT") ?? "4180");
-const NHOST_SUBDOMAIN = Deno.env.get("NHOST_SUBDOMAIN");
-const NHOST_REGION = Deno.env.get("NHOST_REGION");
-
-function getJwksUrl(): string {
-	return `https://${NHOST_SUBDOMAIN}.auth.${NHOST_REGION}.nhost.run/v1/.well-known/jwks.json`;
-}
 
 /**
  * Shallow health check — confirms the server process is running.
  */
-function handleHealthz(): Response {
+function handleHealthz(request?: Request): Response {
 	return new Response(JSON.stringify({ status: "ok" }), {
 		status: 200,
-		headers: { "Content-Type": "application/json" },
+		headers: { "Content-Type": "application/json", ...corsHeaders(request) },
 	});
 }
 
@@ -57,8 +58,7 @@ async function handleReady(): Promise<Response> {
 
 	// 1. Environment variables
 	const requiredEnv = [
-		"NHOST_SUBDOMAIN",
-		"NHOST_REGION",
+		"NHOST_JWT_SECRET",
 		"HASURA_ENDPOINT",
 		"HASURA_ADMIN_SECRET",
 	];
@@ -68,37 +68,12 @@ async function handleReady(): Promise<Response> {
 			? { ok: true }
 			: { ok: false, detail: `missing: ${missingEnv.join(", ")}` };
 
-	// 2. NHost JWKS reachability
-	if (NHOST_SUBDOMAIN && NHOST_REGION) {
-		try {
-			const jwksUrl = getJwksUrl();
-			const res = await fetch(jwksUrl, {
-				signal: AbortSignal.timeout(5000),
-			});
-			if (!res.ok) {
-				checks.jwks = {
-					ok: false,
-					detail: `HTTP ${res.status} from ${jwksUrl}`,
-				};
-			} else {
-				const body = (await res.json()) as { keys?: unknown[] };
-				if (Array.isArray(body.keys) && body.keys.length > 0) {
-					checks.jwks = {
-						ok: true,
-						detail: `${body.keys.length} key(s) loaded`,
-					};
-				} else {
-					checks.jwks = { ok: false, detail: "JWKS response has no keys" };
-				}
-			}
-		} catch (err) {
-			checks.jwks = {
-				ok: false,
-				detail: err instanceof Error ? err.message : String(err),
-			};
-		}
+	// 2. NHost JWT secret configured
+	const jwtSecret = Deno.env.get("NHOST_JWT_SECRET");
+	if (jwtSecret && jwtSecret.length > 0) {
+		checks.nhostJwt = { ok: true, detail: "HS256 secret configured" };
 	} else {
-		checks.jwks = { ok: false, detail: "NHOST_SUBDOMAIN/NHOST_REGION not set" };
+		checks.nhostJwt = { ok: false, detail: "NHOST_JWT_SECRET not set" };
 	}
 
 	// 3. Hasura endpoint reachability
@@ -178,10 +153,16 @@ async function extractUserId(request: Request): Promise<string | null> {
 /**
  * Add CORS headers for requests from the wiki frontend.
  */
-function corsHeaders(): Record<string, string> {
+function corsHeaders(request?: Request): Record<string, string> {
 	const wikiUrl = Deno.env.get("WIKI_URL") ?? "https://radikal.wiki";
+	const origin = request?.headers.get("Origin") ?? "";
+	const allowedOrigin =
+		origin === wikiUrl ||
+		/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+			? origin
+			: wikiUrl;
 	return {
-		"Access-Control-Allow-Origin": wikiUrl,
+		"Access-Control-Allow-Origin": allowedOrigin,
 		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 		"Access-Control-Allow-Headers":
 			"Content-Type, Authorization, DPoP, X-NHost-Authorization",
@@ -194,12 +175,12 @@ function handleRequest(request: Request): Promise<Response> | Response {
 
 	// CORS preflight
 	if (request.method === "OPTIONS") {
-		return new Response(null, { status: 204, headers: corsHeaders() });
+		return new Response(null, { status: 204, headers: corsHeaders(request) });
 	}
 
 	// Shallow health check — is the process alive?
 	if (url.pathname === "/healthz" || url.pathname === "/health") {
-		return handleHealthz();
+		return handleHealthz(request);
 	}
 
 	// Deep readiness check — are upstream deps reachable?
@@ -220,6 +201,11 @@ function handleRequest(request: Request): Promise<Response> | Response {
 	// Register a new user via atproto (explicit sign-up)
 	if (url.pathname === "/register-atproto" && request.method === "POST") {
 		return handleRegisterAtproto(request);
+	}
+
+	// Exchange atproto DPoP token for a Hasura-compatible JWT
+	if (url.pathname === "/token" && request.method === "POST") {
+		return handleToken(request);
 	}
 
 	// Email verification: request a verification email (authenticated)
@@ -244,6 +230,120 @@ function handleRequest(request: Request): Promise<Response> | Response {
 }
 
 /**
+ * Handle POST /token.
+ *
+ * Exchanges an atproto DPoP-bound access token for a Hasura-compatible
+ * HS256 JWT. This avoids the need for a Hasura authHook (which breaks
+ * the NHost auth service due to circular dependencies).
+ *
+ * The client authenticates with atproto DPoP headers, and receives back
+ * a short-lived JWT signed with the same HS256 key that NHost uses.
+ * Hasura validates this JWT natively — no webhook call required.
+ *
+ * Request headers:
+ *   Authorization: DPoP <access_token>
+ *   DPoP: <proof JWT>
+ *
+ * Response (200):
+ *   { "accessToken": "<HS256 JWT>", "expiresIn": 900 }
+ *
+ * Response (401):
+ *   { "error": "..." }
+ */
+async function handleToken(request: Request): Promise<Response> {
+	const headers = {
+		"Content-Type": "application/json",
+		...corsHeaders(request),
+	};
+
+	const authHeader = request.headers.get("authorization");
+	const dpopHeader = request.headers.get("dpop");
+	const accessToken = authHeader?.match(/^DPoP\s+(.+)$/i)?.[1] ?? null;
+
+	if (!accessToken || !dpopHeader) {
+		return new Response(
+			JSON.stringify({ error: "missing DPoP authorization" }),
+			{ status: 401, headers },
+		);
+	}
+
+	// Validate the atproto DPoP token
+	const hasuraEndpoint = Deno.env.get("HASURA_ENDPOINT");
+	if (!hasuraEndpoint) {
+		return new Response(
+			JSON.stringify({ error: "server configuration error" }),
+			{ status: 500, headers },
+		);
+	}
+
+	const publicUrl = Deno.env.get("PUBLIC_URL") ?? "https://auth.radikal.wiki";
+	const origin = new URL(publicUrl).origin;
+	const tokenUrl = `${origin}/token`;
+
+	const atprotoResult = await validateAtprotoToken(
+		accessToken,
+		dpopHeader,
+		"POST",
+		tokenUrl,
+	);
+
+	if (!atprotoResult) {
+		return new Response(JSON.stringify({ error: "invalid atproto token" }), {
+			status: 401,
+			headers,
+		});
+	}
+
+	// Look up the user linked to this DID
+	const userId = await findUserByProvider("atproto", atprotoResult.did);
+	if (!userId) {
+		return new Response(
+			JSON.stringify({ error: "atproto_not_linked", did: atprotoResult.did }),
+			{ status: 401, headers },
+		);
+	}
+
+	// Sign a Hasura-compatible JWT with the NHost HS256 key
+	const jwtSecret = Deno.env.get("NHOST_JWT_SECRET");
+	if (!jwtSecret) {
+		console.error("NHOST_JWT_SECRET not set — cannot issue JWT");
+		return new Response(
+			JSON.stringify({ error: "server configuration error" }),
+			{ status: 500, headers },
+		);
+	}
+
+	const expiresIn = 900; // 15 minutes, same as NHost default
+	const secretKey = new TextEncoder().encode(jwtSecret);
+
+	const jwt = await new jose.SignJWT({
+		"https://hasura.io/jwt/claims": {
+			"x-hasura-user-id": userId,
+			"x-hasura-default-role": "user",
+			"x-hasura-allowed-roles": ["user", "me"],
+		},
+		sub: userId,
+		iss: "wiki-auth",
+		iat: Math.floor(Date.now() / 1000),
+	})
+		.setProtectedHeader({ alg: "HS256", typ: "JWT" })
+		.setIssuedAt()
+		.setExpirationTime(`${expiresIn}s`)
+		.sign(secretKey);
+
+	return new Response(
+		JSON.stringify({
+			accessToken: jwt,
+			expiresIn,
+			did: atprotoResult.did,
+			handle: atprotoResult.handle ?? null,
+			userId,
+		}),
+		{ status: 200, headers },
+	);
+}
+
+/**
  * Handle POST /link-atproto.
  *
  * Links an atproto DID to an existing NHost-authenticated user.
@@ -261,7 +361,10 @@ function handleRequest(request: Request): Promise<Response> | Response {
  *   X-NHost-Authorization  — Bearer <NHost JWT> (proves ownership of existing account)
  */
 async function handleLinkAtproto(request: Request): Promise<Response> {
-	const headers = { "Content-Type": "application/json", ...corsHeaders() };
+	const headers = {
+		"Content-Type": "application/json",
+		...corsHeaders(request),
+	};
 
 	// Step 1: Authenticate the existing user via NHost JWT from custom header
 	const nhostAuthHeader = request.headers.get("x-nhost-authorization");
@@ -394,7 +497,10 @@ async function handleLinkAtproto(request: Request): Promise<Response> {
  *   DPoP           — DPoP proof JWT (set by dpopFetch)
  */
 async function handleRegisterAtproto(request: Request): Promise<Response> {
-	const headers = { "Content-Type": "application/json", ...corsHeaders() };
+	const headers = {
+		"Content-Type": "application/json",
+		...corsHeaders(request),
+	};
 
 	// Step 1: Validate atproto DPoP token
 	const authHeader = request.headers.get("authorization");
@@ -512,7 +618,7 @@ async function handleEmailRequest(request: Request): Promise<Response> {
 	if (!userId) {
 		return new Response(JSON.stringify({ error: "unauthorized" }), {
 			status: 401,
-			headers: { "Content-Type": "application/json", ...corsHeaders() },
+			headers: { "Content-Type": "application/json", ...corsHeaders(request) },
 		});
 	}
 
@@ -522,7 +628,7 @@ async function handleEmailRequest(request: Request): Promise<Response> {
 	} catch {
 		return new Response(JSON.stringify({ error: "invalid JSON body" }), {
 			status: 400,
-			headers: { "Content-Type": "application/json", ...corsHeaders() },
+			headers: { "Content-Type": "application/json", ...corsHeaders(request) },
 		});
 	}
 
@@ -530,7 +636,7 @@ async function handleEmailRequest(request: Request): Promise<Response> {
 
 	// Add CORS headers to the response from the email module
 	const headers = new Headers(response.headers);
-	for (const [k, v] of Object.entries(corsHeaders())) {
+	for (const [k, v] of Object.entries(corsHeaders(request))) {
 		headers.set(k, v);
 	}
 

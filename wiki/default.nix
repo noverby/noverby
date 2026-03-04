@@ -5,6 +5,7 @@
       just
       deno
       servo
+      nhost-cli
     ];
   };
 }

@@ -84,7 +84,7 @@ interface LinkedProvider {
 const HASURA_URL = `https://${process.env.PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
 
 const AUTH_SERVER_URL =
-	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://wiki-auth.overby.me";
+	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://auth.radikal.wiki";
 
 /**
  * Check whether a fetch error is a network-level failure (server

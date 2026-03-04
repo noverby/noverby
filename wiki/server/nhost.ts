@@ -1,34 +1,43 @@
 /**
- * NHost JWT validation using JWKS.
+ * NHost JWT validation using HS256 shared secret.
  *
- * Fetches the JSON Web Key Set from the NHost auth service and verifies
- * incoming JWTs against it. Extracts Hasura claims from the token payload.
+ * Validates incoming NHost JWTs against the shared HMAC secret configured
+ * in the NHost project (the same key listed under `hasura.jwtSecrets` in
+ * `nhost.toml`).  This avoids a circular dependency: the previous JWKS
+ * approach fetched keys from the NHost auth service, but when Hasura is
+ * configured with an authHook the auth service itself needs Hasura to be
+ * reachable — creating a chicken-and-egg problem during startup.
+ *
+ * The HS256 key is supplied via the `NHOST_JWT_SECRET` environment variable
+ * (or falls back to the `HASURA_ADMIN_SECRET` environment file if not set
+ * separately).  It must match the `key` value in `[[hasura.jwtSecrets]]`.
  */
 
 import * as jose from "jose";
 
-const NHOST_SUBDOMAIN = Deno.env.get("NHOST_SUBDOMAIN");
-const NHOST_REGION = Deno.env.get("NHOST_REGION");
+const NHOST_JWT_SECRET = Deno.env.get("NHOST_JWT_SECRET");
 
-if (!NHOST_SUBDOMAIN || !NHOST_REGION) {
+if (!NHOST_JWT_SECRET) {
 	console.warn(
-		"NHOST_SUBDOMAIN or NHOST_REGION not set — NHost JWT validation will fail",
+		"NHOST_JWT_SECRET not set — NHost JWT validation will fail. " +
+			"Set it to the HS256 key from [[hasura.jwtSecrets]] in nhost.toml.",
 	);
 }
 
-function getJwksUrl(): string {
-	return `https://${NHOST_SUBDOMAIN}.auth.${NHOST_REGION}.nhost.run/v1/.well-known/jwks.json`;
-}
+/**
+ * Build the HS256 secret key for jose verification.
+ * Cached so we only encode once.
+ */
+let secretKey: Uint8Array | null = null;
 
-// Cache the JWKS fetcher so we don't re-create it on every request.
-// jose.createRemoteJWKSet handles caching and rotation internally.
-let jwks: ReturnType<typeof jose.createRemoteJWKSet> | null = null;
-
-function getJwks(): ReturnType<typeof jose.createRemoteJWKSet> {
-	if (!jwks) {
-		jwks = jose.createRemoteJWKSet(new URL(getJwksUrl()));
+function getSecretKey(): Uint8Array {
+	if (!secretKey) {
+		if (!NHOST_JWT_SECRET) {
+			throw new Error("NHOST_JWT_SECRET is not configured");
+		}
+		secretKey = new TextEncoder().encode(NHOST_JWT_SECRET);
 	}
-	return jwks;
+	return secretKey;
 }
 
 /**
@@ -58,9 +67,8 @@ export async function validateNhostJwt(
 	token: string,
 ): Promise<NhostValidationResult | null> {
 	try {
-		const { payload } = await jose.jwtVerify(token, getJwks(), {
-			// NHost issues JWTs with RS256 by default
-			algorithms: ["RS256"],
+		const { payload } = await jose.jwtVerify(token, getSecretKey(), {
+			algorithms: ["HS256"],
 		});
 
 		const hasuraClaims = payload["https://hasura.io/jwt/claims"] as
@@ -68,7 +76,7 @@ export async function validateNhostJwt(
 			| undefined;
 
 		if (!hasuraClaims) {
-			console.error("NHost JWT missing Hasura claims namespace");
+			console.debug("NHost JWT missing Hasura claims namespace");
 			return null;
 		}
 
@@ -88,9 +96,9 @@ export async function validateNhostJwt(
 	} catch (err) {
 		if (err instanceof jose.errors.JWTExpired) {
 			console.debug("NHost JWT expired");
-		} else if (err instanceof jose.errors.JWKSNoMatchingKey) {
+		} else if (err instanceof jose.errors.JWSSignatureVerificationFailed) {
 			console.debug(
-				"NHost JWT key not found in JWKS — token may not be NHost-issued",
+				"NHost JWT signature verification failed — token may not be NHost-issued",
 			);
 		} else {
 			console.error("NHost JWT validation error:", err);

@@ -32,6 +32,21 @@ import {
 	type BrowserOAuthClientOptions,
 } from "@atproto/oauth-client-browser";
 
+// In local dev the atproto spec requires redirect_uri to use 127.0.0.1,
+// so we must ensure the entire session runs on that origin.  If the user
+// navigated to http://localhost:PORT, redirect to http://127.0.0.1:PORT
+// so that IndexedDB (origin-scoped) is consistent before and after the
+// OAuth callback.
+if (
+	typeof window !== "undefined" &&
+	window.location.hostname === "localhost" &&
+	window.location.protocol === "http:"
+) {
+	window.location.replace(
+		`http://127.0.0.1${window.location.port ? `:${window.location.port}` : ""}${window.location.pathname}${window.location.search}${window.location.hash}`,
+	);
+}
+
 const origin = typeof window !== "undefined" ? window.location.origin : "";
 
 /**

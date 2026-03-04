@@ -56,7 +56,7 @@ import { useTranslation } from "react-i18next";
  * In production this is the deployed webhook; in dev it can be overridden.
  */
 const AUTH_SERVER_URL =
-	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://wiki-auth.overby.me";
+	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://auth.radikal.wiki";
 
 const HASURA_URL = `https://${process.env.PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
 

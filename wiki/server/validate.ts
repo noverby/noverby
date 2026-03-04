@@ -3,18 +3,20 @@
  *
  * This is the main endpoint that Hasura calls on every GraphQL request.
  * It receives the original request headers and must return either:
- * - 200 with Hasura session variables (authenticated)
- * - 401 with an error (unauthenticated)
+ * - 200 with Hasura session variables (authenticated or public)
+ * - 401 with an error (only for explicitly invalid tokens)
  *
  * The handler supports dual authentication:
- * 1. If a `DPoP` header is present → validate as atproto DPoP-bound token
- * 2. Otherwise → validate as NHost JWT
- * 3. If neither validates → return 401
+ * 1. If no token is present → return 200 with public role
+ * 2. If a `DPoP` header is present → validate as atproto DPoP-bound token
+ * 3. Otherwise → validate as NHost JWT
+ * 4. If token validation fails → return 401
  */
 
 import { validateAtprotoToken } from "./atproto.ts";
 import {
 	type HasuraSessionVariables,
+	publicSession,
 	unauthorizedResponse,
 	userSession,
 } from "./hasura.ts";
@@ -42,10 +44,10 @@ export async function handleValidate(request: Request): Promise<Response> {
 	const dpopHeader = request.headers.get("dpop");
 	const token = extractBearerToken(authHeader);
 
-	// No token at all → unauthenticated
+	// No token at all → public/anonymous access
 	if (!token) {
-		return new Response(JSON.stringify(unauthorizedResponse()), {
-			status: 401,
+		return new Response(JSON.stringify(publicSession()), {
+			status: 200,
 			headers: { "Content-Type": "application/json" },
 		});
 	}

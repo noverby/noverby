@@ -39,7 +39,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 const AUTH_SERVER_URL =
-	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://wiki-auth.overby.me";
+	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://auth.radikal.wiki";
 
 /**
  * Bluesky butterfly SVG icon.

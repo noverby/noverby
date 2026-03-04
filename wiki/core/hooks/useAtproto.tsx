@@ -78,25 +78,38 @@ interface AtprotoAuthContextValue extends AtprotoAuthState {
 const AtprotoAuthContext = createContext<AtprotoAuthContextValue | null>(null);
 
 // ---------------------------------------------------------------------------
-// Hasura user-ID resolver
+// Token exchange & Hasura user-ID resolver
 // ---------------------------------------------------------------------------
 
-const HASURA_URL = `https://${process.env.PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
+const AUTH_SERVER_URL =
+	process.env.PUBLIC_AUTH_SERVER_URL ?? "https://auth.radikal.wiki";
 
 /**
- * Fetch the current user's Hasura UUID using the DPoP-authenticated session.
- *
- * The auth webhook maps the atproto DID → UUID in `X-Hasura-User-Id`, so a
- * simple `{ users { id } }` query (which Hasura restricts to the caller's
- * own row) returns the resolved UUID.
+ * Token response from POST /token on the wiki-auth server.
  */
-async function fetchHasuraUserId(
+interface TokenResponse {
+	accessToken: string;
+	expiresIn: number;
+	did: string;
+	handle: string | null;
+	userId: string;
+}
+
+/**
+ * Exchange an atproto DPoP session for a Hasura-compatible HS256 JWT.
+ *
+ * Calls POST /token on the wiki-auth server with the DPoP-bound headers.
+ * The server validates the atproto token, looks up the linked user, and
+ * returns a short-lived JWT signed with the NHost HS256 key. Hasura
+ * validates this JWT natively — no authHook needed.
+ *
+ * Returns the token response (including userId), or null if the exchange
+ * fails (e.g. DID not linked to any user).
+ */
+async function exchangeToken(
 	// biome-ignore lint/suspicious/noExplicitAny: atproto session type is opaque
 	rawSession: any,
-): Promise<string | null> {
-	// Identify which fetch method the session exposes, but call it *on*
-	// the session object so `this` (needed for `getTokenSet` etc.) is
-	// preserved.  Extracting the method first would lose the binding.
+): Promise<TokenResponse | null> {
 	const method: string | undefined = [
 		"fetchHandler",
 		"dpopFetch",
@@ -104,37 +117,44 @@ async function fetchHasuraUserId(
 	].find((m) => typeof rawSession?.[m] === "function");
 
 	if (!method) {
-		console.warn("No dpopFetch available — cannot resolve Hasura user ID");
+		console.warn("No dpopFetch available — cannot exchange token");
 		return null;
 	}
 
 	try {
-		const res: Response = await rawSession[method](HASURA_URL, {
+		const res: Response = await rawSession[method](`${AUTH_SERVER_URL}/token`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				query: `query ResolveUserId { users { id } }`,
-			}),
 		});
 
 		if (!res.ok) {
-			console.warn(`Hasura user-ID query failed (${res.status})`);
+			const body = await res.json().catch(() => ({}));
+			if (body?.error === "atproto_not_linked") {
+				console.info(`atproto DID not linked — registration required`);
+				return null;
+			}
+			console.warn(`Token exchange failed (${res.status}):`, body);
 			return null;
 		}
 
-		const json = (await res.json()) as {
-			data?: { users?: { id: string }[] };
-		};
-
-		const id = json.data?.users?.[0]?.id;
-		if (typeof id === "string") return id;
-
-		console.warn("Hasura user-ID query returned no user row");
-		return null;
+		return (await res.json()) as TokenResponse;
 	} catch (err) {
-		console.warn("Failed to fetch Hasura user ID:", err);
+		console.warn("Token exchange error:", err);
 		return null;
 	}
+}
+
+/** Module-level store for the Hasura JWT obtained from /token. */
+let currentHasuraJwt: string | null = null;
+
+/** Get the current Hasura JWT for use in GQL headers. */
+export function getHasuraJwt(): string | null {
+	return currentHasuraJwt;
+}
+
+/** Clear the stored JWT on sign-out. */
+function clearHasuraJwt(): void {
+	currentHasuraJwt = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,19 +233,23 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 				session,
 			}));
 
-			// Fetch Hasura UUID and Bluesky profile in parallel — don't block auth
-			const [hasuraUserId, profile] = await Promise.all([
-				fetchHasuraUserId(rawSession),
+			// Exchange DPoP token for Hasura JWT and fetch profile in parallel
+			const [tokenResult, profile] = await Promise.all([
+				exchangeToken(rawSession),
 				fetchBlueskyProfile(did),
 			]);
 
-			if (hasuraUserId) {
-				setState((s) => ({ ...s, hasuraUserId, needsRegistration: false }));
+			if (tokenResult) {
+				// Store the JWT for GQL headers
+				currentHasuraJwt = tokenResult.accessToken;
+				setState((s) => ({
+					...s,
+					hasuraUserId: tokenResult.userId,
+					needsRegistration: false,
+				}));
 			} else {
-				// DPoP auth succeeded but no Hasura user exists for this DID.
-				// The /validate webhook returns 401 for unlinked DIDs instead
-				// of silently creating a ghost account.  Flag it so the UI can
-				// prompt the user to link or register.
+				// Token exchange failed — DID is not linked to a wiki account.
+				// Flag it so the UI can prompt the user to link or register.
 				console.info(
 					`atproto DID ${did} is not linked to a wiki account — registration or linking required`,
 				);
@@ -302,8 +326,9 @@ export function AtprotoAuthProvider({ children }: { children: ReactNode }) {
 			console.warn("atproto signOut/revoke error (non-fatal):", err);
 		}
 
-		// Clear module-level session holder
+		// Clear module-level session holder and Hasura JWT
 		setAtprotoSession(null);
+		clearHasuraJwt();
 
 		setState({
 			isAuthenticated: false,

@@ -42,3 +42,7 @@ devenv.local.nix
 
 # browser test artifacts
 test-browser-*.png
+
+.secrets
+.nhost/
+nhost/
