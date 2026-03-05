@@ -14,8 +14,11 @@ gost = "gost"
 # TPM2 spec type names (TPMS_ECC_PARMS, TPMS_RSA_PARMS, TPMS_KEYEDHASH_PARMS)
 parms = "parms"
 
+
 [default]
 extend-ignore-re = [
+  # Mesa OpenGL-over-Vulkan driver
+  "Zink",
   "Automattic",
   "Tre",
   "tre",
