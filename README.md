@@ -234,7 +234,7 @@
 |:-:|-|-|-|-|-|
 | 🚧 | Application Binary Interface | [System V ABI 📖](https://en.wikipedia.org/wiki/X86_calling_conventions#Variations) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | 🆗 | |
 | ✅ | GPU Compute | [Vulkan Compute 📖](https://www.vulkan.org) | | [clvk](https://github.com/kpet/clvk) | [OpenCL 📖](https://www.khronos.org/opencl) |
-| ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | | [OpenGL 📖](https://www.opengl.org) |
+| ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | [Zink](https://docs.mesa3d.org/drivers/zink.html) | [OpenGL 📖](https://www.opengl.org) |
 | ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | [XWayland 📖](https://en.wikipedia.org/wiki/X.Org_Server#XWayland) | [X11 📖](https://www.x.org) |
 | ✅ | Heterogeneous Compute | [SYCL 📖](https://www.khronos.org/sycl) | | 🆗 | |
 | 🚫 | Tensor Operations | | | 🆗 | |
