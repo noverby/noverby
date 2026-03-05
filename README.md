@@ -105,6 +105,7 @@
 
 | Package | Homepage | Description |
 |-|-|-|
+| [Datui 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/datui.nix) | [GitHub](https://github.com/derekwisong/datui) | Data exploration in the terminal |
 | [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/mojo.nix) | [Modular](https://www.modular.com/mojo) | Mojo development toolchain |
 | [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/envy.nix) | [GitHub](https://github.com/mre/envy) | Environment variable loader |
 | [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/nix-sweep.nix) | [GitHub](https://github.com/jzbor/nix-sweep) | Nix garbage collector |
