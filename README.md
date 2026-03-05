@@ -199,26 +199,26 @@
 
 #### Architecture & Firmware
 
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| 🚧 | Architecture | [X86-64 🔒](https://en.wikipedia.org/wiki/X86-64) | [RISC-V 📖](https://en.wikipedia.org/wiki/RISC-V), [ARM 🔒](https://en.wikipedia.org/wiki/ARM_architecture_family) | |
-| 🚧 | Firmware | [Thinkpad UEFI 🔒](https://en.wikipedia.org/wiki/UEFI) | [Coreboot 💣](https://coreboot.org), [Oreboot 🦀](https://github.com/oreboot/oreboot) | |
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Architecture | [X86-64 🔒](https://en.wikipedia.org/wiki/X86-64) | [RISC-V 📖](https://en.wikipedia.org/wiki/RISC-V), [ARM 🔒](https://en.wikipedia.org/wiki/ARM_architecture_family) | | |
+| 🚧 | Firmware | [Thinkpad UEFI 🔒](https://en.wikipedia.org/wiki/UEFI) | [Coreboot 💣](https://coreboot.org), [Oreboot 🦀](https://github.com/oreboot/oreboot) | | |
 
 #### Connectivity & Interfaces
 
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| ✅ | Internet of Things Connectivity | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)), [Zigbee 📖](https://en.wikipedia.org/wiki/Zigbee) | | |
-| 🚧 | Wireless Media | [Google ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
-| ✅ | Peripheral Interface | [USB4 📖](https://www.usb.org/usb4) | | [Thunderbolt 3 🔒](https://en.wikipedia.org/wiki/Thunderbolt_(interface)) |
-| ✅ | Display Interface | [DisplayPort 📖](https://en.wikipedia.org/wiki/DisplayPort) | | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Internet of Things Connectivity | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)), [Zigbee 📖](https://en.wikipedia.org/wiki/Zigbee) | | 🆗 | |
+| 🚧 | Wireless Media | [Google ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
+| ✅ | Peripheral Interface | [USB4 📖](https://www.usb.org/usb4) | | ⬅️ | [Thunderbolt 3 🔒](https://en.wikipedia.org/wiki/Thunderbolt_(interface)) |
+| ✅ | Display Interface | [DisplayPort 📖](https://en.wikipedia.org/wiki/DisplayPort) | | | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
 
 #### Navigation & Positioning
 
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.euspa.europa.eu/eu-space-programme/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | |
-| 🚧 | Satellite Internet | | [Iris² 🏛️🇪🇺](https://defence-industry-space.ec.europa.eu/eu-space-policy/iris2_en) | [Starlink 🔒🇺🇸](https://www.starlink.com) |
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.euspa.europa.eu/eu-space-programme/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | 🆗 | |
+| 🚧 | Satellite Internet | | [Iris² 🏛️🇪🇺](https://defence-industry-space.ec.europa.eu/eu-space-policy/iris2_en) | 🆗 | [Starlink 🔒🇺🇸](https://www.starlink.com) |
 
 </details>
 
@@ -230,15 +230,15 @@
 
 #### System & Compute Interfaces
 
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| 🚧 | Application Binary Interface | [System V ABI 📖](https://en.wikipedia.org/wiki/X86_calling_conventions#Variations) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | |
-| ✅ | GPU Compute | [Vulkan Compute 📖](https://www.vulkan.org) | | [OpenCL 📖](https://www.khronos.org/opencl) |
-| ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | [OpenGL 📖](https://www.opengl.org) |
-| ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | [X11 📖](https://www.x.org) |
-| ✅ | Heterogeneous Compute | [SYCL 📖](https://www.khronos.org/sycl) | | |
-| 🚫 | Tensor Operations | | | |
-| 🚫 | AI Inference | | | |
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Application Binary Interface | [System V ABI 📖](https://en.wikipedia.org/wiki/X86_calling_conventions#Variations) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | 🆗 | |
+| ✅ | GPU Compute | [Vulkan Compute 📖](https://www.vulkan.org) | | | [OpenCL 📖](https://www.khronos.org/opencl) |
+| ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | | [OpenGL 📖](https://www.opengl.org) |
+| ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | | [X11 📖](https://www.x.org) |
+| ✅ | Heterogeneous Compute | [SYCL 📖](https://www.khronos.org/sycl) | | 🆗 | |
+| 🚫 | Tensor Operations | | | 🆗 | |
+| 🚫 | AI Inference | | | 🆗 | |
 
 </details>
 
@@ -250,20 +250,20 @@
 
 #### Media Codecs
 
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| ✅ | Image Codec (Lossy) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
-| ✅ | Image Codec (Lossless) | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics) | [AVIF (lossless) 📖](https://en.wikipedia.org/wiki/AVIF) | |
-| ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
-| ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Image Codec (Lossy) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | | [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
+| ✅ | Image Codec (Lossless) | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics) | [AVIF (lossless) 📖](https://en.wikipedia.org/wiki/AVIF) | 🆗 | |
+| ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
+| ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
 
 #### Text & Object Notation
 
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
-| ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | |
-| ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | 🆗 | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
+| ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | 🆗 | |
+| ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | 🆗 | |
 
 </details>
 
@@ -275,12 +275,12 @@
 
 #### Network & Web Protocols
 
-| Status | Component | Current | Research & Development | Legacy |
-|:-:|-|-|-|-|
-| 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | |
-| 🚧 | Web Protocol | [HTTP/2 📖](https://en.wikipedia.org/wiki/HTTP/2) | [HTTP/3 📖](https://en.wikipedia.org/wiki/HTTP/3) | [HTTP/1.1 📖](https://en.wikipedia.org/wiki/HTTP/1.1) |
-| 🚧 | Wireless Network | [Wi‑Fi 6 (IEEE 802.11ax) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ax) | [Wi‑Fi 7 (IEEE 802.11be) 📖](https://en.wikipedia.org/wiki/IEEE_802.11be) | [Wi‑Fi 5 (IEEE 802.11ac) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ac) |
-| ✅ | Social Media | [AT Protocol 🌀📖](https://atproto.com) | | [ActivityPub 📖](https://www.w3.org/TR/activitypub/) |
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | 🆗 | |
+| 🚧 | Web Protocol | [HTTP/2 📖](https://en.wikipedia.org/wiki/HTTP/2) | [HTTP/3 📖](https://en.wikipedia.org/wiki/HTTP/3) | ⬅️ | [HTTP/1.1 📖](https://en.wikipedia.org/wiki/HTTP/1.1) |
+| 🚧 | Wireless Network | [Wi‑Fi 6 (IEEE 802.11ax) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ax) | [Wi‑Fi 7 (IEEE 802.11be) 📖](https://en.wikipedia.org/wiki/IEEE_802.11be) | ⬅️ | [Wi‑Fi 5 (IEEE 802.11ac) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ac) |
+| ✅ | Social Media | [AT Protocol 🌀📖](https://atproto.com) | | | [ActivityPub 📖](https://www.w3.org/TR/activitypub/) |
 
 </details>
 
