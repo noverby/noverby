@@ -252,8 +252,8 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Image Codec (Lossy) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | | [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
-| ✅ | Image Codec (Lossless) | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics) | [AVIF (lossless) 📖](https://en.wikipedia.org/wiki/AVIF) | 🆗 | |
+| ✅ | Image Codec (Lossy) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | [cavif 🦀](https://github.com/kornelski/cavif-rs) | [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
+| ✅ | Image Codec (Lossless) | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics) | [AVIF (lossless) 📖](https://en.wikipedia.org/wiki/AVIF) | [cavif 🦀](https://github.com/kornelski/cavif-rs) | |
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
 | ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
 
