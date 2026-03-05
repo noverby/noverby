@@ -411,6 +411,7 @@
 | ✅ | Secret Scanner | [Ripsecrets 🦀](https://github.com/sirwart/ripsecrets) | | 🆗 | |
 | ✅ | Markdown Linter | [Rumdl 🦀](https://github.com/rvben/rumdl) | | 🆗 | |
 | 🚧 | Monorepo | | [Josh 🦀](https://github.com/josh-project/josh), [Mega 🦀🐒](https://github.com/web3infra-foundation/mega), [Google Piper 🔒](https://en.wikipedia.org/wiki/Piper_(source_control_system)) | 🆗 | |
+| 🚫 | Merge Queue | | | | [Bors 🦀](https://github.com/rust-lang/bors) |
 
 </details>
 
