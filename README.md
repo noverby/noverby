@@ -371,6 +371,7 @@
 | ✅ | Web Server | [Caddy 🐹](https://github.com/caddyserver/caddy) | [Moella 🦀](https://github.com/Icelk/moella) | 🆗 | [Nginx 💣](https://github.com/nginx/nginx) |
 | ✅ | Email Server | [Stalwart 🦀](https://stalw.art) | | [IMAP 📖](https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol), [POP3 📖](https://en.wikipedia.org/wiki/Post_Office_Protocol) | [Postfix 💣](https://www.postfix.org), [Dovecot 💣](https://www.dovecot.org) |
 | ✅ | Virtual Private Network | [Tailscale 🐹](https://github.com/tailscale/tailscale) | [Innernet 🦀](https://github.com/tonarino/innernet) | [WireGuard 📖](https://www.wireguard.com) | |
+| ✅ | Secret Manager | [SPIRE 🌐🐹](https://github.com/spiffe/spire) | | [SPIFFE 📖](https://github.com/spiffe/spiffe) | |
 
 </details>
 
@@ -430,7 +431,7 @@
 | ✅ | Language Server | [Nil 🦀](https://github.com/oxalica/nil) | | [LSP 📖](https://github.com/microsoft/language-server-protocol) | [Nixd 💣](https://github.com/nix-community/nixd) |
 | ✅ | Binary Cache | [Harmonia 🦀](https://github.com/nix-community/harmonia) | [Attic 🦀](https://github.com/zhaofengli/attic) | 🆗 | [Cachix 🔒λ](https://github.com/cachix/cachix) |
 | ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | 🆗 | |
-| ✅ | Secret Manager | [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | | ⬅️ | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
+| ✅ | Secret Manager | [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | [SPIRE ❄️🐹](https://github.com/NixOS/nixpkgs/tree/master/nixos/modules/services/security/spire) | [SPIFFE 📖](https://github.com/spiffe/spiffe) | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
 | ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | | 🆗 | |
 | ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
 | 🚧 | Project Organization | [Flakelight ❄️](https://github.com/nix-community/flakelight) | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | 🆗 | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
