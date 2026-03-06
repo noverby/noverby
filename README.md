@@ -59,7 +59,7 @@
 | **Control** | 🌐 [Nonprofit](https://en.wikipedia.org/wiki/Nonprofit_organization), 🏛️ [Public Authority](https://en.wikipedia.org/wiki/Public_administration), ⚖️ [Benefit Corp](https://en.wikipedia.org/wiki/Benefit_corporation), 🏡 Self-hosted, 🇲🇮: Country of origin (Only for Public Authority/Proprietary) |
 | **License** | 📖 [Open Standard](https://en.wikipedia.org/wiki/Open_standard), 🔒 [Proprietary](https://en.wiktionary.org/wiki/proprietary), ⏳ [BSL](https://en.wikipedia.org/wiki/Business_Source_License) |
 | **Compatibility** | 🆗 Not needed, ⬅️ Backward compatible |
-| **Language** | 🔥 [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language)), 🐍 Python, ❄️ Nix/[Nickel](https://github.com/tweag/nickel), 🦀 Rust, 🦪 Nushell, 🐹 Go, 💣 C/C++, 🐒 [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript), 🐷 Java/Kotlin, 🌙 Lua, λ Haskell |
+| **Language** | 🔥 [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language)), 🐍 Python, ❄️ Nix/[Nickel](https://github.com/tweag/nickel), 🦀 Rust, 🦪 Nushell, 🐹 Go, 💣 [C-family](https://en.wikipedia.org/wiki/List_of_C-family_programming_languages), 🐒 [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript), 🐷 Java/Kotlin, 🌙 Lua, λ Haskell |
 | **Miscellaneous** | 🇽➡️🇾 Migrating from 🇽 to 🇾, 🌀 [Atmosphere (AT Protocol)](https://atproto.com) , 👁️ [Sentientist](https://en.wikipedia.org/wiki/Sentientism) |
 
 <a id="-repository"></a>
