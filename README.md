@@ -670,6 +670,7 @@
 | ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | [Uutils Procps 🦀](https://github.com/uutils/procps) | [Ps 💣](https://gitlab.com/procps-ng/procps) |
 | ✅ | Process Monitor | [Bottom 🦀](https://github.com/ClementTsang/bottom) | | [Uutils Procps 🦀](https://github.com/uutils/procps) | [Top 💣](https://gitlab.com/procps-ng/procps) |
 | ✅ | Parallel Processing | [Rust Parallel 🦀](https://github.com/aaronriekenberg/rust-parallel) | | 🆗 | [GNU Parallel 💣](https://en.wikipedia.org/wiki/GNU_parallel) |
+| ✅ | Process Orchestrator | [Devenv Process Manager 🦀❄️](https://github.com/cachix/devenv/tree/main/devenv-processes) | | 🆗 | [Process Compose 🐹](https://github.com/F1bonacc1/process-compose), [Docker Compose 🐹](https://github.com/docker/compose) |
 | ✅ | Terminal Workspace | [Zellij 🦀](https://github.com/zellij-org/zellij) | | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
 
 #### System Utilities
