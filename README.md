@@ -288,7 +288,7 @@
 | 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | 🆗 | |
 | 🚧 | Web Protocol | [HTTP/2 📖](https://en.wikipedia.org/wiki/HTTP/2) | [HTTP/3 📖](https://en.wikipedia.org/wiki/HTTP/3) | ⬅️ | [HTTP/1.1 📖](https://en.wikipedia.org/wiki/HTTP/1.1) |
 | 🚧 | Wireless Network | [Wi‑Fi 6 (IEEE 802.11ax) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ax) | [Wi‑Fi 7 (IEEE 802.11be) 📖](https://en.wikipedia.org/wiki/IEEE_802.11be) | ⬅️ | [Wi‑Fi 5 (IEEE 802.11ac) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ac) |
-| ✅ | Social Media | [AT Protocol 🌀📖](https://atproto.com) | | [Bridgy Fed](https://fed.brid.gy/) | [ActivityPub 📖](https://www.w3.org/TR/activitypub/) |
+| ✅ | Social Protocol | [AT Protocol 🌀📖](https://atproto.com) | | [Bridgy Fed](https://fed.brid.gy/) | [ActivityPub 📖](https://www.w3.org/TR/activitypub/) |
 
 </details>
 
@@ -312,7 +312,7 @@
 | ✅ | Router | [Turris Omnia 🇪🇺](https://www.turris.com/en/products/omnia) | | |
 | 🚫 | Watch | [Garmin Fenix 7 🔒🇺🇸](https://foundation.mozilla.org/en/privacynotincluded/garmin-fenix) | [Polar 🇬🇧](https://www.polar.com) | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
 | 🚫 | AR Glasses | [XReal Air 2 Pro 🔒🇨🇳](https://next.xreal.com/air2) | | [XReal Light 🔒🇨🇳](https://www.xreal.com/light) |
-| ✅ | Earphones | [Shokz Openfit 2 🇬🇧](https://shokz.com/products/openfit2) | | [Shokz Openfit 🇬🇧](https://shokz.com/products/openfit) |
+| 🚫 | Earphones | [Shokz Openfit 2 🇨🇳](https://shokz.com/products/openfit2) | | [Shokz Openfit 🇨🇳](https://shokz.com/products/openfit) |
 | ✅ | E-book Reader | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [PineNote 🇭🇰](https://pine64.org/devices/pinenote) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
 
 </details>
@@ -328,11 +328,11 @@
 | ✅ | Distro | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | [Spectrum OS ❄️](https://spectrum-os.org) | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue) |
 | ✅ | Kernel | [Zen Linux Kernel 🌐💣🦀](https://github.com/zen-kernel/zen-kernel) | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Wine 💣](https://www.winehq.org), [Darling 💣](https://www.darlinghq.org) | [Microsoft NT 🔒🇺🇸](https://en.wikipedia.org/wiki/Architecture_of_Windows_NT), [Apple XNU 💣🇺🇸](https://github.com/apple-oss-distributions/xnu) |
 | 🚧 | Libc | [Glibc 💣](https://en.wikipedia.org/wiki/Glibc) | [Musl 💣](https://www.musl-libc.org), [Relibc 🦀](https://github.com/redox-os/relibc) | [Gcompat 💣](https://git.adelielinux.org/adelie/gcompat) | |
-| 🚧 | Init System | [Systemd 💣](https://github.com/systemd/systemd) | [Redox Init 🦀](https://gitlab.redox-os.org/redox-os/init) [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | ⬅️ | |
+| 🚧 | Init System | [Systemd 💣](https://github.com/systemd/systemd) | [Redox Init 🦀](https://gitlab.redox-os.org/redox-os/init), [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | ⬅️ | |
 | 🚧 | Inter-process Communication | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | [Zlink 🦀](https://github.com/z-galaxy/zlink) | [Busd 🦀](https://github.com/dbus2/busd) | |
 | 🚫 | Multimedia Server | [Pipewire 💣](https://gitlab.freedesktop.org/pipewire/pipewire) | [Pipewire-native-rs 🦀](https://gitlab.freedesktop.org/pipewire/pipewire-native-rs) | ⬅️ | [Pulseaudio 💣](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) |
 | 🚫 | XR Runtime | [Monado 💣](https://gitlab.freedesktop.org/monado/monado) | | [OpenXR 📖](https://www.khronos.org/openxr) | [Arcan 💣](https://github.com/letoram/arcan) |
-| ✅ | Filesystem | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | [Fxfs 🦀](https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/src/storage/fxfs) [Redoxfs 🦀](https://gitlab.redox-os.org/redox-os/redoxfs) | 🆗 | [Ext4 📖💣](https://docs.kernel.org/filesystems/ext4/) |
+| ✅ | Filesystem | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | [Fxfs 🦀](https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/src/storage/fxfs), [Redoxfs 🦀](https://gitlab.redox-os.org/redox-os/redoxfs) | 🆗 | [Ext4 📖💣](https://docs.kernel.org/filesystems/ext4/) |
 | ✅ | Sandboxing | [Hakoniwa 🦀](https://github.com/souk4711/hakoniwa) | | 🆗 | [Bubblewrap 💣](https://github.com/containers/bubblewrap) |
 
 </details>
@@ -353,7 +353,7 @@
 | ✅ | Font Rendering | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | | 🆗 | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) |
 | ✅ | Graphics Renderer | [Wgpu 🦀](https://github.com/gfx-rs/wgpu) | | 🆗 | [Skia 💣](https://github.com/google/skia), [Cairo 💣](https://en.wikipedia.org/wiki/Cairo_(graphics)) |
 | ✅ | Compositor Framework | [Smithay 🦀](https://github.com/Smithay/smithay) | | 🆗 | [Mutter 💣](https://gitlab.gnome.org/GNOME/mutter) |
-| 🚧 | UI Toolkit | [React 🐒](https://react.dev) | [Mojo WASM Toolkit 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo-wasm), [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
+| 🚧 | UI Toolkit | [React 🐒](https://react.dev) | [Mojo WASM Toolkit 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo-wasm), [Dioxus 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
 | 🚧 | UI Components | [MUI 🐒](https://mui.com) | [Dioxus Components 🦀](https://github.com/DioxusLabs/components) | 🆗 | |
 | 🚫 | XR Toolkit | [Stereokit 💣](https://github.com/StereoKit/StereoKit) | | 🆗 | |
 | 🚧 | Browser Engine | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | [Servo 🦀](https://github.com/servo/servo) | ⬅️ | |
@@ -598,8 +598,8 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Discussion Forums | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit (Libred) 🔒🇺🇸](https://github.com/redlib-org/redlib), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
-| ✅ | Microblogging | [Eurosky 🌐🇪🇺🌀](https://eurosky.social) [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | | [AT Protocol 🌀](https://atproto.com) | [Mastodon 🌐🇪🇺](https://mas.to/@niclasoverby), [X (X-cancel) 🔒🇺🇸](https://xcancel.com) |
+| ✅ | Discussion Forums | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit (Libred) 🔒🇺🇸](https://github.com/redlib-org/redlib), [Lemmy.ml 🌐🇪🇺](https://lemmy.ml) |
+| ✅ | Microblogging | [Eurosky 🌐🇪🇺🌀](https://eurosky.social), [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | | [AT Protocol 🌀](https://atproto.com) | [Mastodon 🌐🇪🇺](https://mas.to/@niclasoverby), [X (X-cancel) 🔒🇺🇸](https://xcancel.com) |
 | ✅ | Macroblogging | [Leaflet 🌀](https://leaflet.pub) | | [AT Protocol 🌀](https://atproto.com) | |
 
 #### Media Platforms
