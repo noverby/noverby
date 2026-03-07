@@ -325,7 +325,7 @@
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Distro | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | [Spectrum OS ❄️](https://spectrum-os.org) | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue) |
-| ✅ | Kernel | [Zen Linux Kernel 🌐💣](https://github.com/zen-kernel/zen-kernel) | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Rust For Linux 🦀](https://rust-for-linux.com/), [Wine 💣](https://www.winehq.org), [Darling 💣](https://www.darlinghq.org) | [Microsoft NT 🔒🇺🇸](https://en.wikipedia.org/wiki/Architecture_of_Windows_NT), [Apple XNU 💣🇺🇸](https://github.com/apple-oss-distributions/xnu) |
+| ✅ | Kernel | [Zen Linux Kernel 🌐💣🦀](https://github.com/zen-kernel/zen-kernel) | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Rust For Linux 🦀](https://rust-for-linux.com/), [Wine 💣](https://www.winehq.org), [Darling 💣](https://www.darlinghq.org) | [Microsoft NT 🔒🇺🇸](https://en.wikipedia.org/wiki/Architecture_of_Windows_NT), [Apple XNU 💣🇺🇸](https://github.com/apple-oss-distributions/xnu) |
 | 🚧 | Libc | [Glibc 💣](https://en.wikipedia.org/wiki/Glibc) | [Musl 💣](https://www.musl-libc.org), [Relibc 🦀](https://github.com/redox-os/relibc) | [Gcompat 💣](https://git.adelielinux.org/adelie/gcompat) | |
 | 🚧 | Init System | [Systemd 💣](https://github.com/systemd/systemd) | [Redox Init 🦀](https://gitlab.redox-os.org/redox-os/init) [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | ⬅️ | |
 | 🚧 | Inter-process Communication | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | [Zlink 🦀](https://github.com/z-galaxy/zlink) | [Busd 🦀](https://github.com/dbus2/busd) | |
@@ -410,7 +410,7 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| 🚧 | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj), [Git 💣](https://github.com/git/git) | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Gix 🦀](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md#gix) | |
+| 🚧 | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj), [Git 💣🦀](https://github.com/git/git) | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Gix 🦀](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md#gix) | |
 | ✅ | Version Control TUI | [Lazyjj 🦀](https://github.com/Cretezy/lazyjj) | | 🆗 | |
 | ✅ | Merger | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | ⬅️ | |
 | ✅ | Pre-commit Manager | [Prek 🦀](https://github.com/j178/prek) | | ⬅️ | [Pre-commit 🐍](https://github.com/pre-commit/pre-commit) |
