@@ -85,6 +85,7 @@
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | Systemd replacement |
 | [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | pkg-config reimplementation |
 | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | Nickel-powered workspace manager for Nix flakes |
+| [H264-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h264-decoder-rs) | Pure Rust H.264 decoder library and CLI |
 | [Nu-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nu-plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
 
 </details>
