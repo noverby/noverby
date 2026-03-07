@@ -112,6 +112,13 @@
 | [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/rcgen.nix) | [GitHub](https://github.com/rustls/rcgen) | X.509 certificate generator |
 | [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/starship-jj.nix) | [GitLab](https://gitlab.com/lanastara_foss/starship-jj) | Starship plugin for jj |
 
+#### Desktop
+
+| Package | Homepage | Description |
+|-|-|-|
+| [Cthulock 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/cthulock.nix) | [GitHub](https://github.com/FriederHannenheim/cthulock) | Wayland screen locker focused on customizability |
+| [Rustyfications 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/rustyfications.nix) | [GitHub](https://github.com/bzglve/rustyfications) | Rusty notification daemon for Wayland |
+
 #### Jupyter
 
 | Package | Homepage | Description |
@@ -702,7 +709,7 @@
 | ✅ | Color Scheme | [Catppuccin](https://github.com/catppuccin/catppuccin) | [Frosted Effect](https://github.com/pop-os/cosmic-epoch/issues/604) | 🆗 | [Adwaita](https://gitlab.gnome.org/GNOME/libadwaita) |
 | ✅ | Wallpaper | [Nix-wallpaper ❄️](https://github.com/lunik1/nix-wallpaper) | | 🆗 | |
 | ✅ | Design System | [Material You 🔒](https://m3.material.io) | | 🆗 | [Material Design 2 🔒](https://m2.material.io) |
-| ✅ | Desktop Environment | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | 🆗 | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
+| ✅ | Desktop Environment | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | [Niri 🦀](https://github.com/YaLTeR/niri) | 🆗 | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | ✅ | XR Environment | [Stardust XR 🦀](https://github.com/StardustXR/server) | [Breezy Desktop](https://github.com/wheaney/breezy-desktop) | 🆗 | [Safespaces 🌙](https://github.com/letoram/safespaces) |
 
 </details>
