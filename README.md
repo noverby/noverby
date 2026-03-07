@@ -173,9 +173,9 @@
 
 | Configuration | Homepage | Description |
 |-|-|-|
-| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/home-manager) | [Home Manager](https://nix-community.github.io/home-manager/) | Home Manager configurations |
-| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos) | [NixOS](https://nixos.org) | NixOS configurations |
-| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devenv) | [Devenv](https://devenv.sh) | Devenv configurations |
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/config/home-manager) | [Home Manager](https://nix-community.github.io/home-manager/) | Home Manager configurations |
+| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/config/nixos) | [NixOS](https://nixos.org) | NixOS configurations |
+| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/config/devenv) | [Devenv](https://devenv.sh) | Devenv configurations |
 
 </details>
 
