@@ -13,6 +13,8 @@ grat = "grat"
 gost = "gost"
 # TPM2 spec type names (TPMS_ECC_PARMS, TPMS_RSA_PARMS, TPMS_KEYEDHASH_PARMS)
 parms = "parms"
+# H.264 unsigned exp-Golomb coding notation ue(v)
+ue = "ue"
 
 
 [default]
