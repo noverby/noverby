@@ -36,7 +36,7 @@
 
   specialArgs = {
     inherit src inputs lib;
-    stateVersion = "25.05";
+    stateVersion = "25.11";
     hasSecrets = false;
   };
 
@@ -143,7 +143,7 @@
       security.sudo.wheelNeedsPassword = false;
 
       # ── System ──────────────────────────────────────────────────────
-      system.stateVersion = "25.05";
+      system.stateVersion = "25.11";
     })
   ];
 }
