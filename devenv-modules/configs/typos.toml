@@ -1,4 +1,4 @@
-# Run `direnv reload` to apply changes to the repository.
+# Run `touch .envrc && direnv export json` to apply changes to the repository.
 
 [default.extend-words]
 # Upstream API name from openssh-sftp-client crate
