@@ -196,6 +196,8 @@
         ./nu-plugin-tramp
 
         ./slides
+
+        ./h264toav1-rs
       ];
       nixDirAliases = {
         packages = ["pkgs"];

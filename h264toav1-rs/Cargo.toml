@@ -1,0 +1,21 @@
+[package]
+name = "h264toav1"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://tangled.org/overby.me/overby.me/tree/main/h264toav1-rs"
+description = "A CLI tool to transcode H.264 video to AV1 using h264-decode and rav1e"
+
+[[bin]]
+name = "h264toav1"
+path = "src/main.rs"
+
+[dependencies]
+h264-decode = { path = "../h264-decoder-rs/crates/h264-decode" }
+rav1e = { version = "0.8", default-features = false, features = [
+  "signal_support",
+] }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
