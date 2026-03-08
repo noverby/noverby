@@ -184,6 +184,22 @@
 
         upower.enable = true;
         thermald.enable = false; # Not applicable on ARM
+
+        # ── USB-C host mode (OTG) ──────────────────────────────────────
+        # The Qualcomm PMIC firmware defaults the USB-C port to device
+        # (UFP) mode.  The UCSI layer reports the state but does not
+        # automatically initiate a data-role swap to host (DFP) when a
+        # USB peripheral (keyboard, hub, …) is connected via USB-C.
+        #
+        # This udev rule detects Type-C partner connect/disconnect events
+        # and switches data_role to "host" so the DWC3 controller brings
+        # up xHCI and enumerates the attached USB device.  If the partner
+        # doesn't support DRP the write fails harmlessly.
+        udev.extraRules = ''
+          ACTION=="change", SUBSYSTEM=="typec", KERNEL=="port[0-9]*", \
+            ATTR{data_role}=="host [device]", \
+            ATTR{data_role}="host"
+        '';
       };
 
       # ── Useful packages ─────────────────────────────────────────────
