@@ -170,7 +170,7 @@
       flakelight.builtinFormatters = false;
 
       imports = [
-        ./flakelight-modules/libBuiltins.nix
+        ./flakelight-modules/lib.nix
         ./flakelight-modules/secrets.nix
         ./flakelight-modules/users.nix
         ./flakelight-modules/hardware.nix
