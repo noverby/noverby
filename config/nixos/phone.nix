@@ -43,6 +43,12 @@
   modules = [
     # ── Fairphone 5 hardware support ──────────────────────────────────
     inputs.self.hardware.fairphone-fp5
+    {
+      nixos-fairphone-fp5.serial = {
+        enable = true;
+        verbose = true;
+      };
+    }
 
     # ── Desktop environment ───────────────────────────────────────────
     inputs.self.desktops.cosmic
