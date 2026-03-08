@@ -514,7 +514,7 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Language | [TypeScript 🐒](https://github.com/microsoft/TypeScript) | [Mojo 🔒🔥](https://github.com/modularml/mojo) | [ECMAScript 📖](https://ecma-international.org/publications-and-standards/standards/ecma-262/) | |
+| ✅ | Language | [TypeScript 🐒](https://github.com/microsoft/TypeScript) | [Mojo 🔒🔥](https://github.com/modularml/mojo) | [ECMAScript 📖](https://ecma-international.org/publications-and-standards/standards/ecma-262/), [WASI 📖](https://github.com/WebAssembly/WASI), [Interface Types 📖](https://github.com/WebAssembly/interface-types/tree/main/proposals/interface-types) | |
 | ✅ | Bundler | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild) | [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | [Webpack 🐒](https://github.com/webpack/webpack) |
 | ✅ | Formatter | [Biome 🦀](https://github.com/biomejs/biome) | | 🆗 | [Prettier 🐒](https://github.com/prettier/prettier) |
 | 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | 🆗 | |
@@ -532,7 +532,7 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Language | [Mojo 🔒🔥](https://github.com/modularml/mojo) | | [RustPython 🦀](https://github.com/RustPython/RustPython), [WASI 📖](https://github.com/WebAssembly/WASI), [Interface Types 📖](https://github.com/WebAssembly/interface-types/tree/main/proposals/interface-types) | [TypeScript 🐒🐹](https://github.com/microsoft/TypeScript) |
+| ✅ | Language | [Mojo 🔒🔥](https://github.com/modularml/mojo) | | [RustPython 🦀](https://github.com/RustPython/RustPython) | [Python 🐍💣](https://github.com/python/cpython) |
 | ✅ | Package Manager | [Uv 🦀](https://github.com/astral-sh/uv) | [Pixi 🦀](https://github.com/prefix-dev/pixi) | 🆗 | [Poetry 🐍](https://github.com/python-poetry/poetry) |
 | ✅ | Formatter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Black 🐍](https://github.com/psf/black) |
 | ✅ | Linter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Flake8 🐍](https://github.com/PyCQA/flake8) |
