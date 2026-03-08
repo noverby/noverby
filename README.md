@@ -268,6 +268,7 @@
 | ✅ | Media Container | [Matroska/WebM 📖](https://www.matroska.org) | | 🆗 | [MP4 📖](https://en.wikipedia.org/wiki/MPEG-4_Part_14) |
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [Symphonia 🦀](https://github.com/pdeljanov/Symphonia) | [MP3 📖](https://en.wikipedia.org/wiki/MP3) |
 | ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [rav1d 🦀](https://github.com/memorysafety/rav1d) | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
+| 🚧 | 3D Model Format | [glTF 📖](https://www.khronos.org/gltf/) | [OpenUSD](https://openusd.org) | 🆗 | |
 
 #### Text & Object Notation
 
@@ -276,6 +277,7 @@
 | ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | 🆗 | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
 | ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | 🆗 | |
 | ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | 🆗 | |
+| 🚧 | Schema Validation | [JSON Schema 📖](https://json-schema.org) | [Nickel](https://nickel-lang.org) | 🆗 | |
 
 </details>
 
