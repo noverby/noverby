@@ -54,10 +54,17 @@
     inputs.ragenix.nixosModules.default
     ({pkgs, ...}: {
       # Simplified age config for the phone (no FIDO2/Nitrokey needed).
-      # Decryption uses the SSH host key generated on first boot.
+      # Decryption uses the pre-generated SSH host key injected into the
+      # rootfs image at build time.  The key is stored age-encrypted in
+      # config/secrets/phone-host-key.age and must be decrypted before
+      # building the rootfs image:
+      #   rage -d -i ~/.ssh/id_ed25519 config/secrets/phone-host-key.age \
+      #     -o /tmp/phone-hostkeys/ssh_host_ed25519_key
+      # The mkRootfsImage populateImageCommands then copies it into the
+      # ext4 image at /etc/ssh/.
       age = {
         ageBin = "${pkgs.rage}/bin/rage";
-        identityPaths = ["/etc/ssh/ssh_host_ed25519_key" "/etc/ssh/ssh_host_rsa_key"];
+        identityPaths = ["/etc/ssh/ssh_host_ed25519_key"];
       };
     })
 
