@@ -360,6 +360,9 @@
 | 🚫 | XR Runtime | [Monado 💣](https://gitlab.freedesktop.org/monado/monado) | | [OpenXR 📖](https://www.khronos.org/openxr) | [Arcan 💣](https://github.com/letoram/arcan) |
 | ✅ | Filesystem | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | [Fxfs 🦀](https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/src/storage/fxfs), [Redoxfs 🦀](https://gitlab.redox-os.org/redox-os/redoxfs) | 🆗 | [Ext4 📖💣](https://docs.kernel.org/filesystems/ext4/) |
 | ✅ | Sandboxing | [Hakoniwa 🦀](https://github.com/souk4711/hakoniwa) | | 🆗 | [Bubblewrap 💣](https://github.com/containers/bubblewrap) |
+| 🚧 | Bootloader | [systemd-boot 💣](https://www.freedesktop.org/wiki/Software/systemd/systemd-boot/) | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | 🆗 | [GRUB 💣](https://www.gnu.org/software/grub/) |
+| ✅ | Display Manager | [cosmic-greeter 🦀](https://github.com/pop-os/cosmic-greeter) | | 🆗 | [GDM 💣](https://wiki.gnome.org/Projects/GDM) |
+| 🚧 | Security Framework | [SELinux 💣](https://github.com/SELinuxProject/selinux) | | 🆗 | [AppArmor 💣](https://apparmor.net) |
 
 </details>
 
