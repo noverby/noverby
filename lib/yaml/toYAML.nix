@@ -2,7 +2,7 @@
 # Converts Nix values to idiomatic block-style YAML strings.
 # Supports mappings, sequences, scalars, multi-line block scalars, and proper quoting.
 let
-  h = import ./internal/helpers.nix;
+  h = import ./_helpers.nix;
 
   inherit
     (builtins)
