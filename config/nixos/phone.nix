@@ -137,6 +137,13 @@
         firewall.enable = true;
       };
 
+      # Auto-login: COSMIC greeter has no on-screen keyboard, so we
+      # bypass it to land directly on the desktop via touchscreen.
+      services.displayManager.autoLogin = {
+        enable = true;
+        user = "noverby";
+      };
+
       # Pre-configured WiFi network for headless SSH access.
       age.secrets."wifi-concero.nmconnection" = {
         file = inputs.self.secrets.wifi-concero;
