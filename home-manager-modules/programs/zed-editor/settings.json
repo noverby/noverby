@@ -6,7 +6,8 @@
 		"default_model": {
 			"model": "claude-opus-4.6",
 			"provider": "copilot_chat"
-		}
+		},
+		"play_sound_when_agent_done": true
 	},
 	"lsp_document_colors": "inlay",
 	"auto_update": false,
