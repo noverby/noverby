@@ -51,15 +51,19 @@ in {
 
         # Kernel modules required in initramfs for device boot.
         # See: https://gitlab.postmarketos.org/postmarketOS/pmaports/-/blob/master/device/testing/device-fairphone-fp5/modules-initfs
-        availableKernelModules = [
-          "fsa4480" # USB-C audio switch
-          "goodix_berlin_core" # Touchscreen core driver
-          "goodix_berlin_spi" # Touchscreen SPI interface
-          "msm"
-          "panel-raydium-rm692e5" # Display panel driver
-          "ptn36502" # USB-C redriver
-          "spi-geni-qcom" # Qualcomm SPI controller
-        ];
+        availableKernelModules =
+          [
+            "fsa4480" # USB-C audio switch
+            "goodix_berlin_core" # Touchscreen core driver
+            "goodix_berlin_spi" # Touchscreen SPI interface
+            "msm"
+            "panel-raydium-rm692e5" # Display panel driver
+            "ptn36502" # USB-C redriver
+            "spi-geni-qcom" # Qualcomm SPI controller
+          ]
+          ++ lib.optionals cfg.serial.enable [
+            "g_serial" # USB serial gadget (loaded only for debugging)
+          ];
 
         # Disable default modules (like ahci) that don't exist in this kernel.
         includeDefaultModules = false;

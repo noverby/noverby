@@ -30,8 +30,9 @@
   # We override some options that are disabled in PostmarketOS config to make it
   # compatible with NixOS and enable useful functionality:
   # - CONFIG_DMIID: NixOS asserts that this is enabled.
-  # - CONFIG_U_SERIAL_CONSOLE: Enables USB serial gadget console output for debugging.
-  # - CONFIG_USB_G_SERIAL: Classic USB serial gadget driver.
+  # - CONFIG_U_SERIAL_CONSOLE: Enables USB serial gadget console output for debugging (module).
+  # - CONFIG_USB_G_SERIAL: Classic USB serial gadget driver (module, so it doesn't
+  #     lock the DWC3 controller in device mode and block USB host for keyboards).
   # - CONFIG_ANDROID_BINDERFS: Required for Waydroid (Android container support).
   #
   # Additional netfilter/iptables extensions required by NixOS firewall:
@@ -52,8 +53,8 @@
       # Read the original config and apply our modifications.
       sed \
         -e 's/# CONFIG_DMIID is not set/CONFIG_DMIID=y/' \
-        -e 's/# CONFIG_U_SERIAL_CONSOLE is not set/CONFIG_U_SERIAL_CONSOLE=y/' \
-        -e 's/# CONFIG_USB_G_SERIAL is not set/CONFIG_USB_G_SERIAL=y/' \
+        -e 's/# CONFIG_U_SERIAL_CONSOLE is not set/CONFIG_U_SERIAL_CONSOLE=m/' \
+        -e 's/# CONFIG_USB_G_SERIAL is not set/CONFIG_USB_G_SERIAL=m/' \
         -e 's/# CONFIG_ANDROID_BINDERFS is not set/CONFIG_ANDROID_BINDERFS=y/' \
         -e 's/# CONFIG_NETFILTER_XT_MATCH_PKTTYPE is not set/CONFIG_NETFILTER_XT_MATCH_PKTTYPE=m/' \
         -e 's/# CONFIG_NETFILTER_XT_MATCH_LIMIT is not set/CONFIG_NETFILTER_XT_MATCH_LIMIT=m/' \
