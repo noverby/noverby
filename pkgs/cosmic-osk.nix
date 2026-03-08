@@ -34,6 +34,26 @@ rustPlatform.buildRustPackage {
       wayland
     ];
 
+  # Upstream example `key.rs` has stale imports (KeyCode, wayland_state)
+  # that fail to compile against the current library API.
+  doCheck = false;
+
+  # Upstream doesn't ship a .desktop file; add one so it can be
+  # launched from application menus (e.g. on phones without a
+  # hardware keyboard).
+  postInstall = ''
+    install -Dm644 /dev/stdin $out/share/applications/com.system76.CosmicOSK.desktop <<EOF
+    [Desktop Entry]
+    Name=COSMIC On-Screen Keyboard
+    Comment=On-screen keyboard for COSMIC
+    Exec=cosmic-osk
+    Icon=input-keyboard
+    Type=Application
+    Categories=Utility;Accessibility;
+    X-COSMIC-AppId=com.system76.CosmicOSK
+    EOF
+  '';
+
   meta = {
     description = "COSMIC On-Screen Keyboard";
     homepage = "https://github.com/pop-os/cosmic-osk";
