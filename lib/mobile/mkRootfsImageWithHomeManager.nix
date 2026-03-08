@@ -1,11 +1,13 @@
 # Like mkRootfsImage, but also includes Home Manager activation packages
 # in the image closure so the first boot can activate home-manager profiles.
 #
-# Replicated from https://github.com/gian-reto/nixos-fairphone-fp5/blob/main/flake.nix
+# Works with any Android-bootloader device running NixOS.
+# Originally replicated from
+# https://github.com/gian-reto/nixos-fairphone-fp5/blob/main/flake.nix
 #
 # Parameters:
 #   nixosConfig - a NixOS system configuration (with home-manager module)
-#   pkgs        - nixpkgs package set (must be aarch64-linux)
+#   pkgs        - nixpkgs package set
 #
 # Returns: a derivation producing an ext4 filesystem image.
 {
