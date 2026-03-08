@@ -37,7 +37,7 @@
   specialArgs = {
     inherit src inputs lib;
     stateVersion = "25.11";
-    hasSecrets = false;
+    hasSecrets = true;
   };
 
   modules = [
@@ -49,6 +49,17 @@
         verbose = true;
       };
     }
+
+    # ── Secrets ───────────────────────────────────────────────────────
+    inputs.ragenix.nixosModules.default
+    ({pkgs, ...}: {
+      # Simplified age config for the phone (no FIDO2/Nitrokey needed).
+      # Decryption uses the SSH host key generated on first boot.
+      age = {
+        ageBin = "${pkgs.rage}/bin/rage";
+        identityPaths = ["/etc/ssh/ssh_host_ed25519_key" "/etc/ssh/ssh_host_rsa_key"];
+      };
+    })
 
     # ── Desktop environment ───────────────────────────────────────────
     inputs.self.desktops.cosmic
@@ -117,6 +128,15 @@
           wifi.backend = "iwd";
         };
         firewall.enable = true;
+      };
+
+      # Pre-configured WiFi network for headless SSH access.
+      age.secrets."wifi-concero.nmconnection" = {
+        file = inputs.self.secrets.wifi-concero;
+        path = "/etc/NetworkManager/system-connections/Concero.nmconnection";
+        owner = "root";
+        group = "root";
+        mode = "0600";
       };
 
       # ── Bluetooth ───────────────────────────────────────────────────
