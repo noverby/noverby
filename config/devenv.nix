@@ -20,6 +20,7 @@
     nil
     alejandra
     colmena
+    rage
     (writeShellScriptBin "ragenix" ''
       exec ${ragenix}/bin/ragenix -i ~/.age/id_fido2 "$@"
     '')
