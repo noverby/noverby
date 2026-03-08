@@ -3,6 +3,7 @@
   rustPlatform,
   fetchFromGitHub,
   pkg-config,
+  makeWrapper,
   libxkbcommon,
   vulkan-loader,
   stdenv,
@@ -23,6 +24,7 @@ rustPlatform.buildRustPackage {
 
   nativeBuildInputs = [
     pkg-config
+    makeWrapper
   ];
 
   buildInputs =
@@ -42,6 +44,9 @@ rustPlatform.buildRustPackage {
   # launched from application menus (e.g. on phones without a
   # hardware keyboard).
   postInstall = ''
+    wrapProgram $out/bin/cosmic-osk \
+      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath ([libxkbcommon vulkan-loader] ++ lib.optionals stdenv.isLinux [wayland])}
+
     install -Dm644 /dev/stdin $out/share/applications/com.system76.CosmicOSK.desktop <<EOF
     [Desktop Entry]
     Name=COSMIC On-Screen Keyboard
