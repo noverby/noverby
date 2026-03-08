@@ -295,6 +295,9 @@
 | 🚧 | Web Protocol | [HTTP/2 📖](https://en.wikipedia.org/wiki/HTTP/2) | [HTTP/3 📖](https://en.wikipedia.org/wiki/HTTP/3) | ⬅️ | [HTTP/1.1 📖](https://en.wikipedia.org/wiki/HTTP/1.1) |
 | 🚧 | Wireless Network | [Wi‑Fi 6 (IEEE 802.11ax) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ax) | [Wi‑Fi 7 (IEEE 802.11be) 📖](https://en.wikipedia.org/wiki/IEEE_802.11be) | ⬅️ | [Wi‑Fi 5 (IEEE 802.11ac) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ac) |
 | ✅ | Social Protocol | [AT Protocol 🌀📖](https://atproto.com) | | [Bridgy Fed](https://fed.brid.gy/) | [ActivityPub 📖](https://www.w3.org/TR/activitypub/) |
+| 🚧 | DNS Protocol | [DNS-over-HTTPS 📖](https://en.wikipedia.org/wiki/DNS_over_HTTPS) | [DNS-over-TLS 📖](https://en.wikipedia.org/wiki/DNS_over_TLS) | 🆗 | [DNS 📖](https://en.wikipedia.org/wiki/Domain_Name_System) |
+| 🚧 | Identity Protocol | [DID 📖](https://www.w3.org/TR/did-core/) | [ATProto DID 🌀](https://atproto.com/specs/did) | 🆗 | |
+| 🚧 | Email Protocol | [IMAP 📖](https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol) | [JMAP 📖](https://jmap.io) | 🆗 | [POP3 📖](https://en.wikipedia.org/wiki/Post_Office_Protocol) |
 
 </details>
 
