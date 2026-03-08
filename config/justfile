@@ -15,3 +15,25 @@ deploy-all:
 
 rekey:
     cd secrets && agenix --rekey
+
+# Phone (Fairphone 5) image building and flashing
+
+[private]
+_flake_dir := justfile_directory() / ".."
+
+phone-decrypt-hostkey:
+    mkdir -p /tmp/phone-hostkeys
+    rage -d -i ~/.ssh/id_ed25519 secrets/phone-host-key.age -o /tmp/phone-hostkeys/ssh_host_ed25519_key
+    chmod 600 /tmp/phone-hostkeys/ssh_host_ed25519_key
+    ssh-keygen -y -f /tmp/phone-hostkeys/ssh_host_ed25519_key > /tmp/phone-hostkeys/ssh_host_ed25519_key.pub
+
+phone-build-boot:
+    nix build --impure --print-build-logs -o result-phone-boot --expr 'let flake = builtins.getFlake "path:{{ _flake_dir }}"; nixosConfig = flake.nixosConfigurations.phone; in flake.lib.mkBootImage { dtb = "qcom/qcm6490-fairphone-fp5.dtb"; } nixosConfig nixosConfig.pkgs'
+
+phone-build-rootfs: phone-decrypt-hostkey
+    nix build --impure --print-build-logs -o result-phone-rootfs --expr 'let flake = builtins.getFlake "path:{{ _flake_dir }}"; nixosConfig = flake.nixosConfigurations.phone; in flake.lib.mkRootfsImage nixosConfig nixosConfig.pkgs { sshHostKeyDir = /tmp/phone-hostkeys; }'
+
+phone-flash: phone-build-boot phone-build-rootfs
+    fastboot flash boot result-phone-boot
+    fastboot flash userdata result-phone-rootfs
+    fastboot reboot
