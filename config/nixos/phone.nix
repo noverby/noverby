@@ -84,6 +84,7 @@
       # its test suite.  Ruby is not available when cross-compiling,
       # so we disable the check phase.
       nixpkgs.overlays = [
+        inputs.self.overlays.default
         (final: prev: {
           iniparser = prev.iniparser.overrideAttrs {
             doCheck = false;
@@ -193,6 +194,9 @@
 
         # Networking
         blueman
+
+        # On-screen keyboard (COSMIC doesn't have one built-in yet)
+        cosmic-osk
       ];
 
       # ── User ────────────────────────────────────────────────────────
