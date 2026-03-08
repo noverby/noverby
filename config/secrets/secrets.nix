@@ -13,4 +13,7 @@ in {
   "id_rsa.age" = {
     inherit publicKeys;
   };
+  "wifi-concero.age" = {
+    inherit publicKeys;
+  };
 }
