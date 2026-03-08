@@ -122,7 +122,7 @@
         experimental-features = ["nix-command" "flakes"];
         # When on the device, prefer remote builders to avoid draining
         # battery and running out of memory during local rebuilds.
-        # trusted-users = ["root" "noverby"];
+        trusted-users = ["root" "noverby"];
       };
 
       # Disable NixOS manual (saves closure size and hides desktop icon).
