@@ -13,7 +13,6 @@
   };
 
   modules = with inputs.self.nixosModules; [
-    {boot.kernel.sysctl."kernel.dmesg_restrict" = 0;}
     inputs.nixos-hardware
     .nixosModules
     .lenovo-thinkpad-p14s-amd-gen5
