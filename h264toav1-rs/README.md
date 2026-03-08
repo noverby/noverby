@@ -1,8 +1,8 @@
 # h264toav1-rs
 
-A CLI tool for transcoding H.264 (AVC) video to AV1, built entirely in Rust.
+A CLI tool for transcoding H.264 (AVC) and H.265 (HEVC) video to AV1, built entirely in Rust.
 
-Uses [`h264-decode`](../h264-decoder-rs) for H.264 decoding and [rav1e](https://github.com/xiph/rav1e) for AV1 encoding. Output is written as an [IVF](https://wiki.multimedia.cx/index.php/IVF) container.
+Uses [`h264-decode`](../h264-decoder-rs) and [`h265-decode`](../h265-decoder-rs) for decoding and [rav1e](https://github.com/xiph/rav1e) for AV1 encoding. Output is written as an [IVF](https://wiki.multimedia.cx/index.php/IVF) container.
 
 ## Project structure
 
@@ -23,26 +23,32 @@ h264toav1-rs/
 # Build
 cargo build --release
 
-# Basic transcode (H.264 Annex B → AV1 IVF)
-h264toav1 input.264 -o output.ivf
+# Basic transcode – codec is auto-detected from extension
+h264toav1 input.264 -o output.ivf     # H.264 input
+h264toav1 input.265 -o output.ivf     # H.265 input
+h264toav1 input.hevc -o output.ivf    # H.265 input
+
+# Force input codec (overrides auto-detection)
+h264toav1 input.bin -o output.ivf --codec h264
+h264toav1 input.bin -o output.ivf --codec h265
 
 # Specify speed preset and quantizer
 h264toav1 input.264 -o output.ivf -s 4 -q 80
 
 # Fast preview encode
-h264toav1 input.264 -o output.ivf -s 10 -q 128
+h264toav1 input.265 -o output.ivf -s 10 -q 128
 
 # High quality encode
 h264toav1 input.264 -o output.ivf -s 3 -q 60
 
 # Low-latency mode (no frame reordering)
-h264toav1 input.264 -o output.ivf --low-latency
+h264toav1 input.265 -o output.ivf --low-latency
 
 # Limit to first 100 frames with verbose logging
 h264toav1 input.264 -o output.ivf --max-frames 100 -v
 
 # Write to stdout (e.g. pipe to ffplay)
-h264toav1 input.264 -o - | ffplay -i -
+h264toav1 input.265 -o - | ffplay -i -
 ```
 
 ## CLI options
@@ -51,7 +57,8 @@ h264toav1 input.264 -o - | ffplay -i -
 h264toav1 [OPTIONS] <INPUT> -o <OUTPUT>
 
 Arguments:
-  <INPUT>                  Path to the input H.264 Annex B file (.264 / .h264)
+  <INPUT>                  Path to the input H.264/H.265 Annex B file
+                           (.264/.h264/.265/.h265/.hevc)
 
 Options:
   -o, --output <OUTPUT>    Output AV1 file path (.ivf), or "-" for stdout
@@ -62,33 +69,44 @@ Options:
       --keyint <N>         Maximum keyframe interval [default: 240]
       --low-latency        Enable low-latency mode (single-pass, no reordering)
       --max-frames <N>     Maximum number of frames to transcode (0 = unlimited) [default: 0]
+      --codec <CODEC>      Force input codec: auto, h264, or h265 [default: auto]
   -v, --verbose            Enable verbose logging
   -h, --help               Print help
   -V, --version            Print version
 ```
 
+## Codec auto-detection
+
+When `--codec auto` (the default), the input codec is determined by:
+
+1. **File extension** – `.264`, `.h264`, `.avc` → H.264; `.265`, `.h265`, `.hevc` → H.265.
+2. **Content inspection** – if the extension is ambiguous, the first NAL unit header is examined to distinguish between H.264 (1-byte header) and H.265 (2-byte header) parameter sets.
+
+Use `--codec h264` or `--codec h265` to override when auto-detection cannot determine the format.
+
 ## Pipeline
 
 ```text
-H.264 Annex B file
+H.264/H.265 Annex B file
         │
         ▼
-┌───────────────────┐
-│  h264-decode      │  Pure Rust H.264 decoder
-│  (YUV 4:2:0 out)  │  Parses NAL units, decodes frames
-└───────┬───────────┘
+┌───────────────────────┐
+│  h264-decode /        │  Pure Rust decoders
+│  h265-decode          │  Parse NAL units, decode frames
+│  (YUV 4:2:0 out)      │
+└───────┬───────────────┘
         │  DecodedFrame (Y, U, V planes)
         ▼
-┌───────────────────┐
-│  rav1e            │  AV1 encoder
-│  (AV1 packets)    │  Encodes YUV frames to AV1
-└───────┬───────────┘
+┌───────────────────────┐
+│  rav1e                │  AV1 encoder
+│  (AV1 packets)        │  Encodes YUV frames to AV1
+└───────┬───────────────┘
         │  Encoded packets
         ▼
-┌───────────────────┐
-│  IVF writer       │  Minimal container format
-│  (.ivf output)    │  32-byte header + per-frame headers
-└───────────────────┘
+┌───────────────────────┐
+│  IVF writer           │  Minimal container format
+│  (.ivf output)        │  32-byte header + per-frame headers
+└───────────────────────┘
 ```
 
 ## Playing the output
@@ -139,8 +157,11 @@ just clippy
 # Format code
 just fmt
 
-# Quick transcode
+# Quick transcode (H.264)
 just transcode input.264
+
+# Quick transcode (H.265)
+just transcode input.265
 
 # High-quality transcode
 just transcode-hq input.264 output.ivf
