@@ -160,6 +160,24 @@
         powerOnBoot = true;
       };
 
+      # Blueman crashes under cross-compilation (missing GTK 3 typelibs)
+      # and COSMIC's bluetooth applet does not register a BlueZ agent,
+      # so pairing always fails with AuthenticationCanceled.  Run
+      # bt-agent from bluez-tools as a lightweight daemon that registers
+      # a BlueZ agent with DisplayOnly capability — the phone can show
+      # a passkey on screen and the user types it on the BT keyboard.
+      systemd.user.services.bt-agent = {
+        description = "Bluetooth pairing agent";
+        after = ["bluetooth.target"];
+        wantedBy = ["default.target"];
+        serviceConfig = {
+          Type = "simple";
+          Restart = "on-failure";
+          RestartSec = 5;
+          ExecStart = "${pkgs.bluez-tools}/bin/bt-agent -c DisplayOnly";
+        };
+      };
+
       # ── Audio (PipeWire) ────────────────────────────────────────────
       security.rtkit.enable = true;
 
@@ -208,8 +226,7 @@
         htop
         wl-clipboard
 
-        # Networking
-        blueman
+        # Networking (blueman removed — crashes under cross-compilation)
 
         # On-screen keyboard (COSMIC doesn't have one built-in yet)
         cosmic-osk
