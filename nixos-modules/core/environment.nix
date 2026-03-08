@@ -1,6 +1,7 @@
 {pkgs, ...}: {
   environment = {
     systemPackages = with pkgs; [
+      cosmic-osk
       helix
       tailspin
     ];
