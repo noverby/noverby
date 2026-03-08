@@ -29,6 +29,7 @@
   - [🔗 Software](#-software)
   - [📝 Data](#-data)
   - [📡 Network](#-network)
+  - [🔐 Security & Cryptography](#-security--cryptography)
 - [🖥️ System](#-system)
   - [💻 Hardware](#-hardware-1)
   - [⚙️ Core](#-core)
@@ -290,6 +291,23 @@
 | 🚧 | Web Protocol | [HTTP/2 📖](https://en.wikipedia.org/wiki/HTTP/2) | [HTTP/3 📖](https://en.wikipedia.org/wiki/HTTP/3) | ⬅️ | [HTTP/1.1 📖](https://en.wikipedia.org/wiki/HTTP/1.1) |
 | 🚧 | Wireless Network | [Wi‑Fi 6 (IEEE 802.11ax) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ax) | [Wi‑Fi 7 (IEEE 802.11be) 📖](https://en.wikipedia.org/wiki/IEEE_802.11be) | ⬅️ | [Wi‑Fi 5 (IEEE 802.11ac) 📖](https://en.wikipedia.org/wiki/IEEE_802.11ac) |
 | ✅ | Social Protocol | [AT Protocol 🌀📖](https://atproto.com) | | [Bridgy Fed](https://fed.brid.gy/) | [ActivityPub 📖](https://www.w3.org/TR/activitypub/) |
+
+</details>
+
+<a id="-security--cryptography"></a>
+
+### 🔐 Security & Cryptography [⬆](#top)
+
+<details open>
+
+#### Cryptographic Primitives & Protocols
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Symmetric Encryption | [AES-GCM 📖](https://en.wikipedia.org/wiki/Galois/Counter_Mode), [ChaCha20-Poly1305 📖](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) | | 🆗 | |
+| ✅ | Asymmetric Encryption | [age 🦀](https://github.com/str4d/rage) | | 🆗 | [GPG 📖](https://en.wikipedia.org/wiki/GNU_Privacy_Guard) |
+| ✅ | Key Derivation | [Argon2 📖](https://en.wikipedia.org/wiki/Argon2) | | 🆗 | |
+| ✅ | Signing | [Ed25519 📖](https://en.wikipedia.org/wiki/EdDSA#Ed25519) | | 🆗 | |
 
 </details>
 
