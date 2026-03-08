@@ -123,8 +123,21 @@ in {
 
     console.earlySetup = true;
 
-    # Serial gettys and first-boot resize service.
+    # Serial gettys, A/B slot management, and first-boot resize service.
     systemd.services = {
+      # Mark the current A/B boot slot as successful so the bootloader
+      # does not exhaust its retry counter and fall back to fastboot.
+      mark-boot-successful = {
+        description = "Mark current A/B slot as boot-successful";
+        wantedBy = ["multi-user.target"];
+        after = ["local-fs.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${pkgs.systemd}/bin/bootctl mark-boot-successful";
+        };
+      };
+
       "serial-getty@ttyGS0" = lib.mkIf cfg.serial.enable {
         enable = true;
         wantedBy = ["multi-user.target"];
