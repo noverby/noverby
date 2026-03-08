@@ -1,11 +1,16 @@
 # Builds an ext4 image containing the NixOS system that can be flashed to the
-# `userdata` partition using fastboot.
+# `userdata` partition of an Android-bootloader device using fastboot.
 #
-# Replicated from https://github.com/gian-reto/nixos-fairphone-fp5/blob/main/flake.nix
+# Originally replicated from
+# https://github.com/gian-reto/nixos-fairphone-fp5/blob/main/flake.nix
+# and generalized to work with any Android-bootloader NixOS device.
+#
+# Usage:
+#   lib.mkRootfsImage nixosConfig pkgs;
 #
 # Parameters:
 #   nixosConfig - a NixOS system configuration
-#   pkgs        - nixpkgs package set (must be aarch64-linux)
+#   pkgs        - nixpkgs package set
 #
 # Returns: a derivation producing an ext4 filesystem image.
 {
