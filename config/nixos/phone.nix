@@ -45,7 +45,7 @@
     inputs.self.hardware.fairphone-fp5
     {
       nixos-fairphone-fp5.serial = {
-        enable = true;
+        enable = false;
         verbose = true;
       };
     }
