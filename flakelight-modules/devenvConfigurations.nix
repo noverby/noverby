@@ -7,15 +7,9 @@
   inherit (lib) mkOption mkMerge concatMap mapAttrs mapAttrsToList removeAttrs;
   inherit (lib.types) lazyAttrsOf unspecified;
 
-  # Create an extended lib with builtin functions
-  extendedLib = lib.extend (_: _: {
-    inherit (builtins) toJSON fromJSON toFile toString readDir filterSource;
-  });
-
   mkDevenvShell = pkgs: cfg:
     inputs.devenv.lib.mkShell {
-      inherit inputs pkgs;
-      lib = extendedLib;
+      inherit inputs pkgs lib;
       modules = [
         cfg
       ];

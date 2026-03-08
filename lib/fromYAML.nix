@@ -2,7 +2,7 @@
 # Supports block mappings/sequences, flow style, quoted strings,
 # block scalars (| and >), and standard YAML scalar types.
 lib: let
-  h = import ./helpers.nix;
+  h = import ./internal/helpers.nix;
 
   inherit
     (builtins)
