@@ -395,8 +395,17 @@ dependencies = [
  "clap",
  "env_logger",
  "h264-decode",
+ "h265-decode",
  "log",
  "rav1e",
+]
+
+[[package]]
+name = "h265-decode"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
 ]
 
 [[package]]

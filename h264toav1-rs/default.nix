@@ -22,6 +22,9 @@
           ../h264-decoder-rs/Cargo.toml
           ../h264-decoder-rs/Cargo.lock
           ../h264-decoder-rs/crates
+          ../h265-decoder-rs/Cargo.toml
+          ../h265-decoder-rs/Cargo.lock
+          ../h265-decoder-rs/crates
         ];
       };
 
@@ -32,7 +35,7 @@
       doCheck = false;
 
       meta = {
-        description = "A CLI tool to transcode H.264 video to AV1 using h264-decode and rav1e";
+        description = "A CLI tool to transcode H.264/H.265 video to AV1 using h264-decode, h265-decode, and rav1e";
         homepage = "https://tangled.org/overby.me/overby.me/tree/main/h264toav1-rs";
         license = lib.licenses.mit;
         maintainers = with lib.maintainers; [noverby];
