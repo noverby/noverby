@@ -8,17 +8,31 @@
 #   - Directories with default.nix are imported as a single unit.
 #   - Directories without default.nix are recursed into.
 #   - Files and directories starting with _ are considered private and skipped.
+#
+# Also extends lib with commonly needed builtins (fromJSON, toJSON, etc.)
+# via _module.args so all flakelight modules (including devenv) receive them.
+# We use a separate baseLib parameter to avoid a circular dependency:
+# _module.args.lib must not be defined in terms of the module's own lib arg.
 {
-  lib,
   config,
+  inputs,
   ...
 }: let
+  # Use nixpkgs lib directly to avoid circular _module.args.lib dependency.
+  baseLib = inputs.nixpkgs.lib;
+
+  extendedLib = baseLib.extend (
+    _: _: {
+      inherit (builtins) toJSON fromJSON toFile toString readDir filterSource;
+    }
+  );
+
   libDir = config.nixDir + "/lib";
   hasLibDir = config.nixDir != null && builtins.pathExists libDir;
 
   resolve = v:
     if builtins.isFunction v
-    then v lib
+    then v extendedLib
     else v;
 
   # Recursively discover and import .nix files from a directory.
@@ -30,9 +44,9 @@
       type = entries.${name};
       path = dir + "/${name}";
     in
-      if lib.hasPrefix "_" name
+      if baseLib.hasPrefix "_" name
       then {}
-      else if type == "regular" && lib.hasSuffix ".nix" name
+      else if type == "regular" && baseLib.hasSuffix ".nix" name
       then resolve (import path)
       else if type == "directory"
       then
@@ -48,13 +62,9 @@
     then importLibDir libDir
     else {};
 in {
-  lib = lib.mkForce mergedLib;
+  lib = baseLib.mkForce mergedLib;
 
   _module.args = {
-    lib = lib.extend (
-      _: _: {
-        inherit (builtins) toJSON fromJSON toFile toString readDir filterSource;
-      }
-    );
+    lib = extendedLib;
   };
 }
