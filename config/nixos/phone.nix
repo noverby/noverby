@@ -55,6 +55,40 @@
       # from an x86_64 workstation without needing an aarch64 builder.
       nixpkgs.buildPlatform = "x86_64-linux";
 
+      # Workaround: iniparser has doCheck = true which adds
+      # -DBUILD_TESTING:BOOL=TRUE to cmakeFlags, requiring ruby for
+      # its test suite.  Ruby is not available when cross-compiling,
+      # so we disable the check phase.
+      nixpkgs.overlays = [
+        (final: prev: {
+          iniparser = prev.iniparser.overrideAttrs {
+            doCheck = false;
+          };
+          ibus = prev.ibus.overrideAttrs {
+            enableParallelInstalling = false;
+          };
+          gjs = prev.gjs.overrideAttrs (old: {
+            mesonFlags =
+              (old.mesonFlags or [])
+              ++ [
+                "-Dskip_gtk_tests=true"
+              ];
+          });
+          xdg-desktop-portal-cosmic = prev.xdg-desktop-portal-cosmic.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ [final.glib];
+          });
+          power-profiles-daemon = prev.power-profiles-daemon.overrideAttrs (old: {
+            mesonFlags =
+              (old.mesonFlags or [])
+              ++ [
+                "-Dmanpage=disabled"
+                "-Dbashcomp=disabled"
+                "-Dzshcomp="
+              ];
+          });
+        })
+      ];
+
       # ── Identity ────────────────────────────────────────────────────
       networking.hostName = "phone";
 
