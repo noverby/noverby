@@ -1,9 +1,11 @@
 {
 	"agent": {
-		"always_allow_tool_actions": true,
+		"tool_permissions": {
+			"default": "allow"
+		},
 		"default_model": {
-			"model": "devstral-medium-latest",
-			"provider": "mistral"
+			"model": "claude-opus-4.6",
+			"provider": "copilot_chat"
 		}
 	},
 	"lsp_document_colors": "inlay",
