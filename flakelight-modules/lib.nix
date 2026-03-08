@@ -9,7 +9,7 @@
 #   - Directories without default.nix are recursed into.
 #   - Files and directories starting with _ are considered private and skipped.
 #
-# Also extends lib with all builtins (fromJSON, toJSON, readFile, etc.)
+# Also extends lib with commonly needed builtins (fromJSON, toJSON, etc.)
 # via _module.args so all flakelight modules (including devenv) receive them.
 # We use a separate baseLib parameter to avoid a circular dependency:
 # _module.args.lib must not be defined in terms of the module's own lib arg.
@@ -22,7 +22,19 @@
   baseLib = inputs.nixpkgs.lib;
 
   extendedLib = baseLib.extend (
-    _: _: builtins
+    _: _: {
+      inherit
+        (builtins)
+        toJSON
+        fromJSON
+        toFile
+        toString
+        readDir
+        readFile
+        filterSource
+        fetchurl
+        ;
+    }
   );
 
   libDir = config.nixDir + "/lib";
