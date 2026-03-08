@@ -3,9 +3,10 @@
 - **Follow `.commitlintrc.yml` for commit message format.** Before committing, read `.commitlintrc.yml` and ensure the commit message conforms to its rules.
 
 - **Never use `git commit --amend` after a pre-commit hook failure.** A failed commit does not land — just fix the issue and run `git commit` again with the same message. Using `--amend` will squash over the previous unrelated commit and destroy history.
+
 - Only use `git commit --amend` when explicitly asked to amend, or when fixing the *current* (most recent, already landed) commit intentionally.
 
 ## Nix flake rules
 
-- **Always `git add` new or changed files before any Nix flake operation.** Nix flakes only see files tracked by git. This applies to `direnv reload`, `nix develop`, `nix build`, `nixos-rebuild`, and any other command that evaluates the flake. If you create or modify a file referenced by Nix (e.g. in `modules/`, `config/`) and don't stage it first, the flake will use the old version or fail to find it.
-- **Run `direnv reload` after changing devenv modules or configs.** Files in `modules/devenv/` and `config/devenv.nix` are evaluated by devenv on shell entry. Changes to these files (e.g. `enterShell`, git-hooks, packages) won't take effect until you `git add` the changed files and run `direnv reload`.
+- **Always `git add` new or changed files before any Nix flake operation.** Nix flakes only see files tracked by git. This applies to `direnv export json`, `nix develop`, `nix build`, `nixos-rebuild`, and any other command that evaluates the flake. If you create or modify a file referenced by Nix (e.g. in `modules/`, `config/`) and don't stage it first, the flake will use the old version or fail to find it.
+- **Run `touch .envrc && direnv export json` after changing devenv modules or configs.** Files in `modules/devenv/` and `config/devenv.nix` are evaluated by devenv on shell entry. Changes to these files (e.g. `enterShell`, git-hooks, packages) won't take effect until you `git add` the changed files and run `touch .envrc && direnv export json`. Note: `direnv reload` only touches `.envrc` and defers to a shell prompt hook that doesn't fire in non-interactive contexts. `direnv export json` directly triggers the full re-evaluation.
