@@ -494,6 +494,7 @@
 | 🚧 | Compiler Framework | [Mlir 💣](https://github.com/llvm/llvm-project/tree/main/mlir), [LLVM 💣](https://github.com/llvm/llvm-project) | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | ⬅️ | |
 | 🚧 | Linker | [Mold 💣](https://github.com/rui314/mold) | [Wild 🦀](https://github.com/davidlattimore/wild) | ⬅️ | [GNU ld 💣](https://sourceware.org/binutils) |
 | ✅ | Formatter | [Rustfmt 🦀](https://github.com/rust-lang/rustfmt) | | 🆗 | |
+| ✅ | Linter | [Clippy 🦀](https://github.com/rust-lang/rust-clippy) | | 🆗 | |
 | ✅ | Language Server | [Rust-analyzer 🦀](https://github.com/rust-lang/rust-analyzer) | | [LSP 📖](https://github.com/microsoft/language-server-protocol) | |
 | ✅ | Test Framework | [cargo-nextest 🦀](https://github.com/nextest-rs/nextest) | | 🆗 | [cargo test 🦀](https://doc.rust-lang.org/cargo/commands/cargo-test.html) |
 | 🚧 | Fuzzing | [cargo-fuzz 🦀](https://github.com/rust-fuzz/cargo-fuzz) | [LibAFL 🦀](https://github.com/AFLplusplus/LibAFL) | 🆗 | |
