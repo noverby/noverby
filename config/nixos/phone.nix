@@ -164,9 +164,23 @@
       # and COSMIC's bluetooth applet does not register a BlueZ agent,
       # so pairing always fails with AuthenticationCanceled.  Run
       # bt-agent from bluez-tools as a lightweight daemon that registers
-      # a BlueZ agent with DisplayOnly capability — the phone can show
-      # a passkey on screen and the user types it on the BT keyboard.
-      systemd.user.services.bt-agent = {
+      # a BlueZ agent with KeyboardDisplay capability.  A wrapper script
+      # monitors bt-agent's stdout for passkey lines and sends desktop
+      # notifications via notify-send so the user can see the passkey
+      # on screen and type it on the BT keyboard.
+      systemd.user.services.bt-agent = let
+        bt-agent-notify = pkgs.writeShellScript "bt-agent-notify" ''
+          ${pkgs.bluez-tools}/bin/bt-agent -c KeyboardDisplay 2>&1 | while IFS= read -r line; do
+            printf '%s\n' "$line"
+            case "$line" in
+              *Passkey:*|*passkey:*|*PIN:*|*pin:*)
+                ${pkgs.libnotify}/bin/notify-send -u critical -t 30000 \
+                  "Bluetooth Pairing" "$line" || true
+                ;;
+            esac
+          done
+        '';
+      in {
         description = "Bluetooth pairing agent";
         after = ["bluetooth.target"];
         wantedBy = ["default.target"];
@@ -174,7 +188,7 @@
           Type = "simple";
           Restart = "on-failure";
           RestartSec = 5;
-          ExecStart = "${pkgs.bluez-tools}/bin/bt-agent -c DisplayOnly";
+          ExecStart = "${bt-agent-notify}";
         };
       };
 
@@ -227,6 +241,8 @@
         wl-clipboard
 
         # Networking (blueman removed — crashes under cross-compilation)
+        # notify-send for desktop notifications (used by bt-agent wrapper)
+        libnotify
 
         # On-screen keyboard (COSMIC doesn't have one built-in yet)
         cosmic-osk
