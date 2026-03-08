@@ -36,18 +36,33 @@ in {
         pass_filenames = true;
       };
       lychee = let
-        lychee = pkgs.writeShellScriptBin "lychee" ''
+        lychee-changed-lines = pkgs.writeShellScriptBin "lychee-changed-lines" ''
           token=$(${pkgs.gh}/bin/gh auth token 2>/dev/null || true)
+          lychee_cmd="${pkgs.lychee}/bin/lychee"
           if [ -n "$token" ]; then
-            ${pkgs.lychee}/bin/lychee --github-token "$token" "$@"
-          else
-            ${pkgs.lychee}/bin/lychee "$@"
+            lychee_cmd="$lychee_cmd --github-token $token"
           fi
+
+          # Extract only added lines from the staged diff of the given files
+          changed_content=""
+          for file in "$@"; do
+            added=$(${pkgs.git}/bin/git diff --cached -U0 -- "$file" | ${pkgs.gnugrep}/bin/grep '^+' | ${pkgs.gnugrep}/bin/grep -v '^+++' | ${pkgs.gnused}/bin/sed 's/^+//')
+            if [ -n "$added" ]; then
+              changed_content="$changed_content
+          $added"
+            fi
+          done
+
+          if [ -z "$changed_content" ]; then
+            exit 0
+          fi
+
+          echo "$changed_content" | $lychee_cmd -
         '';
       in {
         enable = true;
-        package = lychee;
-        entry = "${lychee}/bin/lychee";
+        package = lychee-changed-lines;
+        entry = "${lychee-changed-lines}/bin/lychee-changed-lines";
       };
       rustfmt = {
         enable = true;
