@@ -1,0 +1,51 @@
+# Run `direnv reload` to apply changes to the repository.
+rules:
+  description-empty:
+    level: error
+  description-format:
+    level: error
+    format: ^[A-Z].*$
+  subject-empty:
+    level: error
+  type-empty:
+    level: error
+  type:
+    level: error
+    options:
+      - feat
+      - fix
+      - chore
+      - doc
+  scope-empty:
+    level: error
+  scope:
+    level: error
+    optional: false
+    options:
+      - config
+      - devenv-modules
+      - flakelight-modules
+      - h264-decoder-rs
+      - h264toav1-rs
+      - h265-decoder-rs
+      - home-manager-modules
+      - homepage
+      - lib
+      - nix-workspace
+      - nixos-modules
+      - nixos-rs
+      - nixpkgs-rs
+      - nu-plugin-tramp
+      - pkg-config-rs
+      - pkgs
+      - slides
+      - systemd-rs
+      - tangled
+      - wasm-mojo
+      - wasmtime-mojo
+      - wiki
+      - zed-mojo
+      - zed-nickel
+      - git
+      - readme
+      - license
