@@ -499,6 +499,8 @@
 | 🚧 | Fuzzing | [cargo-fuzz 🦀](https://github.com/rust-fuzz/cargo-fuzz) | [LibAFL 🦀](https://github.com/AFLplusplus/LibAFL) | 🆗 | |
 | ✅ | Coverage | [cargo-llvm-cov 🦀](https://github.com/taiki-e/cargo-llvm-cov) | | 🆗 | |
 | 🚧 | Property Testing | [proptest 🦀](https://github.com/proptest-rs/proptest) | | 🆗 | [quickcheck 🦀](https://github.com/BurntSushi/quickcheck) |
+| 🚧 | Debugger | [LLDB 💣](https://lldb.llvm.org) | [probe-rs 🦀](https://github.com/probe-rs/probe-rs) | [DAP 📖](https://microsoft.github.io/debug-adapter-protocol/) | [GDB 💣](https://sourceware.org/gdb/) |
+| ✅ | Dependency Auditing | [cargo-audit 🦀](https://github.com/rustsec/rustsec/tree/main/cargo-audit) | | 🆗 | |
 
 </details>
 
