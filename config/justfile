@@ -16,24 +16,24 @@ deploy-all:
 rekey:
     cd secrets && agenix --rekey
 
-# Phone (Fairphone 5) image building and flashing
+# Mobile device image building and flashing
 
 [private]
 _flake_dir := justfile_directory() / ".."
 
-phone-decrypt-hostkey:
-    mkdir -p /tmp/phone-hostkeys
-    rage -d -i ~/.ssh/id_ed25519 secrets/phone-host-key.age -o /tmp/phone-hostkeys/ssh_host_ed25519_key
-    chmod 600 /tmp/phone-hostkeys/ssh_host_ed25519_key
-    ssh-keygen -y -f /tmp/phone-hostkeys/ssh_host_ed25519_key > /tmp/phone-hostkeys/ssh_host_ed25519_key.pub
+decrypt-hostkey device:
+    mkdir -p /tmp/{{ device }}-hostkeys
+    rage -d -i ~/.ssh/id_ed25519 secrets/{{ device }}-host-key.age -o /tmp/{{ device }}-hostkeys/ssh_host_ed25519_key
+    chmod 600 /tmp/{{ device }}-hostkeys/ssh_host_ed25519_key
+    ssh-keygen -y -f /tmp/{{ device }}-hostkeys/ssh_host_ed25519_key > /tmp/{{ device }}-hostkeys/ssh_host_ed25519_key.pub
 
-phone-build-boot:
-    nix build --impure --print-build-logs -o result-phone-boot --expr 'let flake = builtins.getFlake "path:{{ _flake_dir }}"; nixosConfig = flake.nixosConfigurations.phone; in flake.lib.mkBootImage { dtb = "qcom/qcm6490-fairphone-fp5.dtb"; } nixosConfig nixosConfig.pkgs'
+build-boot device:
+    nix build --impure --print-build-logs -o result-{{ device }}-boot --expr 'let flake = builtins.getFlake "path:{{ _flake_dir }}"; nixosConfig = flake.nixosConfigurations.{{ device }}; in flake.lib.mkBootImage { dtb = "qcom/qcm6490-fairphone-fp5.dtb"; } nixosConfig nixosConfig.pkgs'
 
-phone-build-rootfs: phone-decrypt-hostkey
-    nix build --impure --print-build-logs -o result-phone-rootfs --expr 'let flake = builtins.getFlake "path:{{ _flake_dir }}"; nixosConfig = flake.nixosConfigurations.phone; in flake.lib.mkRootfsImage nixosConfig nixosConfig.pkgs { sshHostKeyDir = /tmp/phone-hostkeys; }'
+build-rootfs device: (decrypt-hostkey device)
+    nix build --impure --print-build-logs -o result-{{ device }}-rootfs --expr 'let flake = builtins.getFlake "path:{{ _flake_dir }}"; nixosConfig = flake.nixosConfigurations.{{ device }}; in flake.lib.mkRootfsImage nixosConfig nixosConfig.pkgs { sshHostKeyDir = /tmp/{{ device }}-hostkeys; }'
 
-phone-flash: phone-build-boot phone-build-rootfs
-    fastboot flash boot result-phone-boot
-    fastboot flash userdata result-phone-rootfs
+flash device: (build-boot device) (build-rootfs device)
+    fastboot flash boot result-{{ device }}-boot
+    fastboot flash userdata result-{{ device }}-rootfs
     fastboot reboot
