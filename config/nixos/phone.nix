@@ -50,6 +50,10 @@
       };
     }
 
+    # ── Home Manager ──────────────────────────────────────────────────
+    inputs.home-manager.nixosModules.home-manager
+    inputs.self.nixosModules.home-manager
+
     # ── Secrets ───────────────────────────────────────────────────────
     inputs.ragenix.nixosModules.default
     ({pkgs, ...}: {
