@@ -1,5 +1,9 @@
 {
+  lib,
+  pkgs,
+  ...
+}: {
   programs.carapace = {
-    enable = true;
+    enable = lib.mkDefault pkgs.stdenv.hostPlatform.isx86_64;
   };
 }

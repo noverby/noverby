@@ -1,4 +1,9 @@
-{pkgs, ...}: {
+{
+  lib,
+  pkgs,
+  ...
+}:
+lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 {
   systemd.user = {
     services = {
       vibe = {

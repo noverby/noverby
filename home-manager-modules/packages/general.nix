@@ -1,23 +1,30 @@
-{pkgs, ...}: {
-  home.packages = with pkgs.pkgsUnstable; [
-    #bitwarden
-    slack
-    fragments
-    evince
-    bitwarden-desktop
-    mpv
-    onlyoffice-desktopeditors
-    dconf-editor
-    rclone
-    gnome-network-displays
-    gnome-system-monitor
-    file-roller
-    wireplumber
-    gnome-disk-utility
-    firefoxpwa
-    cheese
-    pavucontrol
-    kooha
-    rustdesk-flutter
-  ];
+{
+  pkgs,
+  lib,
+  ...
+}: {
+  home.packages = with pkgs.pkgsUnstable;
+    [
+      #bitwarden
+      fragments
+      evince
+      bitwarden-desktop
+      mpv
+      dconf-editor
+      rclone
+      gnome-network-displays
+      gnome-system-monitor
+      file-roller
+      wireplumber
+      gnome-disk-utility
+      firefoxpwa
+      cheese
+      pavucontrol
+      kooha
+    ]
+    ++ lib.optionals pkgs.stdenv.hostPlatform.isx86_64 (with pkgs.pkgsUnstable; [
+      slack
+      onlyoffice-desktopeditors
+      rustdesk-flutter
+    ]);
 }
