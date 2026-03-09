@@ -6,7 +6,7 @@
     granted
 
     # AI
-    mistral-vibe
+    #mistral-vibe
     # AI tools/languages
 
     # System dev
