@@ -1,8 +1,12 @@
-_: {
+{
+  lib,
+  pkgs,
+  ...
+}: {
   programs.git = {
     enable = true;
     lfs = {
-      enable = true;
+      enable = lib.mkDefault pkgs.stdenv.hostPlatform.isx86_64;
     };
     settings = {
       user = {

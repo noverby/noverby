@@ -1,9 +1,10 @@
 {
   inputs,
   pkgs,
+  lib,
   ...
 }: {
-  programs.spicetify = let
+  programs.spicetify = lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 (let
     spicePkgs = inputs.spicetify-nix.legacyPackages.${pkgs.stdenv.system};
   in {
     enable = true;
@@ -12,5 +13,5 @@
     enabledCustomApps = [
       spicePkgs.apps.ncsVisualizer
     ];
-  };
+  });
 }

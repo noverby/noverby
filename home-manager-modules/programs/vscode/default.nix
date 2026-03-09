@@ -3,7 +3,8 @@
   lib,
   pkgs,
   ...
-}: let
+}:
+lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 (let
   vscodePname = config.programs.vscode.package.pname;
   configDir =
     {
@@ -57,4 +58,4 @@ in {
       keybindings = lib.fromJSON (lib.readFile ./keybindings.json);
     };
   };
-}
+})

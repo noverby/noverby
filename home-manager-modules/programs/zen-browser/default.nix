@@ -3,7 +3,7 @@
   lib,
   ...
 }: {
-  programs.zen-browser = {
+  programs.zen-browser = lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 {
     enable = true;
     suppressXdgMigrationWarning = true;
     nativeMessagingHosts = [pkgs.firefoxpwa];

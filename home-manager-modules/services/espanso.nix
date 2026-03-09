@@ -1,5 +1,9 @@
 {
-  services.espanso = {
+  lib,
+  pkgs,
+  ...
+}: {
+  services.espanso = lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 {
     enable = true;
     configs = {
       default = {
