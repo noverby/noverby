@@ -2,7 +2,7 @@
 # ║  PHONE — Fairphone 5                                                ║
 # ║                                                                      ║
 # ║  NixOS on Fairphone 5 (QCM6490 / Qualcomm SC7280) with COSMIC DE.  ║
-# ║  Cross-compiled from x86_64-linux.                                   ║
+# ║  Built natively for aarch64-linux via binfmt emulation on x86_64.   ║
 # ║                                                                      ║
 # ║  Based on: https://github.com/gian-reto/nixos-fairphone-fp5         ║
 # ╚═══════════════════════════════════════════════════════════════════════╝
@@ -18,14 +18,15 @@
 # Subsequent updates (over SSH / on-device):
 #   nixos-rebuild switch --flake .#phone --target-host root@<phone-ip>
 #
-# Note on cross-compilation:
-#   This configuration sets nixpkgs.buildPlatform = "x86_64-linux" so that
-#   the entire system closure can be built on an x86_64 host.  The upstream
-#   nixos-fairphone-fp5 project claims cross-compilation is unsupported;
-#   we work around this by:
-#     - Ensuring build-time tools (pil-squasher, qmic) are nativeBuildInputs
-#     - Using buildPackages.stdenv for the kernel config derivation
-#     - Relaxing platform restrictions from aarch64-only to all linux
+# Note on build strategy:
+#   Rather than cross-compiling (nixpkgs.buildPlatform = "x86_64-linux"),
+#   this configuration builds natively for aarch64-linux.  The x86_64 host
+#   must have binfmt emulation enabled (boot.binfmt.emulatedSystems =
+#   ["aarch64-linux"]).  This way:
+#     - Pre-built aarch64-linux packages are fetched from the binary cache
+#     - Only uncached packages (kernel, firmware, etc.) are built under
+#       QEMU emulation — slower per-package but far fewer to build
+#     - No cross-compilation workaround overlays are needed
 {
   inputs,
   src,
@@ -77,45 +78,8 @@
 
     # ── Machine configuration ─────────────────────────────────────────
     ({pkgs, ...}: {
-      # ── Cross-compilation ───────────────────────────────────────────
-      # Build on x86_64-linux, target aarch64-linux.
-      # This is what makes it possible to build the entire phone image
-      # from an x86_64 workstation without needing an aarch64 builder.
-      nixpkgs.buildPlatform = "x86_64-linux";
-
-      # Workaround: iniparser has doCheck = true which adds
-      # -DBUILD_TESTING:BOOL=TRUE to cmakeFlags, requiring ruby for
-      # its test suite.  Ruby is not available when cross-compiling,
-      # so we disable the check phase.
       nixpkgs.overlays = [
         inputs.self.overlays.default
-        (final: prev: {
-          iniparser = prev.iniparser.overrideAttrs {
-            doCheck = false;
-          };
-          ibus = prev.ibus.overrideAttrs {
-            enableParallelInstalling = false;
-          };
-          gjs = prev.gjs.overrideAttrs (old: {
-            mesonFlags =
-              (old.mesonFlags or [])
-              ++ [
-                "-Dskip_gtk_tests=true"
-              ];
-          });
-          xdg-desktop-portal-cosmic = prev.xdg-desktop-portal-cosmic.overrideAttrs (old: {
-            buildInputs = (old.buildInputs or []) ++ [final.glib];
-          });
-          power-profiles-daemon = prev.power-profiles-daemon.overrideAttrs (old: {
-            mesonFlags =
-              (old.mesonFlags or [])
-              ++ [
-                "-Dmanpage=disabled"
-                "-Dbashcomp=disabled"
-                "-Dzshcomp="
-              ];
-          });
-        })
       ];
 
       # ── Identity ────────────────────────────────────────────────────
