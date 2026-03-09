@@ -8,13 +8,13 @@
 stdenv.mkDerivation {
   pname = "firmware-fairphone-fp5";
   # No versioned releases, so let's use the commit hash for now.
-  version = "ebb4d6a47865e78a9fd6689394221a5bb3d621dd";
+  version = "a4908f548e6f88965e78b1478af1751b6a854fc9";
 
   src = fetchFromGitHub {
     owner = "FairBlobs";
     repo = "FP5-firmware";
-    rev = "ebb4d6a47865e78a9fd6689394221a5bb3d621dd";
-    hash = "sha256-SVZqkSYyQw876dQ4sjW2/G33y+jA73bhylT+FhvdoGk=";
+    rev = "a4908f548e6f88965e78b1478af1751b6a854fc9";
+    hash = "sha256-XRklo4XfRrskmIxdyY9duU8nF0svoQV90KwaF15ISjk=";
   };
 
   meta = {
@@ -75,6 +75,12 @@ stdenv.mkDerivation {
     # Install Venus video firmware (renamed to venus.mbn for kernel compatibility).
     install -Dm644 vpu20_1v.mbn \
       "$out/lib/firmware/qcom/qcm6490/fairphone5/venus.mbn"
+
+    # Install AW88261 speaker amplifier firmware.
+    # The file in the repo is named aw882xx_acf.bin but the kernel driver
+    # (via DTS firmware-name property) expects aw88261_acf.bin.
+    install -Dm644 aw882xx_acf.bin \
+      "$out/lib/firmware/qcom/qcm6490/fairphone5/aw88261_acf.bin"
 
     # Install Bluetooth firmware to qca/.
     mkdir -p "$out/lib/firmware/qca"

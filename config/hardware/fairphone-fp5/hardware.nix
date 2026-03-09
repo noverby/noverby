@@ -1,5 +1,5 @@
 # Fairphone 5 hardware module: kernel, firmware, device tree, filesystems,
-# serial consoles, and automatic root filesystem expansion.
+# serial consoles, audio, and automatic root filesystem expansion.
 {
   config,
   lib,
@@ -7,6 +7,33 @@
   ...
 }: let
   cfg = config.nixos-fairphone-fp5;
+
+  # WirePlumber configuration for Fairphone 5 audio.
+  # Forces S32LE sample format for all ALSA output sinks.  The Qualcomm ADSP
+  # expects 24-bit audio padded into 32-bit frames; without this, PipeWire may
+  # negotiate S24_LE which the ADSP cannot handle correctly.
+  # See: https://wiki.postmarketos.org/wiki/Fairphone_5_(fairphone-fp5)/Audio
+  # From: https://gitlab.postmarketos.org/postmarketOS/pmaports device-fairphone-fp5
+  wireplumberFp5Config =
+    pkgs.writeTextDir
+    "share/wireplumber/wireplumber.conf.d/52-fairphone-fp5.conf"
+    ''
+      monitor.alsa.rules = [
+        {
+          matches = [
+            {
+              # Matches all sinks
+              node.name = "~alsa_output.*"
+            }
+          ]
+          actions = {
+            update-props = {
+              audio.format           = "S32LE"
+           }
+          }
+        }
+      ]
+    '';
 in {
   options.nixos-fairphone-fp5 = {
     enable = lib.mkEnableOption "Fairphone 5 hardware support";
@@ -36,7 +63,9 @@ in {
       };
 
       enableAllFirmware = true;
-      firmware = [pkgs.firmware-fairphone-fp5];
+      firmware = [
+        pkgs.firmware-fairphone-fp5
+      ];
       # Qualcomm firmware must be uncompressed.
       firmwareCompression = "none";
     };
@@ -69,6 +98,20 @@ in {
         includeDefaultModules = false;
         systemd.enable = false;
       };
+
+      # Kernel modules for audio subsystem — loaded after boot (not in initrd).
+      # The device tree triggers automatic loading via udev/modalias, but
+      # listing them here ensures they are always available and loaded early.
+      kernelModules = [
+        "snd-soc-sm8250" # ASoC machine driver (registers the "Fairphone 5" card)
+        "snd-soc-aw88261" # AW88261 speaker amplifier codec
+        "snd-soc-wcd938x" # WCD9385 codec (mic / headphone / HAC)
+        "snd-soc-wcd938x-sdw" # WCD938X SoundWire interface
+        "snd-soc-lpass-rx-macro" # LPASS RX macro (SoundWire RX)
+        "snd-soc-lpass-tx-macro" # LPASS TX macro (SoundWire TX)
+        "snd-soc-lpass-va-macro" # LPASS VA macro (voice activity)
+        "soundwire-qcom" # Qualcomm SoundWire controller
+      ];
 
       # Disable GRUB — we use Android boot image format.
       loader.grub.enable = false;
@@ -126,6 +169,32 @@ in {
     };
 
     console.earlySetup = true;
+
+    # ── Audio (ALSA UCM & WirePlumber) ──────────────────────────────
+    # Install device-specific ALSA UCM profiles so PipeWire / ALSA can
+    # set up audio routes for the AW88261 speakers, WCD9385 microphones,
+    # and DisplayPort output.  The UCM profiles come from the
+    # sc7280-mainline/alsa-ucm-conf repository which is what PostmarketOS
+    # ships as alsa-ucm-conf-qcom-sc7280.
+    #
+    # The WirePlumber config forces S32LE output format (see comment at
+    # top of file).
+    environment = {
+      systemPackages = [
+        pkgs.alsa-ucm-conf-fairphone-fp5
+      ];
+
+      # Point ALSA at the device-specific UCM profiles.  The sc7280-mainline
+      # UCM repo is a full replacement that includes both Fairphone-specific
+      # profiles and all upstream profiles it depends on.
+      sessionVariables.ALSA_CONFIG_UCM2 = "${pkgs.alsa-ucm-conf-fairphone-fp5}/share/alsa/ucm2";
+
+      # Drop the WirePlumber S32LE quirk into the global config directory
+      # so it is picked up by the WirePlumber instance that PipeWire spawns.
+      etc."wireplumber/wireplumber.conf.d/52-fairphone-fp5.conf" = {
+        source = "${wireplumberFp5Config}/share/wireplumber/wireplumber.conf.d/52-fairphone-fp5.conf";
+      };
+    };
 
     # Serial gettys, A/B slot management, and first-boot resize service.
     systemd.services = {
