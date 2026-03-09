@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 
-def main [...args: string] {
+def --wrapped main [...args: string] {
     let real_jj = "@JJ_BIN@"
 
     if ($args | is-empty) {
