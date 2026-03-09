@@ -87,6 +87,8 @@
 | [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | pkg-config reimplementation |
 | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | Nickel-powered workspace manager for Nix flakes |
 | [H264-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h264-decoder-rs) | Pure Rust H.264 decoder library and CLI |
+| [H265-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h265-decoder-rs) | Pure Rust H.265/HEVC decoder library |
+| [H264toav1-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h264toav1-rs) | CLI tool for transcoding H.264/H.265 video to AV1 |
 | [Nu-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nu-plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
 
 </details>
