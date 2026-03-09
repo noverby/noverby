@@ -20,6 +20,7 @@
       rmtfs = final.callPackage ./pkgs/rmtfs.nix {};
       tqftpserv = final.callPackage ./pkgs/tqftpserv {};
       bootmac = final.callPackage ./pkgs/bootmac.nix {};
+      alsa-ucm-conf-fairphone-fp5 = final.callPackage ./pkgs/alsa-ucm-conf-fairphone-fp5.nix {};
     })
   ];
 }
