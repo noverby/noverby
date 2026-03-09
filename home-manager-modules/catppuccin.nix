@@ -1,13 +1,9 @@
-{
-  lib,
-  pkgs,
-  ...
-}: {
+_: {
   catppuccin = {
     enable = true;
     kvantum.enable = false;
   };
-  qt = lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 {
+  qt = {
     enable = true;
     style.name = "qtct";
     platformTheme.name = "qtct";
