@@ -21,10 +21,10 @@
       cheese
       pavucontrol
       kooha
+      rustdesk-flutter
     ]
     ++ lib.optionals pkgs.stdenv.hostPlatform.isx86_64 (with pkgs.pkgsUnstable; [
       slack
       onlyoffice-desktopeditors
-      rustdesk-flutter
     ]);
 }
