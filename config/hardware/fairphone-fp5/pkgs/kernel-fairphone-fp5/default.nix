@@ -42,6 +42,14 @@
   # - CONFIG_NETFILTER_XT_MATCH_STATE: Connection state matching.
   # - CONFIG_NETFILTER_XT_TARGET_LOG: Logging target for firewall rules.
   #
+  # Audio subsystem (Fairphone 5 speakers, microphones, SoundWire):
+  # - CONFIG_SOUNDWIRE_QCOM: Qualcomm SoundWire controller (bus for WCD938X codec).
+  # - CONFIG_SND_SOC_AW88261: AW88261 speaker amplifier codec driver.
+  # - CONFIG_SND_SOC_WCD938X_SDW: WCD9385 codec SoundWire interface (mic/headphone/HAC).
+  # - CONFIG_SND_SOC_LPASS_RX_MACRO: LPASS RX macro (SoundWire RX path).
+  # - CONFIG_SND_SOC_LPASS_TX_MACRO: LPASS TX macro (SoundWire TX path).
+  # - CONFIG_SND_SOC_LPASS_VA_MACRO: LPASS VA macro (voice activity / digital mic path).
+  #
   # DisplayPort output over USB-C:
   # - CONFIG_TYPEC_DP_ALTMODE: Required for DP Alt Mode over USB-C to work.
   configfile = buildPackages.stdenv.mkDerivation {
@@ -62,6 +70,12 @@
         -e 's/# CONFIG_NETFILTER_XT_MATCH_STATE is not set/CONFIG_NETFILTER_XT_MATCH_STATE=m/' \
         -e 's/# CONFIG_NETFILTER_XT_TARGET_LOG is not set/CONFIG_NETFILTER_XT_TARGET_LOG=m/' \
         -e 's/# CONFIG_TYPEC_DP_ALTMODE is not set/CONFIG_TYPEC_DP_ALTMODE=y/' \
+        -e 's/# CONFIG_SOUNDWIRE_QCOM is not set/CONFIG_SOUNDWIRE_QCOM=m/' \
+        -e 's/# CONFIG_SND_SOC_AW88261 is not set/CONFIG_SND_SOC_AW88261=m/' \
+        -e 's/# CONFIG_SND_SOC_WCD938X_SDW is not set/CONFIG_SND_SOC_WCD938X_SDW=m/' \
+        -e 's/# CONFIG_SND_SOC_LPASS_RX_MACRO is not set/CONFIG_SND_SOC_LPASS_RX_MACRO=m/' \
+        -e 's/# CONFIG_SND_SOC_LPASS_TX_MACRO is not set/CONFIG_SND_SOC_LPASS_TX_MACRO=m/' \
+        -e 's/# CONFIG_SND_SOC_LPASS_VA_MACRO is not set/CONFIG_SND_SOC_LPASS_VA_MACRO=m/' \
         $src > config
     '';
 
