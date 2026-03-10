@@ -15,3 +15,4 @@
 #   events/     — HandlerRegistry and action tags
 #   component/  — AppShell, ComponentContext, lifecycle, KeyedList, Router
 #   html/       — HTML vocabulary: tags, DSL element constructors, VNodeBuilder
+#   platform/   — Platform abstraction: PlatformApp trait, launch(), feature detection
