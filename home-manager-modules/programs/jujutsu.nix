@@ -20,6 +20,9 @@ in {
         name = "Niclas Overby";
         email = "niclas@overby.me";
       };
+      templates = {
+        commit_trailers = "format_signed_off_by_trailer(self)";
+      };
       ui = {
         pager = "delta";
         diff-formatter = ":git";
