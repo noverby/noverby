@@ -133,33 +133,11 @@ The web build:
 
 The build command uses `-I ../examples` to resolve the shared example imports (`from counter import ...`, `from apps.safe_counter import ...`, etc.).
 
-### Desktop Target (Native + Webview)
-
-Build from the `mojo-gui/desktop/` directory:
-
-```sh
-cd mojo-gui/desktop
-
-# Ensure the C shim library is built (requires GTK4 + WebKitGTK):
-nix build .#mojo-webview-shim  # or build manually, see desktop/shim/
-
-# Run the counter example:
-export MOJO_WEBVIEW_LIB=/path/to/libmojo_webview.so
-export MOJO_GUI_DESKTOP_RUNTIME=runtime/desktop-runtime.js
-mojo run -I ../core/src -I ../examples -I src examples/counter.mojo
-```
-
-The desktop build:
-
-1. Compiles Mojo source to a native binary (no WASM)
-2. Creates a GTK4 window with an embedded WebKitGTK webview
-3. Injects the JS mutation interpreter into the webview
-4. Mutations are base64-encoded and sent via IPC to the webview
-5. Events flow back from JS via a polling ring buffer
-
 ### Desktop Target — Blitz (Future)
 
-The Blitz-based desktop renderer will eliminate the webview dependency:
+> **Status: 🔮 Future** — The Blitz-based desktop renderer is not yet implemented.
+
+The desktop renderer will use Blitz (Stylo + Taffy + Vello + Winit + AccessKit) to render natively without a browser engine:
 
 ```sh
 cd mojo-gui/desktop
@@ -173,7 +151,15 @@ mojo build ../examples/counter/counter.mojo \
     -o dist/counter
 ```
 
-This will use Stylo (Firefox's CSS engine) + Taffy (layout) + Vello (GPU rendering) instead of a webview. See `SEPARATION_PLAN.md` Phase 3 for details.
+The desktop build will:
+
+1. Compile Mojo source to a native binary (no WASM)
+2. Create a Winit window with a Vello GPU rendering surface
+3. Interpret binary mutations directly into Blitz's DOM tree
+4. Resolve CSS via Stylo and compute layout via Taffy
+5. Events flow from Winit's event loop to the core framework
+
+See `SEPARATION_PLAN.md` Phase 3 for details.
 
 ## How Web Assets Work
 
@@ -271,7 +257,7 @@ Progress toward fully shared, platform-agnostic examples:
 │                                                 │
 │  NEVER imports:                                 │
 │    mojo-gui/web (JS runtime, WASM exports)      │
-│    mojo-gui/desktop (webview, Blitz FFI)        │
+│    mojo-gui/desktop (Blitz FFI)                 │
 └───────────────┬─────────────────────────────────┘
                 │ compile target selects renderer
         ┌───────┼───────────┐

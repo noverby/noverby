@@ -26,7 +26,6 @@ from .features import (
     features_registered,
     default_features,
     web_features,
-    desktop_webview_features,
     desktop_blitz_features,
     native_features,
 )

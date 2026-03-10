@@ -33,9 +33,9 @@ Write a Mojo GUI app once, run it in the browser via WASM **and** natively on de
      │ mojo-gui │ │ mojo-gui │ │ mojo-gui │
      │ /web     │ │ /desktop │ │ /native  │
      │          │ │ (future) │ │ (future) │
-     │ main.mojo│ │ webview  │ │          │
-     │ runtime/ │ │ + reused │ │ widget   │
-     │ examples/│ │ JS interp│ │ mapping  │
+     │ main.mojo│ │ Blitz    │ │          │
+     │ runtime/ │ │ (Stylo + │ │ widget   │
+     │ examples/│ │  Vello)  │ │ mapping  │
      └──────────┘ └──────────┘ └──────────┘
 ```
 
@@ -45,8 +45,8 @@ Write a Mojo GUI app once, run it in the browser via WASM **and** natively on de
 |---------|--------|-------------|
 | [`core/`](core/) | ✅ Active | Renderer-agnostic reactive GUI framework — signals, virtual DOM, diff engine, binary mutation protocol, component framework, HTML vocabulary |
 | [`web/`](web/) | ✅ Active | Browser renderer — compiles Mojo to WASM, TypeScript runtime interprets mutations into real DOM |
-| `desktop/` | 🔮 Future | Desktop renderer — embeds a webview, reuses the JS interpreter, communicates via IPC |
-| `native/` | 🔮 Future | Native renderer — maps DOM-like mutations directly to platform widgets (GTK, Cocoa, Win32) |
+| `desktop/` | 🔮 Future | Desktop renderer — native rendering via Blitz (Stylo + Taffy + Vello + Winit + AccessKit) |
+| `native/` | 🔮 Future | Native renderer — maps DOM-like mutations directly to platform widgets (Cocoa, Win32, etc.) |
 
 ## How It Works
 
@@ -63,14 +63,14 @@ The **binary mutation protocol** is the renderer contract. The core framework ne
 └──────────────────────┘                                 └─────────────────────┘
 ```
 
-| Opcode | Web (DOM) | Desktop (Webview) | Native (future) |
-|--------|-----------|-------------------|-----------------|
-| `LOAD_TEMPLATE` | `cloneNode(true)` | Same (webview has DOM) | Create widget tree |
-| `SET_ATTRIBUTE` | `el.setAttribute()` | Same | Set widget property |
-| `SET_TEXT` | `node.textContent = ...` | Same | Set label text |
-| `NEW_EVENT_LISTENER` | `addEventListener()` | Same | Register widget callback |
-| `APPEND_CHILDREN` | `parent.appendChild()` | Same | Add child widget |
-| `REMOVE` | `node.remove()` | Same | Destroy widget |
+| Opcode | Web (DOM) | Desktop (Blitz) | Native (future) |
+|--------|-----------|-----------------|-----------------|
+| `LOAD_TEMPLATE` | `cloneNode(true)` | Blitz DOM tree clone | Create widget tree |
+| `SET_ATTRIBUTE` | `el.setAttribute()` | Blitz node attribute | Set widget property |
+| `SET_TEXT` | `node.textContent = ...` | Blitz text node | Set label text |
+| `NEW_EVENT_LISTENER` | `addEventListener()` | Winit event binding | Register widget callback |
+| `APPEND_CHILDREN` | `parent.appendChild()` | Blitz tree append | Add child widget |
+| `REMOVE` | `node.remove()` | Blitz node remove | Destroy widget |
 
 ## Quick Start
 
@@ -151,7 +151,7 @@ mojo-gui/
 │   ├── justfile                  # Build commands
 │   └── README.md
 │
-├── desktop/                      # Desktop renderer (future — webview)
+├── desktop/                      # Desktop renderer (future — Blitz)
 ├── native/                       # Native renderer (future — platform widgets)
 └── README.md                     # This file
 ```

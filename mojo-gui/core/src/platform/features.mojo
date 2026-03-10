@@ -8,14 +8,14 @@
 #
 # Examples of features that vary by renderer:
 #
-#   - DOM manipulation (web: native DOM, desktop: Blitz/webview DOM, native: none)
+#   - DOM manipulation (web: native DOM, desktop: Blitz DOM, native: none)
 #   - CSS styling (web: full browser CSS, desktop: Stylo subset, native: themes)
 #   - Clipboard access (web: async Clipboard API, desktop: OS clipboard, native: OS)
 #   - File system access (web: limited/sandboxed, desktop: full, native: full)
 #   - Network access (web: fetch/XHR with CORS, desktop: unrestricted, native: unrestricted)
 #   - GPU rendering (web: WebGL/WebGPU, desktop: Vello, native: platform compositor)
 #   - Accessibility (web: ARIA, desktop: AccessKit, native: platform a11y)
-#   - Multi-window (web: no, desktop: yes via Blitz/Winit, native: yes)
+#   - Multi-window (web: no, desktop: yes via Winit, native: yes)
 #
 # Usage:
 #
@@ -106,7 +106,7 @@ struct PlatformFeatures(Copyable, Movable):
 
     var renderer_name: String
     """Human-readable name of the active renderer.
-    Examples: "web", "desktop-webview", "desktop-blitz", "native-gtk"."""
+    Examples: "web", "desktop-blitz", "native"."""
 
     # ── Constructor ───────────────────────────────────────────────────
 
@@ -177,28 +177,8 @@ fn web_features() -> PlatformFeatures:
     return f
 
 
-fn desktop_webview_features() -> PlatformFeatures:
-    """Return the feature set for the desktop webview renderer.
-
-    Desktop webview has full DOM/CSS (via WebKitGTK or equivalent),
-    native window chrome, unrestricted I/O, and multi-window support.
-    """
-    var f = PlatformFeatures()
-    f.has_dom = True
-    f.has_css = True
-    f.has_gpu = True  # WebKitGTK GPU compositing
-    f.has_multi_window = True
-    f.has_native_chrome = True
-    f.has_clipboard = True
-    f.has_filesystem = True
-    f.has_unrestricted_network = True
-    f.has_accessibility = True  # GTK a11y
-    f.renderer_name = String("desktop-webview")
-    return f
-
-
 fn desktop_blitz_features() -> PlatformFeatures:
-    """Return the feature set for the desktop Blitz renderer (future).
+    """Return the feature set for the desktop Blitz renderer.
 
     Blitz provides DOM/CSS via Stylo + Taffy + Vello, native chrome via
     Winit, and accessibility via AccessKit. Full native I/O capabilities.
@@ -220,8 +200,8 @@ fn desktop_blitz_features() -> PlatformFeatures:
 fn native_features() -> PlatformFeatures:
     """Return the feature set for the native widget renderer (future).
 
-    Native renderers map DOM mutations to platform widgets (GTK, Cocoa,
-    Win32). They don't have a DOM or CSS engine — styling is via the
+    Native renderers map DOM mutations to platform widgets (Cocoa, Win32,
+    etc.). They don't have a DOM or CSS engine — styling is via the
     platform's native theme system.
     """
     var f = PlatformFeatures()
@@ -292,10 +272,10 @@ fn default_features() -> PlatformFeatures:
     renderer is initialized.
 
     For WASM targets, returns web_features().
-    For native targets, returns desktop_webview_features() (the most
-    common native renderer).
+    For native targets, returns desktop_blitz_features() (the default
+    desktop renderer).
     """
     if is_wasm_target():
         return web_features()
     else:
-        return desktop_webview_features()
+        return desktop_blitz_features()

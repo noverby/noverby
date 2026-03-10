@@ -1,15 +1,18 @@
 """mojo-gui/desktop — Desktop renderer for mojo-gui applications.
 
-This package provides a native desktop GUI backend using GTK4 + WebKitGTK.
-The core mojo-gui framework writes binary mutations to a heap buffer, and
-the desktop renderer sends them to an embedded webview via IPC.
+This package will provide a native desktop GUI backend using Blitz
+(Stylo + Taffy + Vello + Winit + AccessKit). The core mojo-gui framework
+writes binary mutations to a heap buffer, and the desktop renderer
+interprets them natively via Blitz's DOM/CSS/layout/paint pipeline.
 
-Modules:
-  - webview: FFI bindings to the libmojo_webview C shim
-  - bridge:  Mutation buffer + event polling bridge
-  - app:     DesktopApp entry point and event loop
+Status: 🔮 Future — not yet implemented.
 
-Usage:
+Modules (planned):
+  - engine:  Blitz rendering engine integration
+  - bridge:  Mutation buffer interpreter (binary opcodes → Blitz DOM ops)
+  - app:     DesktopApp entry point and event loop (Winit-based)
+
+Usage (planned):
 
     from desktop.app import DesktopApp
 
