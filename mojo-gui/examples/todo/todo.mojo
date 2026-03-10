@@ -1,11 +1,9 @@
 # TodoApp — Self-contained todo list application with empty state message.
 #
 # Phase 3.9 (Step 3.9.4): Refactored to implement the GuiApp trait.
-# Free functions (todo_app_rebuild, todo_app_flush) have been moved
-# into struct methods (mount, flush). A unified handle_event() with
-# value: String parameter replaces the old handle_event(handler_id)
-# method. Free functions are retained as thin wrappers for backwards
-# compatibility with the existing @export wrappers in web/src/main.mojo.
+# Free functions have been removed — the @export wrappers in
+# web/src/main.mojo now use the generic gui_app_exports helpers
+# which call GuiApp trait methods directly (Step 3.9.5).
 #
 # Phase 28: Extended with a ConditionalSlot that shows "No items yet —
 # add one above!" when the todo list is empty, and hides it when items
@@ -126,7 +124,7 @@
 #                 return True
 #             return False
 
-from memory import UnsafePointer, alloc
+from memory import UnsafePointer
 from bridge import MutationWriter
 from mutations import CreateEngine
 from events import HandlerEntry
@@ -651,53 +649,3 @@ struct TodoApp(GuiApp):
         """
         var vb = VNodeBuilder(self.empty_msg_tmpl, self.ctx.store_ptr())
         return vb.index()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Backwards-compatible free functions
-# ══════════════════════════════════════════════════════════════════════════════
-#
-# These thin wrappers delegate to the GuiApp trait methods on TodoApp.
-# They exist for backwards compatibility with the existing @export wrappers
-# in web/src/main.mojo, which call them by name. Once the @export wrappers
-# are genericized over GuiApp (Step 3.9.5), these can be removed.
-
-
-fn todo_app_init() -> UnsafePointer[TodoApp, MutExternalOrigin]:
-    """Initialize the todo app.  Returns a pointer to the app state.
-
-    All setup happens in TodoApp.__init__() — this function just
-    allocates the heap slot and moves the app into it.
-    """
-    var app_ptr = alloc[TodoApp](1)
-    app_ptr.init_pointee_move(TodoApp())
-    return app_ptr
-
-
-fn todo_app_destroy(app_ptr: UnsafePointer[TodoApp, MutExternalOrigin]):
-    """Destroy the todo app and free all resources."""
-    app_ptr[0].destroy()
-    app_ptr.destroy_pointee()
-    app_ptr.free()
-
-
-fn todo_app_rebuild(
-    mut app: TodoApp,
-    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-) -> Int32:
-    """Initial render (mount) — delegates to TodoApp.mount().
-
-    Returns the byte offset (length) of the mutation data written.
-    """
-    return app.mount(writer_ptr)
-
-
-fn todo_app_flush(
-    mut app: TodoApp,
-    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-) -> Int32:
-    """Flush pending updates — delegates to TodoApp.flush().
-
-    Returns the byte offset (length) of mutation data, or 0 if nothing dirty.
-    """
-    return app.flush(writer_ptr)

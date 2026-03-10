@@ -79,37 +79,19 @@ from component import (
 )
 from signals.handle import SignalI32 as _SignalI32
 
-from counter import (
-    CounterApp,
-    counter_app_init,
-    counter_app_destroy,
-    counter_app_rebuild,
-    counter_app_handle_event,
-    counter_app_flush,
+from gui_app_exports import (
+    gui_app_init,
+    gui_app_destroy,
+    gui_app_mount,
+    gui_app_handle_event,
+    gui_app_handle_event_string,
+    gui_app_flush,
+    gui_app_has_dirty,
 )
-from todo import (
-    TodoApp,
-    todo_app_init,
-    todo_app_destroy,
-    todo_app_rebuild,
-    todo_app_flush,
-)
-from bench import (
-    BenchmarkApp,
-    bench_app_init,
-    bench_app_destroy,
-    bench_app_rebuild,
-    bench_app_flush,
-)
-from app import (
-    MultiViewApp,
-    multi_view_app_init,
-    multi_view_app_destroy,
-    multi_view_app_rebuild,
-    multi_view_app_handle_event,
-    multi_view_app_flush,
-    multi_view_app_navigate,
-)
+from counter import CounterApp
+from todo import TodoApp
+from bench import BenchmarkApp
+from app import MultiViewApp
 from apps.child_counter import (
     ChildCounterApp,
     _cc_init,
@@ -2443,23 +2425,20 @@ fn effect_pending_at(rt_ptr: Int64, index: Int32) -> Int32:
 @export
 fn counter_init() -> Int64:
     """Initialize the counter app.  Returns a pointer to the app state."""
-    return _to_i64(counter_app_init())
+    return gui_app_init[CounterApp]()
 
 
 @export
 fn counter_destroy(app_ptr: Int64):
     """Destroy the counter app and free all resources."""
-    counter_app_destroy(_get[CounterApp](app_ptr))
+    gui_app_destroy[CounterApp](app_ptr)
 
 
 @export
 fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the counter app.  Returns mutation byte length.
     """
-    var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = counter_app_rebuild(_get[CounterApp](app_ptr)[0], writer_ptr)
-    _free_writer(writer_ptr)
-    return offset
+    return gui_app_mount[CounterApp](app_ptr, buf_ptr, capacity)
 
 
 @export
@@ -2467,21 +2446,14 @@ fn counter_handle_event(
     app_ptr: Int64, handler_id: Int32, event_type: Int32
 ) -> Int32:
     """Dispatch an event to the counter app.  Returns 1 if action executed."""
-    return _b2i(
-        counter_app_handle_event(
-            _get[CounterApp](app_ptr)[0], UInt32(handler_id), UInt8(event_type)
-        )
-    )
+    return gui_app_handle_event[CounterApp](app_ptr, handler_id, event_type)
 
 
 @export
 fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = counter_app_flush(_get[CounterApp](app_ptr)[0], writer_ptr)
-    _free_writer(writer_ptr)
-    return offset
+    return gui_app_flush[CounterApp](app_ptr, buf_ptr, capacity)
 
 
 # ── Counter App Query Exports ────────────────────────────────────────────────
@@ -2526,7 +2498,7 @@ fn counter_count_value(app_ptr: Int64) -> Int32:
 @export
 fn counter_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the counter app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get[CounterApp](app_ptr)[0].ctx.has_dirty())
+    return gui_app_has_dirty[CounterApp](app_ptr)
 
 
 @export
@@ -2592,22 +2564,19 @@ fn counter_cond_mounted(app_ptr: Int64) -> Int32:
 @export
 fn todo_init() -> Int64:
     """Initialize the todo app.  Returns a pointer to the app state."""
-    return _to_i64(todo_app_init())
+    return gui_app_init[TodoApp]()
 
 
 @export
 fn todo_destroy(app_ptr: Int64):
     """Destroy the todo app and free all resources."""
-    todo_app_destroy(_get[TodoApp](app_ptr))
+    gui_app_destroy[TodoApp](app_ptr)
 
 
 @export
 fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the todo app.  Returns mutation byte length."""
-    var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = todo_app_rebuild(_get[TodoApp](app_ptr)[0], writer_ptr)
-    _free_writer(writer_ptr)
-    return offset
+    return gui_app_mount[TodoApp](app_ptr, buf_ptr, capacity)
 
 
 @export
@@ -2619,11 +2588,7 @@ fn todo_handle_event(
     Returns 1 if the handler was found and action executed (toggle/remove),
     0 if the handler is the add handler (JS must read input) or unknown.
     """
-    return _b2i(
-        _get[TodoApp](app_ptr)[0].handle_event(
-            UInt32(handler_id), UInt8(event_type), String("")
-        )
-    )
+    return gui_app_handle_event[TodoApp](app_ptr, handler_id, event_type)
 
 
 @export
@@ -2645,10 +2610,8 @@ fn todo_dispatch_string(
 
     Returns 1 if the handler was found and action executed, 0 otherwise.
     """
-    return _b2i(
-        _get[TodoApp](app_ptr)[0].ctx.dispatch_event_with_string(
-            UInt32(handler_id), UInt8(event_type), value
-        )
+    return gui_app_handle_event_string[TodoApp](
+        app_ptr, handler_id, event_type, value
     )
 
 
@@ -2700,10 +2663,7 @@ fn todo_set_input(app_ptr: Int64, text: String):
 fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = todo_app_flush(_get[TodoApp](app_ptr)[0], writer_ptr)
-    _free_writer(writer_ptr)
-    return offset
+    return gui_app_flush[TodoApp](app_ptr, buf_ptr, capacity)
 
 
 # ── Todo App Query Exports ───────────────────────────────────────────────────
@@ -2748,7 +2708,7 @@ fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
 @export
 fn todo_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the todo app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get[TodoApp](app_ptr)[0].ctx.has_dirty())
+    return gui_app_has_dirty[TodoApp](app_ptr)
 
 
 @export
@@ -2844,13 +2804,13 @@ fn todo_handler_action_data(app_ptr: Int64, handler_id: Int32) -> Int32:
 @export
 fn bench_init() -> Int64:
     """Initialize the benchmark app.  Returns a pointer to the app state."""
-    return _to_i64(bench_app_init())
+    return gui_app_init[BenchmarkApp]()
 
 
 @export
 fn bench_destroy(app_ptr: Int64):
     """Destroy the benchmark app and free all resources."""
-    bench_app_destroy(_get[BenchmarkApp](app_ptr))
+    gui_app_destroy[BenchmarkApp](app_ptr)
 
 
 @export
@@ -2899,20 +2859,14 @@ fn bench_clear(app_ptr: Int64):
 fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render of the benchmark table body.  Returns mutation byte length.
     """
-    var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = bench_app_rebuild(_get[BenchmarkApp](app_ptr)[0], writer_ptr)
-    _free_writer(writer_ptr)
-    return offset
+    return gui_app_mount[BenchmarkApp](app_ptr, buf_ptr, capacity)
 
 
 @export
 fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = bench_app_flush(_get[BenchmarkApp](app_ptr)[0], writer_ptr)
-    _free_writer(writer_ptr)
-    return offset
+    return gui_app_flush[BenchmarkApp](app_ptr, buf_ptr, capacity)
 
 
 @export
@@ -2929,11 +2883,7 @@ fn bench_handle_event(
     Returns 1 if the handler was found and action executed (select/remove),
     0 otherwise.
     """
-    return _b2i(
-        _get[BenchmarkApp](app_ptr)[0].handle_event(
-            UInt32(handler_id), UInt8(event_type), String("")
-        )
-    )
+    return gui_app_handle_event[BenchmarkApp](app_ptr, handler_id, event_type)
 
 
 # ── Benchmark App Query Exports ──────────────────────────────────────────────
@@ -2960,7 +2910,7 @@ fn bench_selected(app_ptr: Int64) -> Int32:
 @export
 fn bench_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the benchmark app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get[BenchmarkApp](app_ptr)[0].ctx.has_dirty())
+    return gui_app_has_dirty[BenchmarkApp](app_ptr)
 
 
 @export
@@ -4556,24 +4506,19 @@ fn cc_handler_count(app_ptr: Int64) -> Int32:
 @export
 fn mv_init() -> Int64:
     """Initialize the multi-view app.  Returns app pointer."""
-    return _to_i64(multi_view_app_init())
+    return gui_app_init[MultiViewApp]()
 
 
 @export
 fn mv_destroy(app_ptr: Int64):
     """Destroy the multi-view app."""
-    multi_view_app_destroy(_get[MultiViewApp](app_ptr))
+    gui_app_destroy[MultiViewApp](app_ptr)
 
 
 @export
 fn mv_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount).  Returns mutation byte length."""
-    var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = multi_view_app_rebuild(
-        _get[MultiViewApp](app_ptr)[0], writer_ptr
-    )
-    _free_writer(writer_ptr)
-    return offset
+    return gui_app_mount[MultiViewApp](app_ptr, buf_ptr, capacity)
 
 
 @export
@@ -4581,24 +4526,13 @@ fn mv_handle_event(
     app_ptr: Int64, handler_id: Int32, event_type: Int32
 ) -> Int32:
     """Dispatch an event.  Returns 1 if action executed."""
-    return _b2i(
-        multi_view_app_handle_event(
-            _get[MultiViewApp](app_ptr)[0],
-            UInt32(handler_id),
-            UInt8(event_type),
-        )
-    )
+    return gui_app_handle_event[MultiViewApp](app_ptr, handler_id, event_type)
 
 
 @export
 fn mv_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0."""
-    var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = multi_view_app_flush(
-        _get[MultiViewApp](app_ptr)[0], writer_ptr
-    )
-    _free_writer(writer_ptr)
-    return offset
+    return gui_app_flush[MultiViewApp](app_ptr, buf_ptr, capacity)
 
 
 @export
@@ -4607,7 +4541,7 @@ fn mv_navigate(app_ptr: Int64, path: String) -> Int32:
 
     Call mv_flush() after this to apply DOM mutations.
     """
-    return _b2i(multi_view_app_navigate(_get[MultiViewApp](app_ptr)[0], path))
+    return _b2i(_get[MultiViewApp](app_ptr)[0].navigate(path))
 
 
 @export

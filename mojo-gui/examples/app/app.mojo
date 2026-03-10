@@ -1,12 +1,9 @@
 # MultiViewApp — Single-page app with client-side routing.
 #
 # Phase 3.9 (Step 3.9.4): Refactored to implement the GuiApp trait.
-# Free functions (multi_view_app_rebuild, multi_view_app_handle_event,
-# multi_view_app_flush) have been moved into struct methods (mount,
-# handle_event, flush). The unified handle_event() with value: String
-# parameter replaces the old handle_event(handler_id) method. Free
-# functions are retained as thin wrappers for backwards compatibility
-# with the existing @export wrappers in web/src/main.mojo.
+# Free functions have been removed — the @export wrappers in
+# web/src/main.mojo now use the generic gui_app_exports helpers
+# which call GuiApp trait methods directly (Step 3.9.5).
 #
 # Phase 30: Demonstrates URL-based view switching within a single WASM
 # instance.  Hosts a counter view and a todo-like view behind route
@@ -60,7 +57,7 @@
 #         Todo {},
 #     }
 
-from memory import UnsafePointer, alloc
+from memory import UnsafePointer
 from bridge import MutationWriter
 from component import (
     ComponentContext,
@@ -494,83 +491,3 @@ struct MultiViewApp(GuiApp):
     fn destroy(mut self):
         """Release all resources held by the multi-view app."""
         self.ctx.destroy()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Backwards-compatible free functions
-# ══════════════════════════════════════════════════════════════════════════════
-#
-# These thin wrappers delegate to the GuiApp trait methods on MultiViewApp.
-# They exist for backwards compatibility with the existing @export wrappers
-# in web/src/main.mojo, which call them by name. Once the @export wrappers
-# are genericized over GuiApp (Step 3.9.5), these can be removed.
-
-
-fn multi_view_app_init() -> UnsafePointer[MultiViewApp, MutExternalOrigin]:
-    """Initialize the multi-view app.  Returns a pointer to the app state."""
-    var app_ptr = alloc[MultiViewApp](1)
-    app_ptr.init_pointee_move(MultiViewApp())
-    return app_ptr
-
-
-fn multi_view_app_destroy(
-    app_ptr: UnsafePointer[MultiViewApp, MutExternalOrigin],
-):
-    """Destroy the multi-view app and free all resources."""
-    app_ptr[0].destroy()
-    app_ptr.destroy_pointee()
-    app_ptr.free()
-
-
-fn multi_view_app_rebuild(
-    mut app: MultiViewApp,
-    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-) -> Int32:
-    """Initial render (mount) — delegates to MultiViewApp.mount().
-
-    Returns the byte offset (length) of the mutation data written.
-    """
-    return app.mount(writer_ptr)
-
-
-fn multi_view_app_handle_event(
-    mut app: MultiViewApp,
-    handler_id: UInt32,
-    event_type: UInt8,
-) -> Bool:
-    """Dispatch an event — delegates to MultiViewApp.handle_event().
-
-    Returns True if an action was executed.
-    """
-    return app.handle_event(handler_id, event_type, String(""))
-
-
-fn multi_view_app_flush(
-    mut app: MultiViewApp,
-    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-) -> Int32:
-    """Flush pending updates — delegates to MultiViewApp.flush().
-
-    Returns the byte offset (length) of the mutation data written,
-    or 0 if there was nothing to update.
-    """
-    return app.flush(writer_ptr)
-
-
-fn multi_view_app_navigate(
-    mut app: MultiViewApp,
-    path: String,
-) -> Bool:
-    """Navigate to a URL path (called from JS via WASM export).
-
-    Updates the router and marks the scope dirty.  The caller should
-    flush afterwards to apply DOM mutations.
-
-    Args:
-        app: Pointer to the app state.
-        path: The URL path to navigate to.
-
-    Returns:
-        True if the path matched a registered route.
-    """
-    return app.navigate(path)

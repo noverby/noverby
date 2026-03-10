@@ -14,7 +14,7 @@ Split the current `wasm-mojo` monolith into two projects:
 
 The goal: write a Mojo GUI app **once**, run it in the browser via WASM **and** natively on desktop — like Dioxus does for Rust. App code is platform-agnostic by design; examples are shared across all renderer targets and must compile and run identically on each. `mojo-web` provides foundational Web API access for any Mojo/WASM project, including but not limited to `mojo-gui`.
 
-**Current status:** Phases 1–2 are complete. The core library is extracted, the web renderer is separated, and all four main app structs (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) implement the `GuiApp` trait (Steps 3.9.1 + 3.9.4). The desktop renderer infrastructure (Phase 3 webview approach) was built and verified, then removed in favor of the Blitz-based native approach (Phase 4). The next priority is **Phase 3.9 remaining steps: genericizing the `@export` WASM wrappers over `GuiApp` (Step 3.9.5)** and **implementing the Blitz desktop renderer (Phase 4) with a generic `desktop_launch[AppType: GuiApp]()` event loop (Step 3.9.2)**. The `GuiApp` trait and refactored app structs are ready for both.
+**Current status:** Phases 1–2 are complete. The core library is extracted, the web renderer is separated, and all four main app structs (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) implement the `GuiApp` trait (Steps 3.9.1 + 3.9.4). The `@export` WASM wrappers in `web/src/main.mojo` have been genericized over `GuiApp` via a new `gui_app_exports.mojo` module (Step 3.9.5), and the per-app backwards-compatible free functions have been removed from all four example files. The `launch()` function now accepts a `GuiApp` type parameter with `@parameter if is_wasm_target()` compile-time dispatch (Step 3.9.3). All 3,090 JS tests and 52 Mojo test suites pass. The desktop renderer infrastructure (Phase 3 webview approach) was built and verified, then removed in favor of the Blitz-based native approach (Phase 4). The next priority is **implementing the Blitz desktop renderer (Phase 4) with a generic `desktop_launch[AppType: GuiApp]()` event loop (Step 3.9.2)**, **deleting per-renderer example duplicates and adding `launch()` to shared examples (Step 3.9.6)**, and **cross-target verification (Step 3.9.7)**.
 
 ---
 
@@ -1084,9 +1084,9 @@ fn desktop_launch[AppType: GuiApp](config: AppConfig) raises:
 
 This single function replaces every `desktop/examples/*.mojo` file — the event loop is identical for counter, todo, bench, and app. The `GuiApp` trait methods encapsulate all app-specific logic (ConditionalSlot management, KeyedList flush, custom event routing, etc.). Note: `has_dirty()` is used instead of `consume_dirty()` in the event loop check because `flush()` calls `consume_dirty()` internally. `destroy()` is called directly on the app (no need to reach into `context()`).
 
-#### Step 3.9.3 — Wire `launch()` to dispatch by target
+#### Step 3.9.3 — Wire `launch()` to dispatch by target ✅
 
-Update `core/src/platform/launch.mojo` so `launch[AppType: GuiApp]()` actually dispatches:
+Updated `core/src/platform/launch.mojo` so `launch[AppType: GuiApp]()` dispatches at compile time:
 
 ```text
 fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
@@ -1096,11 +1096,13 @@ fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
     if is_wasm_target():
         pass  # WASM: JS runtime drives the loop; @export wrappers call GuiApp methods
     else:
-        from desktop.launcher import desktop_launch
-        desktop_launch[AppType](config)
+        # Phase 4: will call desktop_launch[AppType](config) once Blitz is implemented
+        print("launch(): desktop renderer not yet implemented (Phase 4)")
 ```
 
-For the WASM path, `main.mojo`'s `@export` wrappers are refactored to be generic over `GuiApp` (Step 3.9.5).
+A non-parametric `launch(config)` overload is retained for backwards compatibility on the WASM target where the app type is determined by the `@export` wrappers.
+
+Note: The native target has a pre-existing limitation with module-level `var` declarations in imported packages. This will be addressed when the Blitz desktop renderer is implemented (Phase 4).
 
 #### Step 3.9.4 — Refactor existing app structs to implement `GuiApp` ✅
 
@@ -1135,22 +1137,37 @@ fn performance_now() -> Float64:
 
 This stays in the shared example code — no duplication needed.
 
-#### Step 3.9.5 — Refactor `main.mojo` WASM exports to be generic over `GuiApp`
+#### Step 3.9.5 — Refactor `main.mojo` WASM exports to be generic over `GuiApp` ✅
 
-The current `web/src/main.mojo` has ~6,730 lines of per-app `@export` wrappers. With `GuiApp`, the `@export` surface becomes generic:
+Created `web/src/gui_app_exports.mojo` with parametric lifecycle helper functions:
 
 ```text
-@export fn app_mount(app_ptr: Int64, writer_ptr: Int64) -> Int32:
-    return _get[CurrentApp](app_ptr)[].mount(_get[MutationWriter](writer_ptr))
-
-@export fn app_flush(app_ptr: Int64, writer_ptr: Int64) -> Int32:
-    return _get[CurrentApp](app_ptr)[].flush(_get[MutationWriter](writer_ptr))
-
-@export fn app_handle_event(app_ptr: Int64, handler_id: Int32, event_type: Int32, value: String) -> Int32:
-    return _b2i(_get[CurrentApp](app_ptr)[].handle_event(UInt32(handler_id), UInt8(event_type), value))
+fn gui_app_init[T: GuiApp]() -> Int64          # heap alloc + T.__init__()
+fn gui_app_destroy[T: GuiApp](app_ptr: Int64)   # T.destroy() + free
+fn gui_app_mount[T: GuiApp](app_ptr, buf, cap) -> Int32    # T.mount()
+fn gui_app_handle_event[T: GuiApp](app_ptr, hid, et) -> Int32  # T.handle_event(..., "")
+fn gui_app_handle_event_string[T: GuiApp](app_ptr, hid, et, value) -> Int32  # T.handle_event(..., value)
+fn gui_app_flush[T: GuiApp](app_ptr, buf, cap) -> Int32    # T.flush()
+fn gui_app_has_dirty[T: GuiApp](app_ptr) -> Int32           # T.has_dirty()
+fn gui_app_consume_dirty[T: GuiApp](app_ptr) -> Int32       # T.consume_dirty()
 ```
 
-Where `CurrentApp` is a compile-time alias set by the build (e.g., `alias CurrentApp = CounterApp`). Each example builds with a different alias but the same `@export` boilerplate.
+The per-app `@export` wrappers in `main.mojo` are now one-liners:
+
+```text
+@export fn counter_init() -> Int64:
+    return gui_app_init[CounterApp]()
+@export fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    return gui_app_mount[CounterApp](app_ptr, buf_ptr, capacity)
+@export fn counter_handle_event(app_ptr: Int64, handler_id: Int32, event_type: Int32) -> Int32:
+    return gui_app_handle_event[CounterApp](app_ptr, handler_id, event_type)
+@export fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    return gui_app_flush[CounterApp](app_ptr, buf_ptr, capacity)
+@export fn counter_destroy(app_ptr: Int64):
+    gui_app_destroy[CounterApp](app_ptr)
+```
+
+All four main apps (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) now use the generic helpers. The backwards-compatible free functions (`counter_app_init`, `counter_app_rebuild`, etc.) have been removed from the example files — the generic helpers call `GuiApp` trait methods directly. App-specific query exports (e.g., `counter_count_value`, `todo_item_count`) remain as hand-written `@export` functions since they reach into app-specific fields. All 3,090 JS tests and 52 Mojo test suites pass.
 
 #### Step 3.9.6 — Delete `desktop/examples/` and add `launch()` to shared examples
 
@@ -1300,14 +1317,16 @@ Key points:
 - [x] Move `src/mutations/`, `src/bridge/`, `src/events/` unchanged
 - [x] Move `src/component/` — updated `child.mojo`, `child_context.mojo`, `context.mojo`, `keyed_list.mojo` to split `from vdom` / `from html` imports
 - [x] Create `core/src/platform/app.mojo` — `PlatformApp` trait definition (with `init`, `flush_mutations`, `request_animation_frame`, `should_quit`, `destroy`) + `is_wasm_target()` / `is_native_target()` helpers
-- [x] Create `core/src/platform/launch.mojo` — `launch()` with `AppConfig` (title, width, height, debug), global config registry, `get_launch_config()` / `has_launched()`
+- [x] Create `core/src/platform/launch.mojo` — `launch[AppType: GuiApp]()` with `AppConfig` (title, width, height, debug), global config registry, `get_launch_config()` / `has_launched()`, `@parameter if is_wasm_target()` compile-time dispatch (Step 3.9.3)
 - [x] Create `core/src/platform/features.mojo` — `PlatformFeatures` struct, preset feature sets (`web_features`, `desktop_webview_features`, `desktop_blitz_features`, `native_features`), global feature registry (`register_features` / `current_features`)
 - [x] Create `core/src/platform/__init__.mojo` — re-exports public API from all three platform modules
 - [x] Update `core/src/lib.mojo` — add `platform/` to package listing
 - [x] Move `src/apps/` to `mojo-gui/examples/` as shared, platform-agnostic example apps — demo/test apps moved from `core/apps/` to `examples/apps/`; main examples (counter, todo, bench, app) moved from `web/examples/` to `examples/`; web-specific assets (HTML/JS) remain in `web/examples/`; build paths updated (`-I ../examples` replaces `-I ../core -I examples`)
 - [x] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — `mount`, `handle_event` (unified value param), `flush`, `has_dirty`, `consume_dirty`, `destroy`; exported from `platform` package (Step 3.9.1)
-- [x] Refactor app structs to implement `GuiApp` — CounterApp, TodoApp, BenchmarkApp, MultiViewApp all implement the trait; free functions retained as thin wrappers (Step 3.9.4)
-- [ ] Implement generic desktop event loop, wire `launch()` compile-time dispatch, genericize `main.mojo` `@export` wrappers, delete per-renderer example duplicates (Steps 3.9.2/3/5/6/7)
+- [x] Refactor app structs to implement `GuiApp` — CounterApp, TodoApp, BenchmarkApp, MultiViewApp all implement the trait; backwards-compatible free functions removed (Steps 3.9.4 + 3.9.5)
+- [x] Wire `launch()` compile-time dispatch — `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo`; non-parametric overload retained for backwards compatibility (Step 3.9.3)
+- [x] Genericize `main.mojo` `@export` wrappers — `web/src/gui_app_exports.mojo` provides parametric lifecycle helpers; all 4 main apps use them; free functions removed from examples (Step 3.9.5)
+- [ ] Implement generic desktop event loop, delete per-renderer example duplicates, cross-target verification (Steps 3.9.2/6/7 — blocked on Phase 4 Blitz)
 - [x] Update app imports in `apps/*.mojo` for new `html/` path (`from vdom import` → `from html import`)
 - [x] Move `test/*.mojo` to `mojo-gui/core/test/`
 - [x] Update test imports for new paths (`test_handles.mojo`: `from vdom` → `from html`)
@@ -1335,7 +1354,7 @@ Key points:
 - [x] Write `mojo-gui/web/README.md`
 - [x] Write `mojo-gui/examples/README.md` — build instructions for web/desktop/Blitz targets, directory structure, migration status, architecture reference
 
-### Phase 3: `mojo-gui/desktop` — webview renderer ✅ (infra), unified lifecycle in progress
+### Phase 3: `mojo-gui/desktop` — webview renderer ✅ (infra), unified lifecycle mostly complete
 
 - [x] Design desktop webview architecture — polling-based C shim, heap mutation buffer, base64 IPC, JSON event bridge
 - [x] Build C shim (`shim/mojo_webview.c`) — GTK4 + WebKitGTK, ring buffer events, base64 mutation delivery, non-blocking step API
@@ -1351,12 +1370,12 @@ Key points:
 - [x] Create Nix dev shell (`default.nix`) — GTK4, WebKitGTK 6.0, pkg-config, libmojo-webview, environment variables
 - [x] Write `mojo-gui/desktop/README.md` — architecture, build instructions, API reference, IPC protocol docs
 - [x] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — app-side lifecycle contract with `mount`, `handle_event`, `flush`, `has_dirty`, `consume_dirty`, `destroy` (Step 3.9.1)
-- [ ] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` (Step 3.9.2)
-- [ ] Wire `launch()` compile-time dispatch — `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo` (Step 3.9.3)
-- [x] Refactor app structs to implement `GuiApp` — all 4 main apps (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) now implement `GuiApp`; free functions retained as thin backwards-compatible wrappers (Step 3.9.4)
-- [ ] Genericize `main.mojo` `@export` wrappers over `GuiApp` (Step 3.9.5)
-- [ ] Delete `desktop/examples/counter.mojo` and add `launch[CounterApp](...)` to shared examples (Step 3.9.6)
-- [ ] Verify all 4 shared examples build and run on both web and desktop from identical source (Step 3.9.7)
+- [ ] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` (Step 3.9.2 — blocked on Phase 4 Blitz)
+- [x] Wire `launch()` compile-time dispatch — `launch[AppType: GuiApp]()` with `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo`; non-parametric overload retained (Step 3.9.3)
+- [x] Refactor app structs to implement `GuiApp` — all 4 main apps (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) now implement `GuiApp`; backwards-compatible free functions removed (Step 3.9.4)
+- [x] Genericize `main.mojo` `@export` wrappers over `GuiApp` — `web/src/gui_app_exports.mojo` provides `gui_app_init`, `gui_app_mount`, `gui_app_handle_event`, `gui_app_flush`, etc.; all 4 main app @exports are now one-liners; 3,090 JS tests + 52 Mojo test suites pass (Step 3.9.5)
+- [ ] Delete `desktop/examples/counter.mojo` and add `launch[CounterApp](...)` to shared examples (Step 3.9.6 — blocked on Phase 4 Blitz)
+- [ ] Verify all 4 shared examples build and run on both web and desktop from identical source (Step 3.9.7 — blocked on Phase 4 Blitz)
 - [ ] Set up cross-target CI test matrix (web + desktop for every shared example)
 
 ### Phase 4: `mojo-gui/desktop` — Blitz renderer (future)
@@ -1383,13 +1402,14 @@ Key points:
 | Blitz pre-alpha stability | Rendering bugs, missing CSS features | Track Blitz main branch; contribute upstream fixes; keep webview as fallback | Open — webview fallback exists |
 | Blitz Rust build dependency | Complex build toolchain | Pre-build the `cdylib` and distribute as a shared library; Nix flake can automate the Rust build | Open |
 | Import path breakage | Massive search-and-replace | Script the migration; grep-verify all imports | ✅ Resolved — all imports updated |
-| Test suite fragmentation | Tests break across projects | Phase 1 must keep all Mojo tests green; Phase 2 must keep all JS tests green | ✅ Resolved — all tests pass |
-| Platform abstraction too leaky | Shared examples break on some targets | Use the cross-target test matrix as a gate; treat cross-target failures as framework bugs | In progress — counter works on both web and desktop (with duplicate); `GuiApp` trait (Phase 3.9) will eliminate duplicates |
-| `launch()` compile-time dispatch limitations | Mojo may lack the metaprogramming for clean target dispatch | `GuiApp` trait + `@parameter if is_wasm_target()` provides clean dispatch; if trait parametric methods don't work, fall back to conditional imports | Open — needs verification during Phase 3.9 |
-| Mojo trait limitations for `GuiApp` | Trait may not support parametric methods or associated types needed for generic `@export` wrappers | Start with concrete struct aliases (`alias CurrentApp = CounterApp`); upgrade to full trait generics when Mojo supports it | Open — needs investigation |
+| Test suite fragmentation | Tests break across projects | Phase 1 must keep all Mojo tests green; Phase 2 must keep all JS tests green | ✅ Resolved — all tests pass (3,090 JS + 52 Mojo suites) |
+| Platform abstraction too leaky | Shared examples break on some targets | Use the cross-target test matrix as a gate; treat cross-target failures as framework bugs | In progress — `GuiApp` trait + generic `@export` wrappers complete; cross-target verification blocked on Phase 4 Blitz |
+| `launch()` compile-time dispatch limitations | Mojo may lack the metaprogramming for clean target dispatch | `GuiApp` trait + `@parameter if is_wasm_target()` provides clean dispatch; if trait parametric methods don't work, fall back to conditional imports | ✅ Resolved — `launch[AppType: GuiApp]()` works with `@parameter if`; native target blocked by module-level `var` limitation (to be fixed in Phase 4) |
+| Mojo trait limitations for `GuiApp` | Trait may not support parametric methods or associated types needed for generic `@export` wrappers | Start with concrete struct aliases (`alias CurrentApp = CounterApp`); upgrade to full trait generics when Mojo supports it | ✅ Resolved — parametric helpers `gui_app_init[T: GuiApp]()` work; `@export` wrappers call them with concrete types |
 | WebKitGTK Linux-only | Desktop renderer not cross-platform | Webview is an intermediate step; Blitz (Phase 4) will provide cross-platform support via Winit | Open — accepted limitation for Phase 3 |
 | Base64 IPC overhead | ~33% mutation size increase for desktop | Acceptable for now; investigate shared memory or binary transfer for optimization | Open — low priority |
 | Desktop event loop busy-wait | High CPU when idle | Implemented blocking `mwv_step(blocking=True)` when no events/dirty scopes | ✅ Resolved |
+| Native target module-level `var` | Global `var` declarations in imported packages not supported on native target | Wrap in struct or use function-local static; to be fixed when Blitz desktop renderer is implemented | Open — only affects native compilation; WASM works fine |
 
 ---
 
@@ -1400,8 +1420,8 @@ Key points:
 | Phase 1 | 2–3 days | File moves, import path updates, platform abstraction layer, shared examples setup, verify compilation + tests | ✅ Complete |
 | Phase 2 | 1–2 days | Move web runtime, `WebApp` trait impl, shared example web builds, verify browser tests | ✅ Complete |
 | Phase 3 (infra) | 1–2 weeks | GTK4/WebKitGTK C shim, Mojo FFI, `DesktopApp`, JS runtime for webview, counter example, Nix integration | ✅ Complete |
-| Phase 3.9 | 3–5 days | `GuiApp` trait, generic desktop event loop, `launch()` dispatch, refactor app structs, genericize `@export` wrappers, delete per-renderer duplicates, cross-target CI | Next up |
-| Phase 4 | 2–4 weeks | Blitz C shim (Rust cdylib), Mojo-side mutation interpreter, `BlitzDesktopApp`, cross-platform testing | Future |
+| Phase 3.9 | 3–5 days | `GuiApp` trait, generic desktop event loop, `launch()` dispatch, refactor app structs, genericize `@export` wrappers, delete per-renderer duplicates, cross-target CI | ✅ Mostly complete (3.9.1/3/4/5 done; 3.9.2/6/7 blocked on Phase 4) |
+| Phase 4 | 2–4 weeks | Blitz C shim (Rust cdylib), Mojo-side mutation interpreter, `BlitzDesktopApp`, cross-platform testing | Next up |
 | Phase 5 | TBD | Native widget renderer (platform-specific backends) | Future |
 | Phase 6 | 2–3 weeks | `mojo-web` MVP: handle table, DOM, fetch, timers, storage | Future |
 

@@ -5,11 +5,9 @@
 # Uses ConditionalSlot to manage the conditional DOM content.
 #
 # Phase 3.9 (Step 3.9.4): Refactored to implement the GuiApp trait.
-# Free functions (counter_app_rebuild, counter_app_handle_event,
-# counter_app_flush) have been moved into struct methods (mount,
-# handle_event, flush). The free functions are retained as thin
-# wrappers for backwards compatibility with the existing @export
-# wrappers in web/src/main.mojo.
+# Free functions have been removed — the @export wrappers in
+# web/src/main.mojo now use the generic gui_app_exports helpers
+# which call GuiApp trait methods directly (Step 3.9.5).
 #
 # This version achieves maximum Dioxus-like ergonomics by using:
 #   - setup_view() — combines end_setup + register_view in one call
@@ -85,7 +83,7 @@
 #     p > dynamic_text[0]   ← "Count is even" / "Count is odd"
 #     p > dynamic_text[1]   ← "Doubled: N"
 
-from memory import UnsafePointer, alloc
+from memory import UnsafePointer
 from bridge import MutationWriter
 from component import ComponentContext, ConditionalSlot
 from signals import SignalI32, SignalBool
@@ -367,66 +365,3 @@ struct CounterApp(GuiApp):
             vb.add_dyn_text(String("Count is odd"))
         vb.add_dyn_text(String("Doubled: ") + String(count_val * 2))
         return vb.index()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Backwards-compatible free functions
-# ══════════════════════════════════════════════════════════════════════════════
-#
-# These thin wrappers delegate to the GuiApp trait methods on CounterApp.
-# They exist for backwards compatibility with the existing @export wrappers
-# in web/src/main.mojo, which call them by name. Once the @export wrappers
-# are genericized over GuiApp (Step 3.9.5), these can be removed.
-
-
-fn counter_app_init() -> UnsafePointer[CounterApp, MutExternalOrigin]:
-    """Initialize the counter app.  Returns a pointer to the app state.
-
-    All setup happens in CounterApp.__init__() — this function just
-    allocates the heap slot and moves the app into it.
-    """
-    var app_ptr = alloc[CounterApp](1)
-    app_ptr.init_pointee_move(CounterApp())
-    return app_ptr
-
-
-fn counter_app_destroy(app_ptr: UnsafePointer[CounterApp, MutExternalOrigin]):
-    """Destroy the counter app and free all resources."""
-    app_ptr[0].destroy()
-    app_ptr.destroy_pointee()
-    app_ptr.free()
-
-
-fn counter_app_rebuild(
-    mut app: CounterApp,
-    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-) -> Int32:
-    """Initial render (mount) — delegates to CounterApp.mount().
-
-    Returns the byte offset (length) of the mutation data written.
-    """
-    return app.mount(writer_ptr)
-
-
-fn counter_app_handle_event(
-    mut app: CounterApp,
-    handler_id: UInt32,
-    event_type: UInt8,
-) -> Bool:
-    """Dispatch an event — delegates to CounterApp.handle_event().
-
-    Returns True if an action was executed, False otherwise.
-    """
-    return app.handle_event(handler_id, event_type, String(""))
-
-
-fn counter_app_flush(
-    mut app: CounterApp,
-    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-) -> Int32:
-    """Flush pending updates — delegates to CounterApp.flush().
-
-    Returns the byte offset (length) of the mutation data written,
-    or 0 if there was nothing to update.
-    """
-    return app.flush(writer_ptr)
