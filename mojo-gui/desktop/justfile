@@ -1,0 +1,91 @@
+# mojo-gui/desktop — Desktop renderer (GTK4 + WebKitGTK)
+#
+# Prerequisites:
+#   - libmojo_webview.so must be built (just build-shim)
+#   - MOJO_WEBVIEW_LIB must point to the .so (set by Nix devShell or manually)
+#   - MOJO_GUI_DESKTOP_RUNTIME must point to runtime/desktop-runtime.js
+#
+# Quick start:
+#   just build-shim        # compile the C shim library
+#   just run-counter       # build + run the counter example
+
+# ── C shim library ───────────────────────────────────────────────────────
+
+# Build libmojo_webview.so from the C shim source.
+build-shim:
+    mkdir -p build
+    cc -shared -fPIC -o build/libmojo_webview.so shim/mojo_webview.c \
+        $(pkg-config --cflags --libs gtk4 webkitgtk-6.0)
+    @echo "Built build/libmojo_webview.so"
+
+# Clean the C shim build artifact.
+clean-shim:
+    rm -f build/libmojo_webview.so
+
+# ── Environment ──────────────────────────────────────────────────────────
+
+# Print the environment variables needed for running desktop apps.
+# Source these or set them in your shell before running examples.
+env:
+    @echo "export MOJO_WEBVIEW_LIB=$(pwd)/build/libmojo_webview.so"
+    @echo "export MOJO_GUI_DESKTOP_RUNTIME=$(pwd)/runtime/desktop-runtime.js"
+    @echo "export LD_LIBRARY_PATH=$(pwd)/build:\$LD_LIBRARY_PATH"
+
+# ── Examples ─────────────────────────────────────────────────────────────
+
+# Build the counter example (native binary).
+build-counter: build-shim
+    mkdir -p build
+    mojo build -I ../core/src -I ../core -I src \
+        -o build/counter examples/counter.mojo
+
+# Run the counter example.
+run-counter: build-counter
+    MOJO_WEBVIEW_LIB="$(pwd)/build/libmojo_webview.so" \
+    MOJO_GUI_DESKTOP_RUNTIME="$(pwd)/runtime/desktop-runtime.js" \
+    LD_LIBRARY_PATH="$(pwd)/build:${LD_LIBRARY_PATH:-}" \
+    ./build/counter
+
+# Run the counter example directly with `mojo run` (no separate build step).
+dev-counter: build-shim
+    MOJO_WEBVIEW_LIB="$(pwd)/build/libmojo_webview.so" \
+    MOJO_GUI_DESKTOP_RUNTIME="$(pwd)/runtime/desktop-runtime.js" \
+    LD_LIBRARY_PATH="$(pwd)/build:${LD_LIBRARY_PATH:-}" \
+    mojo run -I ../core/src -I ../core -I src examples/counter.mojo
+
+# ── Build all ────────────────────────────────────────────────────────────
+
+build: build-shim build-counter
+
+# ── Clean ────────────────────────────────────────────────────────────────
+
+clean:
+    rm -rf build
+
+# ── Tests ────────────────────────────────────────────────────────────────
+
+# Smoke test: build the C shim and verify it exports expected symbols.
+test-shim: build-shim
+    @echo "Checking exported symbols in libmojo_webview.so..."
+    @nm -D build/libmojo_webview.so | grep -q "mwv_create" && echo "  ✓ mwv_create"
+    @nm -D build/libmojo_webview.so | grep -q "mwv_destroy" && echo "  ✓ mwv_destroy"
+    @nm -D build/libmojo_webview.so | grep -q "mwv_set_html" && echo "  ✓ mwv_set_html"
+    @nm -D build/libmojo_webview.so | grep -q "mwv_eval" && echo "  ✓ mwv_eval"
+    @nm -D build/libmojo_webview.so | grep -q "mwv_step" && echo "  ✓ mwv_step"
+    @nm -D build/libmojo_webview.so | grep -q "mwv_poll_event" && echo "  ✓ mwv_poll_event"
+    @nm -D build/libmojo_webview.so | grep -q "mwv_apply_mutations" && echo "  ✓ mwv_apply_mutations"
+    @nm -D build/libmojo_webview.so | grep -q "mwv_is_alive" && echo "  ✓ mwv_is_alive"
+    @echo "All symbols present."
+
+# Smoke test: verify the Mojo counter example compiles for native target.
+test-build: build-counter
+    @echo "✓ counter example compiled successfully"
+    @ls -lh build/counter
+
+# Verify the desktop-runtime.js is valid JS (basic syntax check via deno).
+test-runtime:
+    deno check --no-config runtime/desktop-runtime.js 2>/dev/null || \
+    deno eval "const s = Deno.readTextFileSync('runtime/desktop-runtime.js'); new Function(s); console.log('✓ desktop-runtime.js parses OK (' + s.length + ' bytes)');"
+
+# Run all non-interactive tests.
+test: test-shim test-runtime
