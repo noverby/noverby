@@ -445,7 +445,7 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| 🚧 | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj), [Git 💣🦀](https://github.com/git/git) | | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | |
+| ✅ | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj) | | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Git 💣🦀](https://github.com/git/git) |
 | ✅ | Version Control TUI | [Lazyjj 🦀](https://github.com/Cretezy/lazyjj) | | 🆗 | |
 | ✅ | Merger | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | ⬅️ | |
 | ✅ | Pre-commit Manager | [Prek 🦀](https://github.com/j178/prek) | | ⬅️ | [Pre-commit 🐍](https://github.com/pre-commit/pre-commit) |
