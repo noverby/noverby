@@ -474,7 +474,7 @@
 | ✅ | Binary Cache | [Harmonia 🦀](https://github.com/nix-community/harmonia) | [Attic 🦀](https://github.com/zhaofengli/attic) | 🆗 | [Cachix 🔒λ](https://github.com/cachix/cachix) |
 | ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | 🆗 | |
 | ✅ | Secret Manager | [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | [SPIRE ❄️🐹](https://github.com/NixOS/nixpkgs/tree/master/nixos/modules/services/security/spire) | [SPIFFE 📖](https://github.com/spiffe/spiffe) | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
-| ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | | 🆗 | |
+| ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | [Navi 🦀❄️](https://github.com/cafkafk/navi) | 🆗 | |
 | ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
 | 🚧 | Project Organization | [Flakelight ❄️](https://github.com/nix-community/flakelight) | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | 🆗 | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
 | ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | 🆗 | |
