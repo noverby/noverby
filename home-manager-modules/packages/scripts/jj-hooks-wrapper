@@ -10,8 +10,12 @@ def --wrapped main [...args: string] {
 
     let subcommand = $args.0
 
-    # Run pre-commit hook for commands that finalize changes
+    # Run pre-commit hook for commands that finalize changes.
+    # First trigger a jj snapshot so the git index reflects the working copy —
+    # pre-commit determines files via `git diff --cached` and will skip
+    # everything if the index is stale.
     if $subcommand in ["commit" "new" "squash"] {
+        ^$real_jj status out+err> /dev/null
         run-git-hook "pre-commit"
     }
 
