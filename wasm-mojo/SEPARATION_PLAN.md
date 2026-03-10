@@ -640,36 +640,36 @@ fn main():
 
 ### Phase 1: `mojo-gui/core` extraction
 
-- [ ] Create `mojo-gui/core/` directory structure
-- [ ] Move `src/signals/`, `src/scope/`, `src/scheduler/`, `src/arena/` unchanged
-- [ ] Move `src/vdom/{template,vnode,builder,registry}.mojo` to `mojo-gui/core/src/vdom/`
-- [ ] Move `src/vdom/{tags,dsl,dsl_tests}.mojo` to `mojo-gui/core/src/html/`
-- [ ] Update `html/dsl.mojo` imports: `from html.tags import ...` (was `from vdom.tags`)
-- [ ] Move `src/mutations/`, `src/bridge/`, `src/events/` unchanged
-- [ ] Move `src/component/` unchanged
-- [ ] Move `src/apps/` to `mojo-gui/core/apps/`
-- [ ] Update app imports in `apps/*.mojo` for new `html/` path
-- [ ] Move `test/*.mojo` to `mojo-gui/core/test/`
-- [ ] Update test imports for new paths
+- [x] Create `mojo-gui/core/` directory structure
+- [x] Move `src/signals/`, `src/scope/`, `src/scheduler/`, `src/arena/` unchanged
+- [x] Move `src/vdom/{template,vnode,builder,registry}.mojo` to `mojo-gui/core/src/vdom/`
+- [x] Move `src/vdom/{tags,dsl,dsl_tests}.mojo` to `mojo-gui/core/src/html/`
+- [x] Update `html/dsl.mojo` imports: `from vdom.builder`, `from vdom.template`, `from vdom.vnode` (was relative `.builder`, `.template`, `.vnode`); `.tags` stays relative
+- [x] Move `src/mutations/`, `src/bridge/`, `src/events/` unchanged
+- [x] Move `src/component/` — updated `child.mojo`, `child_context.mojo`, `context.mojo`, `keyed_list.mojo` to split `from vdom` / `from html` imports
+- [x] Move `src/apps/` to `mojo-gui/core/apps/`
+- [x] Update app imports in `apps/*.mojo` for new `html/` path (`from vdom import` → `from html import`)
+- [x] Move `test/*.mojo` to `mojo-gui/core/test/`
+- [x] Update test imports for new paths (`test_handles.mojo`: `from vdom` → `from html`)
 - [ ] Verify all 1,323 Mojo tests pass
 - [ ] Verify `mojo-gui/core` compiles for native target (no `@export` decorators)
-- [ ] Write `mojo-gui/core/README.md`
-- [ ] Update `mojo-gui/core/AGENTS.md`
+- [x] Write `mojo-gui/core/README.md`
+- [x] Update `mojo-gui/core/AGENTS.md`
 
 ### Phase 2: `mojo-gui/web` extraction
 
-- [ ] Create `mojo-gui/web/` directory structure
-- [ ] Move `runtime/` to `mojo-gui/web/runtime/`
-- [ ] Move `src/main.mojo` to `mojo-gui/web/src/main.mojo`
-- [ ] Update `main.mojo` imports to reference `mojo-gui/core` package
-- [ ] Move `examples/` to `mojo-gui/web/examples/`
-- [ ] Move `test-js/` to `mojo-gui/web/test-js/`
-- [ ] Move `scripts/` to `mojo-gui/web/scripts/`
-- [ ] Move build files (`justfile`, `deno.json`, `default.nix`)
-- [ ] Update all import paths in moved files
+- [x] Create `mojo-gui/web/` directory structure
+- [x] Move `runtime/` to `mojo-gui/web/runtime/`
+- [x] Move `src/main.mojo` to `mojo-gui/web/src/main.mojo`
+- [x] Update `main.mojo` imports to reference `mojo-gui/core` package — split `from vdom` into `from vdom` + `from html`; `from vdom.dsl_tests` → `from html.dsl_tests`
+- [x] Move `examples/` to `mojo-gui/web/examples/` — updated `counter.mojo`, `app.mojo`, `todo.mojo`, `bench.mojo` to split `from vdom` / `from html` imports
+- [x] Move `test-js/` to `mojo-gui/web/test-js/`
+- [x] Move `scripts/` to `mojo-gui/web/scripts/`
+- [x] Move build files (`justfile`, `deno.json`, `default.nix`) — updated `justfile` with `-I ../core/src` for core package resolution
+- [x] Update all import paths in moved files
 - [ ] Verify all 3,090 JS tests pass
 - [ ] Verify all 3 example apps work in browser
-- [ ] Write `mojo-gui/web/README.md`
+- [x] Write `mojo-gui/web/README.md`
 
 ### Phase 3: `mojo-gui/desktop` (new development)
 
