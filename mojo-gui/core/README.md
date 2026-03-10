@@ -1,6 +1,6 @@
 # mojo-gui/core — Renderer-Agnostic Reactive GUI Framework
 
-The core library for `mojo-gui`: a reactive GUI framework written in Mojo that compiles to both WASM and native targets. It provides signals, a virtual DOM, a diff engine, and a binary mutation protocol — with **zero dependency on any specific renderer** (browser DOM, desktop webview, or native widgets).
+The core library for `mojo-gui`: a reactive GUI framework written in Mojo that compiles to both WASM and native targets. It provides signals, a virtual DOM, a diff engine, and a binary mutation protocol — with **zero dependency on any specific renderer** (browser DOM, desktop Blitz, or native widgets).
 
 ## Architecture
 
@@ -119,6 +119,6 @@ The split: **`vdom/`** holds renderer-agnostic virtual DOM structures. **`html/`
 ## Relationship to Other Packages
 
 - **`mojo-gui/web`** — Browser renderer. Imports `core` for the framework, adds TypeScript runtime + WASM exports.
-- **`mojo-gui/desktop`** — Desktop renderer (future). Imports `core`, embeds a webview, reuses the JS interpreter.
+- **`mojo-gui/desktop`** — Desktop renderer (future). Imports `core`, renders natively via Blitz (Stylo + Taffy + Vello + Winit + AccessKit).
 - **`mojo-gui/native`** — Native renderer (future). Imports `core`, maps mutations to platform widgets.
 - **`mojo-web`** — Raw Web API bindings (independent). Apps can use both `mojo-gui` and `mojo-web`.

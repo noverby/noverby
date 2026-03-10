@@ -16,7 +16,7 @@
 # Renderers implement this trait:
 #
 #   - WebApp (mojo-gui/web)     — WASM target; JS runtime drives the loop
-#   - DesktopApp (mojo-gui/desktop) — Native target; webview/Blitz drives the loop
+#   - DesktopApp (mojo-gui/desktop) — Native target; Blitz drives the loop
 #   - NativeApp (mojo-gui/native)   — Native target; platform widgets (future)
 #
 # Architecture:
@@ -92,7 +92,7 @@ trait PlatformApp(Movable):
         """Initialize the rendering surface and platform resources.
 
         For web: No-op — the JS runtime sets up the DOM and WASM memory.
-        For desktop: Create the window, inject the JS runtime / Blitz engine.
+        For desktop: Create the Blitz engine, Winit window, and rendering surface.
         For native: Create the platform window and widget root.
 
         This is called once before any mutations are sent. Implementations
@@ -116,16 +116,16 @@ trait PlatformApp(Movable):
         The renderer reads the opcodes and applies them to the actual UI:
           - Web: The JS Interpreter reads from WASM shared memory (this may
                  be a no-op if the JS side reads the buffer directly).
-          - Desktop: The bridge base64-encodes and sends to the webview JS,
-                     or a native interpreter calls Blitz FFI.
+          - Desktop: A native interpreter maps opcodes to Blitz DOM operations
+                     via FFI.
           - Native: A Mojo interpreter maps opcodes to widget operations.
 
         The buffer is owned by the caller and remains valid for the duration
         of this call. The renderer must not hold a reference to it after
         returning.
 
-        Raises if the rendering backend encounters an error (e.g., webview
-        eval failure, FFI error).
+        Raises if the rendering backend encounters an error (e.g., Blitz
+        rendering failure, FFI error).
         """
         ...
 
@@ -160,7 +160,7 @@ trait PlatformApp(Movable):
         the renderer is in an invalid state and must not be used.
 
         For web: No-op (WASM memory is reclaimed by the browser).
-        For desktop: Destroys the webview/Blitz window and frees the
+        For desktop: Destroys the Blitz engine, Winit window, and frees the
                      mutation buffer.
         For native: Destroys platform windows and widgets.
         """

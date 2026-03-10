@@ -4,7 +4,7 @@
 # The renderer is selected at **compile time** based on the build target:
 #
 #   - WASM target → web renderer (JS runtime drives the event loop)
-#   - Native target → desktop renderer (webview/Blitz drives the event loop)
+#   - Native target → desktop renderer (Blitz drives the event loop)
 #
 # This is the key enabler for shared examples. App code calls launch() and
 # never imports a specific renderer. The build target determines which
