@@ -560,8 +560,10 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Large Language Model | [Devstral 2 🇪🇺](https://mistral.ai/news/devstral-2-vibe-cli), [Claude Opus 4.6 🔒🇺🇸](https://claude.ai) | [EuroLLM 🇪🇺](https://eurollm.io) | 🆗 | |
-| ✅ | Provider | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai), [Anthropic Claude ⚖️🇺🇸](https://claude.ai) | [Lumo 🇪🇺](https://lumo.proton.me) | 🆗 | [OpenAI 🔒🇺🇸](https://openai.com) |
+| ✅ | Local LLM | [Devstral 2 🇪🇺](https://mistral.ai/news/devstral-2-vibe-cli) | [EuroLLM 🇪🇺](https://eurollm.io) | 🆗 | |
+| ✅ | Hosted LLM | [Mistral Large 🇪🇺](https://mistral.ai/products/premier#702), [Claude Opus 4.6 🔒🇺🇸](https://claude.ai) | | 🆗 | |
+| ✅ | Local Provider | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama) | | 🆗 | |
+| ✅ | Hosted Provider | [Mistral 🇪🇺](https://mistral.ai), [Anthropic Claude ⚖️🇺🇸](https://claude.ai) | [Lumo 🇪🇺](https://lumo.proton.me) | 🆗 | [OpenAI 🔒🇺🇸](https://openai.com) |
 | ✅ | Personal AI Assistant | [IronClaw 🦀🏡](https://github.com/nearai/ironclaw) | | 🆗 | [OpenClaw 🐒🏡](https://github.com/openclaw/openclaw) |
 
 #### Communication & Productivity
