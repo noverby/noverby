@@ -1,5 +1,12 @@
 # BenchmarkApp — js-framework-benchmark implementation.
 #
+# Phase 3.9 (Step 3.9.4): Refactored to implement the GuiApp trait.
+# Free functions (bench_app_rebuild, bench_app_flush) have been moved
+# into struct methods (mount, flush). A unified handle_event() with
+# value: String parameter replaces the old handle_event(handler_id)
+# method. Free functions are retained as thin wrappers for backwards
+# compatibility with the existing @export wrappers in web/src/main.mojo.
+#
 # Phase 24.4: Fine-grained status bar with 3 dynamic text nodes.
 #
 # Splits the single `status_text` string into three separate dyn_text
@@ -196,6 +203,7 @@ from mutations import CreateEngine
 from component import ComponentContext, KeyedList
 from signals import SignalI32
 from vdom import VNode, VNodeStore
+from platform import GuiApp
 from html import (
     Node,
     el_div,
@@ -401,8 +409,10 @@ comptime BENCH_ACTION_SELECT: UInt8 = 1
 comptime BENCH_ACTION_REMOVE: UInt8 = 2
 
 
-struct BenchmarkApp(Movable):
+struct BenchmarkApp(GuiApp):
     """Js-framework-benchmark app state.
+
+    Implements the GuiApp trait for unified cross-platform launch().
 
     Phase 24.4: Fine-grained status bar with 3 dynamic text nodes.
 
@@ -424,7 +434,12 @@ struct BenchmarkApp(Movable):
 
     All setup — context creation, signal creation, template registration,
     and toolbar handler binding — happens in __init__.  The lifecycle
-    functions are thin delegations to ComponentContext.
+    methods (mount, handle_event, flush) encapsulate all app-specific
+    logic so that a generic event loop can drive the app.
+
+    Phase 3.9: Implements GuiApp trait — mount(), handle_event(), flush(),
+    has_dirty(), consume_dirty(), destroy() are now struct methods instead
+    of free functions.
 
     Uses register_view() for the app shell template with 6 onclick_custom()
     handlers auto-registered for toolbar buttons.  Uses KeyedList with
@@ -705,8 +720,18 @@ struct BenchmarkApp(Movable):
         self.rows = List[BenchRow]()
         self._bump_version()
 
-    fn handle_event(mut self, handler_id: UInt32) -> Bool:
-        """Dispatch an event by handler ID.
+    # ── GuiApp trait: Event dispatch ─────────────────────────────────
+
+    fn handle_event(
+        mut self, handler_id: UInt32, event_type: UInt8, value: String
+    ) -> Bool:
+        """Dispatch a user interaction event (GuiApp trait method).
+
+        Unified event entry point. The bench app only has click events
+        (toolbar buttons, row select/remove) which don't carry string
+        values. The `value` parameter is accepted for GuiApp trait
+        conformance. If a non-empty value is provided, it is passed
+        through via dispatch_event_with_string for forward compatibility.
 
         Phase 24.4: Each toolbar operation sets three status fields:
         op_name (dyn_text[0]), timing_text (dyn_text[1]), and
@@ -730,9 +755,20 @@ struct BenchmarkApp(Movable):
           - BENCH_ACTION_SELECT → select_row(id)
           - BENCH_ACTION_REMOVE → remove_row(id)
 
+        Args:
+            handler_id: The handler to invoke (from HandlerRegistry).
+            event_type: The event type tag (EVT_CLICK, etc.).
+            value: String payload from the event. Empty for click events.
+
         Returns True if the handler was found and the action executed,
         False otherwise.
         """
+        # String events go through the string dispatch path
+        if len(value) > 0:
+            return self.ctx.dispatch_event_with_string(
+                handler_id, event_type, value
+            )
+
         # Toolbar button routing — each operation timed via performance_now()
         # Phase 24.4: sets op_name, timing_text, row_count_text separately
         if handler_id == self.create1k_handler:
@@ -837,6 +873,134 @@ struct BenchmarkApp(Movable):
             self.rows_list.push_child(self.ctx, frag_idx, row_idx)
         return frag_idx
 
+    # ── GuiApp trait: Mount lifecycle ────────────────────────────────
+
+    fn mount(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    ) -> Int32:
+        """Initial render (mount) of the benchmark app (GuiApp trait method).
+
+        Phase 24.2: Builds the full app shell VNode (heading, toolbar,
+        status, table) and mounts it.  The <tbody> starts with a placeholder
+        comment node whose ElementId we save for later use by the KeyedList.
+
+        Follows the same pattern as TodoApp.mount():
+        1. Emit templates (RegisterTemplate mutations)
+        2. Render app shell VNode
+        3. Build empty rows fragment
+        4. Create DOM via CreateEngine
+        5. Extract dyn_node[3] anchor ID for KeyedList
+        6. Append to root
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for the mutation
+                        buffer.
+
+        Returns byte offset (length) of mutation data.
+        """
+        # Emit all registered templates so JS can build DOM from mutations
+        self.ctx.shell.emit_templates(writer_ptr)
+
+        # Build the app shell VNode (no rows yet — just the template)
+        var app_vnode_idx = self.render()
+        self.ctx.current_vnode = Int(app_vnode_idx)
+
+        # Build an empty rows fragment and store it
+        var frag_idx = self.build_rows_fragment()
+
+        # Create the app template via CreateEngine.
+        # This emits LoadTemplate, AssignId, NewEventListener, and
+        # CreatePlaceholder + ReplacePlaceholder for dynamic[0].
+        var engine = CreateEngine(
+            writer_ptr,
+            self.ctx.shell.eid_alloc,
+            self.ctx.shell.runtime,
+            self.ctx.shell.store,
+        )
+        var num_roots = engine.create_node(app_vnode_idx)
+
+        # After CreateEngine, dynamic[3]'s placeholder has an ElementId.
+        # (dyn_node uses index 3 because 3 dyn_text nodes occupy indices 0-2)
+        # Initialize the KeyedList's slot with the anchor and empty fragment.
+        var anchor_id: UInt32 = 0
+        var app_vnode_ptr = self.ctx.store_ptr()[0].get_ptr(app_vnode_idx)
+        if app_vnode_ptr[0].dyn_node_id_count() > 3:
+            anchor_id = app_vnode_ptr[0].get_dyn_node_id(3)
+        self.rows_list.init_slot(anchor_id, frag_idx)
+
+        # Append the app shell to root element (id 0)
+        writer_ptr[0].append_children(0, num_roots)
+
+        writer_ptr[0].finalize()
+        return Int32(writer_ptr[0].offset)
+
+    # ── GuiApp trait: Flush lifecycle ────────────────────────────────
+
+    fn flush(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    ) -> Int32:
+        """Re-render dirty scopes and write update mutations (GuiApp trait method).
+
+        Phase 24.4: Re-renders the app shell VNode (to catch any status
+        text changes via diff — 3 dyn_text nodes) and flushes the row list
+        via KeyedList.  Follows the same pattern as TodoApp.flush().
+
+        Uses KeyedList.flush() which delegates fragment transitions
+        (empty→populated) to the reusable flush_fragment lifecycle helper.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for the mutation
+                        buffer (reset to offset 0 by the caller).
+
+        Returns byte offset (length) of mutation data, or 0 if nothing dirty.
+        """
+        # Collect and consume dirty scopes via the scheduler
+        if not self.ctx.consume_dirty():
+            return 0
+
+        # Re-render app shell to pick up any changes.
+        # dyn_node(3) stays as placeholder — diff sees placeholder vs
+        # placeholder and does nothing (KeyedList manages it separately).
+        var new_app_idx = self.render()
+        self.ctx.diff(writer_ptr, new_app_idx)
+
+        # Build a new rows fragment from the current row list
+        var new_frag_idx = self.build_rows_fragment()
+
+        # Flush via KeyedList (handles all three transitions)
+        self.rows_list.flush(self.ctx, writer_ptr, new_frag_idx)
+
+        writer_ptr[0].finalize()
+        return Int32(writer_ptr[0].offset)
+
+    # ── GuiApp trait: Dirty state queries ────────────────────────────
+
+    fn has_dirty(self) -> Bool:
+        """Check if any scopes need re-rendering.
+
+        Returns:
+            True if at least one scope is marked dirty.
+        """
+        return self.ctx.has_dirty()
+
+    fn consume_dirty(mut self) -> Bool:
+        """Collect and consume all dirty scopes.
+
+        Returns:
+            True if any scopes were dirty (and consumed).
+        """
+        return self.ctx.consume_dirty()
+
+    # ── GuiApp trait: Cleanup ────────────────────────────────────────
+
+    fn destroy(mut self):
+        """Release all resources held by the benchmark app."""
+        self.ctx.destroy()
+
+    # ── GuiApp trait: Rendering ──────────────────────────────────────
+
     fn render(mut self) -> UInt32:
         """Build the app shell VNode using render_builder (auto-populates).
 
@@ -875,6 +1039,16 @@ struct BenchmarkApp(Movable):
         return vb.build()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Backwards-compatible free functions
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# These thin wrappers delegate to the GuiApp trait methods on BenchmarkApp.
+# They exist for backwards compatibility with the existing @export wrappers
+# in web/src/main.mojo, which call them by name. Once the @export wrappers
+# are genericized over GuiApp (Step 3.9.5), these can be removed.
+
+
 fn bench_app_init() -> UnsafePointer[BenchmarkApp, MutExternalOrigin]:
     """Initialize the benchmark app.  Returns a pointer to the app state.
 
@@ -888,7 +1062,7 @@ fn bench_app_init() -> UnsafePointer[BenchmarkApp, MutExternalOrigin]:
 
 fn bench_app_destroy(app_ptr: UnsafePointer[BenchmarkApp, MutExternalOrigin]):
     """Destroy the benchmark app and free all resources."""
-    app_ptr[0].ctx.destroy()
+    app_ptr[0].destroy()
     app_ptr.destroy_pointee()
     app_ptr.free()
 
@@ -897,89 +1071,19 @@ fn bench_app_rebuild(
     mut app: BenchmarkApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
-    """Initial render (mount) of the benchmark app.
-
-    Phase 24.2: Builds the full app shell VNode (heading, toolbar,
-    status, table) and mounts it.  The <tbody> starts with a placeholder
-    comment node whose ElementId we save for later use by the KeyedList.
-
-    Follows the same pattern as todo_app_rebuild:
-    1. Emit templates (RegisterTemplate mutations)
-    2. Render app shell VNode
-    3. Build empty rows fragment
-    4. Create DOM via CreateEngine
-    5. Extract dyn_node[0] anchor ID for KeyedList
-    6. Append to root
+    """Initial render (mount) — delegates to BenchmarkApp.mount().
 
     Returns byte offset (length) of mutation data.
     """
-    # Emit all registered templates so JS can build DOM from mutations
-    app.ctx.shell.emit_templates(writer_ptr)
-
-    # Build the app shell VNode (no rows yet — just the template)
-    var app_vnode_idx = app.render()
-    app.ctx.current_vnode = Int(app_vnode_idx)
-
-    # Build an empty rows fragment and store it
-    var frag_idx = app.build_rows_fragment()
-
-    # Create the app template via CreateEngine.
-    # This emits LoadTemplate, AssignId, NewEventListener, and
-    # CreatePlaceholder + ReplacePlaceholder for dynamic[0].
-    var engine = CreateEngine(
-        writer_ptr,
-        app.ctx.shell.eid_alloc,
-        app.ctx.shell.runtime,
-        app.ctx.shell.store,
-    )
-    var num_roots = engine.create_node(app_vnode_idx)
-
-    # After CreateEngine, dynamic[3]'s placeholder has an ElementId.
-    # (dyn_node uses index 3 because 3 dyn_text nodes occupy indices 0-2)
-    # Initialize the KeyedList's slot with the anchor and empty fragment.
-    var anchor_id: UInt32 = 0
-    var app_vnode_ptr = app.ctx.store_ptr()[0].get_ptr(app_vnode_idx)
-    if app_vnode_ptr[0].dyn_node_id_count() > 3:
-        anchor_id = app_vnode_ptr[0].get_dyn_node_id(3)
-    app.rows_list.init_slot(anchor_id, frag_idx)
-
-    # Append the app shell to root element (id 0)
-    writer_ptr[0].append_children(0, num_roots)
-
-    writer_ptr[0].finalize()
-    return Int32(writer_ptr[0].offset)
+    return app.mount(writer_ptr)
 
 
 fn bench_app_flush(
     mut app: BenchmarkApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
-    """Flush pending updates after a benchmark operation.
-
-    Phase 24.4: Re-renders the app shell VNode (to catch any status
-    text changes via diff — 3 dyn_text nodes) and flushes the row list
-    via KeyedList.  Follows the same pattern as todo_app_flush.
-
-    Uses KeyedList.flush() which delegates fragment transitions
-    (empty↔populated) to the reusable flush_fragment lifecycle helper.
+    """Flush pending updates — delegates to BenchmarkApp.flush().
 
     Returns byte offset (length) of mutation data, or 0 if nothing dirty.
     """
-    # Collect and consume dirty scopes via the scheduler
-    if not app.ctx.consume_dirty():
-        return 0
-
-    # Re-render app shell to pick up any changes.
-    # dyn_node(3) stays as placeholder — diff sees placeholder vs
-    # placeholder and does nothing (KeyedList manages it separately).
-    var new_app_idx = app.render()
-    app.ctx.diff(writer_ptr, new_app_idx)
-
-    # Build a new rows fragment from the current row list
-    var new_frag_idx = app.build_rows_fragment()
-
-    # Flush via KeyedList (handles all three transitions)
-    app.rows_list.flush(app.ctx, writer_ptr, new_frag_idx)
-
-    writer_ptr[0].finalize()
-    return Int32(writer_ptr[0].offset)
+    return app.flush(writer_ptr)
