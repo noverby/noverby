@@ -1,0 +1,723 @@
+# Separation Plan — `wasm-mojo` → `mojo-core` + `mojo-gui`
+
+## Executive Summary
+
+Split the current `wasm-mojo` monolith into two projects:
+
+1. **`mojo-core`** — Renderer-agnostic reactive UI framework (Mojo library)
+2. **`mojo-gui`** — GUI renderers: web (WASM+TS), desktop (webview), native (future)
+
+The goal: write a Mojo UI app once, run it in the browser via WASM **and** natively on desktop — like Dioxus does for Rust.
+
+---
+
+## Architectural Inspiration: Dioxus
+
+Dioxus separates concerns as:
+
+| Dioxus crate       | Role                                         |
+|---------------------|----------------------------------------------|
+| `dioxus-core`       | VirtualDom, signals, scopes, mutations       |
+| `dioxus-html`       | HTML elements, attributes, events            |
+| `dioxus-web`        | Browser renderer (WASM + JS interop)         |
+| `dioxus-desktop`    | Desktop renderer (webview via Wry/Tao)       |
+| `dioxus-native`     | Native renderer (Blitz layout engine)        |
+
+Key insight: **the mutation protocol stays DOM-oriented even in core**. Desktop renderers either use a webview (DOM natively) or map DOM concepts to native widgets. This is pragmatic — HTML/DOM is a universal UI description language.
+
+---
+
+## Current Module Map & Classification
+
+### Renderer-Agnostic (→ `mojo-core`)
+
+These modules have **zero DOM/browser dependencies** — pure reactive infrastructure:
+
+| Module                      | Purpose                                        |
+|-----------------------------|------------------------------------------------|
+| `src/signals/runtime.mojo`  | Reactive runtime, signal store, string store, context tracking |
+| `src/signals/memo.mojo`     | MemoEntry, MemoStore (derived signals)         |
+| `src/signals/effect.mojo`   | Effect infrastructure                          |
+| `src/signals/handle.mojo`   | SignalI32, SignalBool, SignalString, MemoI32, MemoBool, MemoString, EffectHandle |
+| `src/scope/scope.mojo`      | ScopeState, hooks, context, error/suspense     |
+| `src/scope/arena.mojo`      | ScopeArena (slab allocator)                    |
+| `src/scheduler/scheduler.mojo` | Height-ordered dirty scope queue            |
+| `src/arena/element_id.mojo` | ElementId type and allocator                   |
+
+### Virtual DOM Layer (→ `mojo-core`)
+
+The VNode/Template/diff machinery is *structurally* DOM-oriented but is renderer-agnostic in implementation — it never touches real DOM, only emits mutations to a buffer:
+
+| Module                         | Purpose                                     |
+|--------------------------------|---------------------------------------------|
+| `src/vdom/template.mojo`       | Template, TemplateNode (static structure)   |
+| `src/vdom/vnode.mojo`          | VNode, DynamicNode, AttributeValue, VNodeBuilder |
+| `src/vdom/builder.mojo`        | TemplateBuilder API                         |
+| `src/vdom/registry.mojo`       | Template storage and lookup                 |
+| `src/mutations/create.mojo`    | CreateEngine (VNode → mutation buffer)      |
+| `src/mutations/diff.mojo`      | DiffEngine (old/new VNode → minimal mutations) |
+| `src/bridge/protocol.mojo`     | MutationWriter + binary opcodes             |
+
+### HTML-Specific (→ `mojo-core/html` submodule, or `mojo-html`)
+
+These define **what** elements/events exist — the HTML vocabulary:
+
+| Module                      | Purpose                                        |
+|-----------------------------|------------------------------------------------|
+| `src/vdom/tags.mojo`        | TAG_DIV, TAG_SPAN, TAG_BUTTON, ... (38 tags)  |
+| `src/vdom/dsl.mojo`         | `el_div()`, `el_button()`, `dyn_text()`, `onclick_add()`, inline event constructors |
+| `src/vdom/dsl_tests.mojo`   | DSL test functions                             |
+| `src/events/registry.mojo`  | HandlerEntry, HandlerRegistry, action tags, event type constants (EVT_CLICK, EVT_INPUT, ...) |
+
+### Component Framework (→ `mojo-core`, mixed concerns)
+
+These bundle reactive + vdom + mutations into an ergonomic app framework. They reference HTML-specific types but the *structure* is renderer-agnostic:
+
+| Module                              | Purpose                                  |
+|--------------------------------------|------------------------------------------|
+| `src/component/app_shell.mojo`       | AppShell: runtime + store + allocator + scheduler |
+| `src/component/context.mojo`         | ComponentContext: ergonomic API, RenderBuilder |
+| `src/component/child.mojo`           | ChildComponent rendering                 |
+| `src/component/child_context.mojo`   | ChildComponentContext                    |
+| `src/component/lifecycle.mojo`       | mount, diff, finalize, FragmentSlot, ConditionalSlot |
+| `src/component/keyed_list.mojo`      | KeyedList, ItemBuilder, HandlerAction    |
+| `src/component/router.mojo`          | URL path → branch router                 |
+
+### Browser/WASM Runtime (→ `mojo-gui-web`)
+
+Everything that runs in the browser or manages WASM instantiation:
+
+| Module                        | Purpose                                      |
+|-------------------------------|----------------------------------------------|
+| `runtime/interpreter.ts`      | DOM stack machine (applies binary mutations) |
+| `runtime/events.ts`           | DOM event delegation bridge                  |
+| `runtime/templates.ts`        | Template cache (DocumentFragment cloning)    |
+| `runtime/memory.ts`           | WASM memory management, free-list allocator  |
+| `runtime/env.ts`              | WASM environment imports (I/O, math, libc)   |
+| `runtime/strings.ts`          | Mojo String ABI helpers (SSO)                |
+| `runtime/protocol.ts`         | JS-side mutation opcode parser               |
+| `runtime/tags.ts`             | HTML tag name mapping (JS side)              |
+| `runtime/app.ts`              | App lifecycle helpers, per-app handles       |
+| `runtime/types.ts`            | WasmExports interface                        |
+| `runtime/mod.ts`              | Entry point (instantiate WASM)               |
+| `src/main.mojo`               | @export wrappers (WASM entry point)          |
+| `examples/`                   | Browser example apps                         |
+| `examples/lib/`               | Shared JS runtime for examples               |
+| `test-js/`                    | JS integration tests                         |
+| `scripts/`                    | Build scripts (Mojo → WASM pipeline)         |
+| `justfile`                    | Build commands                               |
+| `default.nix`                 | Nix dev shell                                |
+
+### Test Apps (split across both)
+
+| Module                        | Destination                                  |
+|-------------------------------|----------------------------------------------|
+| `src/apps/*.mojo`             | Stay with `mojo-core` as test/demo apps      |
+| `test/*.mojo`                 | Stay with `mojo-core` (Mojo-side tests)      |
+| `test-js/*.test.ts`           | Move to `mojo-gui-web` (browser integration) |
+
+---
+
+## Target Project Structure
+
+### Project 1: `mojo-core`
+
+The renderer-agnostic Mojo UI framework. Can be compiled to **both** WASM and native targets.
+
+```text
+mojo-core/
+├── src/
+│   ├── signals/                  # Reactive primitives
+│   │   ├── runtime.mojo          # Runtime, SignalStore, StringStore, context
+│   │   ├── memo.mojo             # MemoEntry, MemoStore
+│   │   ├── effect.mojo           # EffectHandle
+│   │   └── handle.mojo           # SignalI32, SignalBool, SignalString, Memo*
+│   ├── scope/                    # Scope lifecycle
+│   │   ├── scope.mojo            # ScopeState, hooks, context, error/suspense
+│   │   └── arena.mojo            # ScopeArena (slab allocator)
+│   ├── scheduler/
+│   │   └── scheduler.mojo        # Height-ordered dirty scope queue
+│   ├── arena/
+│   │   └── element_id.mojo       # ElementId type and allocator
+│   ├── vdom/                     # Virtual DOM (renderer-agnostic)
+│   │   ├── template.mojo         # Template, TemplateNode
+│   │   ├── vnode.mojo            # VNode, DynamicNode, AttributeValue
+│   │   ├── builder.mojo          # TemplateBuilder API
+│   │   └── registry.mojo         # Template storage and lookup
+│   ├── mutations/                # Mutation engines
+│   │   ├── create.mojo           # CreateEngine (initial mount)
+│   │   └── diff.mojo             # DiffEngine (reconciliation)
+│   ├── bridge/
+│   │   └── protocol.mojo         # MutationWriter + binary opcodes
+│   ├── events/
+│   │   └── registry.mojo         # HandlerEntry, HandlerRegistry, action tags
+│   ├── component/                # Component framework
+│   │   ├── app_shell.mojo        # AppShell
+│   │   ├── context.mojo          # ComponentContext, RenderBuilder
+│   │   ├── child.mojo            # ChildComponent
+│   │   ├── child_context.mojo    # ChildComponentContext
+│   │   ├── lifecycle.mojo        # mount, diff, finalize, Fragment/ConditionalSlot
+│   │   ├── keyed_list.mojo       # KeyedList, ItemBuilder, HandlerAction
+│   │   └── router.mojo           # URL path → branch router
+│   ├── html/                     # HTML vocabulary (submodule)
+│   │   ├── tags.mojo             # TAG_DIV, TAG_SPAN, ... (moved from vdom/tags.mojo)
+│   │   ├── dsl.mojo              # el_div(), el_button(), ... (moved from vdom/dsl.mojo)
+│   │   └── dsl_tests.mojo        # DSL tests (moved from vdom/dsl_tests.mojo)
+│   └── lib.mojo                  # Package root: re-exports public API
+├── apps/                         # Demo/test apps (moved from src/apps/)
+│   ├── counter.mojo
+│   ├── todo.mojo
+│   ├── bench.mojo
+│   └── ...
+├── test/                         # Mojo-side unit tests
+│   ├── test_signals.mojo
+│   ├── test_scopes.mojo
+│   ├── test_memo.mojo
+│   └── ...
+├── AGENTS.md
+├── README.md
+└── CHANGELOG.md
+```
+
+### Project 2: `mojo-gui`
+
+Multi-renderer project. Each renderer is a subproject that depends on `mojo-core`.
+
+```text
+mojo-gui/
+├── web/                          # Browser renderer (WASM + TypeScript)
+│   ├── runtime/                  # TypeScript runtime (from wasm-mojo/runtime/)
+│   │   ├── mod.ts
+│   │   ├── interpreter.ts        # DOM stack machine
+│   │   ├── events.ts             # DOM event delegation
+│   │   ├── templates.ts          # Template cache (DocumentFragment)
+│   │   ├── memory.ts             # WASM memory management
+│   │   ├── env.ts                # WASM environment imports
+│   │   ├── strings.ts            # Mojo String ABI
+│   │   ├── protocol.ts           # JS mutation opcode parser
+│   │   ├── tags.ts               # HTML tag names (JS side)
+│   │   ├── app.ts                # App lifecycle helpers
+│   │   └── types.ts              # WasmExports interface
+│   ├── src/
+│   │   └── main.mojo             # @export WASM wrappers
+│   ├── examples/                 # Browser examples
+│   │   ├── counter/
+│   │   ├── todo/
+│   │   ├── bench/
+│   │   └── lib/                  # Shared JS runtime
+│   ├── test-js/                  # JS integration tests
+│   │   ├── harness.ts
+│   │   ├── counter.test.ts
+│   │   └── ...
+│   ├── scripts/                  # Build pipeline (Mojo → WASM)
+│   │   ├── build_test_binaries.sh
+│   │   ├── run_test_binaries.sh
+│   │   └── precompile.mojo
+│   ├── deno.json
+│   ├── justfile
+│   └── README.md
+│
+├── desktop/                      # Desktop renderer (Phase 2 — webview)
+│   ├── src/
+│   │   ├── main.mojo             # Native entry point
+│   │   ├── webview.mojo          # Webview management (FFI to Wry/Tao or OS APIs)
+│   │   └── bridge.mojo           # Mutation buffer → webview JS bridge
+│   ├── runtime/
+│   │   └── ...                   # Reuses web/runtime/ interpreter in the webview
+│   └── README.md
+│
+├── native/                       # Native renderer (Phase 3 — future)
+│   ├── src/
+│   │   ├── main.mojo             # Native entry point
+│   │   ├── renderer.mojo         # Mutation interpreter → native widgets
+│   │   └── backend/              # Platform-specific: GTK, Cocoa, Win32, etc.
+│   └── README.md
+│
+└── README.md
+```
+
+---
+
+## The Abstraction Boundary: Binary Mutation Protocol
+
+The **mutation buffer** is the renderer contract. Every renderer must implement an interpreter that consumes the same binary opcode stream:
+
+```text
+┌──────────────────────┐     binary mutation buffer      ┌─────────────────────┐
+│                      │  ───────────────────────────►   │                     │
+│  mojo-core           │     (shared linear memory       │  Renderer           │
+│  (reactive framework │      or pipe/socket)            │  (web / desktop /   │
+│   + virtual DOM      │                                 │   native)           │
+│   + diff engine)     │  ◄───────────────────────────   │                     │
+│                      │     event dispatch callbacks     │                     │
+└──────────────────────┘                                 └─────────────────────┘
+```
+
+The opcodes (`OP_CREATE_TEXT_NODE`, `OP_SET_ATTRIBUTE`, `OP_LOAD_TEMPLATE`, etc.) are DOM-oriented by design. This is intentional — all three renderer targets can interpret them:
+
+| Opcode              | Web (DOM)                     | Desktop (Webview)           | Native (future)             |
+|---------------------|-------------------------------|-----------------------------|-----------------------------|
+| `LOAD_TEMPLATE`     | `cloneNode(true)`             | Same (webview has DOM)      | Create widget tree          |
+| `SET_ATTRIBUTE`     | `el.setAttribute()`           | Same                        | Set widget property         |
+| `SET_TEXT`          | `node.textContent = ...`      | Same                        | Set label text              |
+| `NEW_EVENT_LISTENER`| `addEventListener()`          | Same                        | Register widget callback    |
+| `APPEND_CHILDREN`  | `parent.appendChild()`        | Same                        | Add child widget            |
+| `REMOVE`           | `node.remove()`               | Same                        | Destroy widget              |
+
+---
+
+## Renderer Strategies
+
+### Web Renderer (existing — move to `mojo-gui/web/`)
+
+**How it works today:**
+
+1. Mojo compiles to WASM via `mojo build` → `llc` → `wasm-ld`
+2. TypeScript runtime instantiates WASM, provides env imports
+3. Mojo writes mutations to shared linear memory
+4. JS `Interpreter` reads mutation buffer, applies to real DOM
+5. JS `EventBridge` captures DOM events, dispatches to WASM
+
+**Changes needed:** Minimal. Mostly a file move. The `main.mojo` WASM export wrappers stay here.
+
+### Desktop Renderer (new — `mojo-gui/desktop/`)
+
+Strategy: embedded webview (like Dioxus Desktop). This is the pragmatic first approach. Dioxus desktop works exactly this way:
+
+1. Mojo compiles to a **native binary** (no WASM)
+2. The native binary embeds a webview (via FFI to Wry/Tao or direct OS webview APIs)
+3. The same TypeScript/JS interpreter runs **inside** the webview
+4. Communication: Mojo writes mutations → serializes to the webview via IPC → JS interpreter applies to DOM
+
+**Architecture:**
+
+```text
+┌──────────────────────────────────────────────────────┐
+│  Native Process                                       │
+│                                                       │
+│  ┌─────────────────────┐                              │
+│  │  mojo-core           │                              │
+│  │  (compiled native)   │                              │
+│  │                      │─── mutation buffer ──┐       │
+│  │  signals, vdom,      │                      │       │
+│  │  diff, scheduler     │◄── event dispatch ──┐│       │
+│  └─────────────────────┘                     ││       │
+│                                              ▼│       │
+│  ┌─────────────────────────────────────────┐  │       │
+│  │  Embedded Webview                        │  │       │
+│  │  ┌────────────────────────────────────┐  │  │       │
+│  │  │  JS Interpreter (reused from web/) │  │  │       │
+│  │  │  EventBridge → IPC → native        │──┘  │       │
+│  │  │  DOM rendering                     │      │       │
+│  │  └────────────────────────────────────┘      │       │
+│  └──────────────────────────────────────────────┘       │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Key difference from web:** The Mojo code runs as a native process (not WASM), and communicates with the webview via IPC (e.g., `window.postMessage`, named pipes, or shared memory) instead of shared WASM linear memory.
+
+**Adaptation needed in `mojo-core`:**
+
+- The `MutationWriter` currently writes to WASM linear memory (`UnsafePointer[UInt8, MutExternalOrigin]`). For native, it writes to a heap buffer. The writer itself doesn't care — it just writes bytes to a pointer. ✅ Already works.
+- The native host reads the buffer and sends it to the webview (base64, ArrayBuffer transfer, or shared memory mapping).
+
+### Native Renderer (future — `mojo-gui/native/`)
+
+Strategy: direct widget mapping. A true native renderer that maps DOM-like mutations to platform widgets:
+
+- `LOAD_TEMPLATE` → create a widget subtree from a cached layout
+- `SET_TEXT` → update a label/text widget
+- `SET_ATTRIBUTE` → set widget properties (style, class → theme variants)
+- `NEW_EVENT_LISTENER` → register widget callbacks
+
+This requires a layout engine (like Dioxus uses Blitz/Taffy) and platform backend (GTK, Cocoa, Win32). This is a large effort and would be Phase 3.
+
+---
+
+## Phase 1: Extract `mojo-core` Library
+
+### Step 1.1 — Create `mojo-core` repo/directory structure
+
+Create the new project skeleton. The reactive core, vdom, and component framework become a standalone Mojo library.
+
+**Files to move (Mojo source):**
+
+| From (`wasm-mojo/`)                  | To (`mojo-core/`)                     |
+|--------------------------------------|---------------------------------------|
+| `src/signals/*`                      | `src/signals/*`                       |
+| `src/scope/*`                        | `src/scope/*`                         |
+| `src/scheduler/*`                    | `src/scheduler/*`                     |
+| `src/arena/*`                        | `src/arena/*`                         |
+| `src/vdom/template.mojo`            | `src/vdom/template.mojo`             |
+| `src/vdom/vnode.mojo`               | `src/vdom/vnode.mojo`                |
+| `src/vdom/builder.mojo`             | `src/vdom/builder.mojo`              |
+| `src/vdom/registry.mojo`            | `src/vdom/registry.mojo`             |
+| `src/mutations/*`                    | `src/mutations/*`                     |
+| `src/bridge/*`                       | `src/bridge/*`                        |
+| `src/events/*`                       | `src/events/*`                        |
+| `src/component/*`                    | `src/component/*`                     |
+| `src/vdom/tags.mojo`                | `src/html/tags.mojo`                 |
+| `src/vdom/dsl.mojo`                 | `src/html/dsl.mojo`                  |
+| `src/vdom/dsl_tests.mojo`           | `src/html/dsl_tests.mojo`            |
+| `src/apps/*`                         | `apps/*`                              |
+| `test/*.mojo` (Mojo-side tests)     | `test/*`                              |
+
+**Import path changes:**
+
+| Old import                           | New import                            |
+|--------------------------------------|---------------------------------------|
+| `from vdom.tags import TAG_DIV, ...` | `from html.tags import TAG_DIV, ...`  |
+| `from vdom.dsl import el_div, ...`   | `from html.dsl import el_div, ...`    |
+
+The `vdom/dsl.mojo` module currently imports from `vdom.tags`, `vdom.template`, `vdom.vnode`, and `events.registry`. When moved to `html/dsl.mojo`, imports from `vdom.*` stay the same (sibling package), only `html.tags` changes.
+
+### Step 1.2 — Introduce a Renderer Trait (Deferred Abstraction)
+
+Currently, `MutationWriter` writes directly to a raw byte buffer. This is already generic enough — any renderer can read from a byte buffer. No trait abstraction is needed immediately.
+
+However, for **event dispatch**, the current system is tightly coupled:
+
+- Events flow: DOM → JS EventBridge → WASM export → `HandlerRegistry.dispatch()`
+- The `dispatch_event` function lives in `main.mojo` (WASM exports)
+
+**For native rendering**, event dispatch would flow:
+
+- Widget callback → native Mojo code → `HandlerRegistry.dispatch()`
+
+This already works because `HandlerRegistry.dispatch()` is a regular Mojo method with no WASM dependency. The only difference is the entry point (WASM export vs. native function call).
+
+**Decision: No Renderer trait for Phase 1.** The mutation buffer protocol IS the trait, de facto. Renderers implement an interpreter for the binary opcodes.
+
+### Step 1.3 — Make `mojo-core` compile to both WASM and native
+
+The core Mojo code should compile with both:
+
+- `mojo build --target wasm64-wasi` (for web renderer)
+- `mojo build` (for native, default target)
+
+**Blockers to check:**
+
+- The `MutationWriter` uses `UnsafePointer[UInt8, MutExternalOrigin]` — the `MutExternalOrigin` origin attribute might be WASM-specific. Need to verify it compiles natively.
+- No `@export` decorators in the library code (those stay in `main.mojo` per-renderer).
+- No WASM-specific memory layout assumptions (the code uses `alloc`/`UnsafePointer` which work natively too).
+
+**Expected result:** The core library compiles cleanly for both targets with no changes beyond import paths.
+
+### Step 1.4 — Mojo-side test suite
+
+Move all `test/*.mojo` files to `mojo-core/test/`. These tests use `wasmtime` to run WASM binaries — this works for both targets:
+
+- **WASM target:** Tests compile app to WASM, run via wasmtime (existing flow)
+- **Native target:** Tests can also compile and run as native binaries directly
+
+Update `scripts/build_test_binaries.sh` and `scripts/run_test_binaries.sh` to support both modes.
+
+---
+
+## Phase 2: Create `mojo-gui-web` (Browser Renderer)
+
+### Step 2.1 — Move web-specific files
+
+| From (`wasm-mojo/`)                  | To (`mojo-gui/web/`)                 |
+|--------------------------------------|---------------------------------------|
+| `runtime/*`                          | `runtime/*`                           |
+| `src/main.mojo`                      | `src/main.mojo`                       |
+| `examples/*`                         | `examples/*`                          |
+| `test-js/*`                          | `test-js/*`                           |
+| `scripts/*`                          | `scripts/*`                           |
+| `justfile`                           | `justfile`                            |
+| `deno.json`, `deno.lock`            | `deno.json`, `deno.lock`             |
+| `default.nix`                        | `default.nix`                         |
+
+### Step 2.2 — Wire `main.mojo` to import from `mojo-core`
+
+`main.mojo` currently imports from relative paths (`from signals import ...`, `from vdom import ...`). After separation, it needs to import from the `mojo-core` package:
+
+```text
+# Before (monolith):
+from signals import Runtime, create_runtime
+from vdom import TemplateBuilder, VNode
+
+# After (separate packages):
+from mojo_core.signals import Runtime, create_runtime
+from mojo_core.vdom import TemplateBuilder, VNode
+```
+
+**Mojo package dependency mechanism:** As of Mojo 0.26.1, the package system is still evolving. Options:
+
+1. **Git submodule** — `mojo-gui/web/` includes `mojo-core` as a submodule
+2. **Symlink** — development convenience, `src/mojo_core -> ../../mojo-core/src`
+3. **Mojo package path** — `-I` flag or equivalent to add `mojo-core/src` to the import search path
+4. **Mono-repo** — keep both projects in one repo with a workspace-style layout
+
+**Recommended: Mono-repo with path-based imports** (option 3/4) until Mojo has a proper package manager.
+
+### Step 2.3 — Verify the existing test suite passes
+
+After the file moves:
+
+1. All 1,323 Mojo tests pass (compiled via wasmtime)
+2. All 3,090 JS tests pass (compiled via Deno)
+3. All three example apps work in the browser
+
+### Step 2.4 — Extract `main.mojo` WASM exports into generated boilerplate
+
+Currently `main.mojo` is ~6,730 lines of `@export` wrappers. Many of these are mechanical (create app, destroy app, init, rebuild, flush, dispatch_event × N apps). Consider generating these from a manifest to make adding new apps easier across renderers.
+
+---
+
+## Phase 3: Create `mojo-gui-desktop` (Desktop Renderer)
+
+### Step 3.1 — Design the desktop architecture
+
+**Webview approach** (pragmatic, like Dioxus Desktop):
+
+```text
+┌─ Native Mojo Process ─────────────────────────────────┐
+│                                                        │
+│  app.mojo (user app code)                              │
+│      │                                                 │
+│      ▼                                                 │
+│  mojo-core (reactive framework)                        │
+│      │ writes mutations to buffer                      │
+│      ▼                                                 │
+│  desktop/bridge.mojo                                   │
+│      │ serializes buffer → IPC message                 │
+│      ▼                                                 │
+│  desktop/webview.mojo (FFI → system webview)           │
+│      │ evaluateJavaScript() / postMessage              │
+│      ▼                                                 │
+│  ┌─ Embedded Webview ───────────────────────────┐      │
+│  │  <script>                                    │      │
+│  │    const interp = new Interpreter(root);     │      │
+│  │    // receive mutation buffer from native     │      │
+│  │    window.onMessage = (buf) => {             │      │
+│  │      interp.applyMutations(buf);             │      │
+│  │    };                                        │      │
+│  │    // send events back to native             │      │
+│  │    bridge.addEventListener('click', (e) => { │      │
+│  │      native.postMessage({handler, type});    │      │
+│  │    });                                       │      │
+│  │  </script>                                   │      │
+│  └──────────────────────────────────────────────┘      │
+└────────────────────────────────────────────────────────┘
+```
+
+### Step 3.2 — Implement webview FFI
+
+The Mojo native binary needs to create and control a webview window. Options:
+
+| Platform   | Webview API                      | FFI approach           |
+|------------|----------------------------------|------------------------|
+| macOS      | WKWebView (WebKit)               | Mojo → C FFI → ObjC   |
+| Linux      | WebKitGTK                        | Mojo → C FFI → GTK    |
+| Windows    | WebView2 (Chromium)              | Mojo → C FFI → COM    |
+| Cross-plat | [webview/webview](https://github.com/webview/webview) C library | Mojo → C FFI |
+
+The `webview/webview` C library is the easiest path — it provides a single C API across all platforms, similar to how Dioxus uses Wry.
+
+### Step 3.3 — Implement the IPC bridge
+
+The bridge between native Mojo and the embedded webview:
+
+**Mutations (Mojo → Webview):**
+
+1. Mojo writes mutations to a byte buffer (same as WASM)
+2. Bridge encodes the buffer (base64, or typed array transfer)
+3. Bridge calls `webview.evaluateJavaScript("applyMutations('" + encoded + "')")`
+4. JS `Interpreter` decodes and applies to DOM inside the webview
+
+**Events (Webview → Mojo):**
+
+1. JS `EventBridge` in webview captures DOM events
+2. Bridge sends event data via `window.external.invoke()` or custom scheme
+3. Native process receives the callback
+4. Routes to `HandlerRegistry.dispatch()` in `mojo-core`
+
+### Step 3.4 — Reuse the web runtime JS inside the webview
+
+The `runtime/interpreter.ts`, `runtime/events.ts`, `runtime/templates.ts` etc. can be bundled into a single JS file that runs inside the webview. The only change: instead of reading from WASM linear memory, the interpreter receives mutation buffers via IPC.
+
+**Create a `runtime/interpreter-standalone.ts`** that:
+
+- Has no WASM memory dependency
+- Receives mutation buffers as `ArrayBuffer` via message passing
+- Sends events back via message passing
+- Reuses 100% of the existing `Interpreter` and `EventBridge` classes
+
+### Step 3.5 — Desktop entry point
+
+```text
+# examples/desktop_counter.mojo
+
+from mojo_core.component import ComponentContext
+from mojo_core.html.dsl import el_div, el_button, text, dyn_text
+from mojo_gui.desktop import DesktopApp
+
+fn main():
+    var app = DesktopApp(
+        title="Counter",
+        width=400,
+        height=300,
+    )
+    # Same app code as web — just a different entry point
+    var counter = CounterApp()
+    app.run(counter)
+```
+
+The user's app code is **identical** — only the entry point and renderer differ. This is the Dioxus model.
+
+---
+
+## Phase 4: Unified App Entry Point (Optional Future)
+
+Like Dioxus's `dioxus::launch()`, provide a single entry point that selects the renderer at compile time:
+
+```text
+# my_app.mojo
+from mojo_core import launch
+from mojo_core.html.dsl import el_div, el_button, text, dyn_text
+
+fn app():
+    var ctx = ComponentContext.create()
+    var count = ctx.use_signal(0)
+    ctx.setup_view(
+        el_div(
+            el_h1(dyn_text()),
+            el_button(text("Click me"), onclick_add(count, 1)),
+        ),
+        String("app"),
+    )
+
+fn main():
+    launch(app)  # Renderer selected by build target or feature flag
+```
+
+**Compile targets:**
+
+- `mojo build --target wasm64-wasi` → web renderer (needs `mojo-gui-web` JS runtime)
+- `mojo build` → desktop renderer (embeds webview, no WASM)
+- `mojo build --feature native` → native renderer (future)
+
+---
+
+## Dependency Graph
+
+```text
+                    ┌──────────────┐
+                    │  User App    │
+                    │  (my_app.mojo│
+                    └──────┬───────┘
+                           │ imports
+                           ▼
+                    ┌──────────────┐
+                    │  mojo-core   │
+                    │              │
+                    │  signals/    │
+                    │  scope/      │
+                    │  vdom/       │
+                    │  mutations/  │
+                    │  bridge/     │
+                    │  events/     │
+                    │  component/  │
+                    │  html/       │
+                    └──────┬───────┘
+                           │ consumed by
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+     ┌──────────────┐ ┌──────────┐ ┌──────────┐
+     │ mojo-gui-web │ │ mojo-gui │ │ mojo-gui │
+     │              │ │ -desktop │ │ -native  │
+     │ main.mojo    │ │          │ │ (future) │
+     │ runtime/ (TS)│ │ webview  │ │          │
+     │ examples/    │ │ + reused │ │ widget   │
+     │ build scripts│ │ JS interp│ │ mapping  │
+     └──────────────┘ └──────────┘ └──────────┘
+```
+
+---
+
+## Migration Checklist
+
+### Phase 1: `mojo-core` extraction
+
+- [ ] Create `mojo-core/` directory structure
+- [ ] Move `src/signals/`, `src/scope/`, `src/scheduler/`, `src/arena/` unchanged
+- [ ] Move `src/vdom/{template,vnode,builder,registry}.mojo` to `mojo-core/src/vdom/`
+- [ ] Move `src/vdom/{tags,dsl,dsl_tests}.mojo` to `mojo-core/src/html/`
+- [ ] Update `html/dsl.mojo` imports: `from html.tags import ...` (was `from vdom.tags`)
+- [ ] Move `src/mutations/`, `src/bridge/`, `src/events/` unchanged
+- [ ] Move `src/component/` unchanged
+- [ ] Move `src/apps/` to `mojo-core/apps/`
+- [ ] Update app imports in `apps/*.mojo` for new `html/` path
+- [ ] Move `test/*.mojo` to `mojo-core/test/`
+- [ ] Update test imports for new paths
+- [ ] Verify all 1,323 Mojo tests pass
+- [ ] Verify `mojo-core` compiles for native target (no `@export` decorators)
+- [ ] Write `mojo-core/README.md`
+- [ ] Update `mojo-core/AGENTS.md`
+
+### Phase 2: `mojo-gui-web` extraction
+
+- [ ] Create `mojo-gui/web/` directory structure
+- [ ] Move `runtime/` to `mojo-gui/web/runtime/`
+- [ ] Move `src/main.mojo` to `mojo-gui/web/src/main.mojo`
+- [ ] Update `main.mojo` imports to reference `mojo-core` package
+- [ ] Move `examples/` to `mojo-gui/web/examples/`
+- [ ] Move `test-js/` to `mojo-gui/web/test-js/`
+- [ ] Move `scripts/` to `mojo-gui/web/scripts/`
+- [ ] Move build files (`justfile`, `deno.json`, `default.nix`)
+- [ ] Update all import paths in moved files
+- [ ] Verify all 3,090 JS tests pass
+- [ ] Verify all 3 example apps work in browser
+- [ ] Write `mojo-gui/web/README.md`
+
+### Phase 3: `mojo-gui-desktop` (new development)
+
+- [ ] Design IPC protocol between native Mojo and webview
+- [ ] Implement webview FFI (via `webview/webview` C library)
+- [ ] Bundle `runtime/interpreter.ts` as standalone JS for webview injection
+- [ ] Implement mutation buffer serialization (native → webview)
+- [ ] Implement event bridge (webview → native)
+- [ ] Create desktop entry point (`DesktopApp` struct)
+- [ ] Port counter example to desktop
+- [ ] Port todo example to desktop
+- [ ] Write `mojo-gui/desktop/README.md`
+
+---
+
+## Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Mojo package system immaturity | Can't cleanly separate into packages | Mono-repo with path-based imports; symlinks for dev |
+| `MutExternalOrigin` tied to WASM | Core won't compile natively | Audit and abstract the origin parameter; conditionally compile |
+| Webview FFI complexity | Desktop renderer takes too long | Start with single-platform (macOS or Linux); use `webview/webview` C lib |
+| IPC overhead (native → webview) | Desktop perf worse than web | Use shared memory or zero-copy transfer for mutation buffers |
+| Import path breakage | Massive search-and-replace | Script the migration; grep-verify all imports |
+| Test suite fragmentation | Tests break across projects | Phase 1 must keep all Mojo tests green; Phase 2 must keep all JS tests green |
+
+---
+
+## Estimated Effort
+
+| Phase | Effort | Description |
+|-------|--------|-------------|
+| Phase 1 | 2–3 days | File moves, import path updates, verify compilation + tests |
+| Phase 2 | 1–2 days | Move web runtime, update imports, verify browser tests |
+| Phase 3 | 2–4 weeks | Webview FFI, IPC bridge, desktop entry point, first example |
+| Phase 4 | 1 week | Unified `launch()` API (optional, after Phase 3 proves out) |
+
+---
+
+## Open Questions
+
+1. **Mono-repo vs. multi-repo?** — Mono-repo is safer until Mojo has a package manager. Can split later.
+
+2. **Should `html/` stay in `mojo-core` or become a separate `mojo-html` package?** — Keep in `mojo-core` for now. A native renderer that doesn't use HTML elements would need a different DSL (e.g., `el_box()`, `el_label()`), but that's Phase 4+ territory.
+
+3. **How to handle the `@export` boilerplate in `main.mojo`?** — Consider a code generator that reads app definitions and emits WASM/native entry points. This reduces duplication across renderers.
+
+4. **Webview library choice?** — `webview/webview` (C) is the most portable. Alternatively, Mojo could FFI directly to platform APIs (WKWebView, WebKitGTK, WebView2) for more control, at the cost of platform-specific code.
+
+5. **Should the desktop renderer bundle Deno/TypeScript or use plain JS?** — Bundle as plain JS (no Deno dependency). Use `esbuild` or similar to bundle the TypeScript runtime into a single JS file for webview injection.
