@@ -10,45 +10,96 @@ Example apps import only from `mojo-gui/core` (signals, components, HTML DSL). T
 
 ## Examples
 
+### Main Examples
+
 | Example | Description | Signals | Components | Features |
 |---------|-------------|---------|------------|----------|
 | **counter** | Counter with conditional detail section | `SignalI32`, `SignalBool` | `ConditionalSlot` | Reactive text, toggle show/hide, even/odd display |
 | **todo** | Todo list with input binding | `SignalI32`, `SignalString` | `KeyedList` | Two-way input binding, Enter key handling, add/remove items |
 | **bench** | js-framework-benchmark implementation | `SignalI32` | `KeyedList` | Create/update/swap/delete 1K–10K rows, performance timing |
+| **app** | Single-page app with client-side routing | `SignalI32`, `SignalString` | `Router`, `ConditionalSlot` | URL-based view switching, persistent nav bar |
+
+### Demo/Test Apps (`apps/`)
+
+| App | Description |
+|-----|-------------|
+| **batch_demo** | Batch update demonstration |
+| **child_counter** | Parent-child component communication |
+| **child_context_test** | Child component context testing |
+| **context_test** | Context provider/consumer testing |
+| **data_loader** | Suspense-based async data loading |
+| **effect_demo** | Effect lifecycle demonstration |
+| **effect_memo** | Effect + memo interaction |
+| **equality_demo** | Signal equality/deduplication |
+| **error_nest** | Nested error boundaries |
+| **memo_chain** | Chained memo dependencies |
+| **memo_form** | Memo-driven form validation |
+| **props_counter** | Props-based counter (parent→child) |
+| **safe_counter** | Error boundary with crash/retry |
+| **suspense_nest** | Nested suspense boundaries |
+| **theme_counter** | Context-based theming |
 
 ## Directory Structure
-
-Each example follows the same layout:
 
 ```text
 examples/
 ├── counter/
-│   ├── app.mojo              # Shared app logic (platform-agnostic) [future]
-│   └── web/                   # Web-specific assets
-│       ├── index.html         # HTML shell with #root mount point
-│       └── main.js            # JS glue (loads WASM, connects runtime)
+│   ├── counter.mojo           # Shared app logic (platform-agnostic)
+│   └── __init__.mojo          # Package re-exports
 ├── todo/
-│   ├── app.mojo              # Shared app logic [future]
-│   └── web/
-│       ├── index.html
-│       └── main.js
+│   ├── todo.mojo              # Shared app logic
+│   └── __init__.mojo
 ├── bench/
-│   ├── app.mojo              # Shared app logic [future]
-│   └── web/
-│       ├── index.html
-│       └── main.js
+│   ├── bench.mojo             # Shared app logic
+│   └── __init__.mojo
+├── app/
+│   ├── app.mojo               # Multi-view router app
+│   └── __init__.mojo
+├── apps/                      # Demo/test apps (used by WASM test harness)
+│   ├── __init__.mojo
+│   ├── batch_demo.mojo
+│   ├── child_counter.mojo
+│   ├── child_context_test.mojo
+│   ├── context_test.mojo
+│   ├── data_loader.mojo
+│   ├── effect_demo.mojo
+│   ├── effect_memo.mojo
+│   ├── equality_demo.mojo
+│   ├── error_nest.mojo
+│   ├── memo_chain.mojo
+│   ├── memo_form.mojo
+│   ├── props_counter.mojo
+│   ├── safe_counter.mojo
+│   ├── suspense_nest.mojo
+│   └── theme_counter.mojo
 └── README.md                  # This file
 ```
 
-### Current State
+Web-specific assets (HTML shells, JS entry points) live in `mojo-gui/web/examples/`:
 
-The shared `app.mojo` files are planned but not yet extracted. Currently:
-
-- **Web app logic** lives in `mojo-gui/web/examples/<name>/<name>.mojo` and is imported by `web/src/main.mojo` via `@export` WASM wrappers.
-- **Desktop app logic** lives in `mojo-gui/desktop/examples/counter.mojo` and uses `DesktopApp` directly.
-- **Test/demo apps** live in `mojo-gui/core/apps/` and are used by the WASM test harness.
-
-The `web/` subdirectories here contain copies of the web-specific assets (HTML shells, JS entry points) as a reference for the target structure. See the [Migration Checklist](#migration-status) below for progress.
+```text
+web/examples/
+├── counter/
+│   ├── index.html             # HTML shell with #root mount point
+│   └── main.js                # JS glue (loads WASM, connects runtime)
+├── todo/
+│   ├── index.html
+│   └── main.js
+├── bench/
+│   ├── index.html
+│   └── main.js
+├── app/
+│   ├── index.html
+│   └── main.js
+└── lib/                       # Shared JS runtime library
+    ├── app.js                 # Convention-based WASM app launcher
+    ├── boot.js                # WASM instantiation
+    ├── env.js                 # WASM environment imports
+    ├── events.js              # DOM event delegation
+    ├── interpreter.js         # DOM mutation interpreter
+    ├── protocol.js            # Binary protocol parser
+    └── strings.js             # Mojo String ABI helpers
+```
 
 ## Building Examples
 
@@ -62,17 +113,25 @@ cd mojo-gui/web
 # Build all examples (compiles Mojo → WASM, bundles JS runtime)
 just build
 
-# Or build and serve a specific example:
-just serve-counter
-just serve-todo
-just serve-bench
+# Or use the build_examples.sh script:
+bash scripts/build_examples.sh
+
+# Serve locally:
+just serve
+# Open http://localhost:4507/examples/counter/
+# Open http://localhost:4507/examples/todo/
+# Open http://localhost:4507/examples/bench/
+# Open http://localhost:4507/examples/app/
 ```
 
 The web build:
+
 1. Compiles Mojo source to WASM via `mojo build --target wasm64-wasi`
 2. The JS runtime (`runtime/`) instantiates the WASM module
 3. The `Interpreter` reads binary mutations from WASM shared memory
 4. The `EventBridge` captures DOM events and dispatches to WASM
+
+The build command uses `-I ../examples` to resolve the shared example imports (`from counter import ...`, `from apps.safe_counter import ...`, etc.).
 
 ### Desktop Target (Native + Webview)
 
@@ -87,10 +146,11 @@ nix build .#mojo-webview-shim  # or build manually, see desktop/shim/
 # Run the counter example:
 export MOJO_WEBVIEW_LIB=/path/to/libmojo_webview.so
 export MOJO_GUI_DESKTOP_RUNTIME=runtime/desktop-runtime.js
-mojo run -I ../core/src -I ../core -I src examples/counter.mojo
+mojo run -I ../core/src -I ../examples -I src examples/counter.mojo
 ```
 
 The desktop build:
+
 1. Compiles Mojo source to a native binary (no WASM)
 2. Creates a GTK4 window with an embedded WebKitGTK webview
 3. Injects the JS mutation interpreter into the webview
@@ -105,9 +165,10 @@ The Blitz-based desktop renderer will eliminate the webview dependency:
 cd mojo-gui/desktop
 
 # Build with Blitz native HTML/CSS engine:
-mojo build examples/counter/app.mojo \
+mojo build ../examples/counter/counter.mojo \
     -I ../core/src \
-    -I ../desktop/src \
+    -I ../examples \
+    -I src \
     --link-against libmojo_blitz.so \
     -o dist/counter
 ```
@@ -116,10 +177,10 @@ This will use Stylo (Firefox's CSS engine) + Taffy (layout) + Vello (GPU renderi
 
 ## How Web Assets Work
 
-Each example's `web/` subdirectory contains only renderer infrastructure — no app logic:
+Each example's web assets in `web/examples/<name>/` contain only renderer infrastructure — no app logic:
 
 - **`index.html`** — Minimal HTML shell with a `<div id="root">` mount point and app-specific styling.
-- **`main.js`** — Entry point that uses the shared `launch()` function from `examples/lib/app.js`. Convention-based WASM export discovery means zero app-specific JS is needed:
+- **`main.js`** — Entry point that uses the shared `launch()` function from `web/examples/lib/app.js`. Convention-based WASM export discovery means zero app-specific JS is needed:
 
 ```js
 import { launch } from "../lib/app.js";
@@ -134,9 +195,13 @@ The `launch()` function automatically discovers WASM exports by naming conventio
 
 ## Writing a New Example
 
-1. **Create the app struct** in `mojo-gui/core/` or `mojo-gui/web/examples/<name>/`:
+1. **Create the app struct** in `mojo-gui/examples/<name>/<name>.mojo`:
 
 ```mojo
+from component import ComponentContext, ConditionalSlot
+from signals import SignalI32
+from html import el_div, el_h1, el_button, text, dyn_text, onclick_add
+
 struct MyApp(Movable):
     var ctx: ComponentContext
     var count: SignalI32
@@ -153,34 +218,41 @@ struct MyApp(Movable):
         )
 ```
 
-2. **Add `@export` wrappers** in `web/src/main.mojo` for the web target.
+2. **Create `__init__.mojo`** in the same directory to re-export the app and lifecycle functions.
 
-3. **Add web assets** in `examples/<name>/web/`:
+3. **Add `@export` wrappers** in `web/src/main.mojo` for the web target.
+
+4. **Add web assets** in `web/examples/<name>/`:
    - `index.html` — copy from an existing example and customize the title/styles
    - `main.js` — use the shared `launch()` with your app name
 
-4. **Add desktop entry point** (optional) in `desktop/examples/<name>.mojo`.
+5. **Add desktop entry point** (optional) in `desktop/examples/<name>.mojo`.
 
-5. **Verify on all targets** — the app must work identically on every renderer.
+6. **Verify on all targets** — the app must work identically on every renderer.
 
 ## Migration Status
 
 Progress toward fully shared, platform-agnostic examples:
 
 ### Phase 1: Core extraction ✅
+
 - [x] Platform abstraction layer (`core/src/platform/`)
 - [x] `PlatformApp` trait definition
 - [x] `launch()` function with `AppConfig`
 - [x] `PlatformFeatures` runtime capability detection
-- [ ] Extract shared `app.mojo` files from web/desktop examples
+- [x] Extract shared example apps from web/desktop to `examples/`
+- [x] Move demo/test apps from `core/apps/` to `examples/apps/`
 
-### Phase 2: Web extraction
+### Phase 2: Web extraction ✅
+
 - [x] `WebApp` implementing `PlatformApp` trait
-- [x] Web-specific assets in `examples/<name>/web/`
+- [x] Web-specific assets in `web/examples/<name>/`
+- [x] Updated build paths (`-I ../examples`)
 - [ ] Refactor web examples to use `launch()` pattern
 - [ ] Generate `@export` boilerplate from manifest
 
 ### Phase 3: Desktop (Blitz)
+
 - [ ] Blitz C shim and FFI bindings
 - [ ] `DesktopApp` (Blitz) implementing `PlatformApp` trait
 - [ ] Mojo-side mutation interpreter
@@ -191,7 +263,7 @@ Progress toward fully shared, platform-agnostic examples:
 
 ```text
 ┌────────────────────────────────────────────────┐
-│  Shared Example App                             │
+│  Shared Example App (examples/)                 │
 │                                                 │
 │  imports only:                                  │
 │    mojo-gui/core (signals, components, DSL)     │
