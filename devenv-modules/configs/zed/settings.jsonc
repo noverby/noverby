@@ -20,10 +20,61 @@
 		}
 	},
 	"project_panel": {
-		"hide_hidden": true,
-		"hide_gitignore": true
+		"hide_hidden": true
 	},
 	"hidden_files": ["**/.*", "**/*.lock"],
+	"file_scan_exclusions": [
+		// Zed defaults
+		"**/.git",
+		"**/.svn",
+		"**/.hg",
+		"**/.jj",
+		"**/CVS",
+		"**/.DS_Store",
+		"**/Thumbs.db",
+		"**/.classpath",
+		"**/.settings",
+		// Nix
+		"**/.devenv",
+		"**/.direnv",
+		"**/result",
+		"**/result-*",
+		// Environment
+		"**/.env",
+		"**/tmp",
+		// Build artifacts
+		"**/build",
+		"**/dist",
+		"**/target",
+		"**/deployment.zip",
+		// Compiled files
+		"**/*.ll",
+		"**/*.o",
+		"**/*.wasm",
+		// Disk images
+		"**/*.img",
+		"**/*.qcow2",
+		"**/*.raw",
+		// JavaScript
+		"**/node_modules",
+		// Profiling & tracing
+		"**/flamegraph.svg",
+		"**/kgen.trace.json.*",
+		// Linting & formatting caches
+		"**/.rumdl_cache",
+		// Generated configs
+
+		"**/.commitlintrc.yml",
+		"**/.pre-commit-config.yaml",
+		"**/.rules",
+		"**/.secretsignore",
+		"**/.zed",
+		"**/biome.jsonc",
+		"**/deno.jsonc",
+		"**/lychee.toml",
+		"**/rumdl.toml",
+		"**/typos.toml"
+	],
 	"jupyter": {
 		"kernel_selections": {
 			"python": "python3",
