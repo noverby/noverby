@@ -1,15 +1,17 @@
-# Separation Plan — `wasm-mojo` → `mojo-gui`
+# Separation Plan — `wasm-mojo` → `mojo-gui` + `mojo-web`
 
 ## Executive Summary
 
-Split the current `wasm-mojo` monolith into a multi-project `mojo-gui` workspace:
+Split the current `wasm-mojo` monolith into two projects:
 
-1. **`mojo-gui/core`** — Renderer-agnostic reactive GUI framework (Mojo library)
-2. **`mojo-gui/web`** — Browser renderer (WASM + TypeScript)
-3. **`mojo-gui/desktop`** — Desktop renderer (webview, future)
-4. **`mojo-gui/native`** — Native renderer (direct widgets, future)
+1. **`mojo-gui`** — Multi-renderer reactive GUI framework
+   - **`mojo-gui/core`** — Renderer-agnostic reactive GUI framework (Mojo library)
+   - **`mojo-gui/web`** — Browser renderer (WASM + TypeScript)
+   - **`mojo-gui/desktop`** — Desktop renderer (webview, future)
+   - **`mojo-gui/native`** — Native renderer (direct widgets, future)
+2. **`mojo-web`** — Raw Web API bindings for Mojo/WASM (like Rust's `web-sys`)
 
-The goal: write a Mojo GUI app once, run it in the browser via WASM **and** natively on desktop — like Dioxus does for Rust.
+The goal: write a Mojo GUI app once, run it in the browser via WASM **and** natively on desktop — like Dioxus does for Rust. `mojo-web` provides foundational Web API access for any Mojo/WASM project, including but not limited to `mojo-gui`.
 
 ---
 
@@ -25,7 +27,9 @@ Dioxus separates concerns as:
 | `dioxus-desktop`    | Desktop renderer (webview via Wry/Tao)       |
 | `dioxus-native`     | Native renderer (Blitz layout engine)        |
 
-Key insight: **the mutation protocol stays DOM-oriented even in core**. Desktop renderers either use a webview (DOM natively) or map DOM concepts to native widgets. This is pragmatic — HTML/DOM is a universal UI description language.
+Separately, Rust's `web-sys` crate provides raw bindings to **all** Web APIs (DOM, fetch, WebSocket, WebGL, etc.) via `wasm-bindgen`. Any Rust/WASM project can use `web-sys` directly — Dioxus-web uses it under the hood. `mojo-web` fills this same ecosystem role for Mojo.
+
+Key insight: **the mutation protocol stays DOM-oriented even in core**. Desktop renderers either use a webview (DOM natively) or map DOM concepts to native widgets. This is pragmatic — HTML/DOM is a universal UI description language. `mojo-gui` uses the mutation protocol (not `mojo-web`) for rendering, keeping the multi-renderer architecture intact. `mojo-web` is for everything else an app needs from the browser: data fetching, storage, timers, canvas, etc.
 
 ---
 
@@ -599,32 +603,35 @@ fn main():
                     ┌──────────────┐
                     │  User App    │
                     │ (my_app.mojo)│
-                    └──────┬───────┘
-                           │ imports
-                           ▼
-                    ┌──────────────┐
-                    │ mojo-gui/core│
-                    │              │
-                    │  signals/    │
-                    │  scope/      │
-                    │  vdom/       │
-                    │  mutations/  │
-                    │  bridge/     │
-                    │  events/     │
-                    │  component/  │
-                    │  html/       │
-                    └──────┬───────┘
-                           │ consumed by
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-     ┌──────────────┐ ┌──────────┐ ┌──────────┐
-     │ mojo-gui/web │ │ mojo-gui │ │ mojo-gui │
-     │              │ │ /desktop │ │ /native  │
-     │ main.mojo    │ │          │ │ (future) │
-     │ runtime/ (TS)│ │ webview  │ │          │
-     │ examples/    │ │ + reused │ │ widget   │
-     │ build scripts│ │ JS interp│ │ mapping  │
-     └──────────────┘ └──────────┘ └──────────┘
+                    └──┬───────┬───┘
+                       │       │
+              imports  │       │  imports (optional,
+                       │       │  web-only features)
+                       ▼       ▼
+              ┌──────────┐  ┌──────────┐
+              │ mojo-gui │  │ mojo-web │
+              │ /core    │  │          │
+              │          │  │ DOM      │
+              │ signals/ │  │ fetch    │
+              │ scope/   │  │ WebSocket│
+              │ vdom/    │  │ storage  │
+              │ mutations│  │ timers   │
+              │ bridge/  │  │ canvas   │
+              │ events/  │  │ ...      │
+              │ component│  └──────────┘
+              │ html/    │
+              └────┬─────┘
+                   │ consumed by
+              ┌────┼────────────┐
+              ▼    ▼            ▼
+     ┌──────────┐ ┌──────────┐ ┌──────────┐
+     │ mojo-gui │ │ mojo-gui │ │ mojo-gui │
+     │ /web     │ │ /desktop │ │ /native  │
+     │          │ │          │ │ (future) │
+     │ main.mojo│ │ webview  │ │          │
+     │ runtime/ │ │ + reused │ │ widget   │
+     │ examples/│ │ JS interp│ │ mapping  │
+     └──────────┘ └──────────┘ └──────────┘
 ```
 
 ---
@@ -699,12 +706,122 @@ fn main():
 | Phase 2 | 1–2 days | Move web runtime, update imports, verify browser tests |
 | Phase 3 | 2–4 weeks | Webview FFI, IPC bridge, desktop entry point, first example |
 | Phase 4 | 1 week | Unified `launch()` API (optional, after Phase 3 proves out) |
+| Phase 5 | 2–3 weeks | `mojo-web` MVP: handle table, DOM, fetch, timers, storage |
+
+---
+
+## `mojo-web` — Raw Web API Bindings
+
+### Purpose
+
+`mojo-web` is a standalone Mojo library providing typed bindings to Web APIs for any Mojo/WASM project — the equivalent of Rust's `web-sys` crate. It is **not** part of `mojo-gui` and has no dependency on it.
+
+### Architecture
+
+Since Mojo lacks a `wasm-bindgen` equivalent, `mojo-web` uses the same pattern already proven in `wasm-mojo`: WASM imports backed by a JS-side handle table.
+
+**JS side** — a runtime that exposes Web APIs as flat WASM-importable functions:
+
+```typescript
+// Handle table: maps integer IDs to JS objects
+const handles = new Map<number, any>();
+let nextId = 1;
+
+export const mojo_web = {
+  document_create_element(tag_ptr: bigint, tag_len: number): number {
+    const tag = readString(tag_ptr, tag_len);
+    const el = document.createElement(tag);
+    handles.set(nextId, el);
+    return nextId++;
+  },
+  node_append_child(parent: number, child: number): void {
+    handles.get(parent)!.appendChild(handles.get(child)!);
+  },
+  handle_drop(id: number): void {
+    handles.delete(id);
+  },
+  // ... more Web API bindings
+};
+```
+
+**Mojo side** — typed wrappers over the imported functions:
+
+```mojo
+struct JsHandle(Movable):
+    """Opaque handle to a JS object. Dropped via handle_drop() on the JS side."""
+    var id: Int32
+
+struct Element:
+    var handle: JsHandle
+
+    fn set_attribute(self, name: String, value: String):
+        _web_sys_set_attribute(self.handle.id, name, value)
+
+struct Document:
+    fn create_element(self, tag: String) -> Element:
+        var id = _web_sys_create_element(tag)
+        return Element(JsHandle(id))
+```
+
+### API Surface (MVP — Phase 5)
+
+| Module | Web APIs | Examples |
+|--------|----------|----------|
+| `dom` | Document, Element, Node, Text, Event | `document.create_element()`, `el.set_attribute()` |
+| `fetch` | fetch, Request, Response, Headers | `fetch(url).await_response()` |
+| `timers` | setTimeout, setInterval, requestAnimationFrame | `set_timeout(callback, ms)` |
+| `storage` | localStorage, sessionStorage | `local_storage.get_item(key)` |
+| `console` | console.log, warn, error | `console.log(msg)` |
+| `url` | URL, URLSearchParams | `URL.parse(href)` |
+| `websocket` | WebSocket | `WebSocket.connect(url)` |
+| `canvas` | Canvas2D, WebGL (future) | `ctx.fill_rect(x, y, w, h)` |
+
+### Relationship to `mojo-gui`
+
+`mojo-web` and `mojo-gui` are **independent** projects:
+
+- `mojo-gui` uses the binary mutation protocol for rendering — it does NOT use `mojo-web` for DOM manipulation. This keeps the multi-renderer architecture intact.
+- `mojo-gui` apps can import `mojo-web` for **non-rendering** web features: data fetching (suspense + fetch), persistent storage, WebSocket connections, animation timers, etc.
+- `mojo-web` can be used by any Mojo/WASM project that has nothing to do with `mojo-gui`.
+
+```text
+┌────────────────────────────────────────────────┐
+│  User App                                       │
+│                                                 │
+│  GUI rendering:     Non-rendering web features: │
+│  mojo-gui/core      mojo-web                    │
+│  (mutation protocol) (direct Web API calls)     │
+└────────────────────────────────────────────────┘
+```
+
+### Project Structure
+
+```text
+mojo-web/
+├── src/
+│   ├── handle.mojo               # JsHandle — opaque reference to JS objects
+│   ├── dom.mojo                  # Document, Element, Node, Text, Event
+│   ├── fetch.mojo                # fetch(), Request, Response, Headers
+│   ├── timers.mojo               # setTimeout, setInterval, requestAnimationFrame
+│   ├── storage.mojo              # localStorage, sessionStorage
+│   ├── console.mojo              # console.log/warn/error
+│   ├── url.mojo                  # URL, URLSearchParams
+│   ├── websocket.mojo            # WebSocket
+│   └── lib.mojo                  # Package root
+├── runtime/
+│   └── mojo_web.ts               # JS-side handle table + Web API bindings
+├── test/
+│   └── ...
+├── examples/
+│   └── fetch_example.mojo        # Simple fetch + DOM example
+└── README.md
+```
 
 ---
 
 ## Open Questions
 
-1. **Mono-repo vs. multi-repo?** — Mono-repo is the natural fit: `mojo-gui/` is the workspace root containing `core/`, `web/`, `desktop/`, `native/`. Safer until Mojo has a package manager. Can split later.
+1. **Mono-repo vs. multi-repo?** — Mono-repo is the natural fit: `mojo-gui/` is the workspace root containing `core/`, `web/`, `desktop/`, `native/`. `mojo-web` could live alongside as a sibling or in a separate repo. Safer to keep together until Mojo has a package manager. Can split later.
 
 2. **Should `html/` stay in `mojo-gui/core` or become a separate `mojo-gui/html` package?** — Keep in `core` for now. A native renderer that doesn't use HTML elements would need a different DSL (e.g., `el_box()`, `el_label()`), but that's Phase 4+ territory.
 
@@ -713,3 +830,7 @@ fn main():
 4. **Webview library choice?** — `webview/webview` (C) is the most portable. Alternatively, Mojo could FFI directly to platform APIs (WKWebView, WebKitGTK, WebView2) for more control, at the cost of platform-specific code.
 
 5. **Should the desktop renderer bundle Deno/TypeScript or use plain JS?** — Bundle as plain JS (no Deno dependency). Use `esbuild` or similar to bundle the TypeScript runtime into a single JS file for webview injection.
+
+6. **Should `mojo-web` reuse `mojo-gui/web`'s existing JS runtime code?** — Partially. `memory.ts`, `env.ts`, and `strings.ts` solve the same WASM↔JS interop problems. Extract a shared `mojo-wasm-runtime` base, or let `mojo-web` depend on just those modules.
+
+7. **Should `mojo-gui/web` eventually use `mojo-web` for its JS runtime?** — Possibly for non-rendering parts (e.g., the `EventBridge` could use `mojo-web`'s DOM bindings). The mutation protocol interpreter should stay as-is for performance (batched application vs. per-call overhead).
