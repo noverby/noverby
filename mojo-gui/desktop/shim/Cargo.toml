@@ -1,0 +1,36 @@
+[package]
+name = "mojo-blitz-shim"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90.0"
+description = "C FFI shim exposing Blitz (HTML/CSS rendering engine) DOM operations for mojo-gui desktop renderer"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+name = "mojo_blitz"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Blitz packages — pinned to a specific commit for stability
+blitz = { git = "https://github.com/DioxusLabs/blitz", rev = "main", features = ["net"] }
+blitz-dom = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
+blitz-html = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
+blitz-traits = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
+blitz-shell = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
+blitz-paint = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
+
+# Rendering backend
+anyrender = { version = "0.7" }
+anyrender_vello = { version = "0.7" }
+
+# Windowing
+winit = { version = "=0.31.0-beta.2" }
+
+# Utilities
+markup5ever = "0.37.0"
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = "symbols"

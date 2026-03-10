@@ -206,17 +206,13 @@ fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
         # GuiApp trait methods. Nothing more to do here.
         pass
     else:
-        # Desktop path: create window and enter event loop.
-        # Phase 4 (Blitz): This will import and call:
-        #     from desktop.launcher import desktop_launch
-        #     desktop_launch[AppType](config)
-        #
-        # For now, print a message indicating desktop support is pending.
-        print(
-            "launch(): desktop renderer not yet implemented"
-            " (Phase 4 — Blitz). Config stored: "
-            + config.title
-        )
+        # Desktop path: create Blitz window and enter event loop.
+        # Phase 4: The Blitz desktop renderer is now implemented.
+        # desktop_launch creates the native window, mounts the initial
+        # DOM, and enters a blocking event loop until the window is closed.
+        from desktop.launcher import desktop_launch
+
+        desktop_launch[AppType](config)
 
 
 fn launch(config: AppConfig = AppConfig()):

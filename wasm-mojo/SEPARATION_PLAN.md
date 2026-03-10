@@ -7,14 +7,14 @@ Split the current `wasm-mojo` monolith into two projects:
 1. **`mojo-gui`** — Multi-renderer reactive GUI framework
    - **`mojo-gui/core`** — Renderer-agnostic reactive GUI framework (Mojo library)
    - **`mojo-gui/web`** — Browser renderer (WASM + TypeScript)
-   - **`mojo-gui/desktop`** — Desktop renderer (GTK4 + WebKitGTK webview — **implemented**; [Blitz](https://github.com/DioxusLabs/blitz) native HTML/CSS engine — future)
+   - **`mojo-gui/desktop`** — Desktop renderer ([Blitz](https://github.com/DioxusLabs/blitz) native HTML/CSS engine — **in progress**; GTK4 + WebKitGTK webview — legacy)
    - **`mojo-gui/native`** — Native renderer (platform widgets, future)
    - **`mojo-gui/examples`** — Shared example apps that run on **every** renderer target unchanged
 2. **`mojo-web`** — Raw Web API bindings for Mojo/WASM (like Rust's `web-sys`)
 
 The goal: write a Mojo GUI app **once**, run it in the browser via WASM **and** natively on desktop — like Dioxus does for Rust. App code is platform-agnostic by design; examples are shared across all renderer targets and must compile and run identically on each. `mojo-web` provides foundational Web API access for any Mojo/WASM project, including but not limited to `mojo-gui`.
 
-**Current status:** Phases 1–2 are complete. The core library is extracted, the web renderer is separated, and all four main app structs (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) implement the `GuiApp` trait (Steps 3.9.1 + 3.9.4). The `@export` WASM wrappers in `web/src/main.mojo` have been genericized over `GuiApp` via a new `gui_app_exports.mojo` module (Step 3.9.5), and the per-app backwards-compatible free functions have been removed from all four example files. The `launch()` function now accepts a `GuiApp` type parameter with `@parameter if is_wasm_target()` compile-time dispatch (Step 3.9.3). All 3,090 JS tests and 52 Mojo test suites pass. The desktop renderer infrastructure (Phase 3 webview approach) was built and verified, then removed in favor of the Blitz-based native approach (Phase 4). The next priority is **implementing the Blitz desktop renderer (Phase 4) with a generic `desktop_launch[AppType: GuiApp]()` event loop (Step 3.9.2)**, **deleting per-renderer example duplicates and adding `launch()` to shared examples (Step 3.9.6)**, and **cross-target verification (Step 3.9.7)**.
+**Current status:** Phases 1–2 are complete. The core library is extracted, the web renderer is separated, and all four main app structs (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) implement the `GuiApp` trait (Steps 3.9.1 + 3.9.4). The `@export` WASM wrappers in `web/src/main.mojo` have been genericized over `GuiApp` via a new `gui_app_exports.mojo` module (Step 3.9.5), and the per-app backwards-compatible free functions have been removed from all four example files. The `launch()` function now accepts a `GuiApp` type parameter with `@parameter if is_wasm_target()` compile-time dispatch (Step 3.9.3). All 3,090 JS tests and 52 Mojo test suites pass. The desktop renderer infrastructure (Phase 3 webview approach) was built and verified, then removed in favor of the Blitz-based native approach (Phase 4). **Phase 4 (Blitz desktop renderer) implementation is in progress:** the Rust C shim (`shim/src/lib.rs`), C header (`shim/mojo_blitz.h`), Nix derivation (`shim/default.nix`), Mojo FFI bindings (`desktop/src/desktop/blitz.mojo`), Mojo-side mutation interpreter (`desktop/src/desktop/renderer.mojo`), and generic desktop event loop (`desktop/src/desktop/launcher.mojo` with `desktop_launch[AppType: GuiApp]()`) have been created. The `launch()` function in `core/src/platform/launch.mojo` now calls `desktop_launch[AppType](config)` on native targets instead of printing a placeholder message. The next priorities are **building the Rust cdylib** (running `cargo build`), **integrating the Winit event loop** (connecting `blitz-shell`'s `BlitzApplication` to the step/poll API), **deleting per-renderer example duplicates and adding `launch()` to shared examples (Step 3.9.6)**, and **cross-target verification (Step 3.9.7)**.
 
 ---
 
@@ -148,22 +148,40 @@ Everything that runs in the browser or manages WASM instantiation:
 
 ### Desktop Runtime (→ `mojo-gui/desktop`, implemented)
 
-Everything for the native desktop application using GTK4 + WebKitGTK:
+Everything for the native desktop application. The webview approach (GTK4 + WebKitGTK) was built first as Phase 3, then superseded by the Blitz native renderer (Phase 4).
+
+**Blitz renderer (Phase 4 — in progress):**
+
+| Module                                | Purpose                                      |
+|---------------------------------------|----------------------------------------------|
+| `shim/src/lib.rs`                     | Rust `cdylib`: `BlitzContext` wrapping `blitz-dom`, ID mapping, template registry, event queue, interpreter stack |
+| `shim/mojo_blitz.h`                   | C API header (~45 FFI functions: lifecycle, DOM, templates, events, stack, debug) |
+| `shim/Cargo.toml`                     | Rust crate config (blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, winit, etc.) |
+| `shim/default.nix`                    | Nix derivation with GPU/windowing deps (Vulkan, Wayland, X11, fontconfig) |
+| `src/desktop/blitz.mojo`              | Mojo FFI bindings to `libmojo_blitz_shim.so` via `DLHandle` |
+| `src/desktop/renderer.mojo`           | `MutationInterpreter`: reads binary opcodes → Blitz C FFI calls (all 18 opcodes) |
+| `src/desktop/launcher.mojo`           | `desktop_launch[AppType: GuiApp]()` — generic Blitz-backed event loop |
+
+**Webview approach (Phase 3 — removed, kept for reference):**
 
 | Module                                | Purpose                                      |
 |---------------------------------------|----------------------------------------------|
 | `shim/mojo_webview.c`                 | C shim: GTK4 + WebKitGTK, ring buffer events |
 | `shim/mojo_webview.h`                 | C API header for the webview shim            |
-| `shim/default.nix`                    | Nix derivation for building the C shim       |
 | `runtime/desktop-runtime.js`          | Standalone JS mutation interpreter for webview |
 | `runtime/shell.html`                  | HTML shell with `#root` mount point          |
 | `src/desktop/webview.mojo`            | Mojo FFI bindings to libmojo_webview.so      |
 | `src/desktop/bridge.mojo`             | Mutation buffer + event polling bridge        |
 | `src/desktop/app.mojo`                | DesktopApp: lifecycle, event loop, init       |
-| `src/desktop/launcher.mojo`           | `desktop_launch()` — generic entry point that drives any `GuiApp` (Phase 3.9) |
+
+**Shared:**
+
+| Module                                | Purpose                                      |
+|---------------------------------------|----------------------------------------------|
+| `src/desktop/__init__.mojo`           | Package root                                 |
 | `examples/counter.mojo`               | Desktop counter example (temporary — to be replaced by shared `examples/counter/` via `launch()`) |
 | `justfile`                            | Build commands (build-shim, run-counter)      |
-| `default.nix`                         | Nix dev shell with GTK4/WebKitGTK deps        |
+| `default.nix`                         | Nix dev shell with desktop deps               |
 
 ### Example Apps (→ `mojo-gui/examples/`, shared across all targets)
 
@@ -284,29 +302,34 @@ mojo-gui/
 │   ├── justfile
 │   └── README.md
 │
-├── desktop/                          # Desktop renderer (Phase 3 — GTK4+WebKitGTK webview)
+├── desktop/                          # Desktop renderer (Phase 4 — Blitz native renderer)
 │   ├── src/
 │   │   └── desktop/                  # Desktop renderer package
 │   │       ├── __init__.mojo         # Package root
-│   │       ├── app.mojo              # DesktopApp — lifecycle, event loop, webview init
-│   │       ├── bridge.mojo           # DesktopBridge — mutation buffer + event polling
-│   │       ├── webview.mojo          # Mojo FFI bindings to libmojo_webview.so
-│   │       └── launcher.mojo         # desktop_launch[AppType: GuiApp]() — generic entry point
-│   ├── runtime/
-│   │   ├── desktop-runtime.js        # Standalone JS interpreter (mutation reader + DOM ops)
-│   │   └── shell.html                # HTML shell with #root mount point
+│   │       ├── blitz.mojo            # Mojo FFI bindings to libmojo_blitz_shim.so via DLHandle (Phase 4)
+│   │       ├── renderer.mojo         # MutationInterpreter — binary opcodes → Blitz FFI calls (Phase 4)
+│   │       ├── launcher.mojo         # desktop_launch[AppType: GuiApp]() — Blitz-backed event loop
+│   │       ├── app.mojo              # DesktopApp — webview lifecycle (Phase 3, legacy)
+│   │       ├── bridge.mojo           # DesktopBridge — mutation buffer + event polling (Phase 3, legacy)
+│   │       └── webview.mojo          # Mojo FFI bindings to libmojo_webview.so (Phase 3, legacy)
 │   ├── shim/
-│   │   ├── mojo_webview.h            # C API header (polling model, no callbacks)
-│   │   ├── mojo_webview.c            # C implementation (GTK4 + WebKitGTK)
-│   │   └── default.nix               # Nix derivation for building the C shim
-│   ├── examples/                     # TEMPORARY — to be deleted once GuiApp trait is implemented
-│   │   └── counter.mojo              # Desktop counter demo (temporary duplicate; shared examples replace this)
-│   ├── build/                        # Build artifacts (libmojo_webview.so, binaries)
+│   │   ├── src/lib.rs                # Rust cdylib: BlitzContext wrapping blitz-dom (Phase 4)
+│   │   ├── mojo_blitz.h              # C API header — ~45 FFI functions (Phase 4)
+│   │   ├── Cargo.toml                # Rust crate config (blitz, winit, etc.) (Phase 4)
+│   │   ├── default.nix               # Nix derivation with GPU/windowing deps (Phase 4)
+│   │   ├── mojo_webview.h            # C API header for webview (Phase 3, legacy)
+│   │   └── mojo_webview.c            # C implementation GTK4+WebKitGTK (Phase 3, legacy)
+│   ├── runtime/
+│   │   ├── desktop-runtime.js        # Standalone JS interpreter (Phase 3, legacy)
+│   │   └── shell.html                # HTML shell with #root mount point (Phase 3, legacy)
+│   ├── examples/                     # TEMPORARY — to be deleted once Blitz cdylib builds
+│   │   └── counter.mojo              # Desktop counter demo (temporary duplicate)
+│   ├── build/                        # Build artifacts (libmojo_blitz_shim.so, binaries)
 │   ├── default.nix                   # Nix dev shell with all desktop dependencies
 │   ├── justfile                      # Build commands (build-shim, run-counter, etc.)
 │   └── README.md
 │
-├── native/                           # Native renderer (Phase 4 — future, platform widgets)
+├── native/                           # Native renderer (Phase 5 — future, platform widgets)
 │   ├── src/
 │   │   ├── native_launcher.mojo      # NativeApp — implements App trait for native widgets
 │   │   ├── renderer.mojo             # Mutation interpreter → native widgets
@@ -1046,43 +1069,55 @@ The trait uses `has_dirty()` / `consume_dirty()` / `destroy()` instead of a raw 
 
 The trait is exported from the `platform` package via `__init__.mojo`.
 
-#### Step 3.9.2 — Implement the generic desktop event loop
+#### Step 3.9.2 — Implement the generic desktop event loop ✅
 
-Create `desktop/src/desktop/launcher.mojo` with a generic `desktop_launch[AppType: GuiApp]()` function:
+Created `desktop/src/desktop/launcher.mojo` with a generic `desktop_launch[AppType: GuiApp]()` function backed by the Blitz rendering engine:
 
 ```text
 fn desktop_launch[AppType: GuiApp](config: AppConfig) raises:
-    var desktop = DesktopApp(title=config.title, width=config.width, height=config.height, debug=config.debug)
+    var blitz = Blitz.create(config.title, config.width, config.height, debug=config.debug)
+    blitz.add_ua_stylesheet(_DEFAULT_UA_CSS)
     var app = AppType()
-    desktop.init()
 
-    var writer_ptr = _alloc_writer(desktop.buf_ptr(), desktop.buf_capacity())
+    var buf_ptr = _alloc_mutation_buffer(_DEFAULT_BUF_CAPACITY)
+    var writer_ptr = _alloc_writer(buf_ptr, _DEFAULT_BUF_CAPACITY)
+    var interpreter = MutationInterpreter(blitz)
+
     var mount_len = app.mount(writer_ptr)
     if mount_len > 0:
-        desktop.flush_mutations(Int(mount_len))
+        blitz.begin_mutations()
+        interpreter.apply(buf_ptr, Int(mount_len))
+        blitz.end_mutations()
+        blitz.request_redraw()
 
-    while desktop.is_alive():
-        _ = desktop.step(blocking=False)
+    while blitz.is_alive():
+        _ = blitz.step(blocking=False)
         var had_event = False
         while True:
-            var event = desktop.poll_event()
-            if not event.is_valid(): break
+            var event = blitz.poll_event()
+            if not event.valid: break
             had_event = True
-            _ = app.handle_event(UInt32(event.handler_id), UInt8(event.event_type), event.value)
+            _ = app.handle_event(event.handler_id, event.event_type, event.value)
         if app.has_dirty():
-            _reset_writer(writer_ptr, desktop.buf_ptr(), desktop.buf_capacity())
+            _reset_writer(writer_ptr, buf_ptr, _DEFAULT_BUF_CAPACITY)
             var flush_len = app.flush(writer_ptr)
             if flush_len > 0:
-                desktop.flush_mutations(Int(flush_len))
+                blitz.begin_mutations()
+                interpreter.apply(buf_ptr, Int(flush_len))
+                blitz.end_mutations()
+                blitz.request_redraw()
         elif not had_event:
-            _ = desktop.step(blocking=True)
+            _ = blitz.step(blocking=True)
 
     _free_writer(writer_ptr)
+    buf_ptr.free()
     app.destroy()
-    desktop.destroy()
+    blitz.destroy()
 ```
 
 This single function replaces every `desktop/examples/*.mojo` file — the event loop is identical for counter, todo, bench, and app. The `GuiApp` trait methods encapsulate all app-specific logic (ConditionalSlot management, KeyedList flush, custom event routing, etc.). Note: `has_dirty()` is used instead of `consume_dirty()` in the event loop check because `flush()` calls `consume_dirty()` internally. `destroy()` is called directly on the app (no need to reach into `context()`).
+
+Key difference from the webview approach: mutations are applied in-process via the Mojo `MutationInterpreter` → Blitz C FFI calls (no base64 encoding, no JS eval, no IPC). The interpreter reads the same binary opcode buffer and translates each opcode to the corresponding Blitz DOM operation.
 
 #### Step 3.9.3 — Wire `launch()` to dispatch by target ✅
 
@@ -1096,13 +1131,14 @@ fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
     if is_wasm_target():
         pass  # WASM: JS runtime drives the loop; @export wrappers call GuiApp methods
     else:
-        # Phase 4: will call desktop_launch[AppType](config) once Blitz is implemented
-        print("launch(): desktop renderer not yet implemented (Phase 4)")
+        # Desktop path: create Blitz window and enter event loop.
+        from desktop.launcher import desktop_launch
+        desktop_launch[AppType](config)
 ```
 
 A non-parametric `launch(config)` overload is retained for backwards compatibility on the WASM target where the app type is determined by the `@export` wrappers.
 
-Note: The native target has a pre-existing limitation with module-level `var` declarations in imported packages. This will be addressed when the Blitz desktop renderer is implemented (Phase 4).
+The native target dispatch was updated from a placeholder print statement to the actual `desktop_launch` call as part of Phase 4 Blitz implementation.
 
 #### Step 3.9.4 — Refactor existing app structs to implement `GuiApp` ✅
 
@@ -1188,57 +1224,110 @@ Once steps 3.9.1–3.9.5 are complete:
 
 **Cross-target status (target state after Step 3.9):**
 
-| Example   | Source location | Web (WASM) | Desktop (webview) | Same source? |
-|-----------|----------------|------------|-------------------|--------------|
-| counter   | `examples/counter/counter.mojo` | ✅ | ✅ | ✅ |
-| todo      | `examples/todo/todo.mojo` | ✅ | ✅ | ✅ |
-| bench     | `examples/bench/bench.mojo` | ✅ | ✅ | ✅ |
-| app       | `examples/app/app.mojo` | ✅ | ✅ | ✅ |
+| Example   | Source location | Web (WASM) | Desktop (Blitz) | Same source? |
+|-----------|----------------|------------|-----------------|--------------|
+| counter   | `examples/counter/counter.mojo` | ✅ | ⏳ (blocked on cdylib build) | ✅ |
+| todo      | `examples/todo/todo.mojo` | ✅ | ⏳ (blocked on cdylib build) | ✅ |
+| bench     | `examples/bench/bench.mojo` | ✅ | ⏳ (blocked on cdylib build) | ✅ |
+| app       | `examples/app/app.mojo` | ✅ | ⏳ (blocked on cdylib build) | ✅ |
 
 ---
 
-## Phase 4: Desktop Blitz Renderer (Future)
+## Phase 4: Desktop Blitz Renderer (In Progress)
 
 Replace the webview dependency in the desktop renderer with [Blitz](https://github.com/DioxusLabs/blitz), a native HTML/CSS rendering engine. This is the same evolution Dioxus followed — webview first, then Blitz for native rendering without a browser engine.
 
-### Step 4.1 — Build Blitz C shim (`shim/mojo_blitz.rs`)
+### Step 4.1 — Build Blitz C shim (`shim/src/lib.rs`) ✅
 
-Build a Rust `cdylib` exposing `blitz-dom`, `blitz-shell`, and `blitz-renderer-vello` via `extern "C"` functions.
+Built a Rust `cdylib` (`mojo-blitz-shim`) exposing `blitz-dom` via `extern "C"` functions. The shim wraps `BaseDocument` + `DocumentMutator` with a polling-based C ABI (no callbacks). Key design decisions:
+
+- **`BlitzContext` struct** — owns the `BaseDocument`, ID mapping (mojo element IDs ↔ Blitz slab node IDs), template registry, event handler registrations, event queue, and interpreter stack.
+- **Minimal DOM structure** — on creation, the shim builds `Document → <html> → <body>` with an optional `<head><title>` element. The `<body>` is the mount point (mojo element ID 0).
+- **Node ID mapping** — mojo-gui uses its own element ID space (u32); Blitz uses slab indices (usize). The shim maintains bidirectional `HashMap`s. Internal nodes (from template building) get IDs starting at 0x8000_0000 to avoid collisions.
+- **Template registry** — templates are pre-built DOM subtrees (detached). `mblitz_clone_template()` calls `doc.deep_clone_node()` on the registered root.
+- **Stack operations** — the shim maintains an interpreter stack for opcodes like PUSH_ROOT / APPEND_CHILDREN. Stack-based operations (`mblitz_stack_push`, `mblitz_stack_pop_append`, `mblitz_stack_pop_replace`, `mblitz_stack_pop_insert_before`, `mblitz_stack_pop_insert_after`) are exposed via separate FFI functions.
+- **Event ring buffer** — handlers registered via `mblitz_add_event_listener()` create an in-memory mapping; events are queued by the shim and polled by Mojo via `mblitz_poll_event()`.
 
 **C shim API surface (`shim/mojo_blitz.h`):**
 
 | Category   | Functions                                                    |
 |------------|--------------------------------------------------------------|
-| Lifecycle  | `mblitz_init()`, `mblitz_shutdown()`, `mblitz_tick()`       |
-| Window     | `mblitz_create_window(title, w, h)`, `mblitz_request_redraw()` |
-| DOM        | `mblitz_create_element(tag)`, `mblitz_create_text(text)`    |
-| DOM        | `mblitz_set_attribute(node, name, value)`, `mblitz_remove_attribute(node, name)` |
-| DOM        | `mblitz_set_text_content(node, text)`                        |
-| DOM        | `mblitz_append_child(parent, child)`, `mblitz_insert_before(parent, child, ref)` |
-| DOM        | `mblitz_remove_node(node)`, `mblitz_clone_node(node, deep)` |
-| Events     | `mblitz_add_event_listener(node, event_type)`, `mblitz_poll_event(out_event)` |
-| Templates  | `mblitz_register_template(id, html)`, `mblitz_clone_template(id)` |
+| Lifecycle  | `mblitz_create(title, len, w, h, debug)`, `mblitz_destroy(ctx)`, `mblitz_step(ctx, blocking)`, `mblitz_is_alive(ctx)`, `mblitz_request_redraw(ctx)` |
+| Window     | `mblitz_set_title(ctx, title, len)`, `mblitz_set_size(ctx, w, h)` |
+| Stylesheet | `mblitz_add_ua_stylesheet(ctx, css, len)` |
+| DOM create | `mblitz_create_element(ctx, tag, len)`, `mblitz_create_text_node(ctx, text, len)`, `mblitz_create_placeholder(ctx)` |
+| Templates  | `mblitz_register_template(ctx, id, root)`, `mblitz_clone_template(ctx, id)` |
+| DOM mutate | `mblitz_append_children(ctx, parent, ids, count)`, `mblitz_insert_before(ctx, anchor, ids, count)`, `mblitz_insert_after(ctx, anchor, ids, count)`, `mblitz_replace_with(ctx, old, ids, count)`, `mblitz_remove_node(ctx, id)` |
+| Attributes | `mblitz_set_attribute(ctx, id, name, nlen, val, vlen)`, `mblitz_remove_attribute(ctx, id, name, nlen)` |
+| Text       | `mblitz_set_text_content(ctx, id, text, len)` |
+| Traversal  | `mblitz_node_at_path(ctx, start, path, plen)`, `mblitz_child_at(ctx, id, idx)`, `mblitz_child_count(ctx, id)` |
+| Events     | `mblitz_add_event_listener(ctx, id, hid, name, nlen)`, `mblitz_remove_event_listener(ctx, id, name, nlen)`, `mblitz_poll_event(ctx)`, `mblitz_event_count(ctx)`, `mblitz_event_clear(ctx)` |
+| Batch      | `mblitz_begin_mutations(ctx)`, `mblitz_end_mutations(ctx)` |
+| Stack      | `mblitz_stack_push(ctx, id)`, `mblitz_stack_pop_append(ctx, parent, n)`, `mblitz_stack_pop_replace(ctx, old, n)`, `mblitz_stack_pop_insert_before(ctx, anchor, n)`, `mblitz_stack_pop_insert_after(ctx, anchor, n)` |
+| ID mapping | `mblitz_assign_id(ctx, mojo_id, blitz_id)` |
+| Root       | `mblitz_root_node_id(ctx)`, `mblitz_mount_point_id(ctx)` |
+| Layout     | `mblitz_resolve_layout(ctx)` |
+| Debug      | `mblitz_print_tree(ctx)`, `mblitz_set_debug_overlay(ctx, on)`, `mblitz_version(ptr, len)` |
 
-### Step 4.2 — Implement Mojo-side mutation interpreter (`desktop/renderer.mojo`)
+Nix derivation (`shim/default.nix`) automates the Rust build with all GPU/windowing dependencies (Vulkan, Wayland, X11, fontconfig, etc.) and provides the library path via `MOJO_BLITZ_LIB`.
 
-Port the JS `Interpreter` logic to Mojo, replacing DOM API calls with Blitz C FFI calls. This is the key advantage over the webview approach — no base64 encoding, no JS eval, direct in-process DOM manipulation.
+### Step 4.2 — Implement Mojo FFI bindings (`desktop/src/desktop/blitz.mojo`) ✅
 
-### Step 4.3 — Implement `BlitzDesktopApp`
+Created typed Mojo wrappers around the C shim API via `DLHandle`. The `Blitz` struct provides:
 
-Either replace or sit alongside the webview `DesktopApp`, implementing the same `PlatformApp` trait. The Blitz version:
+- `create(title, width, height, debug)` — open a window + initialize Blitz context
+- `step(blocking)` / `is_alive()` / `destroy()` — event loop control
+- `create_element(tag)` / `create_text_node(text)` / `create_placeholder()` — DOM creation
+- `set_attribute(id, name, value)` / `remove_attribute(id, name)` — attribute manipulation
+- `set_text_content(id, text)` — text node updates
+- `append_children(parent, ids, count)` / `insert_before(anchor, ids, count)` / `insert_after(...)` / `replace_with(...)` / `remove_node(id)` — tree mutations
+- `register_template(tmpl_id, root_id)` / `clone_template(tmpl_id)` — template management
+- `add_event_listener(id, handler_id, name)` / `remove_event_listener(id, name)` / `poll_event()` — event handling
+- `stack_push(id)` / `stack_pop_append(parent, n)` / `stack_pop_replace(old, n)` / `stack_pop_insert_before(anchor, n)` / `stack_pop_insert_after(anchor, n)` — interpreter stack operations
+- `assign_id(mojo_id, blitz_id)` — element ID mapping
+- `begin_mutations()` / `end_mutations()` — mutation batching
+- `add_ua_stylesheet(css)` / `request_redraw()` / `resolve_layout()` — rendering control
+- `print_tree()` / `set_debug_overlay(enabled)` — debug/diagnostics
+- Library search: `MOJO_BLITZ_LIB` env var → `NIX_LDFLAGS` → `LD_LIBRARY_PATH` → bare library name
 
-- Creates a native window via Winit (through the Blitz C shim)
-- Reads mutation opcodes and calls Blitz FFI directly
-- Polls Winit events and dispatches to `HandlerRegistry`
-- No JS runtime, no webview, no IPC
+### Step 4.3 — Implement Mojo-side mutation interpreter (`desktop/src/desktop/renderer.mojo`) ✅
+
+Ported the JS `Interpreter` logic to Mojo as `MutationInterpreter`. It reads binary opcodes from the mutation buffer and translates each one into Blitz C FFI calls. This is the key advantage over the webview approach — no base64 encoding, no JS eval, direct in-process DOM manipulation.
+
+The interpreter handles all 18 opcodes:
+- **OP_REGISTER_TEMPLATE** — the most complex: reads the full template wire format (nodes, attributes, root indices), builds real Blitz DOM nodes for the template's static structure, wires parent-child relationships, applies static attributes, and registers the root for deep-cloning.
+- **OP_LOAD_TEMPLATE** — clones a registered template, assigns the mojo element ID, pushes to stack.
+- **OP_ASSIGN_ID** — navigates a path from the template root to a child node, maps mojo element ID → Blitz node ID.
+- **OP_APPEND_CHILDREN / REPLACE_WITH / INSERT_BEFORE / INSERT_AFTER** — pop from the interpreter stack and apply tree mutations.
+- **OP_SET_ATTRIBUTE / SET_TEXT / NEW_EVENT_LISTENER / REMOVE_EVENT_LISTENER / REMOVE / REMOVE_ATTRIBUTE** — direct forwarding to Blitz FFI.
+- **OP_CREATE_TEXT_NODE / CREATE_PLACEHOLDER** — create nodes, assign IDs, push to stack.
+- **OP_PUSH_ROOT** — push a node onto the stack.
+- **OP_END** — terminates the opcode stream.
 
 ### Step 4.4 — Verify all shared examples
 
-Every example that works on web and desktop-webview MUST work on desktop-Blitz. The app code is identical — only the renderer backend changes.
+Every example that works on web MUST work on desktop-Blitz. The app code is identical — only the renderer backend changes.
+
+- [ ] Counter example builds and runs on desktop
+- [ ] Todo example builds and runs on desktop
+- [ ] Bench example builds and runs on desktop
+- [ ] Multi-view app example builds and runs on desktop
 
 ### Step 4.5 — Cross-platform support
 
-Blitz uses Winit, which supports Linux, macOS, and Windows. Verify the Blitz renderer works on all three platforms (the webview renderer is currently Linux-only due to GTK4/WebKitGTK).
+Blitz uses Winit, which supports Linux, macOS, and Windows. Verify the Blitz renderer works on all three platforms (the previous webview renderer was Linux-only due to GTK4/WebKitGTK).
+
+### Step 4.6 — Winit event loop integration (TODO)
+
+The current Blitz C shim builds the DOM correctly but the `mblitz_step()` function is a placeholder. Full Winit event loop integration requires:
+
+1. Creating a `BlitzApplication` (from `blitz-shell`) that implements Winit's `ApplicationHandler`
+2. Wiring `mblitz_step(blocking)` to `event_loop.pump_events()` or a cooperative polling model
+3. Routing Winit window events (click, keyboard, input, resize) through Blitz's `handle_ui_event()` pipeline
+4. Extracting DOM events from Blitz's event dispatch and buffering them for `mblitz_poll_event()`
+5. Connecting `mblitz_request_redraw()` to `blitz-paint` for GPU rendering via Vello
+
+This is the remaining integration work that connects the DOM manipulation layer (done) to the windowing and rendering layer.
 
 ---
 
@@ -1249,7 +1338,7 @@ Like Dioxus's future native widget renderer, this maps DOM-oriented mutations to
 **Compile targets (complete picture):**
 
 - `mojo build --target wasm64-wasi` → web renderer (needs `mojo-gui/web` JS runtime)
-- `mojo build` → desktop renderer (webview now, Blitz future)
+- `mojo build` → desktop renderer (Blitz native, in progress)
 - `mojo build --feature native` → native renderer (platform widgets, future)
 
 ---
@@ -1326,7 +1415,9 @@ Key points:
 - [x] Refactor app structs to implement `GuiApp` — CounterApp, TodoApp, BenchmarkApp, MultiViewApp all implement the trait; backwards-compatible free functions removed (Steps 3.9.4 + 3.9.5)
 - [x] Wire `launch()` compile-time dispatch — `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo`; non-parametric overload retained for backwards compatibility (Step 3.9.3)
 - [x] Genericize `main.mojo` `@export` wrappers — `web/src/gui_app_exports.mojo` provides parametric lifecycle helpers; all 4 main apps use them; free functions removed from examples (Step 3.9.5)
-- [ ] Implement generic desktop event loop, delete per-renderer example duplicates, cross-target verification (Steps 3.9.2/6/7 — blocked on Phase 4 Blitz)
+- [x] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` with Blitz mutation interpreter (Step 3.9.2)
+- [ ] Delete per-renderer example duplicates and add `launch()` to shared examples (Step 3.9.6 — blocked on Blitz cdylib build + Winit integration)
+- [ ] Cross-target verification — verify all 4 shared examples on both web and desktop (Step 3.9.7 — blocked on Blitz cdylib build + Winit integration)
 - [x] Update app imports in `apps/*.mojo` for new `html/` path (`from vdom import` → `from html import`)
 - [x] Move `test/*.mojo` to `mojo-gui/core/test/`
 - [x] Update test imports for new paths (`test_handles.mojo`: `from vdom` → `from html`)
@@ -1354,7 +1445,7 @@ Key points:
 - [x] Write `mojo-gui/web/README.md`
 - [x] Write `mojo-gui/examples/README.md` — build instructions for web/desktop/Blitz targets, directory structure, migration status, architecture reference
 
-### Phase 3: `mojo-gui/desktop` — webview renderer ✅ (infra), unified lifecycle mostly complete
+### Phase 3: `mojo-gui/desktop` — webview renderer ✅ (infra), unified lifecycle complete
 
 - [x] Design desktop webview architecture — polling-based C shim, heap mutation buffer, base64 IPC, JSON event bridge
 - [x] Build C shim (`shim/mojo_webview.c`) — GTK4 + WebKitGTK, ring buffer events, base64 mutation delivery, non-blocking step API
@@ -1370,25 +1461,32 @@ Key points:
 - [x] Create Nix dev shell (`default.nix`) — GTK4, WebKitGTK 6.0, pkg-config, libmojo-webview, environment variables
 - [x] Write `mojo-gui/desktop/README.md` — architecture, build instructions, API reference, IPC protocol docs
 - [x] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — app-side lifecycle contract with `mount`, `handle_event`, `flush`, `has_dirty`, `consume_dirty`, `destroy` (Step 3.9.1)
-- [ ] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` (Step 3.9.2 — blocked on Phase 4 Blitz)
-- [x] Wire `launch()` compile-time dispatch — `launch[AppType: GuiApp]()` with `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo`; non-parametric overload retained (Step 3.9.3)
+- [x] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` with Blitz mutation interpreter (Step 3.9.2)
+- [x] Wire `launch()` compile-time dispatch — `launch[AppType: GuiApp]()` with `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo`; native targets now call `desktop_launch[AppType](config)` (Step 3.9.3)
 - [x] Refactor app structs to implement `GuiApp` — all 4 main apps (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) now implement `GuiApp`; backwards-compatible free functions removed (Step 3.9.4)
 - [x] Genericize `main.mojo` `@export` wrappers over `GuiApp` — `web/src/gui_app_exports.mojo` provides `gui_app_init`, `gui_app_mount`, `gui_app_handle_event`, `gui_app_flush`, etc.; all 4 main app @exports are now one-liners; 3,090 JS tests + 52 Mojo test suites pass (Step 3.9.5)
-- [ ] Delete `desktop/examples/counter.mojo` and add `launch[CounterApp](...)` to shared examples (Step 3.9.6 — blocked on Phase 4 Blitz)
-- [ ] Verify all 4 shared examples build and run on both web and desktop from identical source (Step 3.9.7 — blocked on Phase 4 Blitz)
+- [ ] Delete `desktop/examples/counter.mojo` and add `launch[CounterApp](...)` to shared examples (Step 3.9.6 — blocked on Blitz cdylib build + Winit integration)
+- [ ] Verify all 4 shared examples build and run on both web and desktop from identical source (Step 3.9.7 — blocked on Blitz cdylib build + Winit integration)
 - [ ] Set up cross-target CI test matrix (web + desktop for every shared example)
 
-### Phase 4: `mojo-gui/desktop` — Blitz renderer (future)
+### Phase 4: `mojo-gui/desktop` — Blitz renderer (in progress)
 
-- [ ] Build Blitz C shim (`shim/mojo_blitz.rs`) — Rust `cdylib` exposing `blitz-dom`, `blitz-shell`, and `blitz-renderer-vello` via `extern "C"` functions
-- [ ] Write C header (`shim/mojo_blitz.h`) — DOM operations, window lifecycle, event polling
-- [ ] Implement Mojo FFI bindings (`src/desktop/blitz.mojo`) — typed wrappers via `OwnedDLHandle`
-- [ ] Implement Mojo-side mutation interpreter (`src/desktop/renderer.mojo`) — reads opcode buffer, calls Blitz C FFI (port of JS `Interpreter` logic to Mojo)
-- [ ] Implement `BlitzDesktopApp` — implements `PlatformApp` trait, drives Blitz/Winit event loop
-- [ ] Implement event bridge (`src/desktop/events.mojo`) — poll Blitz/Winit events via `mblitz_poll_event()`, route to `HandlerRegistry.dispatch()`
+- [x] Build Blitz C shim (`shim/src/lib.rs`) — Rust `cdylib` wrapping `blitz-dom`'s `BaseDocument` + `DocumentMutator` via `extern "C"` functions; `BlitzContext` owns document, ID mapping, template registry, event queue, interpreter stack
+- [x] Write C header (`shim/mojo_blitz.h`) — 644-line header covering lifecycle, window, DOM creation, templates, tree mutations, attributes, text, traversal, events, mutation batching, stack operations, ID mapping, root access, layout, debug
+- [x] Write Nix derivation (`shim/default.nix`) — Rust build with GPU/windowing deps (Vulkan, Wayland, X11, fontconfig, etc.)
+- [x] Write Cargo.toml (`shim/Cargo.toml`) — cdylib depending on blitz, blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, anyrender, anyrender_vello, winit, markup5ever
+- [x] Implement Mojo FFI bindings (`src/desktop/blitz.mojo`) — typed `Blitz` struct via `DLHandle` with methods for all shim operations; `BlitzEvent` struct; library search (env var → NIX_LDFLAGS → LD_LIBRARY_PATH)
+- [x] Implement Mojo-side mutation interpreter (`src/desktop/renderer.mojo`) — `MutationInterpreter` with `BufReader`; reads all 18 opcodes and translates to Blitz FFI calls; `OP_REGISTER_TEMPLATE` builds real DOM subtrees for efficient deep-cloning
+- [x] Implement generic desktop event loop (`src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` with Blitz-backed event loop, mutation buffer management, UA stylesheet injection
+- [x] Wire `launch()` to call `desktop_launch` on native targets — updated `core/src/platform/launch.mojo` to import and call `desktop_launch[AppType](config)` instead of placeholder print
+- [x] Update desktop package (`src/desktop/__init__.mojo`) — updated docstring and module listing for blitz, renderer, launcher
+- [ ] Build the Rust cdylib (`cargo build --release`) — resolve Blitz dependency versions, generate Cargo.lock
+- [ ] Integrate Winit event loop — connect `blitz-shell`'s `BlitzApplication` to `mblitz_step()` and `mblitz_poll_event()`
+- [ ] Connect `blitz-paint` rendering pipeline — style resolution, layout (Taffy), GPU paint (Vello) triggered by `mblitz_request_redraw()`
+- [ ] Implement DOM event routing — capture Winit events (click, keyboard, input) → Blitz `handle_ui_event()` → extract DOM events → buffer for polling
 - [ ] Verify all shared examples on Blitz desktop (counter, todo, bench, app)
 - [ ] Cross-platform testing (Linux, macOS, Windows via Winit)
-- [ ] Set up cross-target CI test matrix (web + desktop-webview + desktop-blitz for every shared example)
+- [ ] Set up cross-target CI test matrix (web + desktop-blitz for every shared example)
 
 ---
 
@@ -1398,18 +1496,18 @@ Key points:
 |------|--------|------------|--------|
 | Mojo package system immaturity | Can't cleanly separate into packages | Mono-repo with path-based imports (`-I` flags) | ✅ Resolved — mono-repo with `-I ../core/src -I ../examples` works |
 | `MutExternalOrigin` tied to WASM | Core won't compile natively | Audit and abstract the origin parameter; conditionally compile | ✅ Resolved — `MutExternalOrigin` works for both WASM and native heap buffers |
-| Blitz C shim complexity | Desktop renderer takes too long | Start with webview approach as intermediate step; upgrade to Blitz later | ✅ Mitigated — webview desktop renderer is working; Blitz deferred to Phase 4 |
-| Blitz pre-alpha stability | Rendering bugs, missing CSS features | Track Blitz main branch; contribute upstream fixes; keep webview as fallback | Open — webview fallback exists |
-| Blitz Rust build dependency | Complex build toolchain | Pre-build the `cdylib` and distribute as a shared library; Nix flake can automate the Rust build | Open |
+| Blitz C shim complexity | Desktop renderer takes too long | Start with webview approach as intermediate step; upgrade to Blitz later | ✅ Mitigated — C shim, Mojo FFI bindings, mutation interpreter, and launcher all implemented; Winit integration remains |
+| Blitz pre-alpha stability | Rendering bugs, missing CSS features | Track Blitz main branch; contribute upstream fixes; keep webview as fallback | Open — shim pins to main branch; Blitz v0.2.0 provides good CSS coverage via Stylo |
+| Blitz Rust build dependency | Complex build toolchain | Pre-build the `cdylib` and distribute as a shared library; Nix flake can automate the Rust build | In progress — Nix derivation created (`shim/default.nix`) with all GPU/windowing deps |
 | Import path breakage | Massive search-and-replace | Script the migration; grep-verify all imports | ✅ Resolved — all imports updated |
 | Test suite fragmentation | Tests break across projects | Phase 1 must keep all Mojo tests green; Phase 2 must keep all JS tests green | ✅ Resolved — all tests pass (3,090 JS + 52 Mojo suites) |
-| Platform abstraction too leaky | Shared examples break on some targets | Use the cross-target test matrix as a gate; treat cross-target failures as framework bugs | In progress — `GuiApp` trait + generic `@export` wrappers complete; cross-target verification blocked on Phase 4 Blitz |
-| `launch()` compile-time dispatch limitations | Mojo may lack the metaprogramming for clean target dispatch | `GuiApp` trait + `@parameter if is_wasm_target()` provides clean dispatch; if trait parametric methods don't work, fall back to conditional imports | ✅ Resolved — `launch[AppType: GuiApp]()` works with `@parameter if`; native target blocked by module-level `var` limitation (to be fixed in Phase 4) |
+| Platform abstraction too leaky | Shared examples break on some targets | Use the cross-target test matrix as a gate; treat cross-target failures as framework bugs | In progress — `GuiApp` trait + generic `@export` wrappers + `desktop_launch` complete; cross-target verification blocked on Blitz cdylib build + Winit integration |
+| `launch()` compile-time dispatch limitations | Mojo may lack the metaprogramming for clean target dispatch | `GuiApp` trait + `@parameter if is_wasm_target()` provides clean dispatch; if trait parametric methods don't work, fall back to conditional imports | ✅ Resolved — `launch[AppType: GuiApp]()` works with `@parameter if`; native targets now call `desktop_launch[AppType](config)` |
 | Mojo trait limitations for `GuiApp` | Trait may not support parametric methods or associated types needed for generic `@export` wrappers | Start with concrete struct aliases (`alias CurrentApp = CounterApp`); upgrade to full trait generics when Mojo supports it | ✅ Resolved — parametric helpers `gui_app_init[T: GuiApp]()` work; `@export` wrappers call them with concrete types |
 | WebKitGTK Linux-only | Desktop renderer not cross-platform | Webview is an intermediate step; Blitz (Phase 4) will provide cross-platform support via Winit | Open — accepted limitation for Phase 3 |
 | Base64 IPC overhead | ~33% mutation size increase for desktop | Acceptable for now; investigate shared memory or binary transfer for optimization | Open — low priority |
 | Desktop event loop busy-wait | High CPU when idle | Implemented blocking `mwv_step(blocking=True)` when no events/dirty scopes | ✅ Resolved |
-| Native target module-level `var` | Global `var` declarations in imported packages not supported on native target | Wrap in struct or use function-local static; to be fixed when Blitz desktop renderer is implemented | Open — only affects native compilation; WASM works fine |
+| Native target module-level `var` | Global `var` declarations in imported packages not supported on native target | Wrap in struct or use function-local static; to be fixed when native compilation is tested | Open — only affects native compilation; WASM works fine |
 
 ---
 
@@ -1420,8 +1518,8 @@ Key points:
 | Phase 1 | 2–3 days | File moves, import path updates, platform abstraction layer, shared examples setup, verify compilation + tests | ✅ Complete |
 | Phase 2 | 1–2 days | Move web runtime, `WebApp` trait impl, shared example web builds, verify browser tests | ✅ Complete |
 | Phase 3 (infra) | 1–2 weeks | GTK4/WebKitGTK C shim, Mojo FFI, `DesktopApp`, JS runtime for webview, counter example, Nix integration | ✅ Complete |
-| Phase 3.9 | 3–5 days | `GuiApp` trait, generic desktop event loop, `launch()` dispatch, refactor app structs, genericize `@export` wrappers, delete per-renderer duplicates, cross-target CI | ✅ Mostly complete (3.9.1/3/4/5 done; 3.9.2/6/7 blocked on Phase 4) |
-| Phase 4 | 2–4 weeks | Blitz C shim (Rust cdylib), Mojo-side mutation interpreter, `BlitzDesktopApp`, cross-platform testing | Next up |
+| Phase 3.9 | 3–5 days | `GuiApp` trait, generic desktop event loop, `launch()` dispatch, refactor app structs, genericize `@export` wrappers, delete per-renderer duplicates, cross-target CI | ✅ Mostly complete (3.9.1–5 done; 3.9.6/7 blocked on Blitz cdylib build) |
+| Phase 4 | 2–4 weeks | Blitz C shim (Rust cdylib), Mojo-side mutation interpreter, generic desktop event loop, cross-platform testing | 🔧 In progress — shim, FFI, interpreter, launcher created; Winit integration and cdylib build remain |
 | Phase 5 | TBD | Native widget renderer (platform-specific backends) | Future |
 | Phase 6 | 2–3 weeks | `mojo-web` MVP: handle table, DOM, fetch, timers, storage | Future |
 
@@ -1546,9 +1644,9 @@ mojo-web/
 
 3. **~~How to handle the `@export` boilerplate in `main.mojo`?~~** — ✅ Resolved by Phase 3.9 design: the `GuiApp` trait provides a uniform lifecycle interface. `@export` wrappers become generic over `GuiApp` — one set of wrappers works for every app. Each example builds with a compile-time alias (`alias CurrentApp = CounterApp`). The ~6,730 lines of per-app wrappers collapse to a small generic set.
 
-4. **Blitz C shim API granularity?** — Start with a minimal API covering the mutation opcodes + window lifecycle + event polling. Expand as needed. Consider whether to expose Blitz's `Document` directly or maintain an opaque handle table in the shim. The webview C shim (`mojo_webview.h`) provides a good API design template — polling-based, no callbacks, flat C ABI.
+4. **~~Blitz C shim API granularity?~~** — ✅ Resolved: The shim (`mojo_blitz.h`) exposes ~45 functions covering lifecycle, DOM operations, templates, events, stack operations, ID mapping, and debug. The API follows the same polling-based, no-callback, flat C ABI pattern as the webview shim. Blitz's `BaseDocument` is accessed via an opaque `BlitzContext` pointer. The shim maintains its own ID mapping (mojo element IDs ↔ Blitz slab node IDs) and interpreter stack.
 
-5. **Should the Mojo-side mutation interpreter share code with the JS `Interpreter`?** — The logic is the same (stack machine reading opcodes), but the implementations are in different languages. Keep them as parallel implementations with shared test vectors to verify correctness. The desktop `desktop-runtime.js` already serves as a third implementation (adapted from the web runtime's TypeScript).
+5. **~~Should the Mojo-side mutation interpreter share code with the JS `Interpreter`?~~** — ✅ Resolved: The Mojo `MutationInterpreter` (`desktop/src/desktop/renderer.mojo`) and JS `Interpreter` (`web/runtime/interpreter.ts` / `desktop/runtime/desktop-runtime.js`) are parallel implementations of the same stack machine, reading the same binary opcode format. They cannot share code (different languages), but they share the opcode definitions and wire format specification from `core/src/bridge/protocol.mojo`. Correctness is verified by running the same shared examples on both renderers.
 
 6. **Should `mojo-web` reuse `mojo-gui/web`'s existing JS runtime code?** — Partially. `memory.ts`, `env.ts`, and `strings.ts` solve the same WASM↔JS interop problems. Extract a shared `mojo-wasm-runtime` base, or let `mojo-web` depend on just those modules.
 
@@ -1558,14 +1656,14 @@ mojo-web/
 
 9. **CSS support scope?** — Blitz supports modern CSS (flexbox, grid, selectors, variables, media queries) via Stylo, but not all CSS features are implemented yet. Document which CSS features are supported and test the Blitz desktop renderer against the same shared examples as the web and webview renderers.
 
-10. **~~Fallback for `launch()` compile-time dispatch?~~** — ✅ Resolved by Phase 3.9 design: `launch[AppType: GuiApp](config)` uses `@parameter if is_wasm_target()` to dispatch. For WASM, the JS runtime drives the loop via `@export` wrappers generic over `GuiApp`. For native, `desktop_launch[AppType]()` provides a fully generic event loop. No per-renderer entry-point files needed — every example has a single `fn main()` calling `launch()`.
+10. **~~Fallback for `launch()` compile-time dispatch?~~** — ✅ Resolved by Phase 3.9 + Phase 4 design: `launch[AppType: GuiApp](config)` uses `@parameter if is_wasm_target()` to dispatch. For WASM, the JS runtime drives the loop via `@export` wrappers generic over `GuiApp`. For native, `launch()` imports and calls `desktop_launch[AppType](config)` from `desktop.launcher`, which provides a fully generic Blitz-backed event loop. No per-renderer entry-point files needed — every example has a single `fn main()` calling `launch()`.
 
 11. **How to handle web-only features in shared examples?** — Examples that need web-specific APIs (e.g., `fetch`, `localStorage`) should use compile-time feature gates: `@parameter if is_wasm_target(): ...`. Platform-specific timing is handled the same way: `performance_now()` uses `external_call` on WASM and `time.perf_counter_ns()` on native, selected at compile time inside the shared source file.
 
-12. **Desktop webview cross-platform support?** — The current GTK4/WebKitGTK shim is Linux-only. To support macOS (WKWebView) and Windows (WebView2), either: (a) write platform-specific shim implementations behind the same C API, or (b) use the cross-platform [webview/webview](https://github.com/webview/webview) library, or (c) skip cross-platform webview support and go directly to Blitz (Phase 4) for cross-platform desktop. Option (c) is recommended — the webview approach is an intermediate step.
+12. **~~Desktop webview cross-platform support?~~** — ✅ Resolved: The webview approach was removed in favor of the Blitz-based native renderer (Phase 4). Blitz uses Winit, which supports Linux, macOS, and Windows natively. No need for platform-specific webview shims.
 
-13. **~~Desktop example sharing vs. duplication?~~** — ✅ Resolved by Phase 3.9 design: **no duplication, ever.** Examples live in `examples/` and implement the `GuiApp` trait. The `launch()` function and generic event loops (`desktop_launch`, `@export` wrappers) drive them on every target. The existing `desktop/examples/counter.mojo` duplicate will be deleted once `GuiApp` is implemented. Per-renderer example directories are an anti-pattern — if an example doesn't compile on a target, it's a framework bug.
+13. **~~Desktop example sharing vs. duplication?~~** — ✅ Resolved by Phase 3.9 design: **no duplication, ever.** Examples live in `examples/` and implement the `GuiApp` trait. The `launch()` function and generic event loops (`desktop_launch`, `@export` wrappers) drive them on every target. Per-renderer example directories are an anti-pattern — if an example doesn't compile on a target, it's a framework bug.
 
-14. **Base64 IPC optimization?** — The webview renderer sends mutations via base64-encoded JavaScript eval, adding ~33% size overhead. Potential optimizations: (a) custom URI scheme handler for binary transfer, (b) SharedArrayBuffer if WebKitGTK supports it, (c) binary WebSocket within the webview. Low priority since Blitz will eliminate IPC entirely.
+14. **~~Base64 IPC optimization?~~** — ✅ Resolved: The Blitz desktop renderer eliminates IPC entirely. Mutations are applied in-process via the Mojo `MutationInterpreter` → Blitz C FFI calls. No base64 encoding, no JS eval, no webview.
 
 15. **Can Mojo traits be parametric enough for `GuiApp`?** — The `GuiApp` trait needs to work as a compile-time parameter to `launch[]`, `desktop_launch[]`, and the `@export` wrapper pattern. If Mojo's trait system doesn't support this (e.g., no parametric methods on trait-constrained types), the fallback is concrete `alias CurrentApp = CounterApp` per build, with a shared `@export` module that references the alias. This is still a single source file per example — the alias is a build system concern, not an app authoring concern.
