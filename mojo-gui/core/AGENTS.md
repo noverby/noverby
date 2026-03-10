@@ -44,6 +44,7 @@
 - **`dsl_tests.mojo`** — Self-contained test functions for the DSL.
 
 **Import convention**: HTML-specific symbols come from `html`, not `vdom`:
+
 ```text
 from html import el_div, el_button, dyn_text, VNodeBuilder, to_template
 from vdom import VNode, VNodeStore, Template
