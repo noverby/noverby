@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mojo-gui</title>
+<style>
+  /* Reset and sensible defaults for desktop app rendering. */
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #1a1a1a;
+    background: #ffffff;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* The mount point for mojo-gui's virtual DOM. */
+  #root {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+  }
+
+  /* Respect prefers-color-scheme for a sensible default dark mode. */
+  @media (prefers-color-scheme: dark) {
+    html, body {
+      color: #e0e0e0;
+      background: #1a1a1a;
+    }
+  }
+
+  /* Disable text selection drag on non-input elements (feels more native). */
+  body:not(input):not(textarea):not(select):not([contenteditable="true"]) {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Allow text selection in form elements and content areas. */
+  input, textarea, select, [contenteditable="true"], pre, code, p, span, h1, h2, h3, h4, h5, h6, li, td, th {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Hide scrollbar on WebKitGTK for a cleaner native look (optional). */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.3);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(128, 128, 128, 0.5);
+  }
+</style>
+</head>
+<body>
+  <!--
+    Mount point for the mojo-gui virtual DOM.
+    The desktop-runtime.js Interpreter registers this element as id 0
+    and all mutations are applied relative to it.
+  -->
+  <div id="root"></div>
+
+  <!--
+    The desktop-runtime.js is injected by the native side via mwv_init()
+    BEFORE this HTML is loaded, so by the time DOMContentLoaded fires
+    the runtime is already available and auto-initializes.
+
+    If for some reason the runtime hasn't been injected yet, the
+    auto-init in desktop-runtime.js handles both cases:
+      - Script injected before DOM load → listens for DOMContentLoaded
+      - Script injected after DOM load → initializes immediately
+
+    No <script> tags needed here — all JS is injected from the native side.
+  -->
+</body>
+</html>
