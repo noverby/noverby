@@ -106,15 +106,8 @@ def main [
         let name = ($src | path basename | str replace '.mojo' '')
         let bin = ($out_dir | path join $name)
 
-        let result = (do -i {
-            ^mojo build
-                -I $wasmtime_mojo
-                -I $src_dir
-                -I $examples_dir
-                -I $test_dir
-                -o $bin
-                $src
-        } | complete)
+        let args = [-I $wasmtime_mojo -I $src_dir -I $examples_dir -I $test_dir -o $bin $src]
+        let result = (do -i { ^mojo build ...$args } | complete)
 
         let combined = $"($result.stdout)($result.stderr)"
 

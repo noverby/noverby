@@ -23,7 +23,9 @@
 #   - Dynamic: A placeholder (index into VNode's dynamic_attrs array).
 
 from memory import UnsafePointer
-from .tags import TAG_UNKNOWN
+# TAG_UNKNOWN sentinel — defined locally to avoid circular import with html.tags
+# (tags.mojo was moved from vdom/ to html/ during the mojo-gui separation).
+comptime TAG_UNKNOWN: UInt8 = 255
 
 
 # ── TemplateNode kind tags ───────────────────────────────────────────────────
