@@ -14,7 +14,7 @@ Split the current `wasm-mojo` monolith into two projects:
 
 The goal: write a Mojo GUI app **once**, run it in the browser via WASM **and** natively on desktop — like Dioxus does for Rust. App code is platform-agnostic by design; examples are shared across all renderer targets and must compile and run identically on each. `mojo-web` provides foundational Web API access for any Mojo/WASM project, including but not limited to `mojo-gui`.
 
-**Current status:** Phases 1–3 are largely complete. The core library is extracted, the web renderer is separated, and a working desktop renderer exists using a GTK4+WebKitGTK webview approach (counter example runs natively). The next priority is **Phase 3.9: implementing the unified `launch()` lifecycle** so that the same example source files compile and run on every target without modification or duplication. The Blitz-based native HTML/CSS engine is planned as a future Phase 4 upgrade that will eliminate the webview dependency.
+**Current status:** Phases 1–2 are complete. The core library is extracted, the web renderer is separated, and all four main app structs (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) implement the `GuiApp` trait (Steps 3.9.1 + 3.9.4). The desktop renderer infrastructure (Phase 3 webview approach) was built and verified, then removed in favor of the Blitz-based native approach (Phase 4). The next priority is **Phase 3.9 remaining steps: genericizing the `@export` WASM wrappers over `GuiApp` (Step 3.9.5)** and **implementing the Blitz desktop renderer (Phase 4) with a generic `desktop_launch[AppType: GuiApp]()` event loop (Step 3.9.2)**. The `GuiApp` trait and refactored app structs are ready for both.
 
 ---
 
@@ -1022,9 +1022,9 @@ just run-counter
 
 The remaining work is **not** about porting individual examples to desktop. Each example must be exactly the same source file for every target — no per-renderer copies, no `desktop/examples/` duplicates. The framework must abstract the platform away so that `launch[MyApp]()` works on web and desktop from a single source file.
 
-#### Step 3.9.1 — Define the `GuiApp` trait
+#### Step 3.9.1 — Define the `GuiApp` trait ✅
 
-Create `core/src/platform/gui_app.mojo` with the app-side lifecycle trait:
+Created `core/src/platform/gui_app.mojo` with the app-side lifecycle trait:
 
 ```text
 trait GuiApp(Movable):
@@ -1033,12 +1033,18 @@ trait GuiApp(Movable):
     fn handle_event(mut self, handler_id: UInt32, event_type: UInt8, value: String) -> Bool
     fn flush(mut self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]) -> Int32
     fn mount(mut self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]) -> Int32
-    fn context(mut self) -> UnsafePointer[ComponentContext]
+    fn has_dirty(self) -> Bool
+    fn consume_dirty(mut self) -> Bool
+    fn destroy(mut self)
 ```
 
 This captures the lifecycle that currently lives as free functions (`counter_app_rebuild`, `todo_app_flush`, etc.). Each existing app struct (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) already has `render()`, the lifecycle free functions, and a `ctx` field — the refactor is mechanical: move the free functions into the struct as methods, add the trait conformance.
 
+The trait uses `has_dirty()` / `consume_dirty()` / `destroy()` instead of a raw `context()` pointer, keeping the `ComponentContext` internals private to the app. This is cleaner than exposing a pointer and allows apps with additional dirty state (e.g., MultiViewApp's `router.dirty`) to compose it naturally.
+
 `handle_event` takes a `value: String` parameter (empty when not applicable). This unifies `dispatch_event()` and `dispatch_event_with_string()` — the renderer always passes the value through. This resolves the input event value binding issue: the desktop event loop no longer needs app-specific branching on `event.has_value`.
+
+The trait is exported from the `platform` package via `__init__.mojo`.
 
 #### Step 3.9.2 — Implement the generic desktop event loop
 
@@ -1063,7 +1069,7 @@ fn desktop_launch[AppType: GuiApp](config: AppConfig) raises:
             if not event.is_valid(): break
             had_event = True
             _ = app.handle_event(UInt32(event.handler_id), UInt8(event.event_type), event.value)
-        if app.context()[].consume_dirty():
+        if app.has_dirty():
             _reset_writer(writer_ptr, desktop.buf_ptr(), desktop.buf_capacity())
             var flush_len = app.flush(writer_ptr)
             if flush_len > 0:
@@ -1072,11 +1078,11 @@ fn desktop_launch[AppType: GuiApp](config: AppConfig) raises:
             _ = desktop.step(blocking=True)
 
     _free_writer(writer_ptr)
-    app.context()[].destroy()
+    app.destroy()
     desktop.destroy()
 ```
 
-This single function replaces every `desktop/examples/*.mojo` file — the event loop is identical for counter, todo, bench, and app. The `GuiApp` trait methods encapsulate all app-specific logic (ConditionalSlot management, KeyedList flush, custom event routing, etc.).
+This single function replaces every `desktop/examples/*.mojo` file — the event loop is identical for counter, todo, bench, and app. The `GuiApp` trait methods encapsulate all app-specific logic (ConditionalSlot management, KeyedList flush, custom event routing, etc.). Note: `has_dirty()` is used instead of `consume_dirty()` in the event loop check because `flush()` calls `consume_dirty()` internally. `destroy()` is called directly on the app (no need to reach into `context()`).
 
 #### Step 3.9.3 — Wire `launch()` to dispatch by target
 
@@ -1096,22 +1102,24 @@ fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
 
 For the WASM path, `main.mojo`'s `@export` wrappers are refactored to be generic over `GuiApp` (Step 3.9.5).
 
-#### Step 3.9.4 — Refactor existing app structs to implement `GuiApp`
+#### Step 3.9.4 — Refactor existing app structs to implement `GuiApp` ✅
 
-Each shared example already has the necessary logic — the refactor is mechanical:
+All four main app structs now implement the `GuiApp` trait. The refactor was mechanical — free functions were moved into struct methods, and the struct declarations changed from `(Movable)` to `(GuiApp)`:
 
-| App struct | Current pattern | `GuiApp` method mapping |
+| App struct | Refactored methods | Notes |
 |---|---|---|
-| `CounterApp` | `counter_app_rebuild()` free fn | `fn mount(...)` method |
-| `CounterApp` | `counter_app_flush()` free fn | `fn flush(...)` method |
-| `CounterApp` | `counter_app_handle_event()` free fn | `fn handle_event(...)` method |
-| `TodoApp` | `todo_app_rebuild()` free fn | `fn mount(...)` method |
-| `TodoApp` | `todo_app_flush()` free fn | `fn flush(...)` method |
-| `TodoApp` | `todo_app.handle_event()` + `dispatch_event_with_string` | `fn handle_event(...)` method (receives value always) |
-| `BenchmarkApp` | `bench_app_rebuild()` free fn | `fn mount(...)` method |
-| `BenchmarkApp` | `bench_app_flush()` free fn | `fn flush(...)` method |
-| `MultiViewApp` | `multi_view_app_rebuild()` free fn | `fn mount(...)` method |
-| `MultiViewApp` | `multi_view_app_flush()` free fn | `fn flush(...)` method |
+| `CounterApp` | `mount()`, `handle_event()`, `flush()`, `has_dirty()`, `consume_dirty()`, `destroy()` | Simple — click events only, ConditionalSlot for detail |
+| `TodoApp` | `mount()`, `handle_event()`, `flush()`, `has_dirty()`, `consume_dirty()`, `destroy()` | String events dispatched via `dispatch_event_with_string` when `len(value) > 0` |
+| `BenchmarkApp` | `mount()`, `handle_event()`, `flush()`, `has_dirty()`, `consume_dirty()`, `destroy()` | Toolbar routing + KeyedList row events, performance timing |
+| `MultiViewApp` | `mount()`, `handle_event()`, `flush()`, `has_dirty()`, `consume_dirty()`, `destroy()` | Router dirty state composed into `has_dirty()`, nav + signal dispatch |
+
+The unified `handle_event(handler_id, event_type, value)` pattern works for all apps:
+
+- Apps without string events (counter, bench) pass through to `dispatch_event()` when `value` is empty
+- Apps with string events (todo) dispatch via `dispatch_event_with_string()` when `len(value) > 0`
+- Apps with custom routing (multi-view) check app-level handlers first, then fall back to `dispatch_event()`
+
+**Backwards compatibility:** The original free functions (`counter_app_rebuild`, `todo_app_flush`, etc.) are retained as thin one-line wrappers that delegate to the new trait methods. This preserves compatibility with the existing `@export` wrappers in `web/src/main.mojo`. These wrappers can be removed once the `@export` surface is genericized over `GuiApp` (Step 3.9.5).
 
 Platform-specific APIs like `performance_now()` need conditional compilation:
 
@@ -1297,7 +1305,9 @@ Key points:
 - [x] Create `core/src/platform/__init__.mojo` — re-exports public API from all three platform modules
 - [x] Update `core/src/lib.mojo` — add `platform/` to package listing
 - [x] Move `src/apps/` to `mojo-gui/examples/` as shared, platform-agnostic example apps — demo/test apps moved from `core/apps/` to `examples/apps/`; main examples (counter, todo, bench, app) moved from `web/examples/` to `examples/`; web-specific assets (HTML/JS) remain in `web/examples/`; build paths updated (`-I ../examples` replaces `-I ../core -I examples`)
-- [ ] Implement unified app lifecycle via `GuiApp` trait and `launch()` (Step 3.9) — define `GuiApp` trait, implement generic desktop event loop, wire `launch()` compile-time dispatch, refactor app structs to implement `GuiApp`, genericize `main.mojo` `@export` wrappers, delete per-renderer example duplicates
+- [x] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — `mount`, `handle_event` (unified value param), `flush`, `has_dirty`, `consume_dirty`, `destroy`; exported from `platform` package (Step 3.9.1)
+- [x] Refactor app structs to implement `GuiApp` — CounterApp, TodoApp, BenchmarkApp, MultiViewApp all implement the trait; free functions retained as thin wrappers (Step 3.9.4)
+- [ ] Implement generic desktop event loop, wire `launch()` compile-time dispatch, genericize `main.mojo` `@export` wrappers, delete per-renderer example duplicates (Steps 3.9.2/3/5/6/7)
 - [x] Update app imports in `apps/*.mojo` for new `html/` path (`from vdom import` → `from html import`)
 - [x] Move `test/*.mojo` to `mojo-gui/core/test/`
 - [x] Update test imports for new paths (`test_handles.mojo`: `from vdom` → `from html`)
@@ -1340,14 +1350,14 @@ Key points:
 - [x] Create build system (`justfile`) — build-shim, build-counter, run-counter, dev-counter, test-shim, test-runtime
 - [x] Create Nix dev shell (`default.nix`) — GTK4, WebKitGTK 6.0, pkg-config, libmojo-webview, environment variables
 - [x] Write `mojo-gui/desktop/README.md` — architecture, build instructions, API reference, IPC protocol docs
-- [ ] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — app-side lifecycle contract (Step 3.9.1)
+- [x] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — app-side lifecycle contract with `mount`, `handle_event`, `flush`, `has_dirty`, `consume_dirty`, `destroy` (Step 3.9.1)
 - [ ] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` (Step 3.9.2)
 - [ ] Wire `launch()` compile-time dispatch — `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo` (Step 3.9.3)
-- [ ] Refactor app structs to implement `GuiApp` — move free functions into struct methods, add `handle_event(handler_id, event_type, value)` with unified value parameter (Step 3.9.4)
+- [x] Refactor app structs to implement `GuiApp` — all 4 main apps (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) now implement `GuiApp`; free functions retained as thin backwards-compatible wrappers (Step 3.9.4)
 - [ ] Genericize `main.mojo` `@export` wrappers over `GuiApp` (Step 3.9.5)
 - [ ] Delete `desktop/examples/counter.mojo` and add `launch[CounterApp](...)` to shared examples (Step 3.9.6)
 - [ ] Verify all 4 shared examples build and run on both web and desktop from identical source (Step 3.9.7)
-- [ ] Set up cross-target CI test matrix (web + desktop-webview for every shared example)
+- [ ] Set up cross-target CI test matrix (web + desktop for every shared example)
 
 ### Phase 4: `mojo-gui/desktop` — Blitz renderer (future)
 

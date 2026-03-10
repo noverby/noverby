@@ -1,5 +1,13 @@
 # MultiViewApp — Single-page app with client-side routing.
 #
+# Phase 3.9 (Step 3.9.4): Refactored to implement the GuiApp trait.
+# Free functions (multi_view_app_rebuild, multi_view_app_handle_event,
+# multi_view_app_flush) have been moved into struct methods (mount,
+# handle_event, flush). The unified handle_event() with value: String
+# parameter replaces the old handle_event(handler_id) method. Free
+# functions are retained as thin wrappers for backwards compatibility
+# with the existing @export wrappers in web/src/main.mojo.
+#
 # Phase 30: Demonstrates URL-based view switching within a single WASM
 # instance.  Hosts a counter view and a todo-like view behind route
 # switches, with a persistent nav bar.
@@ -64,6 +72,7 @@ from mutations import CreateEngine
 from signals import SignalI32
 from signals.runtime import Runtime
 from vdom import VNodeStore
+from platform import GuiApp
 from html import (
     Node,
     VNodeBuilder,
@@ -89,8 +98,10 @@ comptime BRANCH_COUNTER: UInt8 = 0
 comptime BRANCH_TODO: UInt8 = 1
 
 
-struct MultiViewApp(Movable):
+struct MultiViewApp(GuiApp):
     """Single-page app with counter and todo views behind client-side routes.
+
+    Implements the GuiApp trait for unified cross-platform launch().
 
     All setup — context creation, signal creation, view registration,
     router setup, and event handler binding — happens in __init__.
@@ -100,6 +111,10 @@ struct MultiViewApp(Movable):
 
     Phase 30: Demonstrates the Router struct + ConditionalSlot integration
     for URL-based view switching.
+
+    Phase 3.9: Implements GuiApp trait — mount(), handle_event(), flush(),
+    has_dirty(), consume_dirty(), destroy() are now struct methods instead
+    of free functions.
     """
 
     var ctx: ComponentContext
@@ -297,17 +312,36 @@ struct MultiViewApp(Movable):
             self.ctx.mark_dirty()
         return result
 
-    fn handle_event(mut self, handler_id: UInt32) -> Bool:
-        """Handle an event by handler ID.
+    # ── GuiApp trait: Event dispatch ─────────────────────────────────
 
-        Routes navigation clicks and todo add button.
+    fn handle_event(
+        mut self, handler_id: UInt32, event_type: UInt8, value: String
+    ) -> Bool:
+        """Dispatch a user interaction event (GuiApp trait method).
+
+        Unified event entry point. Routes navigation clicks, todo add,
+        and falls back to signal-based handlers (counter +1/-1) via
+        ComponentContext dispatch.
+
+        The `value` parameter is accepted for GuiApp trait conformance.
+        If a non-empty value is provided, it is dispatched via the string
+        path for forward compatibility.
 
         Args:
-            handler_id: The handler ID from the event bridge.
+            handler_id: The handler to invoke (from HandlerRegistry).
+            event_type: The event type tag (EVT_CLICK, etc.).
+            value: String payload from the event. Empty for click events.
 
         Returns:
             True if the handler was recognized and acted upon.
         """
+        # String events go through the string dispatch path
+        if len(value) > 0:
+            return self.ctx.dispatch_event_with_string(
+                handler_id, event_type, value
+            )
+
+        # App-level routing (nav clicks, todo add)
         if handler_id == self.nav_counter_handler:
             _ = self.navigate(String("/"))
             return True
@@ -319,12 +353,157 @@ struct MultiViewApp(Movable):
             self.todo_next_id += 1
             self.todo_count.set(self.todo_count.peek() + 1)
             return True
-        return False
+
+        # Fall back to signal-based handlers (counter +1/-1)
+        return self.ctx.dispatch_event(handler_id, event_type)
+
+    # ── GuiApp trait: Mount lifecycle ────────────────────────────────
+
+    fn mount(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    ) -> Int32:
+        """Initial render (mount) of the multi-view app (GuiApp trait method).
+
+        Emits RegisterTemplate mutations for all templates (app shell +
+        counter view + todo view), mounts the app shell, then immediately
+        flushes the initial route's view into the ConditionalSlot — all
+        in one mutation buffer before finalize.
+
+        Uses a manual mount sequence (emit_templates + CreateEngine +
+        AppendChildren) instead of ctx.mount() so that the initial route
+        view can be flushed into the ConditionalSlot BEFORE the End
+        sentinel is written.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for the mutation
+                        buffer.
+
+        Returns the byte offset (length) of the mutation data written.
+        """
+        # 1. Render the app shell VNode
+        var vnode_idx = self.render()
+        self.ctx.current_vnode = Int(vnode_idx)
+
+        # 2. Emit templates (without finalize)
+        self.ctx.shell.emit_templates(writer_ptr)
+
+        # 3. Create the app shell VNode in the DOM (without finalize)
+        var engine = CreateEngine(
+            writer_ptr,
+            self.ctx.shell.eid_alloc,
+            self.ctx.shell.runtime,
+            self.ctx.shell.store,
+        )
+        var num_roots = engine.create_node(vnode_idx)
+        writer_ptr[0].append_children(0, num_roots)
+
+        # 4. Extract the anchor ElementId for the router's ConditionalSlot
+        #    dyn_node[0] is the routed content placeholder
+        var anchor_id: UInt32 = 0
+        var app_vnode_ptr = self.ctx.store_ptr()[0].get_ptr(vnode_idx)
+        if app_vnode_ptr[0].dyn_node_id_count() > 0:
+            anchor_id = app_vnode_ptr[0].get_dyn_node_id(0)
+        self.router.init_slot(anchor_id)
+
+        # 5. Build and flush the initial route's view (still before finalize)
+        var view_idx = self.build_view_for_branch()
+        self.router.slot = self.ctx.flush_conditional_slot(
+            writer_ptr, self.router.slot, view_idx
+        )
+        # Consume the dirty flag from initial navigate
+        _ = self.router.consume_dirty()
+
+        # 6. Finalize — one End sentinel for the entire mount + initial view
+        writer_ptr[0].finalize()
+        return Int32(writer_ptr[0].offset)
+
+    # ── GuiApp trait: Flush lifecycle ────────────────────────────────
+
+    fn flush(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    ) -> Int32:
+        """Re-render dirty scopes and write update mutations (GuiApp trait method).
+
+        Handles two kinds of updates:
+        1. Route change: rebuild the view for the new branch via ConditionalSlot
+        2. In-view update: re-render + diff the current view (e.g. counter ±1)
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for the mutation
+                        buffer (reset to offset 0 by the caller).
+
+        Returns the byte offset (length) of the mutation data written,
+        or 0 if there was nothing to update.
+        """
+        var route_changed = self.router.consume_dirty()
+        var scope_dirty = self.ctx.consume_dirty()
+
+        if not route_changed and not scope_dirty:
+            return 0
+
+        # 1. Re-render and diff the app shell (updates dyn_node placeholder)
+        var new_idx = self.render()
+        self.ctx.diff(writer_ptr, new_idx)
+
+        # 2. Handle routed content
+        if route_changed:
+            # Route changed — build new view for the target branch
+            var view_idx = self.build_view_for_branch()
+            self.router.slot = self.ctx.flush_conditional_slot(
+                writer_ptr, self.router.slot, view_idx
+            )
+        elif scope_dirty:
+            # Same route but data changed — rebuild current view and diff
+            var view_idx = self.build_view_for_branch()
+            self.router.slot = self.ctx.flush_conditional_slot(
+                writer_ptr, self.router.slot, view_idx
+            )
+
+        # 3. Finalize mutation buffer
+        return self.ctx.finalize(writer_ptr)
+
+    # ── GuiApp trait: Dirty state queries ────────────────────────────
+
+    fn has_dirty(self) -> Bool:
+        """Check if any scopes or the router need re-rendering.
+
+        Returns:
+            True if at least one scope is marked dirty or the router
+            has a pending route change.
+        """
+        return self.ctx.has_dirty() or self.router.dirty
+
+    fn consume_dirty(mut self) -> Bool:
+        """Collect and consume all dirty scopes.
+
+        Note: This only consumes scope-level dirty state. Router dirty
+        state is consumed separately inside flush() via
+        router.consume_dirty(). This method is provided for GuiApp
+        trait conformance; the event loop should use has_dirty() to
+        check whether flush() should be called.
+
+        Returns:
+            True if any scopes were dirty (and consumed).
+        """
+        return self.ctx.consume_dirty()
+
+    # ── GuiApp trait: Cleanup ────────────────────────────────────────
+
+    fn destroy(mut self):
+        """Release all resources held by the multi-view app."""
+        self.ctx.destroy()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Lifecycle functions (called from WASM exports in main.mojo)
+# Backwards-compatible free functions
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# These thin wrappers delegate to the GuiApp trait methods on MultiViewApp.
+# They exist for backwards compatibility with the existing @export wrappers
+# in web/src/main.mojo, which call them by name. Once the @export wrappers
+# are genericized over GuiApp (Step 3.9.5), these can be removed.
 
 
 fn multi_view_app_init() -> UnsafePointer[MultiViewApp, MutExternalOrigin]:
@@ -338,7 +517,7 @@ fn multi_view_app_destroy(
     app_ptr: UnsafePointer[MultiViewApp, MutExternalOrigin],
 ):
     """Destroy the multi-view app and free all resources."""
-    app_ptr[0].ctx.destroy()
+    app_ptr[0].destroy()
     app_ptr.destroy_pointee()
     app_ptr.free()
 
@@ -347,56 +526,11 @@ fn multi_view_app_rebuild(
     mut app: MultiViewApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
-    """Initial render (mount) of the multi-view app.
-
-    Emits RegisterTemplate mutations for all templates (app shell +
-    counter view + todo view), mounts the app shell, then immediately
-    flushes the initial route's view into the ConditionalSlot — all
-    in one mutation buffer before finalize.
-
-    Uses a manual mount sequence (emit_templates + CreateEngine +
-    AppendChildren) instead of ctx.mount() so that the initial route
-    view can be flushed into the ConditionalSlot BEFORE the End
-    sentinel is written.
+    """Initial render (mount) — delegates to MultiViewApp.mount().
 
     Returns the byte offset (length) of the mutation data written.
     """
-    # 1. Render the app shell VNode
-    var vnode_idx = app.render()
-    app.ctx.current_vnode = Int(vnode_idx)
-
-    # 2. Emit templates (without finalize)
-    app.ctx.shell.emit_templates(writer_ptr)
-
-    # 3. Create the app shell VNode in the DOM (without finalize)
-    var engine = CreateEngine(
-        writer_ptr,
-        app.ctx.shell.eid_alloc,
-        app.ctx.shell.runtime,
-        app.ctx.shell.store,
-    )
-    var num_roots = engine.create_node(vnode_idx)
-    writer_ptr[0].append_children(0, num_roots)
-
-    # 4. Extract the anchor ElementId for the router's ConditionalSlot
-    #    dyn_node[0] is the routed content placeholder
-    var anchor_id: UInt32 = 0
-    var app_vnode_ptr = app.ctx.store_ptr()[0].get_ptr(vnode_idx)
-    if app_vnode_ptr[0].dyn_node_id_count() > 0:
-        anchor_id = app_vnode_ptr[0].get_dyn_node_id(0)
-    app.router.init_slot(anchor_id)
-
-    # 5. Build and flush the initial route's view (still before finalize)
-    var view_idx = app.build_view_for_branch()
-    app.router.slot = app.ctx.flush_conditional_slot(
-        writer_ptr, app.router.slot, view_idx
-    )
-    # Consume the dirty flag from initial navigate
-    _ = app.router.consume_dirty()
-
-    # 6. Finalize — one End sentinel for the entire mount + initial view
-    writer_ptr[0].finalize()
-    return Int32(writer_ptr[0].offset)
+    return app.mount(writer_ptr)
 
 
 fn multi_view_app_handle_event(
@@ -404,60 +538,23 @@ fn multi_view_app_handle_event(
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    """Dispatch an event to the multi-view app.
-
-    First tries the app's own handler routing (nav clicks, todo add).
-    Then falls back to ComponentContext dispatch for signal-based handlers
-    (counter +1/-1 buttons).
+    """Dispatch an event — delegates to MultiViewApp.handle_event().
 
     Returns True if an action was executed.
     """
-    # Try app-level routing first (nav clicks, todo add)
-    if app.handle_event(handler_id):
-        return True
-    # Fall back to signal-based handlers (counter +1/-1)
-    return app.ctx.dispatch_event(handler_id, event_type)
+    return app.handle_event(handler_id, event_type, String(""))
 
 
 fn multi_view_app_flush(
     mut app: MultiViewApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
-    """Flush pending updates after event dispatch.
-
-    Handles two kinds of updates:
-    1. Route change: rebuild the view for the new branch via ConditionalSlot
-    2. In-view update: re-render + diff the current view (e.g. counter ±1)
+    """Flush pending updates — delegates to MultiViewApp.flush().
 
     Returns the byte offset (length) of the mutation data written,
     or 0 if there was nothing to update.
     """
-    var route_changed = app.router.consume_dirty()
-    var scope_dirty = app.ctx.consume_dirty()
-
-    if not route_changed and not scope_dirty:
-        return 0
-
-    # 1. Re-render and diff the app shell (updates dyn_node placeholder)
-    var new_idx = app.render()
-    app.ctx.diff(writer_ptr, new_idx)
-
-    # 2. Handle routed content
-    if route_changed:
-        # Route changed — build new view for the target branch
-        var view_idx = app.build_view_for_branch()
-        app.router.slot = app.ctx.flush_conditional_slot(
-            writer_ptr, app.router.slot, view_idx
-        )
-    elif scope_dirty:
-        # Same route but data changed — rebuild current view and diff
-        var view_idx = app.build_view_for_branch()
-        app.router.slot = app.ctx.flush_conditional_slot(
-            writer_ptr, app.router.slot, view_idx
-        )
-
-    # 3. Finalize mutation buffer
-    return app.ctx.finalize(writer_ptr)
+    return app.flush(writer_ptr)
 
 
 fn multi_view_app_navigate(

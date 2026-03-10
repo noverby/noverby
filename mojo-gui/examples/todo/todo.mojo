@@ -1,5 +1,12 @@
 # TodoApp — Self-contained todo list application with empty state message.
 #
+# Phase 3.9 (Step 3.9.4): Refactored to implement the GuiApp trait.
+# Free functions (todo_app_rebuild, todo_app_flush) have been moved
+# into struct methods (mount, flush). A unified handle_event() with
+# value: String parameter replaces the old handle_event(handler_id)
+# method. Free functions are retained as thin wrappers for backwards
+# compatibility with the existing @export wrappers in web/src/main.mojo.
+#
 # Phase 28: Extended with a ConditionalSlot that shows "No items yet —
 # add one above!" when the todo list is empty, and hides it when items
 # are present.
@@ -126,6 +133,7 @@ from events import HandlerEntry
 from component import ComponentContext, KeyedList, ConditionalSlot
 from signals import SignalI32, SignalString
 from vdom import VNode, VNodeStore
+from platform import GuiApp
 from html import (
     Node,
     el_div,
@@ -180,12 +188,15 @@ comptime TODO_ACTION_TOGGLE: UInt8 = 1
 comptime TODO_ACTION_REMOVE: UInt8 = 2
 
 
-struct TodoApp(Movable):
+struct TodoApp(GuiApp):
     """Self-contained todo list application state.
+
+    Implements the GuiApp trait for unified cross-platform launch().
 
     All setup — context creation, signal creation, template registration,
     and event handler binding — happens in __init__.  The lifecycle
-    functions are thin delegations to ComponentContext.
+    methods (mount, handle_event, flush) encapsulate all app-specific
+    logic so that a generic event loop can drive the app.
 
     Uses KeyedList with Phase 17 ItemBuilder for ergonomic per-item
     building and HandlerAction for dispatch.
@@ -409,8 +420,17 @@ struct TodoApp(Movable):
             self.items.push_child(self.ctx, frag_idx, item_idx)
         return frag_idx
 
-    fn handle_event(mut self, handler_id: UInt32) -> Bool:
-        """Dispatch an event by handler ID.
+    # ── GuiApp trait: Event dispatch ─────────────────────────────────
+
+    fn handle_event(
+        mut self, handler_id: UInt32, event_type: UInt8, value: String
+    ) -> Bool:
+        """Dispatch a user interaction event (GuiApp trait method).
+
+        Unified event entry point. For events with a string payload
+        (input/change), `value` carries the string and is dispatched
+        via dispatch_event_with_string. For click events (add, toggle,
+        remove), app-specific routing is performed.
 
         Phase 22: Both the Add button (onclick_custom) and Enter key
         (onkeydown_enter_custom) trigger the same Add logic — reads
@@ -420,9 +440,21 @@ struct TodoApp(Movable):
         Uses Phase 17 `get_action()` to look up toggle/remove handlers
         in the KeyedList's handler map.
 
+        Args:
+            handler_id: The handler to invoke (from HandlerRegistry).
+            event_type: The event type tag (EVT_CLICK, EVT_INPUT, etc.).
+            value: String payload from the event. Empty for click events.
+
         Returns True if the handler was found and the action executed,
         False otherwise.
         """
+        # String events (input/change) go through the string dispatch path
+        if len(value) > 0:
+            return self.ctx.dispatch_event_with_string(
+                handler_id, event_type, value
+            )
+
+        # App-specific click routing
         if handler_id == self.add_handler or handler_id == self.enter_handler:
             # Phase 20.5: WASM-driven Add — read signal, add item, clear
             var input = self.input_text.peek()
@@ -440,6 +472,156 @@ struct TodoApp(Movable):
                 self.remove_item(action.data)
                 return True
         return False
+
+    # ── GuiApp trait: Mount lifecycle ────────────────────────────────
+
+    fn mount(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    ) -> Int32:
+        """Initial render (mount) of the todo app (GuiApp trait method).
+
+        Builds the app shell VNode and mounts it.  The <ul> starts with a
+        placeholder comment node whose ElementId we save for later use.
+
+        Phase 20.5: Uses render() which auto-populates bind_value and
+        event handlers via render_builder().
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for the mutation
+                        buffer.
+
+        Returns the byte offset (length) of the mutation data written.
+        """
+        # Emit all registered templates so JS can build DOM from mutations
+        self.ctx.shell.emit_templates(writer_ptr)
+
+        # Build the app shell VNode (no items yet — just the template)
+        var app_vnode_idx = self.render()
+        self.ctx.current_vnode = Int(app_vnode_idx)
+
+        # Build an empty items fragment and store it
+        var frag_idx = self.build_items_fragment()
+
+        # Create the app template via CreateEngine.
+        # This emits LoadTemplate, AssignId, NewEventListener, and
+        # CreatePlaceholder + ReplacePlaceholder for dynamic[0].
+        var engine = CreateEngine(
+            writer_ptr,
+            self.ctx.shell.eid_alloc,
+            self.ctx.shell.runtime,
+            self.ctx.shell.store,
+        )
+        var num_roots = engine.create_node(app_vnode_idx)
+
+        # After CreateEngine, dynamic[0]'s placeholder has an ElementId.
+        # Initialize the KeyedList's slot with the anchor and empty fragment.
+        var anchor_id: UInt32 = 0
+        var app_vnode_ptr = self.ctx.store_ptr()[0].get_ptr(app_vnode_idx)
+        if app_vnode_ptr[0].dyn_node_id_count() > 0:
+            anchor_id = app_vnode_ptr[0].get_dyn_node_id(0)
+        self.items.init_slot(anchor_id, frag_idx)
+
+        # Phase 28: Extract the anchor for the empty message slot (dyn_node[1])
+        var msg_anchor_id: UInt32 = 0
+        if app_vnode_ptr[0].dyn_node_id_count() > 1:
+            msg_anchor_id = app_vnode_ptr[0].get_dyn_node_id(1)
+        self.empty_msg_slot = ConditionalSlot(msg_anchor_id)
+
+        # Append the app shell to root element (id 0)
+        writer_ptr[0].append_children(0, num_roots)
+
+        # Phase 28: Show empty message on initial mount (list starts empty)
+        var msg_idx = self.build_empty_message()
+        self.empty_msg_slot = self.ctx.flush_conditional_slot(
+            writer_ptr, self.empty_msg_slot, msg_idx
+        )
+
+        writer_ptr[0].finalize()
+        return Int32(writer_ptr[0].offset)
+
+    # ── GuiApp trait: Flush lifecycle ────────────────────────────────
+
+    fn flush(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    ) -> Int32:
+        """Re-render dirty scopes and write update mutations (GuiApp trait method).
+
+        Phase 22: Re-renders the app shell VNode (to update bind_value
+        attribute when the signal changes, e.g. after Add clears input)
+        and flushes the item list via KeyedList.
+
+        Uses KeyedList.flush() which delegates fragment transitions
+        (empty↔populated) to the reusable flush_fragment lifecycle helper.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for the mutation
+                        buffer (reset to offset 0 by the caller).
+
+        Returns the byte offset (length) of mutation data, or 0 if nothing dirty.
+        """
+        # Collect and consume dirty scopes via the scheduler
+        if not self.ctx.consume_dirty():
+            return 0
+
+        # Phase 20.5: Re-render app shell to pick up bind_value changes
+        # (e.g. input cleared after Add).  The diff detects changes in
+        # dynamic attrs (value binding) and emits SetAttribute mutations.
+        # dyn_node(0) stays as placeholder — diff sees placeholder vs
+        # placeholder and does nothing (KeyedList manages it separately).
+        var new_app_idx = self.render()
+        self.ctx.diff(writer_ptr, new_app_idx)
+
+        # Build a new items fragment from the current item list
+        var new_frag_idx = self.build_items_fragment()
+
+        # Flush via KeyedList (handles all three transitions)
+        self.items.flush(self.ctx, writer_ptr, new_frag_idx)
+
+        # Phase 28: Show or hide the empty state message
+        if len(self.data) == 0:
+            # List is empty → show the message
+            if not self.empty_msg_slot.mounted:
+                var msg_idx = self.build_empty_message()
+                self.empty_msg_slot = self.ctx.flush_conditional_slot(
+                    writer_ptr, self.empty_msg_slot, msg_idx
+                )
+        else:
+            # List has items → hide the message
+            if self.empty_msg_slot.mounted:
+                self.empty_msg_slot = self.ctx.flush_conditional_slot_empty(
+                    writer_ptr, self.empty_msg_slot
+                )
+
+        writer_ptr[0].finalize()
+        return Int32(writer_ptr[0].offset)
+
+    # ── GuiApp trait: Dirty state queries ────────────────────────────
+
+    fn has_dirty(self) -> Bool:
+        """Check if any scopes need re-rendering.
+
+        Returns:
+            True if at least one scope is marked dirty.
+        """
+        return self.ctx.has_dirty()
+
+    fn consume_dirty(mut self) -> Bool:
+        """Collect and consume all dirty scopes.
+
+        Returns:
+            True if any scopes were dirty (and consumed).
+        """
+        return self.ctx.consume_dirty()
+
+    # ── GuiApp trait: Cleanup ────────────────────────────────────────
+
+    fn destroy(mut self):
+        """Release all resources held by the todo app."""
+        self.ctx.destroy()
+
+    # ── GuiApp trait: Rendering ──────────────────────────────────────
 
     fn render(mut self) -> UInt32:
         """Build the app shell VNode using render_builder (auto-populates).
@@ -471,6 +653,16 @@ struct TodoApp(Movable):
         return vb.index()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Backwards-compatible free functions
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# These thin wrappers delegate to the GuiApp trait methods on TodoApp.
+# They exist for backwards compatibility with the existing @export wrappers
+# in web/src/main.mojo, which call them by name. Once the @export wrappers
+# are genericized over GuiApp (Step 3.9.5), these can be removed.
+
+
 fn todo_app_init() -> UnsafePointer[TodoApp, MutExternalOrigin]:
     """Initialize the todo app.  Returns a pointer to the app state.
 
@@ -484,7 +676,7 @@ fn todo_app_init() -> UnsafePointer[TodoApp, MutExternalOrigin]:
 
 fn todo_app_destroy(app_ptr: UnsafePointer[TodoApp, MutExternalOrigin]):
     """Destroy the todo app and free all resources."""
-    app_ptr[0].ctx.destroy()
+    app_ptr[0].destroy()
     app_ptr.destroy_pointee()
     app_ptr.free()
 
@@ -493,111 +685,19 @@ fn todo_app_rebuild(
     mut app: TodoApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
-    """Initial render (mount) of the todo app.
-
-    Builds the app shell VNode and mounts it.  The <ul> starts with a
-    placeholder comment node whose ElementId we save for later use.
-
-    Phase 20.5: Uses render() which auto-populates bind_value and
-    event handlers via render_builder().
+    """Initial render (mount) — delegates to TodoApp.mount().
 
     Returns the byte offset (length) of the mutation data written.
     """
-    # Emit all registered templates so JS can build DOM from mutations
-    app.ctx.shell.emit_templates(writer_ptr)
-
-    # Build the app shell VNode (no items yet — just the template)
-    var app_vnode_idx = app.render()
-    app.ctx.current_vnode = Int(app_vnode_idx)
-
-    # Build an empty items fragment and store it
-    var frag_idx = app.build_items_fragment()
-
-    # Create the app template via CreateEngine.
-    # This emits LoadTemplate, AssignId, NewEventListener, and
-    # CreatePlaceholder + ReplacePlaceholder for dynamic[0].
-    var engine = CreateEngine(
-        writer_ptr,
-        app.ctx.shell.eid_alloc,
-        app.ctx.shell.runtime,
-        app.ctx.shell.store,
-    )
-    var num_roots = engine.create_node(app_vnode_idx)
-
-    # After CreateEngine, dynamic[0]'s placeholder has an ElementId.
-    # Initialize the KeyedList's slot with the anchor and empty fragment.
-    var anchor_id: UInt32 = 0
-    var app_vnode_ptr = app.ctx.store_ptr()[0].get_ptr(app_vnode_idx)
-    if app_vnode_ptr[0].dyn_node_id_count() > 0:
-        anchor_id = app_vnode_ptr[0].get_dyn_node_id(0)
-    app.items.init_slot(anchor_id, frag_idx)
-
-    # Phase 28: Extract the anchor for the empty message slot (dyn_node[1])
-    var msg_anchor_id: UInt32 = 0
-    if app_vnode_ptr[0].dyn_node_id_count() > 1:
-        msg_anchor_id = app_vnode_ptr[0].get_dyn_node_id(1)
-    app.empty_msg_slot = ConditionalSlot(msg_anchor_id)
-
-    # Append the app shell to root element (id 0)
-    writer_ptr[0].append_children(0, num_roots)
-
-    # Phase 28: Show empty message on initial mount (list starts empty)
-    var msg_idx = app.build_empty_message()
-    app.empty_msg_slot = app.ctx.flush_conditional_slot(
-        writer_ptr, app.empty_msg_slot, msg_idx
-    )
-
-    writer_ptr[0].finalize()
-    return Int32(writer_ptr[0].offset)
+    return app.mount(writer_ptr)
 
 
 fn todo_app_flush(
     mut app: TodoApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
-    """Flush pending updates after a list mutation or input clear.
-
-    Phase 22: Re-renders the app shell VNode (to update bind_value
-    attribute when the signal changes, e.g. after Add clears input)
-    and flushes the item list via KeyedList.
-
-    Uses KeyedList.flush() which delegates fragment transitions
-    (empty↔populated) to the reusable flush_fragment lifecycle helper.
+    """Flush pending updates — delegates to TodoApp.flush().
 
     Returns the byte offset (length) of mutation data, or 0 if nothing dirty.
     """
-    # Collect and consume dirty scopes via the scheduler
-    if not app.ctx.consume_dirty():
-        return 0
-
-    # Phase 20.5: Re-render app shell to pick up bind_value changes
-    # (e.g. input cleared after Add).  The diff detects changes in
-    # dynamic attrs (value binding) and emits SetAttribute mutations.
-    # dyn_node(0) stays as placeholder — diff sees placeholder vs
-    # placeholder and does nothing (KeyedList manages it separately).
-    var new_app_idx = app.render()
-    app.ctx.diff(writer_ptr, new_app_idx)
-
-    # Build a new items fragment from the current item list
-    var new_frag_idx = app.build_items_fragment()
-
-    # Flush via KeyedList (handles all three transitions)
-    app.items.flush(app.ctx, writer_ptr, new_frag_idx)
-
-    # Phase 28: Show or hide the empty state message
-    if len(app.data) == 0:
-        # List is empty → show the message
-        if not app.empty_msg_slot.mounted:
-            var msg_idx = app.build_empty_message()
-            app.empty_msg_slot = app.ctx.flush_conditional_slot(
-                writer_ptr, app.empty_msg_slot, msg_idx
-            )
-    else:
-        # List has items → hide the message
-        if app.empty_msg_slot.mounted:
-            app.empty_msg_slot = app.ctx.flush_conditional_slot_empty(
-                writer_ptr, app.empty_msg_slot
-            )
-
-    writer_ptr[0].finalize()
-    return Int32(writer_ptr[0].offset)
+    return app.flush(writer_ptr)

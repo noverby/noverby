@@ -4,6 +4,13 @@
 # detail section that shows/hides based on a `show_detail: SignalBool`.
 # Uses ConditionalSlot to manage the conditional DOM content.
 #
+# Phase 3.9 (Step 3.9.4): Refactored to implement the GuiApp trait.
+# Free functions (counter_app_rebuild, counter_app_handle_event,
+# counter_app_flush) have been moved into struct methods (mount,
+# handle_event, flush). The free functions are retained as thin
+# wrappers for backwards compatibility with the existing @export
+# wrappers in web/src/main.mojo.
+#
 # This version achieves maximum Dioxus-like ergonomics by using:
 #   - setup_view() — combines end_setup + register_view in one call
 #   - dyn_text()   — auto-numbered dynamic text (no manual index tracking)
@@ -11,6 +18,7 @@
 #   - __init__     — all setup happens in the constructor
 #   - Multi-arg el_* overloads — no [...] list literal wrappers needed
 #   - ConditionalSlot — manages show/hide of detail section
+#   - GuiApp trait — unified lifecycle for cross-platform launch()
 #
 # Compare with the Dioxus equivalent:
 #
@@ -33,7 +41,7 @@
 #
 # Mojo equivalent:
 #
-#     struct CounterApp:
+#     struct CounterApp(GuiApp):
 #         var ctx: ComponentContext
 #         var count: SignalI32
 #         var show_detail: SignalBool
@@ -82,6 +90,7 @@ from bridge import MutationWriter
 from component import ComponentContext, ConditionalSlot
 from signals import SignalI32, SignalBool
 from signals.runtime import Runtime
+from platform import GuiApp
 from html import (
     Node,
     VNodeBuilder,
@@ -98,16 +107,24 @@ from html import (
 )
 
 
-struct CounterApp(Movable):
+struct CounterApp(GuiApp):
     """Self-contained counter application state with conditional detail.
+
+    Implements the GuiApp trait for unified cross-platform launch().
 
     All setup — context creation, signal creation, view registration,
     and event handler binding — happens in __init__.  The lifecycle
-    functions are thin one-liners delegating to ComponentContext.
+    methods (mount, handle_event, flush) encapsulate all app-specific
+    logic so that a generic event loop can drive the app without
+    app-specific branching.
 
     Phase 28: Added `show_detail` toggle and `ConditionalSlot` for the
     detail section.  The detail is a separate template rendered when
     `show_detail` is True, managed by ConditionalSlot transitions.
+
+    Phase 3.9: Implements GuiApp trait — mount(), handle_event(), flush(),
+    has_dirty(), consume_dirty(), destroy() are now struct methods instead
+    of free functions.
     """
 
     var ctx: ComponentContext
@@ -176,6 +193,8 @@ struct CounterApp(Movable):
         self.detail_tmpl = other.detail_tmpl
         self.cond_slot = other.cond_slot.copy()
 
+    # ── GuiApp trait: Rendering ──────────────────────────────────────
+
     fn render(mut self) -> UInt32:
         """Build a fresh VNode for the counter component.
 
@@ -197,6 +216,142 @@ struct CounterApp(Movable):
         vb.add_dyn_placeholder()
         return vb.build()
 
+    # ── GuiApp trait: Event dispatch ─────────────────────────────────
+
+    fn handle_event(
+        mut self, handler_id: UInt32, event_type: UInt8, value: String
+    ) -> Bool:
+        """Dispatch an event to the counter app.
+
+        The counter app only has click events (increment, decrement,
+        toggle) which don't carry string values. The `value` parameter
+        is accepted for GuiApp trait conformance but is not used.
+
+        If a non-empty value is provided, it is passed through via
+        dispatch_event_with_string for forward compatibility.
+
+        Args:
+            handler_id: The handler to invoke (from HandlerRegistry).
+            event_type: The event type tag (EVT_CLICK, etc.).
+            value: String payload from the event. Empty for click events.
+
+        Returns:
+            True if an action was executed, False otherwise.
+        """
+        if len(value) > 0:
+            return self.ctx.dispatch_event_with_string(
+                handler_id, event_type, value
+            )
+        return self.ctx.dispatch_event(handler_id, event_type)
+
+    # ── GuiApp trait: Mount lifecycle ────────────────────────────────
+
+    fn mount(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    ) -> Int32:
+        """Initial render (mount) of the counter app.
+
+        Emits RegisterTemplate mutations for all templates, then builds the
+        VNode tree, runs CreateEngine, emits AppendChildren to mount to
+        root (id 0), and finalizes the mutation buffer.
+
+        After mount, extracts the anchor ElementId from dyn_node_ids[1]
+        (the conditional slot) to initialize the ConditionalSlot.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for the mutation
+                        buffer.
+
+        Returns the byte offset (length) of the mutation data written.
+        """
+        var vnode_idx = self.render()
+        var result = self.ctx.mount(writer_ptr, vnode_idx)
+
+        # Extract the anchor ElementId for the conditional slot (dyn_node[1]).
+        # dyn_node_ids[0] is the dyn_text node, dyn_node_ids[1] is the
+        # conditional placeholder.
+        var anchor_id: UInt32 = 0
+        var app_vnode_ptr = self.ctx.store_ptr()[0].get_ptr(vnode_idx)
+        if app_vnode_ptr[0].dyn_node_id_count() > 1:
+            anchor_id = app_vnode_ptr[0].get_dyn_node_id(1)
+        self.cond_slot = ConditionalSlot(anchor_id)
+
+        return result
+
+    # ── GuiApp trait: Flush lifecycle ────────────────────────────────
+
+    fn flush(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    ) -> Int32:
+        """Flush pending updates after event dispatch.
+
+        If dirty scopes exist, re-renders the counter component, diffs the
+        old and new VNode trees, writes mutations for the app shell, then
+        handles the conditional detail section via ConditionalSlot.
+
+        The ConditionalSlot manages three transitions:
+          - show_detail goes True: create detail VNode, replace placeholder
+          - show_detail stays True: diff old detail vs new detail
+          - show_detail goes False: create new placeholder, remove detail
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for the mutation
+                        buffer (reset to offset 0 by the caller).
+
+        Returns the byte offset (length) of the mutation data written,
+        or 0 if there was nothing to update.
+        """
+        if not self.ctx.consume_dirty():
+            return 0
+
+        # 1. Re-render and diff the app shell
+        var new_idx = self.render()
+        self.ctx.diff(writer_ptr, new_idx)
+
+        # 2. Handle conditional detail section
+        if self.show_detail.get():
+            # Show or update the detail section
+            var detail_idx = self.build_detail()
+            self.cond_slot = self.ctx.flush_conditional_slot(
+                writer_ptr, self.cond_slot, detail_idx
+            )
+        else:
+            # Hide the detail section (back to placeholder)
+            self.cond_slot = self.ctx.flush_conditional_slot_empty(
+                writer_ptr, self.cond_slot
+            )
+
+        # 3. Finalize the mutation buffer
+        return self.ctx.finalize(writer_ptr)
+
+    # ── GuiApp trait: Dirty state queries ────────────────────────────
+
+    fn has_dirty(self) -> Bool:
+        """Check if any scopes need re-rendering.
+
+        Returns:
+            True if at least one scope is marked dirty.
+        """
+        return self.ctx.has_dirty()
+
+    fn consume_dirty(mut self) -> Bool:
+        """Collect and consume all dirty scopes.
+
+        Returns:
+            True if any scopes were dirty (and consumed).
+        """
+        return self.ctx.consume_dirty()
+
+    # ── GuiApp trait: Cleanup ────────────────────────────────────────
+
+    fn destroy(mut self):
+        """Release all resources held by the counter app."""
+        self.ctx.destroy()
+
+    # ── App-specific helpers (not part of GuiApp) ────────────────────
+
     fn build_detail(mut self) -> UInt32:
         """Build the detail VNode (even/odd + doubled value).
 
@@ -214,6 +369,16 @@ struct CounterApp(Movable):
         return vb.index()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Backwards-compatible free functions
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# These thin wrappers delegate to the GuiApp trait methods on CounterApp.
+# They exist for backwards compatibility with the existing @export wrappers
+# in web/src/main.mojo, which call them by name. Once the @export wrappers
+# are genericized over GuiApp (Step 3.9.5), these can be removed.
+
+
 fn counter_app_init() -> UnsafePointer[CounterApp, MutExternalOrigin]:
     """Initialize the counter app.  Returns a pointer to the app state.
 
@@ -227,7 +392,7 @@ fn counter_app_init() -> UnsafePointer[CounterApp, MutExternalOrigin]:
 
 fn counter_app_destroy(app_ptr: UnsafePointer[CounterApp, MutExternalOrigin]):
     """Destroy the counter app and free all resources."""
-    app_ptr[0].ctx.destroy()
+    app_ptr[0].destroy()
     app_ptr.destroy_pointee()
     app_ptr.free()
 
@@ -236,30 +401,11 @@ fn counter_app_rebuild(
     mut app: CounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
-    """Initial render (mount) of the counter app.
-
-    Emits RegisterTemplate mutations for all templates, then builds the
-    VNode tree, runs CreateEngine, emits AppendChildren to mount to
-    root (id 0), and finalizes the mutation buffer.
-
-    After mount, extracts the anchor ElementId from dyn_node_ids[1]
-    (the conditional slot) to initialize the ConditionalSlot.
+    """Initial render (mount) — delegates to CounterApp.mount().
 
     Returns the byte offset (length) of the mutation data written.
     """
-    var vnode_idx = app.render()
-    var result = app.ctx.mount(writer_ptr, vnode_idx)
-
-    # Extract the anchor ElementId for the conditional slot (dyn_node[1]).
-    # dyn_node_ids[0] is the dyn_text node, dyn_node_ids[1] is the
-    # conditional placeholder.
-    var anchor_id: UInt32 = 0
-    var app_vnode_ptr = app.ctx.store_ptr()[0].get_ptr(vnode_idx)
-    if app_vnode_ptr[0].dyn_node_id_count() > 1:
-        anchor_id = app_vnode_ptr[0].get_dyn_node_id(1)
-    app.cond_slot = ConditionalSlot(anchor_id)
-
-    return result
+    return app.mount(writer_ptr)
 
 
 fn counter_app_handle_event(
@@ -267,50 +413,20 @@ fn counter_app_handle_event(
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    """Dispatch an event to the counter app.
+    """Dispatch an event — delegates to CounterApp.handle_event().
 
     Returns True if an action was executed, False otherwise.
     """
-    return app.ctx.dispatch_event(handler_id, event_type)
+    return app.handle_event(handler_id, event_type, String(""))
 
 
 fn counter_app_flush(
     mut app: CounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
-    """Flush pending updates after event dispatch.
-
-    If dirty scopes exist, re-renders the counter component, diffs the
-    old and new VNode trees, writes mutations for the app shell, then
-    handles the conditional detail section via ConditionalSlot.
-
-    The ConditionalSlot manages three transitions:
-      - show_detail goes True: create detail VNode, replace placeholder
-      - show_detail stays True: diff old detail vs new detail
-      - show_detail goes False: create new placeholder, remove detail
+    """Flush pending updates — delegates to CounterApp.flush().
 
     Returns the byte offset (length) of the mutation data written,
     or 0 if there was nothing to update.
     """
-    if not app.ctx.consume_dirty():
-        return 0
-
-    # 1. Re-render and diff the app shell
-    var new_idx = app.render()
-    app.ctx.diff(writer_ptr, new_idx)
-
-    # 2. Handle conditional detail section
-    if app.show_detail.get():
-        # Show or update the detail section
-        var detail_idx = app.build_detail()
-        app.cond_slot = app.ctx.flush_conditional_slot(
-            writer_ptr, app.cond_slot, detail_idx
-        )
-    else:
-        # Hide the detail section (back to placeholder)
-        app.cond_slot = app.ctx.flush_conditional_slot_empty(
-            writer_ptr, app.cond_slot
-        )
-
-    # 3. Finalize the mutation buffer
-    return app.ctx.finalize(writer_ptr)
+    return app.flush(writer_ptr)

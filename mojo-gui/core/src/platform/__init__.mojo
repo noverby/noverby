@@ -5,6 +5,7 @@
 #
 # Sub-modules:
 #   app       — PlatformApp trait, target detection helpers
+#   gui_app   — GuiApp trait, app-side lifecycle contract
 #   launch    — launch() entry point, AppConfig
 #   features  — PlatformFeatures, runtime capability detection
 
@@ -12,6 +13,9 @@ from .app import (
     PlatformApp,
     is_wasm_target,
     is_native_target,
+)
+from .gui_app import (
+    GuiApp,
 )
 from .launch import (
     AppConfig,

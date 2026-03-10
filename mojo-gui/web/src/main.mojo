@@ -2619,7 +2619,11 @@ fn todo_handle_event(
     Returns 1 if the handler was found and action executed (toggle/remove),
     0 if the handler is the add handler (JS must read input) or unknown.
     """
-    return _b2i(_get[TodoApp](app_ptr)[0].handle_event(UInt32(handler_id)))
+    return _b2i(
+        _get[TodoApp](app_ptr)[0].handle_event(
+            UInt32(handler_id), UInt8(event_type), String("")
+        )
+    )
 
 
 @export
@@ -2925,7 +2929,11 @@ fn bench_handle_event(
     Returns 1 if the handler was found and action executed (select/remove),
     0 otherwise.
     """
-    return _b2i(_get[BenchmarkApp](app_ptr)[0].handle_event(UInt32(handler_id)))
+    return _b2i(
+        _get[BenchmarkApp](app_ptr)[0].handle_event(
+            UInt32(handler_id), UInt8(event_type), String("")
+        )
+    )
 
 
 # ── Benchmark App Query Exports ──────────────────────────────────────────────
