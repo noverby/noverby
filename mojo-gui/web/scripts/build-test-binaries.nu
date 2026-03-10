@@ -26,11 +26,13 @@ def main [
 ] {
     let script_dir = ($env.FILE_PWD)
     let project_dir = ($script_dir | path dirname)
-    let test_dir = ($project_dir | path join "test")
-    let src_dir = ($project_dir | path join "src")
+    let core_dir = ($project_dir | path dirname | path join "core")
+    let test_dir = ($core_dir | path join "test")
+    let core_src_dir = ($core_dir | path join "src")
+    let core_apps_dir = $core_dir  # -I here resolves `from apps.* import ...`
     let examples_dir = ($project_dir | path join "examples")
     let out_dir = ($project_dir | path join "build" "test-bin")
-    let wasmtime_mojo = ($project_dir | path dirname | path join "wasmtime-mojo" "src")
+    let wasmtime_mojo = ($project_dir | path dirname | path dirname | path join "wasmtime-mojo" "src")
 
     let num_jobs = if $jobs != null {
         $jobs
@@ -106,15 +108,8 @@ def main [
         let name = ($src | path basename | str replace '.mojo' '')
         let bin = ($out_dir | path join $name)
 
-        let result = (do -i {
-            ^mojo build
-                -I $wasmtime_mojo
-                -I $src_dir
-                -I $examples_dir
-                -I $test_dir
-                -o $bin
-                $src
-        } | complete)
+        let args = [-I $wasmtime_mojo -I $core_src_dir -I $core_apps_dir -I $examples_dir -I $test_dir -o $bin $src]
+        let result = (do -i { ^mojo build ...$args } | complete)
 
         let combined = $"($result.stdout)($result.stderr)"
 

@@ -1,7 +1,7 @@
 build:
     mkdir -p build
     rm -f build/out.cwasm
-    mojo build -Werror --emit llvm -I ../core/src -I examples -o build/out.ll src/main.mojo
+    mojo build -Werror --emit llvm -I ../core/src -I ../core -I examples -o build/out.ll src/main.mojo
     sed -i '/call void @llvm\.lifetime\.\(start\|end\)/d' build/out.ll
     sed -i 's/ nocreateundeforpoison//g' build/out.ll
     sed -i 's/ "target-cpu"="[^"]*"//g; s/ "target-features"="[^"]*"//g' build/out.ll
@@ -13,7 +13,7 @@ build:
 build-if-changed:
     #!/usr/bin/env nu
     mkdir build
-    if ("build/out.wasm" | path exists) and (glob "src/**/*.mojo" "examples/**/*.mojo" "../core/src/**/*.mojo" "../core/apps/**/*.mojo" | where { |f| (ls $f | get 0.modified) > (ls "build/out.wasm" | get 0.modified) } | is-empty) {
+    if ("build/out.wasm" | path exists) and (["src/**/*.mojo" "examples/**/*.mojo" "../core/src/**/*.mojo" "../core/apps/**/*.mojo"] | each { |pat| glob $pat } | flatten | where { |f| (ls $f | get 0.modified) > (ls "build/out.wasm" | get 0.modified) } | is-empty) {
       print "build: out.wasm is up-to-date, skipping."
     } else {
       ^just build

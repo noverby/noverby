@@ -651,8 +651,8 @@ fn main():
 - [x] Update app imports in `apps/*.mojo` for new `html/` path (`from vdom import` → `from html import`)
 - [x] Move `test/*.mojo` to `mojo-gui/core/test/`
 - [x] Update test imports for new paths (`test_handles.mojo`: `from vdom` → `from html`)
-- [ ] Verify all 1,323 Mojo tests pass
-- [ ] Verify `mojo-gui/core` compiles for native target (no `@export` decorators)
+- [x] Verify all 1,323 Mojo tests pass
+- [x] Verify `mojo-gui/core` compiles for native target (no `@export` decorators)
 - [x] Write `mojo-gui/core/README.md`
 - [x] Update `mojo-gui/core/AGENTS.md`
 
@@ -667,7 +667,7 @@ fn main():
 - [x] Move `scripts/` to `mojo-gui/web/scripts/`
 - [x] Move build files (`justfile`, `deno.json`, `default.nix`) — updated `justfile` with `-I ../core/src` for core package resolution
 - [x] Update all import paths in moved files
-- [ ] Verify all 3,090 JS tests pass
+- [x] Verify all 3,090 JS tests pass
 - [ ] Verify all 3 example apps work in browser
 - [x] Write `mojo-gui/web/README.md`
 
