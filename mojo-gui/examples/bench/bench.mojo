@@ -1,11 +1,9 @@
 # BenchmarkApp — js-framework-benchmark implementation.
 #
 # Phase 3.9 (Step 3.9.4): Refactored to implement the GuiApp trait.
-# Free functions (bench_app_rebuild, bench_app_flush) have been moved
-# into struct methods (mount, flush). A unified handle_event() with
-# value: String parameter replaces the old handle_event(handler_id)
-# method. Free functions are retained as thin wrappers for backwards
-# compatibility with the existing @export wrappers in web/src/main.mojo.
+# Free functions have been removed — the @export wrappers in
+# web/src/main.mojo now use the generic gui_app_exports helpers
+# which call GuiApp trait methods directly (Step 3.9.5).
 #
 # Phase 24.4: Fine-grained status bar with 3 dynamic text nodes.
 #
@@ -195,7 +193,7 @@
 #                 # select / remove
 #             return False
 
-from memory import UnsafePointer, alloc
+from memory import UnsafePointer
 from sys.ffi import external_call
 from bridge import MutationWriter
 from mutations import CreateEngine
@@ -1037,53 +1035,3 @@ struct BenchmarkApp(GuiApp):
         vb.add_dyn_placeholder()
 
         return vb.build()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Backwards-compatible free functions
-# ══════════════════════════════════════════════════════════════════════════════
-#
-# These thin wrappers delegate to the GuiApp trait methods on BenchmarkApp.
-# They exist for backwards compatibility with the existing @export wrappers
-# in web/src/main.mojo, which call them by name. Once the @export wrappers
-# are genericized over GuiApp (Step 3.9.5), these can be removed.
-
-
-fn bench_app_init() -> UnsafePointer[BenchmarkApp, MutExternalOrigin]:
-    """Initialize the benchmark app.  Returns a pointer to the app state.
-
-    All setup happens in BenchmarkApp.__init__() — this function just
-    allocates the heap slot and moves the app into it.
-    """
-    var app_ptr = alloc[BenchmarkApp](1)
-    app_ptr.init_pointee_move(BenchmarkApp())
-    return app_ptr
-
-
-fn bench_app_destroy(app_ptr: UnsafePointer[BenchmarkApp, MutExternalOrigin]):
-    """Destroy the benchmark app and free all resources."""
-    app_ptr[0].destroy()
-    app_ptr.destroy_pointee()
-    app_ptr.free()
-
-
-fn bench_app_rebuild(
-    mut app: BenchmarkApp,
-    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-) -> Int32:
-    """Initial render (mount) — delegates to BenchmarkApp.mount().
-
-    Returns byte offset (length) of mutation data.
-    """
-    return app.mount(writer_ptr)
-
-
-fn bench_app_flush(
-    mut app: BenchmarkApp,
-    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-) -> Int32:
-    """Flush pending updates — delegates to BenchmarkApp.flush().
-
-    Returns byte offset (length) of mutation data, or 0 if nothing dirty.
-    """
-    return app.flush(writer_ptr)

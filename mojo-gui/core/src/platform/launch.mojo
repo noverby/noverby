@@ -12,20 +12,15 @@
 #
 # Usage in a shared example app:
 #
-#     from platform import launch
+#     from platform import launch, AppConfig
+#     from counter import CounterApp
 #
-#     fn my_app(ctx: ComponentContext):
-#         var count = ctx.use_signal(0)
-#         ctx.setup_view(
-#             el_div(
-#                 el_h1(dyn_text()),
-#                 el_button(text("+1"), onclick_add(count, 1)),
-#             ),
-#             String("my-app"),
-#         )
-#
-#     fn main():
-#         launch[my_app]()
+#     fn main() raises:
+#         launch[CounterApp](AppConfig(
+#             title="Counter",
+#             width=400,
+#             height=350,
+#         ))
 #
 # Build for different targets:
 #
@@ -40,14 +35,15 @@
 #
 # Design notes:
 #
-#   - launch() is parametric on the app builder function. This allows the
-#     framework to instantiate the app in a renderer-appropriate context.
+#   - launch() is parametric on the GuiApp type. The type parameter tells
+#     the framework which app to instantiate and run.
 #
-#   - For WASM targets, launch() registers the app builder so that the
-#     JS runtime can invoke it via @export wrappers. The actual event loop
-#     is driven by the browser (requestAnimationFrame + event listeners).
+#   - For WASM targets, launch() stores the config and returns. The JS
+#     runtime drives the event loop; @export wrappers in main.mojo use
+#     the generic gui_app_exports helpers to call GuiApp trait methods.
 #
-#   - For native targets, launch() creates the renderer (DesktopApp),
+#   - For native targets, launch() stores the config and imports the
+#     desktop launcher, which creates the renderer (DesktopApp),
 #     initializes the window, mounts the initial DOM, and enters the
 #     platform event loop (blocking until the window is closed).
 #
@@ -56,19 +52,13 @@
 #     This avoids pulling in desktop dependencies for WASM builds and
 #     vice versa.
 #
-# Fallback strategy:
-#
-#   If Mojo's metaprogramming isn't mature enough for clean @parameter if
-#   target detection, apps can use separate thin entry-point files:
-#
-#     main_web.mojo:     imports web launcher, calls app_builder
-#     main_desktop.mojo: imports desktop launcher, calls app_builder
-#
-#   Both import and call the same shared app_builder function — the app
-#   code is still shared, only the 3-line entry point differs per target.
-#   This is strictly a build-system concern, not an app-authoring concern.
+# Step 3.9.3: launch() now uses @parameter if is_wasm_target() for
+# compile-time target dispatch. On WASM, it stores config and returns
+# (JS drives the loop). On native, it will call desktop_launch[AppType]()
+# once the Blitz desktop renderer is implemented (Phase 4).
 
 from .app import is_wasm_target, is_native_target
+from .gui_app import GuiApp
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -161,11 +151,16 @@ fn has_launched() -> Bool:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn launch(config: AppConfig = AppConfig()):
+fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
     """Launch the mojo-gui application on the current platform.
 
     This is the universal entry point for all mojo-gui apps. The renderer
-    is selected at compile time based on the build target.
+    is selected at compile time based on the build target via
+    `@parameter if is_wasm_target()`.
+
+    Type Parameters:
+        AppType: A concrete type implementing the GuiApp trait. This is
+                 the app to instantiate and run.
 
     Args:
         config: Optional application configuration (title, size, debug).
@@ -173,49 +168,68 @@ fn launch(config: AppConfig = AppConfig()):
     On WASM targets:
         Stores the config for the JS runtime to access. The actual app
         initialization happens when the JS side calls the @export init
-        function. launch() returns immediately — the browser event loop
-        drives rendering.
+        function (which uses gui_app_init[AppType]()). launch() returns
+        immediately — the browser event loop drives rendering.
 
     On native targets:
-        Stores the config for the desktop/native renderer to access.
-        The actual event loop is started by the renderer's run() method,
-        which is called from the app's main() function after setting up
-        the app struct and calling launch().
+        Stores the config, then calls desktop_launch[AppType](config)
+        which creates the renderer window, mounts the initial DOM, and
+        enters the platform event loop (blocking until the window is
+        closed). Currently a placeholder — the Blitz desktop renderer
+        will be implemented in Phase 4.
 
     Example (shared app entry point):
 
+        from platform import launch, AppConfig
+        from counter import CounterApp
+
         fn main() raises:
-            launch(AppConfig(
+            launch[CounterApp](AppConfig(
                 title="My Counter",
                 width=400,
                 height=350,
                 debug=True,
             ))
 
-            # For WASM: the JS runtime takes over from here.
-            # For native: the app code continues to set up the
-            #   DesktopApp and enter the event loop.
-
-    Note: In the current architecture, launch() primarily stores
-    configuration. The renderer-specific lifecycle (init, mount, event
-    loop) is handled by the renderer's own entry point code. As the
-    platform abstraction matures, launch() may directly instantiate
-    and run the appropriate renderer.
+    The same source compiles for web (--target wasm64-wasi) and desktop
+    (native). The GuiApp trait ensures the renderer can drive the app
+    uniformly regardless of platform.
     """
     _global_config = config
     _launched = True
 
-    # Future: When Mojo supports @parameter if for target detection and
-    # the renderer implementations are mature enough, this function can
-    # directly dispatch to the appropriate renderer:
-    #
-    #     @parameter
-    #     if is_wasm_target():
-    #         # Web path: register for JS runtime to invoke.
-    #         _register_web_app(config)
-    #     else:
-    #         # Desktop path: create window and enter event loop.
-    #         _run_desktop_app(config)
-    #
-    # For now, launch() stores config and the renderer entry points
-    # (main.mojo for web, counter.mojo for desktop) handle the rest.
+    @parameter
+    if is_wasm_target():
+        # Web path: config is stored; JS runtime drives the event loop.
+        # The @export wrappers in main.mojo use gui_app_exports helpers
+        # (gui_app_init[AppType], gui_app_mount[AppType], etc.) to call
+        # GuiApp trait methods. Nothing more to do here.
+        pass
+    else:
+        # Desktop path: create window and enter event loop.
+        # Phase 4 (Blitz): This will import and call:
+        #     from desktop.launcher import desktop_launch
+        #     desktop_launch[AppType](config)
+        #
+        # For now, print a message indicating desktop support is pending.
+        print(
+            "launch(): desktop renderer not yet implemented"
+            " (Phase 4 — Blitz). Config stored: "
+            + config.title
+        )
+
+
+fn launch(config: AppConfig = AppConfig()):
+    """Store launch configuration without specifying an app type.
+
+    This is a convenience overload for the WASM target where the app type
+    is determined by the @export wrappers (each example builds with a
+    specific AppType alias). On native targets, prefer the parametric
+    version launch[AppType](config) which can dispatch to the desktop
+    renderer.
+
+    Args:
+        config: Optional application configuration (title, size, debug).
+    """
+    _global_config = config
+    _launched = True
