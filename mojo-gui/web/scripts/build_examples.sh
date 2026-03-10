@@ -113,8 +113,7 @@ rm -f "$BUILD_DIR/out.cwasm"
 mojo build $MOJO_FLAGS \
     --emit llvm \
     -I "$CORE_DIR/src" \
-    -I "$CORE_DIR" \
-    -I "$WEB_EXAMPLES_DIR" \
+    -I "$EXAMPLES_DIR" \
     -o "$BUILD_DIR/out.ll" \
     "$WEB_DIR/src/main.mojo"
 

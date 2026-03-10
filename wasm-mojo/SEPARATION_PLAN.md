@@ -696,6 +696,7 @@ done
 ```
 
 Each example's `web/` subdirectory contains only:
+
 - `index.html` — HTML shell with a `<div id="app">` mount point
 - `main.ts` — JS glue that loads the WASM module and connects the runtime
 
@@ -814,6 +815,7 @@ The Mojo native binary needs to interact with [Blitz](https://github.com/DioxusL
 **Rust shim (`shim/mojo_blitz.rs`):**
 
 The Rust side wraps `blitz-dom`'s `Document`, `Node`, and related types. It maintains:
+
 - A `Document` instance (Blitz's DOM tree)
 - A node handle table (`HashMap<u32, NodeId>`) mapping integer IDs to Blitz node IDs
 - An event queue that collects Winit/Blitz events for Mojo to poll
@@ -881,6 +883,7 @@ Establish an automated test matrix that verifies all shared examples on all targ
 | bench     | ✅                  | 🔲                       | Phase 3 |
 
 The CI pipeline should:
+
 1. Build each shared example for each target
 2. Run integration tests for each target (browser tests via Deno, desktop tests via headless Blitz or screenshot comparison)
 3. Fail if any example works on one target but not another
@@ -939,6 +942,7 @@ Like Dioxus's future native widget renderer, this maps DOM-oriented mutations to
 ```
 
 Key points:
+
 - **Examples depend only on `core`** — they never import from `web/`, `desktop/`, or `native/`
 - **Renderers implement the `App` trait** defined in `core/platform/`
 - **`launch()` is the only platform-dispatching call** — it routes to the correct renderer at compile time
@@ -962,8 +966,8 @@ Key points:
 - [x] Create `core/src/platform/features.mojo` — `PlatformFeatures` struct, preset feature sets (`web_features`, `desktop_webview_features`, `desktop_blitz_features`, `native_features`), global feature registry (`register_features` / `current_features`)
 - [x] Create `core/src/platform/__init__.mojo` — re-exports public API from all three platform modules
 - [x] Update `core/src/lib.mojo` — add `platform/` to package listing
-- [ ] Move `src/apps/` to `mojo-gui/examples/` as shared, platform-agnostic example apps
-- [ ] Refactor each example app to use `launch[app_builder]()` instead of renderer-specific entry points
+- [x] Move `src/apps/` to `mojo-gui/examples/` as shared, platform-agnostic example apps — demo/test apps moved from `core/apps/` to `examples/apps/`; main examples (counter, todo, bench, app) moved from `web/examples/` to `examples/`; web-specific assets (HTML/JS) remain in `web/examples/`; build paths updated (`-I ../examples` replaces `-I ../core -I examples`)
+- [ ] Refactor each example app to use `launch[app_builder]()` instead of renderer-specific entry points — deferred; current apps use struct + lifecycle function pattern (`_init`, `_rebuild`, `_flush`, `_handle_event`) wired via `@export` in `main.mojo`; `launch()` currently stores config only; full refactor requires compile-time app builder dispatch
 - [x] Update app imports in `apps/*.mojo` for new `html/` path (`from vdom import` → `from html import`)
 - [x] Move `test/*.mojo` to `mojo-gui/core/test/`
 - [x] Update test imports for new paths (`test_handles.mojo`: `from vdom` → `from html`)
@@ -979,12 +983,12 @@ Key points:
 - [x] Move `src/main.mojo` to `mojo-gui/web/src/main.mojo`
 - [x] Update `main.mojo` imports to reference `mojo-gui/core` package — split `from vdom` into `from vdom` + `from html`; `from vdom.dsl_tests` → `from html.dsl_tests`
 - [x] Create `web/src/web_launcher.mojo` — `WebApp` implementing the `PlatformApp` trait (no-op stubs for WASM target where JS runtime drives the loop) + `create_web_app()` helper
-- [x] Move web-specific example assets (HTML, JS glue) from `examples/` to `examples/<name>/web/` — counter, todo, bench HTML shells and main.js entry points copied to `mojo-gui/examples/<name>/web/`
+- [x] Move web-specific example assets (HTML, JS glue) — web assets (HTML shells, main.js entry points) live in `web/examples/<name>/`; shared Mojo app code lives in `examples/<name>/`; redundant `examples/<name>/web/` copies removed
 - [x] Create `web/scripts/build_examples.sh` — builds all shared examples for WASM target (discovers examples, compiles shared WASM binary via main.mojo, copies per-example HTML/JS assets from both shared and web-specific locations)
-- [ ] Verify shared examples build and run in browser via web target
+- [ ] Verify shared examples build and run in browser via web target — build paths updated (`-I ../examples`), needs `just build` + browser verification
 - [x] Move `test-js/` to `mojo-gui/web/test-js/`
 - [x] Move `scripts/` to `mojo-gui/web/scripts/`
-- [x] Move build files (`justfile`, `deno.json`, `default.nix`) — updated `justfile` with `-I ../core/src` for core package resolution
+- [x] Move build files (`justfile`, `deno.json`, `default.nix`) — updated `justfile` with `-I ../core/src -I ../examples` for core and shared example package resolution
 - [x] Update all import paths in moved files
 - [x] Verify all 3,090 JS tests pass
 - [x] Verify all 3 example apps work in browser — JS tests (3,090) and Mojo tests (52 suites) pass; browser verification blocked by headless Servo in CI
