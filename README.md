@@ -412,7 +412,7 @@
 | 🚧 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled), [Fjall 🦀](https://github.com/fjall-rs/fjall) | 🆗 | [RocksDB 💣](https://github.com/facebook/rocksdb) |
 | ✅ | Web Server | [Caddy 🐹](https://github.com/caddyserver/caddy) | [Moella 🦀](https://github.com/Icelk/moella) | 🆗 | [Nginx 💣](https://github.com/nginx/nginx) |
 | ✅ | Email Server | [Stalwart 🦀](https://stalw.art) | | [IMAP 📖](https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol), [POP3 📖](https://en.wikipedia.org/wiki/Post_Office_Protocol) | [Postfix 💣](https://www.postfix.org), [Dovecot 💣](https://www.dovecot.org) |
-| ✅ | Virtual Private Network | [Tailscale 🐹](https://github.com/tailscale/tailscale) | [Innernet 🦀](https://github.com/tonarino/innernet) | [WireGuard 📖](https://www.wireguard.com) | |
+| 🚧 | Virtual Private Network | [Tailscale 🇨🇦🔒🐹](https://github.com/tailscale/tailscale) | [Netbird 🐹](https://github.com/netbirdio/netbird), [Innernet 🦀](https://github.com/tonarino/innernet) | [WireGuard 📖](https://www.wireguard.com) | |
 | ✅ | Secret Manager | [SPIRE 🌐🐹](https://github.com/spiffe/spire) | | [SPIFFE 📖](https://github.com/spiffe/spiffe) | |
 
 </details>
