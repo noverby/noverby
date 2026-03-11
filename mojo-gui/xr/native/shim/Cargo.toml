@@ -1,0 +1,47 @@
+[package]
+name = "mojo-xr-shim"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90.0"
+description = "C FFI shim exposing Blitz + OpenXR for mojo-gui XR renderer — multi-panel DOM rendering to offscreen textures composited via OpenXR quad layers"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+name = "mojo_xr"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Blitz packages — pinned to v0.2.0 release (same rev as desktop shim)
+blitz = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0", features = [
+  "net",
+] }
+blitz-dom = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
+blitz-html = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
+blitz-traits = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
+blitz-paint = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
+
+# Rendering backend (must match Blitz v0.2.0's pinned versions exactly)
+anyrender = { version = "0.6" }
+anyrender_vello = { version = "0.6" }
+
+# GPU abstraction — used for offscreen texture rendering (Vello → wgpu texture)
+# and OpenXR swapchain interop.
+wgpu = { version = "24" }
+
+# OpenXR bindings — session management, frame loop, input, reference spaces.
+# The "linked" feature uses the OpenXR loader (libopenxr_loader.so) via
+# dynamic linking at runtime. This matches how most OpenXR apps work —
+# the loader dispatches to the active runtime (Monado, SteamVR, etc.).
+openxr = { version = "0.19", features = ["linked"] }
+
+# Note: markup5ever types (QualName, LocalName, etc.) are re-exported by blitz-dom.
+# Do NOT add a direct markup5ever dependency — version mismatches cause type errors.
+
+# Note: winit is NOT included — the XR shim does not create a desktop window.
+# The OpenXR runtime owns the display output; we only render to offscreen textures.
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = "symbols"

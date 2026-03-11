@@ -102,6 +102,23 @@ struct PlatformFeatures(Copyable, Movable):
     """True if the platform's accessibility tree is connected.
     Web: ARIA via browser. Desktop: AccessKit via Blitz. Native: OS a11y."""
 
+    # ── XR capabilities ───────────────────────────────────────────────
+
+    var has_xr: Bool
+    """True if the renderer is running in an XR (extended reality) session.
+    XR renderers place DOM panels in 3D space via OpenXR (native) or
+    WebXR (browser). False for flat desktop and web renderers."""
+
+    var has_xr_hand_tracking: Bool
+    """True if XR hand tracking is available (XR_EXT_hand_tracking).
+    Enables hand-based input instead of or in addition to controllers.
+    Always False when has_xr is False."""
+
+    var has_xr_passthrough: Bool
+    """True if XR passthrough (AR mode) is available (XR_FB_passthrough
+    or equivalent). Enables mixed reality where virtual panels are
+    overlaid on the real world. Always False when has_xr is False."""
+
     # ── Platform identity ─────────────────────────────────────────────
 
     var renderer_name: String
@@ -125,6 +142,9 @@ struct PlatformFeatures(Copyable, Movable):
         self.has_filesystem = False
         self.has_unrestricted_network = False
         self.has_accessibility = False
+        self.has_xr = False
+        self.has_xr_hand_tracking = False
+        self.has_xr_passthrough = False
         self.renderer_name = String("unknown")
 
     fn __copyinit__(out self, other: Self):
@@ -137,6 +157,9 @@ struct PlatformFeatures(Copyable, Movable):
         self.has_filesystem = other.has_filesystem
         self.has_unrestricted_network = other.has_unrestricted_network
         self.has_accessibility = other.has_accessibility
+        self.has_xr = other.has_xr
+        self.has_xr_hand_tracking = other.has_xr_hand_tracking
+        self.has_xr_passthrough = other.has_xr_passthrough
         self.renderer_name = other.renderer_name
 
     fn __moveinit__(out self, deinit other: Self):
@@ -149,6 +172,9 @@ struct PlatformFeatures(Copyable, Movable):
         self.has_filesystem = other.has_filesystem
         self.has_unrestricted_network = other.has_unrestricted_network
         self.has_accessibility = other.has_accessibility
+        self.has_xr = other.has_xr
+        self.has_xr_hand_tracking = other.has_xr_hand_tracking
+        self.has_xr_passthrough = other.has_xr_passthrough
         self.renderer_name = other.renderer_name^
 
 
@@ -173,6 +199,9 @@ fn web_features() -> PlatformFeatures:
     f.has_filesystem = False  # Sandboxed
     f.has_unrestricted_network = False  # CORS
     f.has_accessibility = True  # Browser ARIA
+    f.has_xr = False
+    f.has_xr_hand_tracking = False
+    f.has_xr_passthrough = False
     f.renderer_name = String("web")
     return f
 
@@ -193,6 +222,9 @@ fn desktop_blitz_features() -> PlatformFeatures:
     f.has_filesystem = True
     f.has_unrestricted_network = True
     f.has_accessibility = True  # AccessKit
+    f.has_xr = False
+    f.has_xr_hand_tracking = False
+    f.has_xr_passthrough = False
     f.renderer_name = String("desktop-blitz")
     return f
 
@@ -214,7 +246,62 @@ fn native_features() -> PlatformFeatures:
     f.has_filesystem = True
     f.has_unrestricted_network = True
     f.has_accessibility = True  # Platform a11y
+    f.has_xr = False
+    f.has_xr_hand_tracking = False
+    f.has_xr_passthrough = False
     f.renderer_name = String("native")
+    return f
+
+
+fn xr_native_features() -> PlatformFeatures:
+    """Return the feature set for the OpenXR native renderer.
+
+    The XR native renderer uses the Blitz stack (same as desktop) but
+    renders to offscreen textures composited via OpenXR quad layers.
+    It has full native I/O capabilities plus XR-specific features.
+
+    XR hand tracking and passthrough depend on the runtime and are set
+    to False by default. The XR launcher updates these after querying
+    the OpenXR runtime's extension support at session creation time.
+    """
+    var f = PlatformFeatures()
+    f.has_dom = True
+    f.has_css = True  # Stylo (same as desktop)
+    f.has_gpu = True  # Vello GPU rendering → offscreen textures
+    f.has_multi_window = False  # XR uses panels, not OS windows
+    f.has_native_chrome = False  # No OS window chrome in XR
+    f.has_clipboard = True
+    f.has_filesystem = True
+    f.has_unrestricted_network = True
+    f.has_accessibility = True  # AccessKit per-panel
+    f.has_xr = True
+    f.has_xr_hand_tracking = False  # Updated after runtime query
+    f.has_xr_passthrough = False  # Updated after runtime query
+    f.renderer_name = String("xr-native")
+    return f
+
+
+fn xr_web_features() -> PlatformFeatures:
+    """Return the feature set for the WebXR browser renderer.
+
+    The WebXR renderer extends the web renderer with XR session management
+    and DOM-to-texture panel rendering. It inherits the web renderer's
+    sandboxing constraints but adds XR capabilities.
+    """
+    var f = PlatformFeatures()
+    f.has_dom = True
+    f.has_css = True
+    f.has_gpu = True  # WebGL/WebGPU
+    f.has_multi_window = False
+    f.has_native_chrome = False
+    f.has_clipboard = True  # Async Clipboard API
+    f.has_filesystem = False  # Sandboxed
+    f.has_unrestricted_network = False  # CORS
+    f.has_accessibility = True  # Browser ARIA
+    f.has_xr = True
+    f.has_xr_hand_tracking = False  # Updated after runtime query
+    f.has_xr_passthrough = False  # Updated after runtime query
+    f.renderer_name = String("xr-web")
     return f
 
 
