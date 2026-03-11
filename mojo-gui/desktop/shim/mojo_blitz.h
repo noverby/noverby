@@ -145,6 +145,19 @@ MblitzContext mblitz_create(const char *title, uint32_t title_len,
                             int32_t debug);
 
 /**
+ * Create a headless Blitz context (no event loop, no window, no GPU).
+ *
+ * Used for integration testing — DOM operations work normally but
+ * windowing/rendering functions are no-ops. Events can be injected via
+ * mblitz_inject_event() and polled via mblitz_poll_event().
+ *
+ * @param width   Viewport width in logical pixels (used for layout).
+ * @param height  Viewport height in logical pixels (used for layout).
+ * @return        Opaque context handle, or NULL on failure.
+ */
+MblitzContext mblitz_create_headless(uint32_t width, uint32_t height);
+
+/**
  * Process pending window/input events.
  *
  * Drives the Winit event loop for one iteration. User interaction events
@@ -636,6 +649,105 @@ void mblitz_set_debug_overlay(MblitzContext ctx, int32_t enabled);
  * @param out_len  Pointer to receive the version string length.
  */
 void mblitz_version(const char **out_ptr, uint32_t *out_len);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DOM inspection (for testing)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Get the tag name of an element by mojo-gui element ID.
+ *
+ * Writes the tag name (e.g. "div", "h1", "button") to the output buffer.
+ * For text nodes returns "#text", for comments returns "#comment".
+ * Returns 0 if the node doesn't exist.
+ *
+ * If the buffer is too small, the required length is still returned
+ * (caller can retry with a larger buffer).
+ *
+ * @param ctx           Context handle.
+ * @param mojo_id       The mojo-gui element ID.
+ * @param out_ptr       Buffer to write the tag string (UTF-8, not null-terminated).
+ * @param out_capacity  Size of the output buffer in bytes.
+ * @return              Number of bytes in the tag string, or 0 if not found.
+ */
+uint32_t mblitz_get_node_tag(MblitzContext ctx, uint32_t mojo_id,
+                             char *out_ptr, uint32_t out_capacity);
+
+/**
+ * Get the concatenated text content of a node and its descendants.
+ *
+ * For element nodes, recursively collects all descendant text.
+ * For text nodes, returns the text directly.
+ *
+ * @param ctx           Context handle.
+ * @param mojo_id       The mojo-gui element ID.
+ * @param out_ptr       Buffer to write the text (UTF-8, not null-terminated).
+ * @param out_capacity  Size of the output buffer in bytes.
+ * @return              Number of bytes in the text, or 0 if empty/not found.
+ */
+uint32_t mblitz_get_text_content(MblitzContext ctx, uint32_t mojo_id,
+                                 char *out_ptr, uint32_t out_capacity);
+
+/**
+ * Get the value of an attribute on an element.
+ *
+ * @param ctx            Context handle.
+ * @param mojo_id        The mojo-gui element ID.
+ * @param attr_name      Attribute name (UTF-8, not null-terminated).
+ * @param attr_name_len  Length of the attribute name in bytes.
+ * @param out_ptr        Buffer to write the attribute value (UTF-8).
+ * @param out_capacity   Size of the output buffer in bytes.
+ * @return               Number of bytes in the value, or 0 if not found.
+ */
+uint32_t mblitz_get_attribute_value(MblitzContext ctx, uint32_t mojo_id,
+                                    const char *attr_name, uint32_t attr_name_len,
+                                    char *out_ptr, uint32_t out_capacity);
+
+/**
+ * Serialize a subtree rooted at a mojo-gui element ID into a compact
+ * HTML-like string for test assertions.
+ *
+ * Format example:
+ *   <div><h1>#text("Hello")</h1><button>#text("Click")</button></div>
+ *
+ * Comment/placeholder nodes render as "<!---->".
+ *
+ * @param ctx           Context handle.
+ * @param mojo_id       The mojo-gui element ID of the subtree root.
+ * @param out_ptr       Buffer to write the serialized HTML (UTF-8).
+ * @param out_capacity  Size of the output buffer in bytes.
+ * @return              Number of bytes written, or required length if too small.
+ */
+uint32_t mblitz_serialize_subtree(MblitzContext ctx, uint32_t mojo_id,
+                                  char *out_ptr, uint32_t out_capacity);
+
+/**
+ * Inject a synthetic event into the event queue for testing.
+ *
+ * The event will be returned by the next mblitz_poll_event() call.
+ * This allows tests to simulate user interactions without a real window.
+ *
+ * @param ctx         Context handle.
+ * @param handler_id  The handler ID to dispatch to.
+ * @param event_type  One of the MBLITZ_EVT_* constants.
+ * @param value_ptr   String payload (UTF-8, not null-terminated). NULL for no value.
+ * @param value_len   Length of the value string in bytes. 0 for no value.
+ */
+void mblitz_inject_event(MblitzContext ctx, uint32_t handler_id,
+                         uint8_t event_type,
+                         const char *value_ptr, uint32_t value_len);
+
+/**
+ * Get the mojo-gui element ID of a child at a given index within a parent.
+ *
+ * @param ctx              Context handle.
+ * @param parent_mojo_id   The mojo-gui element ID of the parent node.
+ * @param index            Zero-based child index.
+ * @return                 The child's mojo-gui element ID, or UINT32_MAX if
+ *                         out of bounds or unmapped.
+ */
+uint32_t mblitz_get_child_mojo_id(MblitzContext ctx, uint32_t parent_mojo_id,
+                                  uint32_t index);
 
 #ifdef __cplusplus
 }

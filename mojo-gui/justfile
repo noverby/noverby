@@ -123,7 +123,13 @@ run-desktop-all: build-desktop-all
     @echo "Running app…"
     just run-desktop app
 
-# ── Cross-target builds ──────────────────────────────────────────────────────
+# ── Desktop tests (Rust integration tests for the Blitz shim) ───────────
+
+# Run Blitz shim integration tests (headless — no display needed)
+test-desktop:
+    cd desktop/shim && cargo test
+
+# ── Cross-target builds ──────────────────────────────────────────────────
 
 # Build a shared example for web (WASM)
 # Usage: just build-web counter
@@ -136,6 +142,9 @@ build-web app:
 
 # Build all shared examples for both targets
 build-all: build build-desktop-all
+
+# Run all tests (Mojo + JS + desktop)
+test-all-targets: test-all test-desktop
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
 

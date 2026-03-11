@@ -69,10 +69,10 @@ const _EVT_MOUSEMOVE: u8 = 10;
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[derive(Clone, Debug)]
-struct BufferedEvent {
-    handler_id: u32,
-    event_type: u8,
-    value: String,
+pub struct BufferedEvent {
+    pub handler_id: u32,
+    pub event_type: u8,
+    pub value: String,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -80,9 +80,9 @@ struct BufferedEvent {
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[derive(Clone, Debug)]
-struct MojoHandler {
-    handler_id: u32,
-    event_name: String,
+pub struct MojoHandler {
+    pub handler_id: u32,
+    pub event_name: String,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -157,85 +157,85 @@ impl blitz_dom::EventHandler for MojoEventHandler<'_> {
 // BlitzContext — owns the document, window, renderer, and event state
 // ═══════════════════════════════════════════════════════════════════════════
 
-struct BlitzContext {
+pub struct BlitzContext {
     /// The Blitz DOM document.
-    doc: BaseDocument,
+    pub doc: BaseDocument,
 
     /// Node ID assigned to the mount point (the <body> or <div id="root">).
     /// mojo-gui's element ID 0 maps to this.
-    mount_point_id: usize,
+    pub mount_point_id: usize,
 
     /// Map from mojo-gui element IDs (u32) to Blitz slab node IDs (usize).
     /// Element ID 0 is always the mount point.
-    id_to_node: HashMap<u32, usize>,
+    pub id_to_node: HashMap<u32, usize>,
 
     /// Reverse map: Blitz node ID → mojo-gui element ID.
     /// Used for event dispatch (we need to find handler_id from the clicked node).
-    node_to_id: HashMap<usize, u32>,
+    pub node_to_id: HashMap<usize, u32>,
 
     /// Next available mojo-gui element ID for internally created nodes
     /// that don't get an explicit AssignId.
     #[allow(dead_code)]
-    next_internal_id: u32,
+    pub next_internal_id: u32,
 
     /// Registered templates: template_id → root Blitz node ID.
-    templates: HashMap<u32, usize>,
+    pub templates: HashMap<u32, usize>,
 
     /// Event handlers: Blitz node ID → list of handlers.
-    event_handlers: HashMap<usize, Vec<MojoHandler>>,
+    pub event_handlers: HashMap<usize, Vec<MojoHandler>>,
 
     /// Buffered events ready for Mojo to poll.
-    event_queue: Vec<BufferedEvent>,
+    pub event_queue: Vec<BufferedEvent>,
 
     /// Temporary storage for the last polled event's value string,
     /// kept alive until the next poll.
-    last_polled_value: String,
+    pub last_polled_value: String,
 
     /// Stack for mutation interpretation (mirrors the JS interpreter's stack).
     /// Contains Blitz node IDs.
-    stack: Vec<usize>,
+    pub stack: Vec<usize>,
 
     /// Whether the window is still alive.
-    alive: bool,
+    pub alive: bool,
 
     /// Debug mode flag.
-    debug: bool,
+    pub debug: bool,
 
     /// Whether we're currently inside a begin_mutations/end_mutations batch.
-    in_mutation_batch: bool,
+    pub in_mutation_batch: bool,
 
     // ── Windowing state (populated after first pump_app_events call) ────
     /// Winit event loop. Stored in an Option so it can be temporarily taken
     /// out during pump_app_events() (which needs &mut EventLoop while our
     /// ApplicationHandler impl needs &mut BlitzContext — same struct).
-    event_loop: Option<EventLoop<()>>,
+    pub event_loop: Option<EventLoop<()>>,
 
     /// The Winit window handle (Arc for sharing with the renderer).
-    window: Option<Arc<Window>>,
+    pub window: Option<Arc<Window>>,
 
     /// Vello GPU renderer.
     renderer: VelloWindowRenderer,
 
     /// Desired window title (stored until window is created).
-    title: String,
+    pub title: String,
 
     /// Desired window dimensions.
-    initial_width: u32,
-    initial_height: u32,
+    pub initial_width: u32,
+    pub initial_height: u32,
 
     /// Whether the window has been created and the renderer resumed.
-    window_initialized: bool,
+    pub window_initialized: bool,
 
     /// Whether a redraw has been requested (set by mblitz_request_redraw,
     /// consumed during the next step).
-    needs_redraw: bool,
+    pub needs_redraw: bool,
 
     // ── Input state (tracked across Winit events) ──────────────────────
     /// Current mouse button state.
-    mouse_buttons: MouseEventButtons,
+    pub mouse_buttons: MouseEventButtons,
 
     /// Current mouse position in logical pixels.
-    mouse_pos: (f32, f32),
+    pub mouse_pos: (f32, f32),
 }
 
 impl BlitzContext {
@@ -325,20 +325,85 @@ impl BlitzContext {
         }
     }
 
+    /// Create a headless BlitzContext without an event loop or window.
+    ///
+    /// This is used for integration testing — DOM operations work normally
+    /// but windowing/rendering functions are no-ops. Events can be injected
+    /// via `queue_event()` and polled via `poll_event()`.
+    pub fn new_headless(width: u32, height: u32) -> Self {
+        let viewport = Viewport {
+            window_size: (width, height),
+            ..Default::default()
+        };
+
+        let config = DocumentConfig {
+            viewport: Some(viewport),
+            ..Default::default()
+        };
+
+        let mut doc = BaseDocument::new(config);
+
+        let html_name = QualName::new(None::<Prefix>, ns!(html), local_name!("html"));
+        let html_id = doc.create_node(NodeData::Element(ElementData::new(html_name, vec![])));
+
+        let body_name = QualName::new(None::<Prefix>, ns!(html), local_name!("body"));
+        let body_id = doc.create_node(NodeData::Element(ElementData::new(body_name, vec![])));
+
+        {
+            let mut mutator = doc.mutate();
+            mutator.append_children(0, &[html_id]);
+            mutator.append_children(html_id, &[body_id]);
+        }
+
+        let mut id_to_node = HashMap::new();
+        let mut node_to_id = HashMap::new();
+        id_to_node.insert(0, body_id);
+        node_to_id.insert(body_id, 0);
+
+        BlitzContext {
+            doc,
+            mount_point_id: body_id,
+            id_to_node,
+            node_to_id,
+            next_internal_id: 0x8000_0000,
+            templates: HashMap::new(),
+            event_handlers: HashMap::new(),
+            event_queue: Vec::new(),
+            last_polled_value: String::new(),
+            stack: Vec::new(),
+            alive: true,
+            debug: false,
+            in_mutation_batch: false,
+
+            // No event loop or window in headless mode
+            event_loop: None,
+            window: None,
+            renderer: VelloWindowRenderer::new(),
+            title: String::new(),
+            initial_width: width,
+            initial_height: height,
+            window_initialized: false,
+            needs_redraw: false,
+
+            mouse_buttons: MouseEventButtons::None,
+            mouse_pos: (0.0, 0.0),
+        }
+    }
+
     /// Resolve a mojo-gui element ID to a Blitz node ID.
-    fn resolve_id(&self, mojo_id: u32) -> Option<usize> {
+    pub fn resolve_id(&self, mojo_id: u32) -> Option<usize> {
         self.id_to_node.get(&mojo_id).copied()
     }
 
     /// Assign a mojo-gui element ID to a Blitz node ID.
-    fn assign_id(&mut self, mojo_id: u32, blitz_id: usize) {
+    pub fn assign_id(&mut self, mojo_id: u32, blitz_id: usize) {
         self.id_to_node.insert(mojo_id, blitz_id);
         self.node_to_id.insert(blitz_id, mojo_id);
     }
 
     /// Allocate an internal element ID for nodes that don't get explicit AssignId.
     #[allow(dead_code)] // Will be used in Winit event loop integration (Step 4.6)
-    fn alloc_internal_id(&mut self) -> u32 {
+    pub fn alloc_internal_id(&mut self) -> u32 {
         let id = self.next_internal_id;
         self.next_internal_id += 1;
         id
@@ -346,7 +411,7 @@ impl BlitzContext {
 
     /// Create an HTML element by tag name string.
     /// Uses DocumentMutator for proper stylo data initialization.
-    fn create_element(&mut self, tag: &str) -> usize {
+    pub fn create_element(&mut self, tag: &str) -> usize {
         let local = LocalName::from(tag);
         let name = QualName::new(None::<Prefix>, ns!(html), local);
         let mut mutator = self.doc.mutate();
@@ -354,61 +419,61 @@ impl BlitzContext {
     }
 
     /// Create a text node.
-    fn create_text_node(&mut self, text: &str) -> usize {
+    pub fn create_text_node(&mut self, text: &str) -> usize {
         self.doc.create_text_node(text)
     }
 
     /// Create a comment/placeholder node.
-    fn create_placeholder(&mut self) -> usize {
+    pub fn create_placeholder(&mut self) -> usize {
         self.doc.create_node(NodeData::Comment)
     }
 
     /// Set an attribute on a node (via DocumentMutator).
-    fn set_attribute(&mut self, node_id: usize, name: &str, value: &str) {
+    pub fn set_attribute(&mut self, node_id: usize, name: &str, value: &str) {
         let qname = QualName::new(None::<Prefix>, ns!(), LocalName::from(name));
         let mut mutator = self.doc.mutate();
         mutator.set_attribute(node_id, qname, value);
     }
 
     /// Remove an attribute from a node.
-    fn remove_attribute(&mut self, node_id: usize, name: &str) {
+    pub fn remove_attribute(&mut self, node_id: usize, name: &str) {
         let qname = QualName::new(None::<Prefix>, ns!(), LocalName::from(name));
         let mut mutator = self.doc.mutate();
         mutator.clear_attribute(node_id, qname);
     }
 
     /// Set text content of a text node.
-    fn set_text_content(&mut self, node_id: usize, text: &str) {
+    pub fn set_text_content(&mut self, node_id: usize, text: &str) {
         let mut mutator = self.doc.mutate();
         mutator.set_node_text(node_id, text);
     }
 
     /// Append children to a parent.
-    fn append_children(&mut self, parent_id: usize, child_ids: &[usize]) {
+    pub fn append_children(&mut self, parent_id: usize, child_ids: &[usize]) {
         let mut mutator = self.doc.mutate();
         mutator.append_children(parent_id, child_ids);
     }
 
     /// Insert nodes before an anchor.
-    fn insert_before(&mut self, anchor_id: usize, new_ids: &[usize]) {
+    pub fn insert_before(&mut self, anchor_id: usize, new_ids: &[usize]) {
         let mut mutator = self.doc.mutate();
         mutator.insert_nodes_before(anchor_id, new_ids);
     }
 
     /// Insert nodes after an anchor.
-    fn insert_after(&mut self, anchor_id: usize, new_ids: &[usize]) {
+    pub fn insert_after(&mut self, anchor_id: usize, new_ids: &[usize]) {
         let mut mutator = self.doc.mutate();
         mutator.insert_nodes_after(anchor_id, new_ids);
     }
 
     /// Replace a node with new nodes.
-    fn replace_with(&mut self, old_id: usize, new_ids: &[usize]) {
+    pub fn replace_with(&mut self, old_id: usize, new_ids: &[usize]) {
         let mut mutator = self.doc.mutate();
         mutator.replace_node_with(old_id, new_ids);
     }
 
     /// Remove and drop a node.
-    fn remove_node(&mut self, node_id: usize) {
+    pub fn remove_node(&mut self, node_id: usize) {
         // Clean up ID mappings
         if let Some(mojo_id) = self.node_to_id.remove(&node_id) {
             self.id_to_node.remove(&mojo_id);
@@ -420,13 +485,13 @@ impl BlitzContext {
     }
 
     /// Deep clone a node.
-    fn deep_clone_node(&mut self, node_id: usize) -> usize {
+    pub fn deep_clone_node(&mut self, node_id: usize) -> usize {
         self.doc.deep_clone_node(node_id)
     }
 
     /// Navigate to a child at path from a starting node.
     /// Uses the public `get_node` API to traverse children.
-    fn node_at_path(&self, start_id: usize, path: &[u8]) -> usize {
+    pub fn node_at_path(&self, start_id: usize, path: &[u8]) -> usize {
         let mut current = start_id;
         for &idx in path {
             let node = self
@@ -439,7 +504,7 @@ impl BlitzContext {
     }
 
     /// Add an event handler registration.
-    fn add_event_listener(&mut self, node_id: usize, handler_id: u32, event_name: &str) {
+    pub fn add_event_listener(&mut self, node_id: usize, handler_id: u32, event_name: &str) {
         let handlers = self.event_handlers.entry(node_id).or_default();
         handlers.push(MojoHandler {
             handler_id,
@@ -448,7 +513,7 @@ impl BlitzContext {
     }
 
     /// Remove an event handler registration.
-    fn remove_event_listener(&mut self, node_id: usize, event_name: &str) {
+    pub fn remove_event_listener(&mut self, node_id: usize, event_name: &str) {
         if let Some(handlers) = self.event_handlers.get_mut(&node_id) {
             handlers.retain(|h| h.event_name != event_name);
             if handlers.is_empty() {
@@ -458,13 +523,150 @@ impl BlitzContext {
     }
 
     /// Queue a synthetic event (for testing or programmatic dispatch).
-    #[allow(dead_code)]
-    fn queue_event(&mut self, handler_id: u32, event_type: u8, value: String) {
+    pub fn queue_event(&mut self, handler_id: u32, event_type: u8, value: String) {
         self.event_queue.push(BufferedEvent {
             handler_id,
             event_type,
             value,
         });
+    }
+
+    // ── DOM inspection methods (for testing) ────────────────────────
+
+    /// Get the tag name of an element by its mojo-gui element ID.
+    /// Returns an empty string for non-element nodes (text, comment).
+    pub fn get_node_tag(&self, mojo_id: u32) -> String {
+        let Some(blitz_id) = self.resolve_id(mojo_id) else {
+            return String::new();
+        };
+        let Some(node) = self.doc.get_node(blitz_id) else {
+            return String::new();
+        };
+        match &node.data {
+            NodeData::Element(el) => el.name.local.to_string(),
+            NodeData::Text(_) => "#text".to_string(),
+            NodeData::Comment => "#comment".to_string(),
+            NodeData::Document => "#document".to_string(),
+            _ => String::new(),
+        }
+    }
+
+    /// Get the concatenated text content of a node and its descendants.
+    /// For element nodes, recursively collects all descendant text.
+    /// For text nodes, returns the text directly.
+    pub fn get_text_content(&self, mojo_id: u32) -> String {
+        let Some(blitz_id) = self.resolve_id(mojo_id) else {
+            return String::new();
+        };
+        self.collect_text(blitz_id)
+    }
+
+    /// Recursively collect text content from a Blitz node ID.
+    fn collect_text(&self, blitz_id: usize) -> String {
+        let Some(node) = self.doc.get_node(blitz_id) else {
+            return String::new();
+        };
+        match &node.data {
+            NodeData::Text(text_data) => text_data.content.to_string(),
+            NodeData::Element(_) | NodeData::AnonymousBlock(_) => {
+                let mut result = String::new();
+                for &child_id in &node.children {
+                    result.push_str(&self.collect_text(child_id));
+                }
+                result
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Get the value of an attribute on an element by mojo-gui element ID.
+    /// Returns None if the node doesn't exist, isn't an element, or
+    /// doesn't have the attribute.
+    pub fn get_attribute_value(&self, mojo_id: u32, attr_name: &str) -> Option<String> {
+        let blitz_id = self.resolve_id(mojo_id)?;
+        let node = self.doc.get_node(blitz_id)?;
+        match &node.data {
+            NodeData::Element(el) => {
+                let local = LocalName::from(attr_name);
+                el.attr(local).map(|v| v.to_string())
+            }
+            _ => None,
+        }
+    }
+
+    /// Serialize a subtree rooted at a mojo-gui element ID into a compact
+    /// HTML-like string for test assertions. Format:
+    ///
+    ///   <div><h1>#text("Hello")</h1><button>#text("Click")</button></div>
+    ///
+    /// Comment/placeholder nodes render as `<!---->`.
+    pub fn serialize_subtree(&self, mojo_id: u32) -> String {
+        let Some(blitz_id) = self.resolve_id(mojo_id) else {
+            return String::new();
+        };
+        self.serialize_node(blitz_id)
+    }
+
+    /// Recursively serialize a single Blitz node.
+    fn serialize_node(&self, blitz_id: usize) -> String {
+        let Some(node) = self.doc.get_node(blitz_id) else {
+            return String::new();
+        };
+        match &node.data {
+            NodeData::Text(text_data) => {
+                let content = text_data.content.to_string();
+                format!("#text(\"{}\")", content.replace('"', "\\\""))
+            }
+            NodeData::Comment => "<!---->".to_string(),
+            NodeData::Element(el) | NodeData::AnonymousBlock(el) => {
+                let tag = el.name.local.to_string();
+                let mut attrs = String::new();
+                for attr in el.attrs() {
+                    attrs.push(' ');
+                    attrs.push_str(&attr.name.local);
+                    attrs.push_str("=\"");
+                    attrs.push_str(&attr.value.to_string().replace('"', "&quot;"));
+                    attrs.push('"');
+                }
+                let mut children_html = String::new();
+                for &child_id in &node.children {
+                    children_html.push_str(&self.serialize_node(child_id));
+                }
+                format!("<{tag}{attrs}>{children_html}</{tag}>")
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Get the number of children of a node by mojo-gui element ID.
+    pub fn get_child_count(&self, mojo_id: u32) -> u32 {
+        let Some(blitz_id) = self.resolve_id(mojo_id) else {
+            return 0;
+        };
+        let Some(node) = self.doc.get_node(blitz_id) else {
+            return 0;
+        };
+        node.children.len() as u32
+    }
+
+    /// Get the mojo-gui element ID of a child at a given index.
+    /// Returns u32::MAX if the child is not mapped or doesn't exist.
+    pub fn get_child_mojo_id(&self, parent_mojo_id: u32, index: u32) -> u32 {
+        let Some(parent_blitz_id) = self.resolve_id(parent_mojo_id) else {
+            return u32::MAX;
+        };
+        let Some(node) = self.doc.get_node(parent_blitz_id) else {
+            return u32::MAX;
+        };
+        let idx = index as usize;
+        if idx >= node.children.len() {
+            return u32::MAX;
+        }
+        let child_blitz_id = node.children[idx];
+        self.node_to_id
+            .get(&child_blitz_id)
+            .copied()
+            .unwrap_or(u32::MAX)
     }
 
     // ── Windowing methods ───────────────────────────────────────────────
@@ -587,7 +789,7 @@ impl BlitzContext {
     }
 
     /// Poll the next event from the queue.
-    fn poll_event(&mut self) -> Option<BufferedEvent> {
+    pub fn poll_event(&mut self) -> Option<BufferedEvent> {
         if self.event_queue.is_empty() {
             None
         } else {
@@ -596,12 +798,12 @@ impl BlitzContext {
     }
 
     /// Push a node ID onto the interpreter stack.
-    fn stack_push(&mut self, node_id: usize) {
+    pub fn stack_push(&mut self, node_id: usize) {
         self.stack.push(node_id);
     }
 
     /// Pop N node IDs from the interpreter stack.
-    fn stack_pop_n(&mut self, n: usize) -> Vec<usize> {
+    pub fn stack_pop_n(&mut self, n: usize) -> Vec<usize> {
         let start = self.stack.len().saturating_sub(n);
         self.stack.drain(start..).collect()
     }
@@ -718,6 +920,14 @@ pub unsafe extern "C" fn mblitz_create(
 ) -> *mut BlitzContext {
     let title_str = unsafe { str_from_ptr(title, title_len) };
     let ctx = BlitzContext::new(title_str, width, height, debug != 0);
+    Box::into_raw(Box::new(ctx))
+}
+
+/// Create a headless BlitzContext (no event loop, no window, no GPU).
+/// Used for integration testing — DOM operations work, rendering is skipped.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mblitz_create_headless(width: u32, height: u32) -> *mut BlitzContext {
+    let ctx = BlitzContext::new_headless(width, height);
     Box::into_raw(Box::new(ctx))
 }
 
@@ -1433,4 +1643,152 @@ pub unsafe extern "C" fn mblitz_version(out_ptr: *mut *const u8, out_len: *mut u
     if !out_len.is_null() {
         unsafe { *out_len = (VERSION.len() - 1) as u32 }; // Exclude null terminator
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DOM inspection FFI exports (for testing)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Get the tag name of an element by mojo-gui element ID.
+/// Writes the tag string to the provided buffer. Returns the number of
+/// bytes written, or 0 if the node doesn't exist or isn't an element.
+/// If the buffer is too small, returns the required length (caller retries).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mblitz_get_node_tag(
+    ctx: *mut BlitzContext,
+    mojo_id: u32,
+    out_ptr: *mut u8,
+    out_capacity: u32,
+) -> u32 {
+    if ctx.is_null() {
+        return 0;
+    }
+    let ctx = unsafe { &*ctx };
+    let tag = ctx.get_node_tag(mojo_id);
+    if tag.is_empty() {
+        return 0;
+    }
+    let bytes = tag.as_bytes();
+    if !out_ptr.is_null() && out_capacity as usize >= bytes.len() {
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_ptr, bytes.len());
+        }
+    }
+    bytes.len() as u32
+}
+
+/// Get the concatenated text content of a node and its descendants.
+/// Returns the number of bytes written, or the required length if buffer
+/// is too small.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mblitz_get_text_content(
+    ctx: *mut BlitzContext,
+    mojo_id: u32,
+    out_ptr: *mut u8,
+    out_capacity: u32,
+) -> u32 {
+    if ctx.is_null() {
+        return 0;
+    }
+    let ctx = unsafe { &*ctx };
+    let text = ctx.get_text_content(mojo_id);
+    if text.is_empty() {
+        return 0;
+    }
+    let bytes = text.as_bytes();
+    if !out_ptr.is_null() && out_capacity as usize >= bytes.len() {
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_ptr, bytes.len());
+        }
+    }
+    bytes.len() as u32
+}
+
+/// Get the value of an attribute on an element.
+/// Returns the number of bytes written, 0 if not found, or the required
+/// length if the buffer is too small.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mblitz_get_attribute_value(
+    ctx: *mut BlitzContext,
+    mojo_id: u32,
+    attr_name: *const u8,
+    attr_name_len: u32,
+    out_ptr: *mut u8,
+    out_capacity: u32,
+) -> u32 {
+    if ctx.is_null() {
+        return 0;
+    }
+    let ctx = unsafe { &*ctx };
+    let name = unsafe { str_from_ptr(attr_name, attr_name_len) };
+    let Some(value) = ctx.get_attribute_value(mojo_id, name) else {
+        return 0;
+    };
+    let bytes = value.as_bytes();
+    if !out_ptr.is_null() && out_capacity as usize >= bytes.len() {
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_ptr, bytes.len());
+        }
+    }
+    bytes.len() as u32
+}
+
+/// Serialize a subtree rooted at a mojo-gui element ID into a compact
+/// HTML-like string. Returns the number of bytes written, or required
+/// length if the buffer is too small.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mblitz_serialize_subtree(
+    ctx: *mut BlitzContext,
+    mojo_id: u32,
+    out_ptr: *mut u8,
+    out_capacity: u32,
+) -> u32 {
+    if ctx.is_null() {
+        return 0;
+    }
+    let ctx = unsafe { &*ctx };
+    let html = ctx.serialize_subtree(mojo_id);
+    if html.is_empty() {
+        return 0;
+    }
+    let bytes = html.as_bytes();
+    if !out_ptr.is_null() && out_capacity as usize >= bytes.len() {
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_ptr, bytes.len());
+        }
+    }
+    bytes.len() as u32
+}
+
+/// Inject a synthetic event into the event queue for testing.
+/// The event will be returned by the next mblitz_poll_event() call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mblitz_inject_event(
+    ctx: *mut BlitzContext,
+    handler_id: u32,
+    event_type: u8,
+    value_ptr: *const u8,
+    value_len: u32,
+) {
+    if ctx.is_null() {
+        return;
+    }
+    let ctx = unsafe { &mut *ctx };
+    let value = unsafe { str_from_ptr(value_ptr, value_len) }.to_string();
+    ctx.queue_event(handler_id, event_type, value);
+}
+
+/// Get the mojo-gui element ID of a child at a given index within a parent.
+/// Returns u32::MAX if out of bounds or unmapped.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mblitz_get_child_mojo_id(
+    ctx: *mut BlitzContext,
+    parent_mojo_id: u32,
+    index: u32,
+) -> u32 {
+    if ctx.is_null() {
+        return u32::MAX;
+    }
+    let ctx = unsafe { &*ctx };
+    ctx.get_child_mojo_id(parent_mojo_id, index)
 }
