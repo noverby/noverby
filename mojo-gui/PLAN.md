@@ -18,10 +18,11 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 |------|--------|
 | Core Mojo test suites | 52 |
 | JS integration test suites | 30 (~3,375 tests) |
+| Desktop integration test suites | 1 (69 tests) |
 | Shared example apps | 4 (Counter, Todo, Benchmark, MultiView) |
 | Test/demo app modules | 15 (in `examples/apps/`) |
 | Binary mutation opcodes | 18 |
-| Blitz C FFI functions | ~37 |
+| Blitz C FFI functions | ~45 |
 
 ---
 
@@ -66,6 +67,7 @@ mojo-gui/
 |----------|-------------|
 | [Architecture](docs/plan/architecture.md) | Design principles, module map, project structure, platform abstraction layer, dependency graph |
 | [Renderers](docs/plan/renderers.md) | Renderer strategies: Web, Desktop Blitz, XR (OpenXR + WebXR) |
+| [CSS Support Scope](docs/plan/css-support.md) | Blitz v0.2.0 CSS feature audit — supported, partial, and unsupported features with app authoring recommendations |
 
 ### Future Phases
 
@@ -124,10 +126,12 @@ just build-shim              # Build Blitz cdylib (first time / shim changes)
 just build-desktop counter   # Build single example for desktop
 just build-desktop-all       # Build all 4 examples for desktop
 just run-desktop counter     # Build + run a desktop example (Wayland)
+just test-desktop            # Run Blitz shim integration tests (headless)
 
 # ── Cross-target ─────────────────────────────────────────────
 just build-all               # Build web + all desktop examples
 just test-all                # Run Mojo + JS test suites
+just test-all-targets        # Run Mojo + JS + desktop test suites
 just clean                   # Remove all build artifacts
 ```
 
@@ -239,7 +243,7 @@ Runtime verified — all 4 desktop windows launch and render on Wayland with Vel
 - Root `default.nix` combining web and desktop dependencies (Mojo, Deno, LLVM, wabt, wasmtime, Rust, Wayland/Vulkan libs)
 - READMs updated across all sub-projects
 
-### Phase 4.8: Stabilization & Verification — ✅ Complete
+### Phase 4.8: Stabilization & Verification — ✅ Complete (I-1, I-2, I-3, I-4)
 
 **I-1: Cross-target build verification** — Verified all 4 shared examples (Counter, Todo, Benchmark, MultiView) build for both web (WASM) and desktop (native). 52 Mojo test suites pass (via wasmtime). 3,090 JS integration tests pass (via Deno). No regressions from the separation.
 
@@ -265,20 +269,39 @@ Runtime verified — all 4 desktop windows launch and render on Wayland with Vel
 
 Total JS test count: 30 suites, ~3,375 tests (up from 29 suites, ~3,090 tests).
 
+**I-2: Desktop integration tests** — Headless mode (`mblitz_create_headless`) and DOM inspection API added to the Blitz shim. 69 Rust integration tests in `desktop/shim/tests/integration.rs` covering:
+
+- **Context lifecycle** — headless creation, mount point resolution, alive state
+- **DOM operations** — element creation (21 tag types), text nodes (incl. unicode, empty), placeholder/comment nodes
+- **Attributes** — set, get, overwrite, remove, multiple per element, nonexistent lookups
+- **Tree structure** — append children (single, multiple), nested trees, insert before/after, replace (single/multi-node), remove with ID cleanup
+- **Templates** — register, clone, verify independent copies
+- **Path navigation** — `node_at_path` traversal to deeply nested children
+- **Events** — inject click/input events, poll ordering, handler registration/removal, unicode values
+- **Mutation batching** — batch flag state transitions
+- **DOM serialization** — empty mount point, single/nested children, text, attributes, placeholders, subtree-only, quote escaping
+- **ID mapping & stack** — bidirectional mapping, push/pop/pop-more-than-available, child mojo ID lookups (incl. out-of-bounds and unmapped)
+- **Integration scenarios** — counter-like mount+update, conditional rendering (placeholder ↔ element swap), todo-like list add/remove
+- **Stress tests** — 100 children, 20-deep nesting, 1000 rapid text updates, ID reassignment
+
+New shim FFI functions: `mblitz_create_headless`, `mblitz_get_node_tag`, `mblitz_get_text_content`, `mblitz_get_attribute_value`, `mblitz_serialize_subtree`, `mblitz_inject_event`, `mblitz_get_child_mojo_id`. C header and Cargo config updated. `just test-desktop` recipe added.
+
+**I-4: Document CSS support scope** — Created [docs/plan/css-support.md](docs/plan/css-support.md) documenting Blitz v0.2.0 CSS feature support across parsing (Stylo), layout (Taffy), and rendering (Vello). Covers fully supported features (box model, flexbox, grid, positioning, typography, backgrounds, borders, shadows, selectors, variables), partially supported features (fixed/sticky positioning, table layout, 2D transforms, intrinsic sizing), and unsupported features (transitions, animations, 3D transforms, filters, float, multi-column). Includes safe-to-use CSS subset for cross-renderer apps and upgrade audit checklist.
+
 ---
 
 ## Roadmap
 
-### Immediate — Stabilization & Verification
+### Immediate — Stabilization & Verification — ✅ Complete
 
-These items close out remaining gaps from the completed phases before starting new feature work.
+All four stabilization tasks are complete.
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
 | I-1 | **Cross-target build verification** | 1–2 days | ✅ Complete — All 4 shared examples (Counter, Todo, Benchmark, MultiView) build for both web (WASM) and desktop (native). 52 Mojo test suites pass (via wasmtime). 3,090 JS integration tests pass (via Deno). No regressions from the separation. |
-| I-2 | **Desktop integration tests** | 3–5 days | The desktop renderer has no automated tests yet. Add a test harness that mounts each shared example via `desktop_launch`, simulates events through the Blitz event system, and verifies the resulting DOM state via `mblitz_print_tree()` / node inspection FFI. |
+| I-2 | **Desktop integration tests** | 3–5 days | ✅ Complete — Headless mode added to Blitz shim (`mblitz_create_headless`). 69 Rust integration tests covering: context lifecycle, DOM element creation, text nodes (incl. unicode), attribute get/set/remove, tree structure (append/insert/replace/remove), template registration & cloning, event injection & polling, mutation batch markers, DOM serialization, node ID mapping & stack ops, counter-like mount+update scenario, conditional rendering (placeholder swap), todo-like list add/remove, stress tests (100 children, 20-deep nesting, 1000 rapid text updates). New DOM inspection FFI: `mblitz_get_node_tag`, `mblitz_get_text_content`, `mblitz_get_attribute_value`, `mblitz_serialize_subtree`, `mblitz_inject_event`, `mblitz_get_child_mojo_id`. Run via `just test-desktop`. |
 | I-3 | **Mutation protocol conformance tests** | 2–3 days | ✅ Complete — `conformance.test.ts` (285 tests): binary round-trip for every opcode, RegisterTemplate serialization, canonical DOM output for 12 UI patterns (counter, todo, conditional, keyed list, nested templates, complex app), byte-level WASM↔JS comparison for all 16 opcodes + unicode, exact binary layout verification, and end-to-end WASM→Interpreter→DOM rendering. |
-| I-4 | **Document CSS support scope** | 1 day | Audit which CSS features work in Blitz v0.2.0 (pinned at rev `2f83df96`). Document supported/unsupported features. Add CSS stress-test examples if gaps are found. |
+| I-4 | **Document CSS support scope** | 1 day | ✅ Complete — [docs/plan/css-support.md](docs/plan/css-support.md): comprehensive audit of Blitz v0.2.0 CSS support. Fully supported: box model, flexbox, CSS grid, relative/absolute positioning, typography, colors/backgrounds, borders, box shadows, overflow, selectors/cascade, CSS variables, calc(), media queries. Partially supported: `position: fixed/sticky`, `display: table/contents`, 2D transforms, `min-content`/`max-content`. Not supported: transitions, animations, 3D transforms, filters, float, multi-column, text-shadow, clip-path. Includes app authoring recommendations and desktop-safe CSS subset. |
 
 ### Short-term — Cross-Platform & CI
 

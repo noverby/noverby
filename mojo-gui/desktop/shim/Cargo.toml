@@ -9,7 +9,7 @@ publish = false
 
 [lib]
 name = "mojo_blitz"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Blitz packages — pinned to v0.2.0 release
