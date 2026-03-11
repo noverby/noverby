@@ -3,7 +3,7 @@
   env =
     if envJson != ""
     then builtins.fromJSON envJson
-    else {PWD = "/home/noverby/Work/overby-me";};
+    else {PWD = "/home/noverby/Work/overby.me";};
 in {
   devenv.root = env.PWD;
 }
