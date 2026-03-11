@@ -213,8 +213,10 @@ pub struct BlitzContext {
     /// The Winit window handle (Arc for sharing with the renderer).
     pub window: Option<Arc<Window>>,
 
-    /// Vello GPU renderer.
-    renderer: VelloWindowRenderer,
+    /// Vello GPU renderer. Wrapped in Option so it can be explicitly dropped
+    /// before the event loop during teardown (GPU/EGL resources reference the
+    /// Wayland display owned by the event loop).
+    renderer: Option<VelloWindowRenderer>,
 
     /// Desired window title (stored until window is created).
     pub title: String,
@@ -312,7 +314,7 @@ impl BlitzContext {
             // Windowing state
             event_loop: Some(event_loop),
             window: None,
-            renderer: VelloWindowRenderer::new(),
+            renderer: Some(VelloWindowRenderer::new()),
             title: title.to_string(),
             initial_width: width,
             initial_height: height,
@@ -378,7 +380,7 @@ impl BlitzContext {
             // No event loop or window in headless mode
             event_loop: None,
             window: None,
-            renderer: VelloWindowRenderer::new(),
+            renderer: Some(VelloWindowRenderer::new()),
             title: String::new(),
             initial_width: width,
             initial_height: height,
@@ -684,9 +686,11 @@ impl BlitzContext {
                 self.doc.resolve(0.0);
                 let (width, height) = self.doc.viewport().window_size;
                 let scale = self.doc.viewport().scale_f64();
-                self.renderer.render(|scene| {
-                    paint_scene(scene, &self.doc, scale, width, height);
-                });
+                if let Some(ref mut renderer) = self.renderer {
+                    renderer.render(|scene| {
+                        paint_scene(scene, &self.doc, scale, width, height);
+                    });
+                }
             }
 
             WindowEvent::Resized(physical_size) => {
@@ -695,7 +699,9 @@ impl BlitzContext {
                     let mut viewport = self.doc.viewport().clone();
                     viewport.window_size = (w, h);
                     self.doc.set_viewport(viewport);
-                    self.renderer.set_size(w, h);
+                    if let Some(ref mut renderer) = self.renderer {
+                        renderer.set_size(w, h);
+                    }
                     if let Some(ref window) = self.window {
                         window.request_redraw();
                     }
@@ -821,10 +827,10 @@ impl Drop for BlitzContext {
         // Wayland connection) *before* the renderer — causing a SIGSEGV
         // when eglTerminate tries to use the dead display.
         //
-        // Suspend the renderer first to release GPU resources while the
-        // Wayland connection is still alive, then drop the window before
-        // the event loop.
-        self.renderer.suspend();
+        // Fully drop the renderer first (releasing all GPU/EGL resources)
+        // while the Wayland connection is still alive, then drop the window
+        // before the event loop.
+        drop(self.renderer.take());
         self.window = None;
     }
 }
@@ -854,11 +860,13 @@ impl ApplicationHandler for BlitzContext {
 
             // Resume the Vello renderer — anyrender 0.6 expects Arc<dyn WindowHandle>
             let (width, height) = (size.width, size.height);
-            self.renderer.resume(
-                winit_window.clone() as Arc<dyn anyrender::WindowHandle>,
-                width,
-                height,
-            );
+            if let Some(ref mut renderer) = self.renderer {
+                renderer.resume(
+                    winit_window.clone() as Arc<dyn anyrender::WindowHandle>,
+                    width,
+                    height,
+                );
+            }
 
             self.window = Some(winit_window);
             self.window_initialized = true;
@@ -866,17 +874,21 @@ impl ApplicationHandler for BlitzContext {
             // Re-resume after suspend
             if let Some(ref window) = self.window {
                 let size = window.inner_size();
-                self.renderer.resume(
-                    window.clone() as Arc<dyn anyrender::WindowHandle>,
-                    size.width,
-                    size.height,
-                );
+                if let Some(ref mut renderer) = self.renderer {
+                    renderer.resume(
+                        window.clone() as Arc<dyn anyrender::WindowHandle>,
+                        size.width,
+                        size.height,
+                    );
+                }
             }
         }
     }
 
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
-        self.renderer.suspend();
+        if let Some(ref mut renderer) = self.renderer {
+            renderer.suspend();
+        }
     }
 
     fn window_event(
