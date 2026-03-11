@@ -81,11 +81,11 @@ mojo-gui/
 | [CSS Support Scope](docs/plan/css-support.md) | Blitz v0.2.0 CSS feature audit — supported, partial, and unsupported features with app authoring recommendations |
 | [XR README](xr/README.md) | XR renderer architecture, key types, build instructions, design decisions, per-step roadmap |
 
-### Future Phases
+### Phase Documents
 
 | Phase | Document | Status |
 |-------|----------|--------|
-| Phase 5 | [XR Renderer](docs/plan/phase5-xr.md) | 📋 Future |
+| Phase 5 | [XR Renderer](docs/plan/phase5-xr.md) | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8 ✅) |
 | Phase 6 | [`mojo-web` Raw Web API Bindings](docs/plan/phase6-mojo-web.md) | 📋 Future |
 
 ### Cross-Cutting
@@ -547,7 +547,7 @@ All four stabilization tasks are complete.
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| S-1 | **Cross-target CI pipeline** | 3–5 days | GitHub Actions (or similar) matrix: `{web, desktop-linux}` × `{counter, todo, bench, app}`. Run `just test-all` for web. Build + smoke-test for desktop (headless Wayland via `wlheadless` or `weston --headless`). Gate PRs on green matrix. |
+| S-1 | **Cross-target CI pipeline** | 3–5 days | Tangled CI already runs `nix flake check` on push/PR (`.tangled/workflows/ci.yml`). Add Nix check derivations to `mojo-gui/default.nix` that build and run test suites inside the Nix sandbox: `checks.mojo-gui-test` (52 Mojo test suites via wasmtime), `checks.mojo-gui-test-js` (30 JS integration test suites via Deno), `checks.mojo-gui-test-desktop` (75 Rust integration tests for Blitz shim), `checks.mojo-gui-test-xr` (37 Rust integration tests for XR shim), `checks.mojo-gui-build-all` (build all 4 examples × {web, desktop, xr}). Each check is a Nix derivation that runs the corresponding `just` recipe in a sandboxed build environment. Gate PRs on green `nix flake check`. |
 | S-2 | **macOS desktop verification** | 2–3 days | Blitz uses Winit which supports macOS. Build the Blitz shim on macOS, verify `cargo build --release` succeeds, run the Counter example. Document any platform-specific quirks (GPU backend selection, font fallback, etc.). |
 | S-3 | **Windows desktop verification (Wine)** | 2–3 days | ✅ Complete — Cross-compiled to `x86_64-pc-windows-gnu` from Linux via MinGW-w64. Produces `mojo_blitz.dll` (26MB PE32+ DLL). All 69 Rust integration tests pass under Wine (single-threaded; Wine's COM layer crashes with parallel threads — misaligned pointer in `windows-core` interface dispatch). Nix dev shell provides: `rust-bin` with Windows target std, MinGW-w64 cross-linker (stripped setup hooks to avoid polluting native CC/AR), Wine 10.0 for test execution. New justfile recipes: `build-shim-windows`, `test-desktop-wine`, `build-shim-all`. Cargo config (`.cargo/config.toml`) sets MinGW linker and Wine runner for the Windows target. |
 
