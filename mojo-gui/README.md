@@ -46,7 +46,7 @@ Write a Mojo GUI app once, run it in the browser via WASM **and** natively on de
 |---------|--------|-------------|
 | [`core/`](core/) | ✅ Active | Renderer-agnostic reactive GUI framework — signals, virtual DOM, diff engine, binary mutation protocol, component framework, HTML vocabulary, platform abstraction (`GuiApp` trait, `launch()`) |
 | [`web/`](web/) | ✅ Active | Browser renderer — compiles Mojo to WASM, TypeScript runtime interprets mutations into real DOM |
-| [`desktop/`](desktop/) | ✅ Builds verified | Desktop renderer — native rendering via [Blitz](https://github.com/DioxusLabs/blitz) (Stylo + Taffy + Vello + Winit + AccessKit). No JS runtime, no IPC — mutations applied in-process via direct C FFI. Interactive runtime verification pending GPU availability |
+| [`desktop/`](desktop/) | ✅ Complete | Desktop renderer (Wayland-only) — native rendering via [Blitz](https://github.com/DioxusLabs/blitz) (Stylo + Taffy + Vello + Winit + AccessKit). No JS runtime, no IPC — mutations applied in-process via direct C FFI |
 | [`examples/`](examples/) | ✅ Active | Shared example apps — identical source compiles for both web (WASM) and desktop (native) via `launch[AppType]()` |
 | `xr/` | 🔮 Future | XR renderer — XR panel abstraction, OpenXR + Blitz shim for native, WebXR JS runtime for browser |
 
@@ -136,7 +136,7 @@ All dependencies are provided by the Nix dev shell (`default.nix`). If not using
 - [wasmtime](https://wasmtime.dev/) (for Mojo tests)
 - [just](https://github.com/casey/just) (task runner)
 - [Rust toolchain](https://rustup.rs/) (for desktop Blitz shim)
-- GPU/windowing libraries: Vulkan, Wayland/X11, fontconfig (for desktop runtime)
+- GPU/windowing libraries: Vulkan, Wayland, libxkbcommon, fontconfig (for desktop runtime — Wayland-only, X11 not supported)
 
 ### Build & Run (Web)
 
@@ -223,8 +223,8 @@ mojo-gui/
 │   ├── shim/                     # Rust cdylib wrapping Blitz
 │   │   ├── src/lib.rs            # BlitzContext, DOM ops, Winit event loop, Vello GPU rendering
 │   │   ├── mojo_blitz.h          # C API header (~45 FFI functions)
-│   │   ├── Cargo.toml            # blitz-dom, blitz-html, blitz-traits, blitz-paint, winit, anyrender-vello
-│   │   └── default.nix           # Nix derivation with GPU/windowing deps
+│   │   ├── Cargo.toml            # blitz-dom, blitz-html, blitz-traits, blitz-paint, winit (Wayland-only), anyrender-vello
+│   │   └── default.nix           # Nix derivation with Wayland + GPU deps
 │   ├── src/desktop/
 │   │   ├── blitz.mojo            # Mojo FFI bindings to libmojo_blitz.so
 │   │   ├── renderer.mojo         # MutationInterpreter: binary opcodes → Blitz FFI calls
@@ -248,7 +248,7 @@ mojo-gui/
 │   └── apps/                     # Test/demo apps (batch_demo, effect_demo, etc.)
 │
 ├── justfile                      # Root task runner (web + desktop commands)
-├── default.nix                   # Nix dev shell (web + desktop deps)
+├── default.nix                   # Nix dev shell (web + desktop Wayland deps)
 └── README.md                     # This file
 ```
 
@@ -280,7 +280,7 @@ from events import HandlerRegistry
 
 - **Phases 1–2** ✅ — Monolith split into `core/`, `web/`, and `examples/`
 - **Phase 3** ✅ — Unified lifecycle (`GuiApp` trait, `launch()`, compile-time target dispatch)
-- **Phase 4** ✅ Builds verified — Blitz desktop renderer (`libmojo_blitz.so` compiles, all 4 shared examples compile for both web and desktop). Interactive runtime verification pending GPU availability
+- **Phase 4** ✅ Complete — Blitz desktop renderer (Wayland-only). All 4 shared examples compile and run for both web and desktop from identical source. Runtime verified — all 4 desktop windows launch and render on Wayland with Vello GPU rendering via `just run-desktop <app>`
 - **Phase 5** 🔮 — XR renderer (OpenXR native, WebXR browser)
 - **Phase 6** 🔮 — `mojo-web` raw Web API bindings
 

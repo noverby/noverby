@@ -141,7 +141,7 @@ Everything for the native desktop application. The webview approach (GTK4 + WebK
 | `shim/src/lib.rs`                     | Rust `cdylib`: `BlitzContext` wrapping `blitz-dom`, ID mapping, template registry, event queue, interpreter stack |
 | `shim/mojo_blitz.h`                   | C API header (~45 FFI functions: lifecycle, DOM, templates, events, stack, debug) |
 | `shim/Cargo.toml`                     | Rust crate config (blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, winit, etc.) |
-| `shim/default.nix`                    | Nix derivation with GPU/windowing deps (Vulkan, Wayland, X11, fontconfig) |
+| `shim/default.nix`                    | Nix derivation with Wayland + GPU deps (Vulkan, Wayland, fontconfig) |
 | `src/desktop/blitz.mojo`              | Mojo FFI bindings to `libmojo_blitz_shim.so` via `DLHandle` |
 | `src/desktop/renderer.mojo`           | `MutationInterpreter`: reads binary opcodes → Blitz C FFI calls (all 18 opcodes) |
 | `src/desktop/launcher.mojo`           | `desktop_launch[AppType: GuiApp]()` — generic Blitz-backed event loop |

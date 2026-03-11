@@ -1,8 +1,8 @@
-# mojo-gui/desktop — Desktop Renderer (Blitz)
+# mojo-gui/desktop — Desktop Renderer (Blitz, Wayland-only)
 
 Native desktop GUI backend for **mojo-gui** using [Blitz](https://github.com/DioxusLabs/blitz) (Stylo + Taffy + Vello + Winit + AccessKit).
 
-> **Status: ✅ Builds verified, runtime pending** — The Rust cdylib (`libmojo_blitz.so`) compiles with full Winit event loop integration, and all 4 shared examples compile for both web and desktop from identical source. Interactive runtime verification (actually running the desktop windows) is pending GPU availability.
+> **Status: ✅ Complete (Wayland-only)** — The Rust cdylib (`libmojo_blitz.so`) compiles with full Winit event loop integration, and all 4 shared examples compile and run for both web and desktop from identical source. Runtime verified — all 4 desktop windows launch and render on Wayland with Vello GPU rendering via `just run-desktop <app>`.
 
 ## Architecture
 
@@ -31,7 +31,7 @@ The desktop renderer interprets the same binary mutation protocol as the web ren
 │  │  Stylo    — CSS parsing + cascade + selector matching       │   │
 │  │  Taffy    — Flexbox / Grid / Block layout engine            │   │
 │  │  Vello    — GPU-accelerated 2D rendering (via wgpu)         │   │
-│  │  Winit    — Cross-platform window management                │   │
+│  │  Winit    — Wayland window management                       │   │
 │  │  AccessKit — Native accessibility tree                      │   │
 │  │                                                             │   │
 │  └─────────────────────────────────────────────────────────────┘   │
@@ -79,7 +79,7 @@ The `desktop_launch[AppType: GuiApp](config)` function in `launcher.mojo` drives
 | CSS engine | Browser | Stylo (Firefox CSS engine) |
 | Layout engine | Browser | Taffy (Flexbox/Grid) |
 | Rendering | Browser compositor | Vello (GPU via wgpu) |
-| Windowing | Browser tab | Winit (cross-platform) |
+| Windowing | Browser tab | Winit (Wayland) |
 | Accessibility | Browser ARIA | AccessKit |
 | Event delivery | WASM export calls | Winit event loop → poll |
 | Entry point | `@export` wrappers | `fn main()` via `launch()` |
@@ -95,8 +95,8 @@ The key insight: **the user's app code is identical**. Only the build target dif
 |------|---------|
 | `shim/src/lib.rs` | Rust `cdylib`: `BlitzContext` wrapping `blitz-dom`, ID mapping, template registry, event queue, Winit `ApplicationHandler`, Vello GPU rendering |
 | `shim/mojo_blitz.h` | C API header (~45 FFI functions: lifecycle, DOM ops, templates, events, stack, debug) |
-| `shim/Cargo.toml` | Rust crate config (blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, winit 0.30, anyrender-vello 0.6) |
-| `shim/default.nix` | Nix derivation with GPU/windowing deps (Vulkan, Wayland, X11, fontconfig) |
+| `shim/Cargo.toml` | Rust crate config (blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, winit 0.30 Wayland-only, anyrender-vello 0.6) |
+| `shim/default.nix` | Nix derivation with Wayland + GPU deps (Vulkan, Wayland, fontconfig) |
 | `src/desktop/blitz.mojo` | Mojo FFI bindings to `libmojo_blitz.so` — typed `Blitz` struct via `_DLHandle` |
 | `src/desktop/renderer.mojo` | `MutationInterpreter`: reads binary opcodes → Blitz C FFI calls (all 18 opcodes) |
 | `src/desktop/launcher.mojo` | `desktop_launch[AppType: GuiApp]()` — generic Blitz-backed event loop |
@@ -114,6 +114,8 @@ cd desktop/shim && cargo build --release --lib
 ```
 
 This produces `desktop/shim/target/release/libmojo_blitz.so` (~23MB, release profile, thin LTO, stripped).
+
+The `build-shim` recipe also runs `patchelf` to bake Nix store rpaths (Wayland, Vulkan, libxkbcommon, fontconfig, freetype, libGL) into the cdylib so that Winit's `dlopen` calls succeed without manual `LD_LIBRARY_PATH` setup.
 
 **Build stats:** 607 crate dependencies, zero warnings, ~23MB ELF 64-bit x86-64 shared library.
 
@@ -133,8 +135,13 @@ just build-desktop-all
 ### Run a desktop example
 
 ```sh
-# Requires libmojo_blitz.so + GPU
 just run-desktop counter
+just run-desktop todo
+just run-desktop bench
+just run-desktop app
+
+# Or run all (sequentially):
+just run-desktop-all
 ```
 
 ### Build dependencies (Nix)
@@ -147,7 +154,6 @@ The `shim/default.nix` provides all build dependencies. For non-Nix environments
 - libxkbcommon, wayland
 - Vulkan SDK (vulkan-loader, vulkan-headers)
 - libGL
-- X11 libraries (libX11, libXcursor, libXrandr, libXi, libxcb)
 
 ## Winit Event Loop Integration
 
@@ -159,12 +165,12 @@ The Blitz shim implements a full Winit `ApplicationHandler`:
 - **DOM event extraction** — Custom `MojoEventHandler` intercepts Blitz DOM events during bubble propagation, maps `DomEventData` variants (Click, Input, KeyDown, etc.) to mojo-gui handler IDs
 - **GPU rendering** — `RedrawRequested` triggers `doc.resolve()` (Stylo + Taffy), then `paint_scene()` renders to the Vello scene
 
-**Dependency alignment:** Versions are pinned to match Blitz v0.2.0's internal dependencies: anyrender 0.6, anyrender-vello 0.6, winit 0.30.
+**Dependency alignment:** Versions are pinned to match Blitz v0.2.0's internal dependencies: anyrender 0.6, anyrender-vello 0.6, winit 0.30 (Wayland-only features enabled; X11 not supported).
 
 ## Design Goals
 
 - **No embedded browser engine** — Blitz provides DOM/CSS semantics without a full browser runtime
-- **Cross-platform** — Winit supports Linux (Wayland/X11), macOS, and Windows out of the box
+- **Wayland-native** — Winit targets Wayland on Linux (X11 is not supported)
 - **Native accessibility** — AccessKit bridges to platform a11y APIs (AT-SPI on Linux, NSAccessibility on macOS, UIA on Windows)
 - **GPU rendering** — Vello renders via wgpu, supporting Vulkan, Metal, and DX12
 - **Zero IPC overhead** — Mutations are interpreted in-process; no base64 encoding, no JS eval, no serialization
@@ -172,9 +178,8 @@ The Blitz shim implements a full Winit `ApplicationHandler`:
 
 ## Remaining Work
 
-1. **Runtime verification** — Run all 4 shared examples interactively on desktop-Blitz (requires `libmojo_blitz.so` + GPU environment)
-2. **Cross-platform testing** — Verify on macOS and Windows (currently Linux-only builds)
-3. **Cross-target CI** — Set up CI matrix testing web + desktop-Blitz for every shared example
+1. **macOS support** — Verify on macOS (currently Linux Wayland-only)
+2. **Cross-target CI** — Set up CI matrix testing web + desktop-Blitz for every shared example
 
 ## Related
 
