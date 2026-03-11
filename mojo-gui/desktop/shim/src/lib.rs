@@ -810,6 +810,26 @@ impl BlitzContext {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Drop — ensure GPU resources are released before the Wayland connection
+// ═══════════════════════════════════════════════════════════════════════════
+
+impl Drop for BlitzContext {
+    fn drop(&mut self) {
+        // The renderer holds EGL/GPU resources that reference the Wayland
+        // display owned by the event loop. Rust drops struct fields in
+        // declaration order, which would tear down the event loop (and its
+        // Wayland connection) *before* the renderer — causing a SIGSEGV
+        // when eglTerminate tries to use the dead display.
+        //
+        // Suspend the renderer first to release GPU resources while the
+        // Wayland connection is still alive, then drop the window before
+        // the event loop.
+        self.renderer.suspend();
+        self.window = None;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ApplicationHandler — Winit event loop integration
 // ═══════════════════════════════════════════════════════════════════════════
 
