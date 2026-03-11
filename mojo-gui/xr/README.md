@@ -2,7 +2,7 @@
 
 Render mojo-gui panels into 3D XR (extended reality) environments via OpenXR. Each XR panel owns an independent Blitz DOM document rendered to an offscreen GPU texture by Vello. The OpenXR compositor places these textures as quad layers in the XR scene.
 
-> **Status:** Steps 5.1–5.2 — Real Blitz documents wired up. Each panel owns a `BaseDocument` with Stylo CSS styling and Taffy layout. 30 integration tests pass (headless). OpenXR runtime integration and Vello offscreen GPU rendering are not yet wired up.
+> **Status:** Steps 5.1–5.3 — Real Blitz documents wired up. Each panel owns a `BaseDocument` with Stylo CSS styling and Taffy layout. 30 integration tests pass (headless). Mojo FFI bindings (`XRBlitz`, ~70 methods) and per-panel mutation interpreter (`XRMutationInterpreter`, all 18 opcodes) complete. OpenXR runtime integration and Vello offscreen GPU rendering are not yet wired up.
 
 ## Architecture
 
@@ -59,6 +59,8 @@ Render mojo-gui panels into 3D XR (extended reality) environments via OpenXR. Ea
 |-----------|------|-------------|
 | **Panel types** | `native/src/xr/panel.mojo` | `XRPanel`, `PanelConfig`, `PanelState`, `Vec3`, `Quaternion`, preset configs |
 | **Scene manager** | `native/src/xr/scene.mojo` | `XRScene`, `XREvent`, `RaycastHit`, spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`) |
+| **XR Blitz FFI** | `native/src/xr/xr_blitz.mojo` | `XRBlitz` struct — ~70 typed methods wrapping all `mxr_*` C functions via DLHandle, plus `XREvent`, `XRPose`, `XRRaycastHit` types and constants |
+| **XR interpreter** | `native/src/xr/renderer.mojo` | `XRMutationInterpreter` — per-panel binary opcode interpreter (all 18 opcodes), `BufReader` for little-endian buffer decoding |
 | **XR Blitz shim** | `native/shim/src/lib.rs` | Rust cdylib — multi-panel Blitz BaseDocument, headless mode, raycasting, event ring buffer, DOM serialization, Stylo+Taffy layout |
 | **C API header** | `native/shim/mojo_xr.h` | Flat C ABI — session lifecycle, panel management, mutations, events, frame loop, input, raycasting, debug |
 | **Nix derivation** | `native/shim/default.nix` | Rust build with Blitz + OpenXR + GPU deps |
@@ -78,8 +80,9 @@ xr/
 │       ├── __init__.mojo        # Package root with re-exports
 │       ├── panel.mojo           # XRPanel, PanelConfig, Vec3, Quaternion, presets
 │       ├── scene.mojo           # XRScene, XREvent, RaycastHit, layout helpers
-│       ├── xr_blitz.mojo        # 🔮 Mojo FFI bindings to libmojo_xr.so
-│       └── xr_launcher.mojo     # 🔮 xr_launch[AppType: GuiApp]() entry point
+│       ├── xr_blitz.mojo        # XRBlitz FFI bindings to libmojo_xr.so (~70 methods)
+│       ├── renderer.mojo        # XRMutationInterpreter (per-panel opcode interpreter)
+│       └── xr_launcher.mojo     # 🔮 xr_launch[AppType: GuiApp]() entry point (Step 5.5)
 ├── web/                          # WebXR browser renderer (future)
 │   ├── runtime/                  # 🔮 TypeScript: XR session, DOM→texture, input bridging
 │   └── src/                      # 🔮 Mojo: WebXR launch configuration
@@ -175,8 +178,8 @@ mojo build --feature xr                          → OpenXR native renderer
 | Step | Description | Status |
 |------|-------------|--------|
 | 5.1 | Design the XR panel abstraction | ✅ Complete — `XRPanel`, `PanelConfig`, `XRScene`, `XREvent`, `RaycastHit`, layout helpers, C API header, Rust shim scaffold with headless DOM and 24 integration tests |
-| 5.2 | Build the OpenXR + Blitz Rust shim | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 30 tests pass, Stylo+Taffy layout resolves). Remaining: Vello offscreen rendering, OpenXR session lifecycle |
-| 5.3 | Mojo FFI bindings (`xr_blitz.mojo`) | 🔲 Pending |
+| 5.2 | Build the OpenXR + Blitz Rust shim | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 30 tests pass, Stylo+Taffy layout resolves). Remaining: Vello offscreen rendering, OpenXR session lifecycle, `_into()` FFI variants for struct-return functions |
+| 5.3 | Mojo FFI bindings (`xr_blitz.mojo`) | ✅ Complete — `XRBlitz` struct (~70 methods), `XRMutationInterpreter` (all 18 opcodes), `XREvent`/`XRPose`/`XRRaycastHit` types, all constants |
 | 5.4 | XR scene manager and panel routing | 🔲 Pending |
 | 5.5 | `xr_launch[AppType: GuiApp]()` | 🔲 Pending |
 | 5.6 | WebXR JS runtime | 🔲 Future |
