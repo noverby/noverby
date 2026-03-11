@@ -8,7 +8,7 @@ Create the new project skeleton. The reactive core, vdom, component framework, a
 
 **Files to move (Mojo source):**
 
-| From (`wasm-mojo/`)                  | To (`mojo-gui/core/`)                 |
+| From (`mojo-wasm/`)                  | To (`mojo-gui/core/`)                 |
 |--------------------------------------|---------------------------------------|
 | `src/signals/*`                      | `src/signals/*`                       |
 | `src/scope/*`                        | `src/scope/*`                         |
@@ -32,7 +32,7 @@ Create the new project skeleton. The reactive core, vdom, component framework, a
 
 **Files to move to shared examples:**
 
-| From (`wasm-mojo/`)                  | To (`mojo-gui/examples/`)            |
+| From (`mojo-wasm/`)                  | To (`mojo-gui/examples/`)            |
 |--------------------------------------|---------------------------------------|
 | `src/apps/counter.mojo`             | `counter/app.mojo`                   |
 | `src/apps/todo.mojo`                | `todo/app.mojo`                      |

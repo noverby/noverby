@@ -3868,7 +3868,7 @@ fn dsl_test_onkeydown_enter_custom_with_binding() -> Int32:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Original wasm-mojo PoC Exports — Arithmetic, String, Algorithm Functions
+# Original mojo-wasm PoC Exports — Arithmetic, String, Algorithm Functions
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Thin @export wrappers calling into poc/ package modules.

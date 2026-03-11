@@ -128,7 +128,7 @@ linker.define_func(
 Enter the dev shell (requires [Nix](https://nixos.org/)):
 
 ```sh
-nix develop .#wasm-mojo
+nix develop .#mojo-wasm
 ```
 
 This provides `mojo` and `libwasmtime` with the shared library path exported in `NIX_LDFLAGS`.

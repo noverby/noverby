@@ -8,7 +8,7 @@ Back to [SEPARATION_PLAN.md](../../SEPARATION_PLAN.md) · Previous: [Phase 1](./
 
 ## Step 2.1 — Move web-specific files
 
-| From (`wasm-mojo/`)                  | To (`mojo-gui/web/`)                 |
+| From (`mojo-wasm/`)                  | To (`mojo-gui/web/`)                 |
 |--------------------------------------|---------------------------------------|
 | `runtime/*`                          | `runtime/*`                           |
 | `src/main.mojo`                      | `src/main.mojo`                       |
@@ -78,7 +78,7 @@ from mojo_gui.core.vdom import TemplateBuilder, VNode
 
 ## Step 2.4 — Set up shared example build for web
 
-Move web-specific example assets (HTML shells, JS glue) from `wasm-mojo/examples/` to `mojo-gui/examples/<name>/web/`, while the app logic lives in `mojo-gui/examples/<name>/app.mojo`.
+Move web-specific example assets (HTML shells, JS glue) from `mojo-wasm/examples/` to `mojo-gui/examples/<name>/web/`, while the app logic lives in `mojo-gui/examples/<name>/app.mojo`.
 
 Create `web/scripts/build_examples.sh` that builds **all** shared examples for the web target:
 

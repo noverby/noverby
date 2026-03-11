@@ -77,7 +77,7 @@
 |-|-|
 | [Homepage 🐒➡️🔥](https://tangled.org/@overby.me/overby.me/tree/main/homepage) | Personal website and portfolio |
 | [Wiki 🐒➡️🔥🌀](https://tangled.org/@overby.me/overby.me/tree/main/wiki) | Political conference and discussion platform |
-| [Wasm-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasm-mojo) | WebAssembly interop layer for Mojo |
+| [Mojo-wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo-wasm) | WebAssembly interop layer for Mojo |
 | [Wasmtime-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasmtime-mojo) | Wasmtime WebAssembly runtime bindings for Mojo |
 | [Zed-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/zed-mojo) | Mojo language extension for Zed |
 | [Zed-nickel ❄️](https://tangled.org/@overby.me/overby.me/tree/main/zed-nickel) | Nickel language extension for Zed |

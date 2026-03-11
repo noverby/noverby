@@ -1,11 +1,11 @@
-// App Launcher — Generic boot sequence for wasm-mojo examples.
+// App Launcher — Generic boot sequence for mojo-wasm examples.
 //
 // Convention-based WASM export discovery: given an app name (e.g. "counter"),
 // the launcher looks for exports named `{name}_init`, `{name}_rebuild`,
 // `{name}_flush`, and optionally `{name}_handle_event` and `{name}_dispatch_string`.
 //
 // This abstraction captures the common boot sequence shared by all standard
-// wasm-mojo apps (load WASM → init → interpreter → EventBridge → mount).
+// mojo-wasm apps (load WASM → init → interpreter → EventBridge → mount).
 // App-specific post-boot wiring is supported via the `onBoot` callback.
 //
 // The goal is convergence: as more features move into WASM (e.g. keydown
@@ -86,7 +86,7 @@ const EVT_CLICK = 0;
 // ── Launcher ────────────────────────────────────────────────────────────────
 
 /**
- * Boot a wasm-mojo app with convention-based WASM export discovery.
+ * Boot a mojo-wasm app with convention-based WASM export discovery.
  *
  * Given `app: "counter"`, discovers exports:
  *   - `counter_init() -> appPtr`            (required)

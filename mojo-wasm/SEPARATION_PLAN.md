@@ -1,8 +1,8 @@
-# Separation Plan — `wasm-mojo` → `mojo-gui` + `mojo-web`
+# Separation Plan — `mojo-wasm` → `mojo-gui` + `mojo-web`
 
 ## Executive Summary
 
-Split the current `wasm-mojo` monolith into two projects:
+Split the current `mojo-wasm` monolith into two projects:
 
 1. **`mojo-gui`** — Multi-renderer reactive GUI framework
    - **`core/`** — Renderer-agnostic reactive GUI framework (Mojo library)
@@ -21,7 +21,7 @@ The goal: write a Mojo GUI app **once**, run it in the browser via WASM **and** 
 ## Current Project Structure
 
 ```text
-wasm-mojo/
+mojo-wasm/
 ├── core/                         # Renderer-agnostic GUI framework
 │   ├── src/
 │   │   ├── signals/              # Reactive primitives (signals, memos, effects)
@@ -142,6 +142,7 @@ All tests pass after the separation:
 The **immediate priority** is Phase 3: Desktop renderer + unified lifecycle.
 
 Key tasks:
+
 1. Define `GuiApp` trait in `core/src/platform/gui_app.mojo` — app-side lifecycle contract
 2. Define `PlatformApp` trait in `core/src/platform/app.mojo` — renderer-side contract
 3. Implement `launch[AppType: GuiApp]()` with compile-time target dispatch

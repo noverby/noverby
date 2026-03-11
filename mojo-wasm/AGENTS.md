@@ -1,4 +1,4 @@
-# wasm-mojo — AI Agent Context
+# mojo-wasm — AI Agent Context
 
 > Compact quick-reference for AI agents. For project overview, architecture,
 > build commands, and test infrastructure see [README.md](README.md).
@@ -11,7 +11,7 @@
 - **Single-threaded** — no sync needed.
 - **Operator overloading** works (SignalI32 has `+=`, `-=`, `peek()`, `set()`).
 - **Format**: `mojo format <file>` — pre-commit hooks run this automatically.
-- **Commit messages**: `feat(wasm-mojo): Uppercase description` — commitlint enforced, allowed types: `feat`, `fix`, `chore`, `doc`.
+- **Commit messages**: `feat(mojo-wasm): Uppercase description` — commitlint enforced, allowed types: `feat`, `fix`, `chore`, `doc`.
 - **Mojo 0.26.1 migration in progress** — see [MIGRATION_PLAN.md](MIGRATION_PLAN.md) for full details. Key syntax changes: `List[T](a, b, c)` → `[a, b, c]` list literals, `alias` → `comptime`, explicit `Bool` conversions required (no `ImplicitlyBoolable`).
 
 ## Mojo 0.26.1 Migration

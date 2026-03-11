@@ -2,7 +2,7 @@
 
 > Compact quick-reference for AI agents working on the renderer-agnostic core library.
 > For project overview see [README.md](README.md). For the separation plan see
-> [../../wasm-mojo/SEPARATION_PLAN.md](../../wasm-mojo/SEPARATION_PLAN.md).
+> [../../mojo-wasm/SEPARATION_PLAN.md](../../mojo-wasm/SEPARATION_PLAN.md).
 
 ## Mojo Constraints
 
@@ -176,7 +176,7 @@ list.flush(mutation_writer)     # emits create/update/remove mutations
 
 No `@export` decorators in core. Those belong to renderer entry points.
 
-## Import Path Changes (from wasm-mojo monolith)
+## Import Path Changes (from mojo-wasm monolith)
 
 | Old import | New import |
 |-----------|-----------|

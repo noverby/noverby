@@ -158,7 +158,7 @@ mojo-gui/
 
 ## Import Conventions
 
-After the separation from the original `wasm-mojo` monolith, imports are split between `vdom` (renderer-agnostic structures) and `html` (HTML-specific vocabulary):
+After the separation from the original `mojo-wasm` monolith, imports are split between `vdom` (renderer-agnostic structures) and `html` (HTML-specific vocabulary):
 
 ```text
 # Renderer-agnostic virtual DOM types
@@ -178,7 +178,7 @@ from events import HandlerRegistry
 
 ## Origin
 
-This project was extracted from the [`wasm-mojo`](../wasm-mojo/) monolith following the [Separation Plan](../wasm-mojo/SEPARATION_PLAN.md). The separation enables:
+This project was extracted from the [`mojo-wasm`](../mojo-wasm/) monolith following the [Separation Plan](../mojo-wasm/SEPARATION_PLAN.md). The separation enables:
 
 1. **Multi-renderer support** — The same app code runs on web, desktop, and (future) native
 2. **Clean dependency boundaries** — Core framework has zero browser/WASM dependencies
