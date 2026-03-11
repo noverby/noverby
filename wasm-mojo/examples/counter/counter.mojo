@@ -82,7 +82,7 @@ from bridge import MutationWriter
 from component import ComponentContext, ConditionalSlot
 from signals import SignalI32, SignalBool
 from signals.runtime import Runtime
-from vdom import (
+from html import (
     Node,
     VNodeBuilder,
     el_div,

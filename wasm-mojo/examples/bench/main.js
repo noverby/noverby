@@ -35,6 +35,6 @@ const BUF_CAPACITY = 8 * 1024 * 1024; // 8 MB mutation buffer
 
 launch({
 	app: "bench",
-	wasm: new URL("../../build/out.wasm", import.meta.url),
+	wasm: new URL("../../web/build/out.wasm", import.meta.url),
 	bufferCapacity: BUF_CAPACITY,
 });

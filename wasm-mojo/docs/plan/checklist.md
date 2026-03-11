@@ -4,59 +4,80 @@
 
 ---
 
-## Phase 1: `mojo-gui/core` extraction ✅
+## Phase 1: `core/` extraction ✅
 
-- [x] Create `mojo-gui/core/` directory structure
-- [x] Move `src/signals/`, `src/scope/`, `src/scheduler/`, `src/arena/` unchanged
-- [x] Move `src/vdom/{template,vnode,builder,registry}.mojo` to `mojo-gui/core/src/vdom/`
-- [x] Move `src/vdom/{tags,dsl,dsl_tests}.mojo` to `mojo-gui/core/src/html/`
-- [x] Update `html/dsl.mojo` imports: `from vdom.builder`, `from vdom.template`, `from vdom.vnode` (was relative `.builder`, `.template`, `.vnode`); `.tags` stays relative
-- [x] Move `src/mutations/`, `src/bridge/`, `src/events/` unchanged
-- [x] Move `src/component/` — updated `child.mojo`, `child_context.mojo`, `context.mojo`, `keyed_list.mojo` to split `from vdom` / `from html` imports
-- [x] Create `core/src/platform/app.mojo` — `PlatformApp` trait definition (with `init`, `flush_mutations`, `request_animation_frame`, `should_quit`, `destroy`) + `is_wasm_target()` / `is_native_target()` helpers
-- [x] Create `core/src/platform/launch.mojo` — `launch[AppType: GuiApp]()` with `AppConfig` (title, width, height, debug), global config registry, `get_launch_config()` / `has_launched()`, `@parameter if is_wasm_target()` compile-time dispatch (Step 3.9.3)
-- [x] Create `core/src/platform/features.mojo` — `PlatformFeatures` struct, preset feature sets (`web_features`, `desktop_webview_features`, `desktop_blitz_features`, `native_features`), global feature registry (`register_features` / `current_features`)
-- [x] Create `core/src/platform/__init__.mojo` — re-exports public API from all three platform modules
-- [x] Update `core/src/lib.mojo` — add `platform/` to package listing
-- [x] Move `src/apps/` to `mojo-gui/examples/` as shared, platform-agnostic example apps — demo/test apps moved from `core/apps/` to `examples/apps/`; main examples (counter, todo, bench, app) moved from `web/examples/` to `examples/`; web-specific assets (HTML/JS) remain in `web/examples/`; build paths updated (`-I ../examples` replaces `-I ../core -I examples`)
-- [x] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — `mount`, `handle_event` (unified value param), `flush`, `has_dirty`, `consume_dirty`, `destroy`; exported from `platform` package (Step 3.9.1)
-- [x] Refactor app structs to implement `GuiApp` — CounterApp, TodoApp, BenchmarkApp, MultiViewApp all implement the trait; backwards-compatible free functions removed (Steps 3.9.4 + 3.9.5)
-- [x] Wire `launch()` compile-time dispatch — `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo`; non-parametric overload retained for backwards compatibility (Step 3.9.3)
-- [x] Genericize `main.mojo` `@export` wrappers — `web/src/gui_app_exports.mojo` provides parametric lifecycle helpers; all 4 main apps use them; free functions removed from examples (Step 3.9.5)
-- [x] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` with Blitz mutation interpreter (Step 3.9.2)
-- [x] Add `launch()` to shared examples (Step 3.9.6) — `main.mojo` entry points added to all 4 shared examples (counter, todo, bench, app) with `launch[AppType](AppConfig(...))`; no per-renderer example duplicates existed to delete
-- [x] Cross-target build verification — all 4 shared examples compile for both web and desktop (Step 3.9.7)
-- [x] Mojo 0.26.1 API migration — updated platform detection, FFI bindings, UnsafePointer origins, alias→comptime, string indexing (see Phase 4 Step 4.4 for details)
-- [ ] Cross-target runtime verification — verify all 4 shared examples run interactively on desktop (requires libmojo_blitz.so + GPU)
-- [x] Update app imports in `apps/*.mojo` for new `html/` path (`from vdom import` → `from html import`)
-- [x] Move `test/*.mojo` to `mojo-gui/core/test/`
-- [x] Update test imports for new paths (`test_handles.mojo`: `from vdom` → `from html`)
-- [x] Verify all 1,323 Mojo tests pass
-- [x] Verify `mojo-gui/core` compiles for native target (no `@export` decorators)
-- [x] Write `mojo-gui/core/README.md`
-- [x] Update `mojo-gui/core/AGENTS.md`
+- [x] Create `core/src/` directory structure
+- [x] Copy `src/signals/`, `src/scope/`, `src/scheduler/`, `src/arena/` unchanged to `core/src/`
+- [x] Copy `src/mutations/`, `src/bridge/`, `src/events/` unchanged to `core/src/`
+- [x] Copy `src/component/` to `core/src/` — updated `child.mojo`, `child_context.mojo`, `context.mojo`, `keyed_list.mojo` to split `from vdom` / `from html` imports
+- [x] Move `src/vdom/{template,vnode,builder,registry}.mojo` to `core/src/vdom/`
+- [x] Move `src/vdom/{tags,dsl,dsl_tests}.mojo` to `core/src/html/` (new package)
+- [x] Create `core/src/vdom/__init__.mojo` — re-exports only template, vnode, builder, registry (tags/DSL removed)
+- [x] Create `core/src/html/__init__.mojo` — re-exports tags, DSL helpers, VNodeBuilder, to_template, count_* utilities
+- [x] Update `html/dsl.mojo` imports: `from .builder` → `from vdom.builder`, `from .template` → `from vdom.template`, `from .vnode` → `from vdom.vnode`; `.tags` stays relative
+- [x] Update `html/dsl_tests.mojo` imports: `from .template` → `from vdom.template`, `from .vnode` → `from vdom.vnode`, `from .builder` → `from vdom.builder`
+- [x] Update `vdom/template.mojo`: `from .tags` → `from html.tags` (TAG_UNKNOWN)
+- [x] Update `vdom/builder.mojo`: `from .tags` → `from html.tags` (TAG_UNKNOWN)
+- [x] Update `component/context.mojo`: split `from vdom import` into `from vdom import` (VNode, VNodeStore) + `from html import` (Node, DSL types, VNodeBuilder, to_template)
+- [x] Update `component/child.mojo`: same split as context.mojo
+- [x] Update `component/child_context.mojo`: `VNodeBuilder` import moved from `vdom` to `html`
+- [x] Update `component/keyed_list.mojo`: `VNodeBuilder` import moved from `vdom` to `html`
+- [x] Move `test/` to `core/test/` (52 test suites)
+- [x] Update `core/test/test_handles.mojo`: `from vdom import` → `from html import` for DSL symbols (2 locations)
+- [x] Write `core/README.md`
+- [x] Verify all 52 Mojo test suites pass after restructuring
 
 ---
 
-## Phase 2: `mojo-gui/web` extraction ✅
+## Phase 2: `web/` extraction ✅
 
-- [x] Create `mojo-gui/web/` directory structure
-- [x] Move `runtime/` to `mojo-gui/web/runtime/`
-- [x] Move `src/main.mojo` to `mojo-gui/web/src/main.mojo`
-- [x] Update `main.mojo` imports to reference `mojo-gui/core` package — split `from vdom` into `from vdom` + `from html`; `from vdom.dsl_tests` → `from html.dsl_tests`
-- [x] Create `web/src/web_launcher.mojo` — `WebApp` implementing the `PlatformApp` trait (no-op stubs for WASM target where JS runtime drives the loop) + `create_web_app()` helper
-- [x] Move web-specific example assets (HTML, JS glue) — web assets (HTML shells, main.js entry points) live in `web/examples/<name>/`; shared Mojo app code lives in `examples/<name>/`; redundant `examples/<name>/web/` copies removed
-- [x] Create `web/scripts/build_examples.sh` — builds all shared examples for WASM target (discovers examples, compiles shared WASM binary via main.mojo, copies per-example HTML/JS assets from both shared and web-specific locations)
-- [x] Verify shared examples build for web target — `just build` succeeds with `-I ../examples` paths; all 3,090 JS tests + 52 Mojo test suites pass
-- [ ] Verify shared examples run in browser — browser verification blocked by headless Servo in CI
-- [x] Move `test-js/` to `mojo-gui/web/test-js/`
-- [x] Move `scripts/` to `mojo-gui/web/scripts/`
-- [x] Move build files (`justfile`, `deno.json`, `default.nix`) — updated `justfile` with `-I ../core/src -I ../examples` for core and shared example package resolution
-- [x] Update all import paths in moved files
-- [x] Verify all 3,090 JS tests pass
-- [x] Verify all 3 example apps work in browser — JS tests (3,090) and Mojo tests (52 suites) pass; browser verification blocked by headless Servo in CI
-- [x] Write `mojo-gui/web/README.md`
-- [x] Write `mojo-gui/examples/README.md` — build instructions for web/desktop/Blitz targets, directory structure, migration status, architecture reference
+- [x] Create `web/src/` directory structure
+- [x] Move `src/main.mojo` to `web/src/main.mojo` — split `from vdom import` into `from vdom import` (primitives) + `from html import` (DSL); changed `from vdom.dsl_tests` → `from html.dsl_tests`
+- [x] Move `src/apps/` to `web/src/apps/` — updated all 14 test app files: `from vdom import (` → `from html import (`
+- [x] Move `runtime/` to `web/runtime/`
+- [x] Move `test-js/` to `web/test-js/`
+- [x] Move `scripts/` to `web/scripts/` — updated `build-test-binaries.nu` paths (test_dir → `core/test`, core_src_dir → `core/src`, web_src_dir → `web/src`, examples_dir → root `examples/`)
+- [x] Move `deno.json` to `web/deno.json`
+- [x] Create `web/justfile` with updated build flags: `-I ../core/src -I ../examples -I src`
+- [x] Fix `build-if-changed` recipe: nu `glob` only takes one positional arg → use `[(glob ...), (glob ...)] | flatten`
+- [x] Update example `main.js` files: WASM path `../../build/out.wasm` → `../../web/build/out.wasm` (counter, todo, bench, app, lib/app.js)
+- [x] Update root `justfile` to delegate all commands to `web/justfile`
+- [x] Update root `.gitignore` to cover `web/build/`
+- [x] Write `web/README.md`
+- [x] Delete old directories: `src/`, `runtime/`, `test/`, `test-js/`, `scripts/`, `build/`, `deno.json`, `deno.lock`
+- [x] Verify `just build` (from root) produces `web/build/out.wasm`
+- [x] Verify all 3,090 JS tests pass — `just test-js`
+- [x] Verify all 52 Mojo test suites pass — `just test`
+
+---
+
+## Phase 3: `desktop/` — webview renderer + unified lifecycle (planned)
+
+- [ ] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — app-side lifecycle contract with `mount`, `handle_event`, `flush`, `has_dirty`, `consume_dirty`, `destroy`
+- [ ] Define `PlatformApp` trait (`core/src/platform/app.mojo`) — renderer-side contract with `init`, `flush_mutations`, `request_animation_frame`, `should_quit`, `destroy`
+- [ ] Create `core/src/platform/launch.mojo` — `launch[AppType: GuiApp]()` with `AppConfig` and compile-time target dispatch (`@parameter if is_wasm_target()`)
+- [ ] Create `core/src/platform/features.mojo` — `PlatformFeatures` struct, runtime feature detection
+- [ ] Create `core/src/platform/__init__.mojo` — re-exports public API
+- [ ] Refactor app structs to implement `GuiApp` — CounterApp, TodoApp, BenchmarkApp, MultiViewApp
+- [ ] Genericize `main.mojo` `@export` wrappers over `GuiApp` — `web/src/gui_app_exports.mojo` for parametric lifecycle helpers
+- [ ] Add `launch[AppType](AppConfig(...))` to shared examples — `main.mojo` entry points in all 4 shared examples
+- [ ] Design desktop webview architecture — polling-based C shim, heap mutation buffer, IPC
+- [ ] Build C shim (`desktop/shim/mojo_webview.c`) — GTK4 + WebKitGTK
+- [ ] Write C header (`desktop/shim/mojo_webview.h`)
+- [ ] Write Nix derivation (`desktop/shim/default.nix`)
+- [ ] Implement Mojo FFI bindings (`desktop/src/desktop/webview.mojo`)
+- [ ] Implement desktop bridge (`desktop/src/desktop/bridge.mojo`)
+- [ ] Implement `DesktopApp` (`desktop/src/desktop/app.mojo`)
+- [ ] Create desktop JS runtime (`desktop/runtime/desktop-runtime.js`)
+- [ ] Create HTML shell (`desktop/runtime/shell.html`)
+- [ ] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()`
+- [ ] Wire `launch()` to call `desktop_launch` on native targets
+- [ ] Verify counter example runs on desktop interactively
+- [ ] Create `desktop/justfile`, `desktop/default.nix`
+- [ ] Write `desktop/README.md`
+- [ ] Verify all 4 shared examples build on both web and desktop from identical source
+- [ ] Verify all 4 shared examples run interactively on desktop
+- [ ] Set up cross-target CI test matrix (web + desktop for every shared example)
 
 ---
 
@@ -87,29 +108,23 @@
 
 ---
 
-## Phase 4: `mojo-gui/desktop` — Blitz renderer (builds verified, runtime pending)
+## Phase 4: `desktop/` — Blitz renderer (planned, depends on Phase 3)
 
-- [x] Build Blitz C shim (`shim/src/lib.rs`) — Rust `cdylib` wrapping `blitz-dom`'s `BaseDocument` + `DocumentMutator` via `extern "C"` functions; `BlitzContext` owns document, ID mapping, template registry, event queue, interpreter stack
-- [x] Write C header (`shim/mojo_blitz.h`) — 644-line header covering lifecycle, window, DOM creation, templates, tree mutations, attributes, text, traversal, events, mutation batching, stack operations, ID mapping, root access, layout, debug
-- [x] Write Nix derivation (`shim/default.nix`) — Rust build with GPU/windowing deps (Vulkan, Wayland, X11, fontconfig, etc.)
-- [x] Write Cargo.toml (`shim/Cargo.toml`) — cdylib depending on blitz, blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, anyrender 0.6, anyrender_vello 0.6, winit 0.30; markup5ever types re-exported from blitz-dom (no direct dep)
-- [x] Implement Mojo FFI bindings (`src/desktop/blitz.mojo`) — typed `Blitz` struct via `DLHandle` with methods for all shim operations; `BlitzEvent` struct; library search (env var → NIX_LDFLAGS → LD_LIBRARY_PATH)
-- [x] Implement Mojo-side mutation interpreter (`src/desktop/renderer.mojo`) — `MutationInterpreter` with `BufReader`; reads all 18 opcodes and translates to Blitz FFI calls; `OP_REGISTER_TEMPLATE` builds real DOM subtrees for efficient deep-cloning
-- [x] Implement generic desktop event loop (`src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` with Blitz-backed event loop, mutation buffer management, UA stylesheet injection
-- [x] Wire `launch()` to call `desktop_launch` on native targets — updated `core/src/platform/launch.mojo` to import and call `desktop_launch[AppType](config)` instead of placeholder print
-- [x] Update desktop package (`src/desktop/__init__.mojo`) — updated docstring and module listing for blitz, renderer, launcher
-- [x] Build the Rust cdylib (`cargo build --release`) — pinned Blitz deps to v0.2.0 (rev `2f83df96`), removed direct markup5ever dep (use blitz-dom re-exports), fixed API mismatches (`insert_nodes_before`, `get_node` for private `nodes` field, `DocumentMutator::create_element`), generated Cargo.lock (607 packages); produces `libmojo_blitz.so` ~23MB
-- [x] Integrate Winit event loop — `ApplicationHandler` impl for `BlitzContext`; `mblitz_step()` wired to `pump_app_events()` with cooperative polling; window creation in `resumed()` with `Arc<Window>`
-- [x] Connect `blitz-paint` rendering pipeline — `RedrawRequested` → `doc.resolve()` (Stylo + Taffy) → `paint_scene()` (Vello GPU rendering); `mblitz_request_redraw()` triggers window redraw
-- [x] Implement DOM event routing — `MojoEventHandler` intercepts Blitz DOM events during bubble propagation; `CursorMoved`/`MouseInput` → `UiEvent` → `EventDriver` → buffered events for `mblitz_poll_event()`
-- [x] Fix dependency version mismatches — downgraded anyrender 0.7→0.6, anyrender_vello 0.7→0.6, winit 0.31-beta→0.30 to match Blitz v0.2.0; ported winit API (0.31 → 0.30: `PointerMoved`→`CursorMoved`, `PointerButton`→`MouseInput`, `SurfaceResized`→`Resized`, `can_create_surfaces`→`resumed`, `dyn ActiveEventLoop`→`&ActiveEventLoop`, `Box<dyn Window>`→`Arc<Window>`)
-- [x] Mojo 0.26.1 API migration — `info.os_is_wasi()`→`is_defined`, `DLHandle`→`_DLHandle`, `env_get_string`→`getenv`, `alias`→`comptime`, `UnsafePointer` origin params, `s[i]`→`s[byte=i]`, `UnsafePointer.alloc()`→`alloc[]()`, `UnsafePointer.address_of()`→`UnsafePointer(to=)`, `List[T]` explicit copy/transfer, circular import fix in launcher.mojo, parametric re-export workaround (`from platform.launch import launch`)
-- [x] All 4 shared examples build on desktop-Blitz (counter, todo, bench, app) — Step 4.4 build verification
-- [x] All 4 shared examples build on web — Step 4.4 cross-target build verification
-- [x] All 3,090 JS tests pass after migration
-- [x] All 52 Mojo test suites pass after migration
-- [ ] All 4 shared examples run interactively on Blitz desktop — Step 4.4 runtime verification (requires libmojo_blitz.so + GPU)
-- [ ] Cross-platform testing (Linux, macOS, Windows via Winit) — Step 4.5
+- [ ] Build Blitz C shim (`desktop/shim/src/lib.rs`) — Rust `cdylib` wrapping `blitz-dom` via `extern "C"` functions
+- [ ] Write C header (`desktop/shim/mojo_blitz.h`)
+- [ ] Write Nix derivation (`desktop/shim/default.nix`) — Rust build with GPU/windowing deps
+- [ ] Write `desktop/shim/Cargo.toml` — cdylib depending on blitz, winit, anyrender, vello
+- [ ] Implement Mojo FFI bindings (`desktop/src/desktop/blitz.mojo`) — typed `Blitz` struct via `_DLHandle`
+- [ ] Implement Mojo-side mutation interpreter (`desktop/src/desktop/renderer.mojo`) — reads binary opcodes → Blitz FFI calls
+- [ ] Implement Blitz-backed event loop in `desktop/src/desktop/launcher.mojo`
+- [ ] Wire `launch()` to call `desktop_launch` on native targets
+- [ ] Build the Rust cdylib (`cargo build --release`)
+- [ ] Integrate Winit event loop — `ApplicationHandler` impl, window creation, event routing
+- [ ] Connect `blitz-paint` rendering pipeline — Stylo + Taffy layout, Vello GPU rendering
+- [ ] Implement DOM event routing — Blitz DOM events → buffered events for Mojo polling
+- [ ] All 4 shared examples build on desktop-Blitz
+- [ ] All 4 shared examples run interactively on Blitz desktop (requires libmojo_blitz.so + GPU)
+- [ ] Cross-platform testing (Linux, macOS, Windows via Winit)
 - [ ] Set up cross-target CI test matrix (web + desktop-blitz for every shared example)
 
 ---

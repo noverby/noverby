@@ -63,10 +63,10 @@ from component.lifecycle import flush_conditional, flush_conditional_empty
 from mutations import CreateEngine
 from signals import SignalI32
 from signals.runtime import Runtime
-from vdom import (
+from vdom import VNodeStore
+from html import (
     Node,
     VNodeBuilder,
-    VNodeStore,
     el_div,
     el_nav,
     el_h1,
