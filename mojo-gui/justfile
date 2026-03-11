@@ -160,6 +160,7 @@ test-desktop:
 build-desktop-windows app: build-shim-windows
     mkdir -p build
     mojo build --target-triple x86_64-pc-windows-gnu --emit object \
+        -D MOJO_TARGET_WINDOWS \
         -I core/src -I desktop/src -I examples \
         -o build/{{ app }}-desktop-windows.obj \
         examples/{{ app }}/main.mojo
@@ -180,6 +181,7 @@ build-desktop-windows-all: (build-desktop-windows "counter") (build-desktop-wind
 # Usage: just run-desktop-windows-wine counter
 run-desktop-windows-wine app: (build-desktop-windows app)
     MOJO_BLITZ_LIB="{{ justfile_directory() }}/desktop/shim/target/x86_64-pc-windows-gnu/release" \
+    WINEPATH="{{ _mingw-mcf-lib-path }}/../bin;{{ _mingw-lib-path }}/../bin" \
     wine64 ./build/{{ app }}-desktop.exe
 
 # Build the Blitz C shim for Windows (cross-compile via MinGW-w64)

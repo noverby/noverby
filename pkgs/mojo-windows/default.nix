@@ -47,7 +47,13 @@
         -o kgen_rt_shim.o \
         kgen_rt_shim.c
 
-      x86_64-w64-mingw32-ar rcs libkgen_rt.a kgen_rt_shim.o
+      x86_64-w64-mingw32-gcc \
+        -c -O2 -Wall -Wextra -Wno-unused-parameter \
+        -D_WIN32 \
+        -o dlfcn_shim.o \
+        dlfcn_shim.c
+
+      x86_64-w64-mingw32-ar rcs libkgen_rt.a kgen_rt_shim.o dlfcn_shim.o
     '';
 
     installPhase = ''
@@ -64,6 +70,10 @@
       x86_64-w64-mingw32-nm $out/lib/libkgen_rt.a | grep -q KGEN_CompilerRT_DestroyGlobals
       x86_64-w64-mingw32-nm $out/lib/libkgen_rt.a | grep -q KGEN_CompilerRT_SetArgV
       x86_64-w64-mingw32-nm $out/lib/libkgen_rt.a | grep -q KGEN_CompilerRT_PrintStackTraceOnFault
+      x86_64-w64-mingw32-nm $out/lib/libkgen_rt.a | grep -q dlopen
+      x86_64-w64-mingw32-nm $out/lib/libkgen_rt.a | grep -q dlsym
+      x86_64-w64-mingw32-nm $out/lib/libkgen_rt.a | grep -q dlclose
+      x86_64-w64-mingw32-nm $out/lib/libkgen_rt.a | grep -q dlerror
       echo "All expected symbols present ✅"
     '';
 

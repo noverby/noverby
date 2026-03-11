@@ -113,6 +113,38 @@ struct BlitzEvent(Copyable, Movable):
 
 comptime _LIB_NAME = "libmojo_blitz.so"
 comptime _LIB_NAME_DYLIB = "libmojo_blitz.dylib"
+comptime _LIB_NAME_DLL = "mojo_blitz.dll"
+
+
+fn _is_windows_target() -> Bool:
+    """Return True if the current compilation target is Windows.
+
+    Uses the MOJO_TARGET_WINDOWS compile-time define, which must be passed
+    via `-D MOJO_TARGET_WINDOWS` when cross-compiling for Windows.
+    """
+    from sys.param_env import is_defined
+
+    return is_defined["MOJO_TARGET_WINDOWS"]()
+
+
+fn _lib_name() -> String:
+    """Return the platform-appropriate shared library filename."""
+
+    @parameter
+    if _is_windows_target():
+        return _LIB_NAME_DLL
+    else:
+        return _LIB_NAME
+
+
+fn _path_sep() -> String:
+    """Return the platform-appropriate path separator."""
+
+    @parameter
+    if _is_windows_target():
+        return "\\"
+    else:
+        return "/"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -133,9 +165,12 @@ fn _find_library() -> String:
     if not found (letting the dynamic linker try its default search).
     """
     # 1. Explicit env var
+    var sep = _path_sep()
+    var name = _lib_name()
+
     var lib_dir = getenv("MOJO_BLITZ_LIB")
     if len(lib_dir) > 0:
-        return lib_dir + "/" + _LIB_NAME
+        return lib_dir + sep + name
 
     # 2. NIX_LDFLAGS — parse -L/nix/store/... paths
     var nix_flags = getenv("NIX_LDFLAGS")
@@ -158,7 +193,7 @@ fn _find_library() -> String:
                             # We can't do filesystem checks easily, so just
                             # try the path. The dynamic linker will reject
                             # it if it doesn't exist.
-                            var candidate = String(dir_path) + "/" + _LIB_NAME
+                            var candidate = String(dir_path) + sep + name
                             return candidate
                 flag_start = i + 1
             i += 1
@@ -176,12 +211,12 @@ fn _find_library() -> String:
             if at_end or is_colon:
                 if i > path_start:
                     var dir_path = ld_path[path_start:i]
-                    return String(dir_path) + "/" + _LIB_NAME
+                    return String(dir_path) + sep + name
                 path_start = i + 1
             i += 1
 
     # 4. Fall back to bare library name (let the linker search)
-    return _LIB_NAME
+    return name
 
 
 # ══════════════════════════════════════════════════════════════════════════════
