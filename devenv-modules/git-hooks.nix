@@ -233,7 +233,10 @@ in {
         ''}";
         pass_filenames = true;
       };
-      rumdl.enable = true;
+      rumdl = {
+        enable = true;
+        entry = "${pkgs.rumdl}/bin/rumdl fmt";
+      };
       mktoc = {
         enable = false;
         package = pkgs.mktoc;
