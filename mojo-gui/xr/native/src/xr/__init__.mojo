@@ -30,7 +30,8 @@ Modules:
     panel:        XRPanel, PanelConfig, PanelState, Vec3, Quaternion
     scene:        XRScene, XREvent, RaycastHit, layout helpers
     xr_blitz:     Mojo FFI bindings to libmojo_xr (XR Blitz shim)
-    xr_launcher:  xr_launch[AppType: GuiApp]() — OpenXR entry point
+    renderer:     XRMutationInterpreter (per-panel binary opcode interpreter)
+    xr_launcher:  xr_launch[AppType: GuiApp]() — OpenXR entry point (future)
 
 Usage (via the unified launch() entry point — single-panel apps):
 
@@ -48,13 +49,17 @@ Usage (direct, for multi-panel XR apps — future, Step 5.9):
 
     from xr.panel import XRPanel, PanelConfig, Vec3
     from xr.scene import XRScene, create_single_panel_scene
-    from xr.xr_launcher import xr_launch
+    from xr.xr_blitz import XRBlitz
+    from xr.renderer import XRMutationInterpreter
 
 Current Status:
-    Step 5.1 — Design phase. Panel and scene abstractions defined.
-    The XR shim (Step 5.2) and FFI bindings (Step 5.3) are not yet
-    implemented. Mojo-side types are complete and ready for integration.
+    Step 5.1 — ✅ Complete. Panel and scene abstractions defined.
+    Step 5.2 — 🔧 In progress. Real Blitz documents in shim (30 tests pass).
+    Step 5.3 — ✅ Complete. Mojo FFI bindings (XRBlitz) and per-panel
+               mutation interpreter (XRMutationInterpreter) implemented.
 """
+
+# ── Panel abstraction (Step 5.1) ─────────────────────────────────────────
 
 from .panel import (
     XRPanel,
@@ -68,6 +73,8 @@ from .panel import (
     hand_anchored_panel_config,
 )
 
+# ── Scene manager (Step 5.1) ─────────────────────────────────────────────
+
 from .scene import (
     XRScene,
     XREvent,
@@ -76,3 +83,48 @@ from .scene import (
     create_dual_panel_scene,
     MAX_PANELS,
 )
+
+# ── FFI bindings (Step 5.3) ──────────────────────────────────────────────
+
+from .xr_blitz import (
+    XRBlitz,
+    XREvent as XRBlitzEvent,
+    XRPose,
+    XRRaycastHit,
+    # Event type constants
+    EVT_CLICK,
+    EVT_INPUT,
+    EVT_CHANGE,
+    EVT_KEYDOWN,
+    EVT_KEYUP,
+    EVT_FOCUS,
+    EVT_BLUR,
+    EVT_SUBMIT,
+    EVT_MOUSEDOWN,
+    EVT_MOUSEUP,
+    EVT_MOUSEMOVE,
+    EVT_XR_SELECT,
+    EVT_XR_SQUEEZE,
+    EVT_XR_HOVER_ENTER,
+    EVT_XR_HOVER_EXIT,
+    # Hand/controller identifiers
+    HAND_LEFT,
+    HAND_RIGHT,
+    HAND_HEAD,
+    # Reference space types
+    SPACE_LOCAL,
+    SPACE_STAGE,
+    SPACE_VIEW,
+    SPACE_UNBOUNDED,
+    # Session state constants
+    STATE_IDLE,
+    STATE_READY,
+    STATE_FOCUSED,
+    STATE_VISIBLE,
+    STATE_STOPPING,
+    STATE_EXITING,
+)
+
+# ── Mutation interpreter (Step 5.3) ──────────────────────────────────────
+
+from .renderer import XRMutationInterpreter

@@ -12,7 +12,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Desktop | Blitz (Stylo + Vello + Winit) | ✅ Complete | Linux Wayland |
 | Desktop | Blitz | 🔲 Untested | macOS |
 | Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
-| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.2 ✅) | Linux (headless tests pass) |
+| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.3 ✅) | Linux (headless tests pass) |
 | XR Browser | WebXR + JS interpreter | 📋 Future (Phase 5) | — |
 
 | Area | Metric |
@@ -26,6 +26,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Binary mutation opcodes | 18 |
 | Desktop Blitz C FFI functions | ~45 |
 | XR C FFI functions | ~80 |
+| XR Mojo FFI wrapper methods | ~70 (XRBlitz struct) |
 
 ---
 
@@ -55,7 +56,7 @@ mojo-gui/
 ├── xr/             — XR renderer (OpenXR native + WebXR browser, Phase 5)
 │   ├── native/     — OpenXR native: Blitz DOM → Vello → offscreen textures → OpenXR
 │   │   ├── shim/   — Rust cdylib: multi-panel Blitz + headless DOM + raycasting
-│   │   └── src/    — Mojo: XRPanel, XRScene, FFI bindings, xr_launcher
+│   │   └── src/    — Mojo: XRPanel, XRScene, XRBlitz FFI, XRMutationInterpreter
 │   └── web/        — WebXR browser renderer (future)
 ├── docs/plan/      — Detailed plan documents
 ├── build/          — Build output (gitignored)
@@ -170,6 +171,45 @@ mojo build examples/counter/main.mojo -I core/src -I desktop/src -I examples
 ---
 
 ## What Was Done
+
+### Phase 5.3: Mojo FFI Bindings for OpenXR Shim — ✅ Complete
+
+Implemented typed Mojo FFI bindings for all ~80 XR shim C functions, plus a per-panel mutation interpreter that translates binary opcodes into XR Blitz FFI calls. Follows the same architecture as the desktop renderer (`blitz.mojo` + `renderer.mojo`).
+
+**New files:**
+
+- **`xr/native/src/xr/xr_blitz.mojo`** — `XRBlitz` struct wrapping all `mxr_*` C functions via `DLHandle`. ~70 typed methods covering:
+  - **Session lifecycle** — `create_session()`, `create_headless()`, `session_state()`, `is_alive()`, `destroy()`
+  - **Panel lifecycle** — `create_panel()`, `destroy_panel()`, `panel_count()`
+  - **Panel transform & display** — `panel_set_transform()`, `panel_set_size()`, `panel_set_visible()`, `panel_is_visible()`, `panel_set_curved()`
+  - **Mutation batching** — `panel_begin_mutations()`, `panel_end_mutations()`, `panel_apply_mutations()` (Rust-side interpreter)
+  - **Per-panel DOM operations** — `panel_create_element()`, `panel_create_text_node()`, `panel_create_placeholder()`, `panel_set_attribute()`, `panel_remove_attribute()`, `panel_set_text_content()`, `panel_append_children()`, `panel_insert_before()`, `panel_insert_after()`, `panel_replace_with()`, `panel_remove_node()`
+  - **Templates** — `panel_register_template()`, `panel_clone_template()`
+  - **Tree traversal** — `panel_node_at_path()`, `panel_child_at()`, `panel_child_count()`
+  - **Events** — `panel_add_event_listener()`, `panel_add_event_listener_by_name()`, `panel_remove_event_listener()`, `poll_event()`, `event_count()`, `event_clear()`, `panel_inject_event()`
+  - **Raycasting** — `raycast_panels()`, `set_focused_panel()`, `get_focused_panel()`
+  - **Frame loop** — `wait_frame()`, `begin_frame()`, `render_dirty_panels()`, `end_frame()`
+  - **Input** — `get_pose()`, `get_aim_ray()` (output-pointer pattern)
+  - **Reference spaces** — `set_reference_space()`, `get_reference_space()`
+  - **Capabilities** — `has_extension()`, `has_hand_tracking()`, `has_passthrough()`
+  - **ID mapping & stack** — `panel_assign_id()`, `panel_resolve_id()`, `panel_stack_push()`, `panel_stack_pop()`
+  - **Debug/inspection** — `panel_print_tree()`, `panel_serialize_subtree()`, `panel_get_node_tag()`, `panel_get_text_content()`, `panel_get_attribute_value()`, `panel_get_child_mojo_id()`, `version()`
+  - **Helper types** — `XREvent` (with panel targeting + UV hit coords + hand), `XRPose`, `XRRaycastHit`
+  - **Constants** — All `EVT_*`, `HAND_*`, `SPACE_*`, `STATE_*` constants mirroring `mojo_xr.h`
+  - **Library search** — `MOJO_XR_LIB` env var → `NIX_LDFLAGS` → `LD_LIBRARY_PATH` → fallback
+
+- **`xr/native/src/xr/renderer.mojo`** — `XRMutationInterpreter` struct. Per-panel opcode interpreter that reads the same binary mutation buffer as the desktop interpreter but targets `XRBlitz` FFI calls scoped to a `panel_id`. Handles all 18 opcodes: `END`, `APPEND_CHILDREN`, `ASSIGN_ID`, `CREATE_PLACEHOLDER`, `CREATE_TEXT_NODE`, `LOAD_TEMPLATE`, `REPLACE_WITH`, `REPLACE_PLACEHOLDER`, `INSERT_AFTER`, `INSERT_BEFORE`, `SET_ATTRIBUTE`, `SET_TEXT`, `NEW_EVENT_LISTENER`, `REMOVE_EVENT_LISTENER`, `REMOVE`, `PUSH_ROOT`, `REGISTER_TEMPLATE`, `REMOVE_ATTRIBUTE`. Includes `BufReader` for little-endian buffer decoding (same as desktop).
+
+- **`xr/native/src/xr/__init__.mojo`** — Updated with re-exports for `XRBlitz`, `XRMutationInterpreter`, `XRPose`, `XRRaycastHit`, and all constants.
+
+**Known limitations** (deferred to Step 5.5 — XR launcher):
+
+- `poll_event()` — Returns empty event; needs `mxr_poll_event_into()` shim function (DLHandle can't return large C structs reliably). `panel_inject_event()` + `event_count()` work for testing.
+- `raycast_panels()` — Returns miss; needs `mxr_raycast_panels_into()`. Same DLHandle struct-return limitation.
+- `get_pose()` — Returns invalid pose; needs `mxr_get_pose_into()`. `get_aim_ray()` works (uses output pointers).
+- Template registration via Mojo-side interpreter — Templates built as live DOM nodes can't be registered for clone-based instantiation without `mxr_panel_register_template_by_node()`. Works fine when using Rust-side interpreter (`panel_apply_mutations`).
+
+---
 
 ### Phase 5.2: Real Blitz Documents in XR Shim — ✅ Complete
 
@@ -389,8 +429,8 @@ XR panel abstraction that reuses the binary mutation protocol unchanged. Each XR
 | Step | Description | Status |
 |------|-------------|--------|
 | 5.1 | Design the XR panel abstraction (`XRPanel` struct, scene graph, placement) | ✅ Complete — `XRPanel`, `PanelConfig`, `Vec3`, `Quaternion`, `PanelState` (Mojo). `XRScene` with focus management, dirty tracking, raycasting (ray-plane intersection), spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). Rust shim scaffold (`xr/native/shim/src/lib.rs`) with headless multi-panel DOM, event ring buffer, DOM serialization, raycasting, and 20+ integration tests. C API header (`mojo_xr.h`, ~80 functions). `PlatformFeatures` extended with `has_xr`, `has_xr_hand_tracking`, `has_xr_passthrough` and `xr_native_features()` / `xr_web_features()` presets. Panel presets: default, dashboard, tooltip, hand-anchored. |
-| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 30 tests pass, Stylo+Taffy layout resolves). Remaining: Vello offscreen rendering, OpenXR session lifecycle. |
-| 5.3 | Mojo FFI bindings for the OpenXR shim | 🔲 Pending |
+| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 30 tests pass, Stylo+Taffy layout resolves). Remaining: Vello offscreen rendering, OpenXR session lifecycle, `_into()` FFI variants for struct-return functions. |
+| 5.3 | Mojo FFI bindings for the OpenXR shim | ✅ Complete — `XRBlitz` struct (~70 methods wrapping all `mxr_*` C functions via DLHandle). `XRMutationInterpreter` (per-panel binary opcode interpreter, all 18 opcodes). Helper types: `XREvent`, `XRPose`, `XRRaycastHit`. Constants for events, hands, spaces, states. Library search via env vars / Nix / ld paths. |
 | 5.4 | XR scene manager and panel routing (multiplexes mutation buffers) | 🔲 Pending |
 | 5.5 | `xr_launch[AppType: GuiApp]()` — single-panel apps get XR for free | 🔲 Pending |
 | 5.6 | WebXR JS runtime (DOM → texture, XR session management) | 🔲 Future |
