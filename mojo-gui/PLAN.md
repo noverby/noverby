@@ -309,7 +309,7 @@ All four stabilization tasks are complete.
 |---|------|--------|-------|
 | S-1 | **Cross-target CI pipeline** | 3–5 days | GitHub Actions (or similar) matrix: `{web, desktop-linux}` × `{counter, todo, bench, app}`. Run `just test-all` for web. Build + smoke-test for desktop (headless Wayland via `wlheadless` or `weston --headless`). Gate PRs on green matrix. |
 | S-2 | **macOS desktop verification** | 2–3 days | Blitz uses Winit which supports macOS. Build the Blitz shim on macOS, verify `cargo build --release` succeeds, run the Counter example. Document any platform-specific quirks (GPU backend selection, font fallback, etc.). |
-| S-3 | **Windows desktop verification** | 2–3 days | Same as S-2 for Windows. Winit supports Windows natively. Vulkan or DX12 backend via wgpu/vello. |
+| S-3 | **Windows desktop verification (Wine)** | 2–3 days | Cross-compile to `x86_64-pc-windows-gnu` from Linux and verify under Wine. Vulkan passthrough for wgpu/vello rendering. Run the Counter example, smoke-test remaining shared examples. Document any Wine-specific quirks. |
 
 ### Medium-term — Phase 5: XR Renderer
 
