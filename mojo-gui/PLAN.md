@@ -10,7 +10,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 |--------|----------|--------|----------|
 | Web (WASM) | TypeScript DOM interpreter | ✅ Complete | All browsers |
 | Desktop | Blitz (Stylo + Vello + Winit) | ✅ Complete | Linux Wayland |
-| Desktop | Blitz | 🔲 Untested | macOS, Windows, X11 |
+| Desktop | Blitz | 🔲 Untested | macOS, Windows |
 | XR Native | OpenXR + Blitz offscreen | 📋 Future (Phase 5) | — |
 | XR Browser | WebXR + JS interpreter | 📋 Future (Phase 5) | — |
 
