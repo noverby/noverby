@@ -1,5 +1,5 @@
 # Port of test/sso.test.ts — String SSO (Small String Optimization) boundary
-# tests exercised through the real WASM binary via wasmtime-mojo (pure Mojo
+# tests exercised through the real WASM binary via mojo-wasmtime (pure Mojo
 # FFI bindings — no Python interop required).
 #
 # Mojo's Small String Optimization stores strings inline in the 24-byte struct

@@ -1,5 +1,5 @@
 # ScopeArena and scope/hook lifecycle exercised through the real WASM binary
-# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# via mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the scope arena, hook system, and rendering lifecycle
 # work correctly when compiled to WASM and executed via the Wasmtime runtime.

@@ -1,5 +1,5 @@
 # Bitwise operations exercised through the real WASM binary via
-# wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that bitand, bitor, bitxor, bitnot, shl, and shr operations
 # work correctly when compiled to WASM and executed via the Wasmtime runtime.

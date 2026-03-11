@@ -1,5 +1,5 @@
 # TemplateBuilder, TemplateRegistry, and VNodeStore exercised through the real
-# WASM binary via wasmtime-mojo (pure Mojo FFI bindings — no Python interop
+# WASM binary via mojo-wasmtime (pure Mojo FFI bindings — no Python interop
 # required).
 #
 # These tests verify that the template system (builder, registry, VNode store)

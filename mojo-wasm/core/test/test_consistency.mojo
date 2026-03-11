@@ -1,5 +1,5 @@
 # Port of test/consistency.test.ts — cross-function consistency checks exercised
-# through the real WASM binary via wasmtime-mojo (pure Mojo FFI bindings —
+# through the real WASM binary via mojo-wasmtime (pure Mojo FFI bindings —
 # no Python interop required).
 #
 # These tests verify that different WASM-exported functions compose correctly:

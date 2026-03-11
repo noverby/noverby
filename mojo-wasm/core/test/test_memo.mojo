@@ -1,5 +1,5 @@
 # Memo (computed/derived signal) operations exercised through the real WASM
-# binary via wasmtime-mojo (pure Mojo FFI bindings — no Python interop).
+# binary via mojo-wasmtime (pure Mojo FFI bindings — no Python interop).
 #
 # These tests verify that the memo store, dirty tracking, dependency
 # auto-tracking, and propagation chains work correctly when compiled to

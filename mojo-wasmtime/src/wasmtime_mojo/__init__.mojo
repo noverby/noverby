@@ -1,4 +1,4 @@
-"""wasmtime-mojo: Mojo FFI bindings for the Wasmtime WebAssembly runtime.
+"""mojo-wasmtime: Mojo FFI bindings for the Wasmtime WebAssembly runtime.
 
 This package provides high-level Mojo wrappers around the Wasmtime C API,
 enabling direct execution of WebAssembly modules from Mojo without requiring

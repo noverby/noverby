@@ -163,7 +163,7 @@ mojo-wasm/
 │       ├── protocol.js           # Op constants + MutationReader
 │       └── strings.js            # Mojo String ABI writeStringStruct()
 ├── test/                         # Mojo tests (52 modules, 1,323 tests via wasmtime)
-│   ├── wasm_harness.mojo         # WasmInstance harness using wasmtime-mojo FFI
+│   ├── wasm_harness.mojo         # WasmInstance harness using mojo-wasmtime FFI
 │   ├── test_signals.mojo         # Reactive signals
 │   ├── test_scopes.mojo          # Scope arena and hooks
 │   ├── test_templates.mojo       # Template builder, registry, VNode store

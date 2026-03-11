@@ -1,4 +1,4 @@
-"""WASM test harness using wasmtime-mojo (pure Mojo FFI bindings).
+"""WASM test harness using mojo-wasmtime (pure Mojo FFI bindings).
 
 Provides a WasmInstance for loading the Mojo WASM binary and interacting with
 its exported functions, including string struct read/write operations

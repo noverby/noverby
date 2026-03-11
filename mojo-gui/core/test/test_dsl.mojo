@@ -1,10 +1,10 @@
-# DSL Ergonomic Builder — WASM-level tests via wasmtime-mojo.
+# DSL Ergonomic Builder — WASM-level tests via mojo-wasmtime.
 #
 # Exercises the dsl_test_*, dsl_node_*, dsl_vb_*, and dsl_to_template
 # WASM exports through the real compiled binary.
 #
 # Run with:
-#   mojo test -I ../wasmtime-mojo/src test/test_dsl.mojo
+#   mojo test -I ../mojo-wasmtime/src test/test_dsl.mojo
 
 from memory import UnsafePointer
 from testing import assert_equal, assert_true, assert_false

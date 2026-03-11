@@ -1,7 +1,7 @@
 """Wasmtime shared library loader and raw FFI function wrappers.
 
 This module loads libwasmtime.so via OwnedDLHandle and provides thin typed
-wrappers around the C API functions needed by wasmtime-mojo.
+wrappers around the C API functions needed by mojo-wasmtime.
 
 The OwnedDLHandle is loaded lazily on first use via `get_lib()`.
 """
