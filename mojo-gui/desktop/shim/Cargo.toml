@@ -12,23 +12,25 @@ name = "mojo_blitz"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Blitz packages — pinned to a specific commit for stability
-blitz = { git = "https://github.com/DioxusLabs/blitz", rev = "main", features = ["net"] }
-blitz-dom = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
-blitz-html = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
-blitz-traits = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
-blitz-shell = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
-blitz-paint = { git = "https://github.com/DioxusLabs/blitz", rev = "main" }
+# Blitz packages — pinned to v0.2.0 release
+blitz = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0", features = [
+  "net",
+] }
+blitz-dom = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
+blitz-html = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
+blitz-traits = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
+blitz-shell = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
+blitz-paint = { git = "https://github.com/DioxusLabs/blitz", rev = "2f83df96220561316611ecf857e20cd1feed8ca0" }
 
-# Rendering backend
-anyrender = { version = "0.7" }
-anyrender_vello = { version = "0.7" }
+# Rendering backend (must match Blitz v0.2.0's pinned versions exactly)
+anyrender = { version = "0.6" }
+anyrender_vello = { version = "0.6" }
 
-# Windowing
-winit = { version = "=0.31.0-beta.2" }
+# Windowing (must match Blitz v0.2.0's pinned version exactly)
+winit = { version = "0.30" }
 
-# Utilities
-markup5ever = "0.37.0"
+# Note: markup5ever types (QualName, LocalName, etc.) are re-exported by blitz-dom.
+# Do NOT add a direct markup5ever dependency — version mismatches cause type errors.
 
 [profile.release]
 opt-level = 2
