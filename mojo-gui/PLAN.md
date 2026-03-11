@@ -10,7 +10,8 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 |--------|----------|--------|----------|
 | Web (WASM) | TypeScript DOM interpreter | ✅ Complete | All browsers |
 | Desktop | Blitz (Stylo + Vello + Winit) | ✅ Complete | Linux Wayland |
-| Desktop | Blitz | 🔲 Untested | macOS, Windows |
+| Desktop | Blitz | 🔲 Untested | macOS |
+| Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
 | XR Native | OpenXR + Blitz offscreen | 📋 Future (Phase 5) | — |
 | XR Browser | WebXR + JS interpreter | 📋 Future (Phase 5) | — |
 
@@ -18,7 +19,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 |------|--------|
 | Core Mojo test suites | 52 |
 | JS integration test suites | 30 (~3,375 tests) |
-| Desktop integration test suites | 1 (69 tests) |
+| Desktop integration test suites | 1 (69 tests, verified on Linux + Wine) |
 | Shared example apps | 4 (Counter, Todo, Benchmark, MultiView) |
 | Test/demo app modules | 15 (in `examples/apps/`) |
 | Binary mutation opcodes | 18 |
@@ -309,7 +310,7 @@ All four stabilization tasks are complete.
 |---|------|--------|-------|
 | S-1 | **Cross-target CI pipeline** | 3–5 days | GitHub Actions (or similar) matrix: `{web, desktop-linux}` × `{counter, todo, bench, app}`. Run `just test-all` for web. Build + smoke-test for desktop (headless Wayland via `wlheadless` or `weston --headless`). Gate PRs on green matrix. |
 | S-2 | **macOS desktop verification** | 2–3 days | Blitz uses Winit which supports macOS. Build the Blitz shim on macOS, verify `cargo build --release` succeeds, run the Counter example. Document any platform-specific quirks (GPU backend selection, font fallback, etc.). |
-| S-3 | **Windows desktop verification (Wine)** | 2–3 days | Cross-compile to `x86_64-pc-windows-gnu` from Linux and verify under Wine. Vulkan passthrough for wgpu/vello rendering. Run the Counter example, smoke-test remaining shared examples. Document any Wine-specific quirks. |
+| S-3 | **Windows desktop verification (Wine)** | 2–3 days | ✅ Complete — Cross-compiled to `x86_64-pc-windows-gnu` from Linux via MinGW-w64. Produces `mojo_blitz.dll` (26MB PE32+ DLL). All 69 Rust integration tests pass under Wine (single-threaded; Wine's COM layer crashes with parallel threads — misaligned pointer in `windows-core` interface dispatch). Nix dev shell provides: `rust-bin` with Windows target std, MinGW-w64 cross-linker (stripped setup hooks to avoid polluting native CC/AR), Wine 10.0 for test execution. New justfile recipes: `build-shim-windows`, `test-desktop-wine`, `build-shim-all`. Cargo config (`.cargo/config.toml`) sets MinGW linker and Wine runner for the Windows target. |
 
 ### Medium-term — Phase 5: XR Renderer
 
