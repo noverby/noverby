@@ -1423,6 +1423,47 @@ pub unsafe extern "C" fn mblitz_poll_event(ctx: *mut BlitzContext) -> MblitzEven
     }
 }
 
+/// Poll the next event, writing fields to caller-provided output pointers.
+///
+/// This avoids struct-return ABI issues with Mojo's DLHandle by writing
+/// each field to a separate output pointer.
+///
+/// Returns 1 if an event was available, 0 if the queue was empty.
+/// When returning 0, the output pointers are not modified.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mblitz_poll_event_into(
+    ctx: *mut BlitzContext,
+    out_handler_id: *mut u32,
+    out_event_type: *mut u8,
+    out_value_ptr: *mut *const u8,
+    out_value_len: *mut u32,
+) -> i32 {
+    if ctx.is_null() {
+        return 0;
+    }
+    let ctx = unsafe { &mut *ctx };
+    match ctx.poll_event() {
+        Some(event) => {
+            unsafe {
+                *out_handler_id = event.handler_id;
+                *out_event_type = event.event_type;
+            }
+            ctx.last_polled_value = event.value;
+            unsafe {
+                if ctx.last_polled_value.is_empty() {
+                    *out_value_ptr = std::ptr::null();
+                    *out_value_len = 0;
+                } else {
+                    *out_value_ptr = ctx.last_polled_value.as_ptr();
+                    *out_value_len = ctx.last_polled_value.len() as u32;
+                }
+            }
+            1
+        }
+        None => 0,
+    }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mblitz_event_count(ctx: *mut BlitzContext) -> u32 {
     if ctx.is_null() {

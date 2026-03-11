@@ -638,60 +638,73 @@ struct Blitz(Movable):
     fn poll_event(self) -> BlitzEvent:
         """Poll the next event from the ring buffer.
 
+        Uses `mblitz_poll_event_into` which writes event fields to
+        caller-provided output pointers, avoiding struct-return ABI
+        issues with Mojo's DLHandle.
+
         Returns:
             A BlitzEvent with valid=True if an event was available,
             or valid=False if the queue is empty.
         """
-        # The C function returns a struct:
-        #   { int32_t valid, uint32_t handler_id, uint8_t event_type,
-        #     const char* value_ptr, uint32_t value_len }
-        #
-        # Since Mojo's DLHandle.call doesn't directly support returning
-        # C structs, we use a workaround: call the function and interpret
-        # the return value. For now, we use individual poll helpers.
-        #
-        # TODO: When Mojo supports returning C structs via FFI, switch to
-        # a direct struct return. For now, we use the raw struct approach.
-        #
-        # Workaround: The MblitzEvent struct is 24 bytes. We allocate it
-        # on the stack and pass a pointer. However, since the C function
-        # returns by value, we need to handle this carefully.
-        #
-        # For the initial implementation, we'll use a simplified approach
-        # where we check event_count first, then use the C API.
+        # Allocate output slots for each event field.
+        # For the value pointer we use alloc[Int] (pointer-sized) because
+        # alloc[UnsafePointer[UInt8]] fails to infer the origin parameter
+        # in Mojo 26.1. This follows the pattern from launcher.mojo.
+        var out_handler_id = alloc[UInt32](1)
+        var out_event_type = alloc[UInt8](1)
+        var out_value_ptr = alloc[Int](1)
+        var out_value_len = alloc[UInt32](1)
 
-        var count = self._lib.call["mblitz_event_count", UInt32](self._ctx)
-        if count == 0:
+        out_handler_id[0] = 0
+        out_event_type[0] = 0
+        out_value_ptr[0] = 0
+        out_value_len[0] = 0
+
+        var valid = self._lib.call["mblitz_poll_event_into", Int32](
+            self._ctx,
+            out_handler_id,
+            out_event_type,
+            out_value_ptr,
+            out_value_len,
+        )
+
+        if valid == 0:
+            out_handler_id.free()
+            out_event_type.free()
+            out_value_ptr.free()
+            out_value_len.free()
             return BlitzEvent()
 
-        # Call mblitz_poll_event which returns MblitzEvent by value.
-        # The struct layout is:
-        #   offset 0:  int32_t valid       (4 bytes)
-        #   offset 4:  uint32_t handler_id (4 bytes)
-        #   offset 8:  uint8_t event_type  (1 byte, padded to 4)
-        #   offset 12: padding             (4 bytes for pointer alignment)
-        #   offset 16: const char* value_ptr (8 bytes on 64-bit)
-        #   offset 24: uint32_t value_len  (4 bytes)
-        #
-        # Total: ~32 bytes with alignment.
-        #
-        # Since Mojo DLHandle currently has limitations with struct returns,
-        # we allocate a buffer and use it as the return destination.
-        # This is a temporary approach — it will be refined once Mojo's
-        # FFI supports aggregate return types natively.
+        var handler_id = out_handler_id[0]
+        var event_type = out_event_type[0]
+        var v_ptr_int = out_value_ptr[0]
+        var v_len = Int(out_value_len[0])
 
-        var buf = alloc[UInt8](32)
-        # Zero the buffer
-        for i in range(32):
-            buf[i] = 0
+        out_handler_id.free()
+        out_event_type.free()
+        out_value_ptr.free()
+        out_value_len.free()
 
-        # TODO: Replace with proper struct-returning FFI call.
-        # For now, we use the event count check above and return a
-        # synthetic event. This will be completed once the Winit event
-        # loop is integrated and events are actually generated.
-        buf.free()
+        # Build the value string from the pointer + length.
+        # The pointer points into BlitzContext.last_polled_value which
+        # stays alive until the next poll call.
+        # We use the alloc[Int] + bitcast pattern from launcher.mojo to
+        # recover a typed pointer from the raw Int address.
+        var value = String("")
+        if v_len > 0 and v_ptr_int != 0:
+            var slot = alloc[Int](1)
+            slot[0] = v_ptr_int
+            var v_ptr = slot.bitcast[UnsafePointer[UInt8, MutAnyOrigin]]()[0]
+            slot.free()
+            for i in range(v_len):
+                value += chr(Int(v_ptr[i]))
 
-        return BlitzEvent()
+        return BlitzEvent(
+            valid=True,
+            handler_id=handler_id,
+            event_type=event_type,
+            value=value,
+        )
 
     fn event_count(self) -> UInt32:
         """Get the number of buffered events.

@@ -17,8 +17,20 @@
 //!   9. DOM serialization
 //!  10. Node ID mapping & stack operations
 //!  11. DOM inspection helpers
+//!  12. FFI poll_event_into (output-pointer polling)
 
 use mojo_blitz::BlitzContext;
+
+// FFI imports for poll_event_into tests
+unsafe extern "C" {
+    fn mblitz_poll_event_into(
+        ctx: *mut BlitzContext,
+        out_handler_id: *mut u32,
+        out_event_type: *mut u8,
+        out_value_ptr: *mut *const u8,
+        out_value_len: *mut u32,
+    ) -> i32;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -1300,4 +1312,230 @@ fn reassign_id_updates_mapping() {
     // Reassign ID 1 to a different node
     ctx.assign_id(1, div2);
     assert_eq!(ctx.get_node_tag(1), "span");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12. FFI poll_event_into (output-pointer polling)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// These tests exercise the `mblitz_poll_event_into` C FFI function that
+// the Mojo `Blitz.poll_event()` method calls. This is the code path that
+// was broken (the old stub always returned invalid events), so we test it
+// thoroughly here.
+
+#[test]
+fn poll_event_into_empty_queue_returns_zero() {
+    let mut ctx = headless();
+    let mut handler_id: u32 = 0xFF;
+    let mut event_type: u8 = 0xFF;
+    let mut value_ptr: *const u8 = std::ptr::null();
+    let mut value_len: u32 = 0xFF;
+
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+
+    assert_eq!(valid, 0, "empty queue should return 0");
+    // Output pointers should not be modified when queue is empty
+    assert_eq!(handler_id, 0xFF);
+    assert_eq!(event_type, 0xFF);
+}
+
+#[test]
+fn poll_event_into_click_event() {
+    let mut ctx = headless();
+    ctx.queue_event(42, 0 /* EVT_CLICK */, String::new());
+
+    let mut handler_id: u32 = 0;
+    let mut event_type: u8 = 0xFF;
+    let mut value_ptr: *const u8 = std::ptr::null();
+    let mut value_len: u32 = 0xFF;
+
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+
+    assert_eq!(valid, 1, "should return 1 for available event");
+    assert_eq!(handler_id, 42);
+    assert_eq!(event_type, 0); // EVT_CLICK
+    assert!(value_ptr.is_null(), "click events have no string value");
+    assert_eq!(value_len, 0);
+}
+
+#[test]
+fn poll_event_into_input_event_with_value() {
+    let mut ctx = headless();
+    ctx.queue_event(7, 1 /* EVT_INPUT */, "hello".to_string());
+
+    let mut handler_id: u32 = 0;
+    let mut event_type: u8 = 0;
+    let mut value_ptr: *const u8 = std::ptr::null();
+    let mut value_len: u32 = 0;
+
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+
+    assert_eq!(valid, 1);
+    assert_eq!(handler_id, 7);
+    assert_eq!(event_type, 1); // EVT_INPUT
+    assert!(
+        !value_ptr.is_null(),
+        "input events should have a value pointer"
+    );
+    assert_eq!(value_len, 5);
+
+    // Read the string value from the pointer
+    let value = unsafe { std::slice::from_raw_parts(value_ptr, value_len as usize) };
+    assert_eq!(std::str::from_utf8(value).unwrap(), "hello");
+}
+
+#[test]
+fn poll_event_into_multiple_events_in_order() {
+    let mut ctx = headless();
+    ctx.queue_event(1, 0, String::new());
+    ctx.queue_event(2, 1, "second".to_string());
+    ctx.queue_event(3, 0, String::new());
+
+    // Poll first event
+    let mut handler_id: u32 = 0;
+    let mut event_type: u8 = 0;
+    let mut value_ptr: *const u8 = std::ptr::null();
+    let mut value_len: u32 = 0;
+
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+    assert_eq!(valid, 1);
+    assert_eq!(handler_id, 1);
+
+    // Poll second event (has string value)
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+    assert_eq!(valid, 1);
+    assert_eq!(handler_id, 2);
+    assert_eq!(event_type, 1);
+    assert_eq!(value_len, 6);
+    let value = unsafe { std::slice::from_raw_parts(value_ptr, value_len as usize) };
+    assert_eq!(std::str::from_utf8(value).unwrap(), "second");
+
+    // Poll third event
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+    assert_eq!(valid, 1);
+    assert_eq!(handler_id, 3);
+
+    // Queue should now be empty
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+    assert_eq!(valid, 0, "queue should be empty after draining all events");
+}
+
+#[test]
+fn poll_event_into_unicode_value() {
+    let mut ctx = headless();
+    ctx.queue_event(99, 1, "héllo 🌍".to_string());
+
+    let mut handler_id: u32 = 0;
+    let mut event_type: u8 = 0;
+    let mut value_ptr: *const u8 = std::ptr::null();
+    let mut value_len: u32 = 0;
+
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+
+    assert_eq!(valid, 1);
+    assert_eq!(handler_id, 99);
+    assert!(!value_ptr.is_null());
+    assert!(value_len > 0);
+
+    let value = unsafe { std::slice::from_raw_parts(value_ptr, value_len as usize) };
+    assert_eq!(std::str::from_utf8(value).unwrap(), "héllo 🌍");
+}
+
+#[test]
+fn poll_event_into_consumes_event() {
+    let mut ctx = headless();
+    ctx.queue_event(1, 0, String::new());
+
+    let mut handler_id: u32 = 0;
+    let mut event_type: u8 = 0;
+    let mut value_ptr: *const u8 = std::ptr::null();
+    let mut value_len: u32 = 0;
+
+    // First poll should succeed
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+    assert_eq!(valid, 1);
+
+    // Second poll should return empty — event was consumed
+    let valid = unsafe {
+        mblitz_poll_event_into(
+            &mut ctx,
+            &mut handler_id,
+            &mut event_type,
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+    assert_eq!(valid, 0, "event should be consumed after first poll");
 }
