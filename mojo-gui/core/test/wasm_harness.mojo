@@ -10,7 +10,7 @@ This module is designed to be imported from Mojo test files:
 
 Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
 
-  Import[15]:
+  Import[16]:
    - func[0]  sig=0  (i64, i64) -> i64      KGEN_CompilerRT_AlignedAlloc
    - func[1]  sig=1  (i64) -> nil            KGEN_CompilerRT_AlignedFree
    - func[2]  sig=2  (f32, f32, f32) -> f32  fmaf
@@ -25,7 +25,7 @@ Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
    - func[11] sig=9  (i64) -> i32            fflush
    - func[12] sig=9  (i64) -> i32            fclose
    - func[13] sig=10 (i64, i64, i64) -> i32  KGEN_CompilerRT_fprintf
-   - func[14] sig=11 () -> f64               performance_now
+   - func[14] sig=11 (i32, i64) -> i32       clock_gettime
 """
 
 from collections import Dict
@@ -513,6 +513,43 @@ fn _cb_write(
     return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
+# -- func[14] clock_gettime: (i32, i64) -> i32 ----------------------------
+# Mojo 26.1.0: the runtime now uses clock_gettime internally.
+# Signature: clock_gettime(clockid: i32, timespec_ptr: i64) -> i32
+# where struct timespec { i64 tv_sec; i64 tv_nsec; } (WASM64 layout).
+# We use a deterministic mock: tv_sec = mock_time (truncated), tv_nsec = 0.
+# This keeps WASM test output reproducible.
+
+
+fn _cb_clock_gettime(
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
+    nargs: Int,
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
+    nresults: Int,
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
+    var state = _state(env)
+    # args[0] = clockid (i32, ignored — we always return the mock clock)
+    var ts_ptr = Int(args[1].get_i64())
+
+    if not state[].has_memory:
+        results[0] = WasmtimeVal.from_i32(-1)
+        return UnsafePointer[NoneType, MutExternalOrigin]()
+
+    # Write tv_sec (i64 LE) at ts_ptr and tv_nsec (i64 LE) at ts_ptr+8.
+    # Use the mock_time as seconds so tests remain deterministic.
+    var sec = Int64(state[].mock_time)
+    var nsec = Int64(0)
+    try:
+        memory_write_i64_le(state[].context, state[].memory, ts_ptr, sec)
+        memory_write_i64_le(state[].context, state[].memory, ts_ptr + 8, nsec)
+        results[0] = WasmtimeVal.from_i32(0)
+    except:
+        results[0] = WasmtimeVal.from_i32(-1)
+    return UnsafePointer[NoneType, MutExternalOrigin]()
+
+
 # -- func[16] performance_now: () -> f64 -----------------------------------
 # P24.3: Deterministic mock clock for benchmark timing tests.
 # Each call returns the current mock_time and advances it by 1.0,
@@ -582,7 +619,7 @@ struct WasmInstance(Movable):
         self._linker = Linker(self._engine.ptr())
 
         # ──────────────────────────────────────────────────────────────
-        # Define all 16 imports
+        # Define all 17 imports
         # ──────────────────────────────────────────────────────────────
 
         # func[0] KGEN_CompilerRT_AlignedAlloc: (i64, i64) -> i64
@@ -725,7 +762,18 @@ struct WasmInstance(Movable):
             env,
         )
 
-        # func[14] performance_now: () -> f64 (P24.3)
+        # func[14] clock_gettime: (i32, i64) -> i32
+        # Mojo 26.1.0: runtime uses clock_gettime for time operations.
+        self._linker.define_func(
+            "env",
+            "clock_gettime",
+            [WASM_I32, WASM_I64],
+            [WASM_I32],
+            _cb_clock_gettime,
+            env,
+        )
+
+        # func[15] performance_now: () -> f64 (P24.3)
         self._linker.define_func(
             "env",
             "performance_now",

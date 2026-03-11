@@ -57,8 +57,9 @@
 #   - format_row_count() returns " · N rows" (with comma-formatted number)
 #   - finer diff granularity: only changed text nodes get SetText mutations
 #
-# Phase 24.3: performance_now() WASM import + timing in handle_event()
-#   - external_call["performance_now", Float64]() → env.performance_now
+# Phase 24.3: performance_now() cross-platform timer + timing in handle_event()
+#   - WASM: external_call["performance_now", Float64]() → env.performance_now
+#   - Native: time.perf_counter_ns() / 1_000_000.0
 #   - format_timing_ms() formats Float64 ms to " — 12.3ms" (1 decimal place)
 #   - op_name + timing_text + row_count_text fields store the latest status
 #   - handle_event() wraps each toolbar op with before/after timing
@@ -202,6 +203,7 @@ from component import ComponentContext, KeyedList
 from signals import SignalI32
 from vdom import VNode, VNodeStore
 from platform import GuiApp
+from platform.app import is_wasm_target
 from html import (
     Node,
     el_div,
@@ -244,21 +246,34 @@ struct BenchRow(Copyable):
         self.label = other.label^
 
 
-# ── performance.now() WASM import ────────────────────────────────────────────
+# ── performance.now() — cross-platform high-resolution timer ─────────────────
 #
-# Declared via external_call so the Mojo compiler emits an unresolved symbol.
-# wasm-ld --allow-undefined turns this into a WASM import from the "env"
-# module.  The JS host provides `performance_now: () => performance.now()`.
+# On WASM targets: declared via external_call so the Mojo compiler emits an
+# unresolved symbol. wasm-ld --allow-undefined turns this into a WASM import
+# from the "env" module. The JS host provides
+# `performance_now: () => performance.now()`.
+#
+# On native targets (desktop, XR): uses Mojo's `time.perf_counter_ns()` to
+# read the monotonic clock and converts nanoseconds to milliseconds.
 
 
 fn performance_now() -> Float64:
-    """Return high-resolution timestamp in milliseconds via WASM import.
+    """Return high-resolution timestamp in milliseconds.
 
-    Maps to `performance.now()` in the browser and Deno runtimes.
+    On WASM: maps to `performance.now()` in the browser and Deno runtimes.
     In the Mojo test harness (wasmtime), returns a deterministic mock
     clock that increments by 1.0 on each call.
+
+    On native: uses the system monotonic clock via `perf_counter_ns()`.
     """
-    return external_call["performance_now", Float64]()
+
+    @parameter
+    if is_wasm_target():
+        return external_call["performance_now", Float64]()
+    else:
+        from time import perf_counter_ns
+
+        return Float64(perf_counter_ns()) / 1_000_000.0
 
 
 # ── Timing formatter ─────────────────────────────────────────────────────────
