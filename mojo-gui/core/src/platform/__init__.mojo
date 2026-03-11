@@ -8,6 +8,19 @@
 #   gui_app   — GuiApp trait, app-side lifecycle contract
 #   launch    — launch() entry point, AppConfig
 #   features  — PlatformFeatures, runtime capability detection
+#
+# Note: Re-exporting the parametric `launch()` function through this
+# __init__.mojo triggers a Mojo 0.26.1 bug where the function loses its
+# parametric nature ("not subscriptable" error). This appears to be a
+# compiler issue with re-exporting parametric functions that have complex
+# trait-constrained type parameters through package init files.
+#
+# Workaround: Import `launch` directly from the submodule:
+#
+#     from platform.launch import launch, AppConfig
+#
+# All other symbols (GuiApp, PlatformApp, AppConfig, PlatformFeatures,
+# etc.) re-export correctly from this package init.
 
 from .app import (
     PlatformApp,

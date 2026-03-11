@@ -56,7 +56,7 @@
 #       blitz.end_mutations()
 #       blitz.request_redraw()
 
-from memory import UnsafePointer
+from memory import UnsafePointer, alloc
 from .blitz import Blitz
 from html.tags import tag_name
 
@@ -65,36 +65,36 @@ from html.tags import tag_name
 # Opcodes — must match core/src/bridge/protocol.mojo exactly
 # ══════════════════════════════════════════════════════════════════════════════
 
-alias OP_END: UInt8 = 0x00
-alias OP_APPEND_CHILDREN: UInt8 = 0x01
-alias OP_ASSIGN_ID: UInt8 = 0x02
-alias OP_CREATE_PLACEHOLDER: UInt8 = 0x03
-alias OP_CREATE_TEXT_NODE: UInt8 = 0x04
-alias OP_LOAD_TEMPLATE: UInt8 = 0x05
-alias OP_REPLACE_WITH: UInt8 = 0x06
-alias OP_REPLACE_PLACEHOLDER: UInt8 = 0x07
-alias OP_INSERT_AFTER: UInt8 = 0x08
-alias OP_INSERT_BEFORE: UInt8 = 0x09
-alias OP_SET_ATTRIBUTE: UInt8 = 0x0A
-alias OP_SET_TEXT: UInt8 = 0x0B
-alias OP_NEW_EVENT_LISTENER: UInt8 = 0x0C
-alias OP_REMOVE_EVENT_LISTENER: UInt8 = 0x0D
-alias OP_REMOVE: UInt8 = 0x0E
-alias OP_PUSH_ROOT: UInt8 = 0x0F
-alias OP_REGISTER_TEMPLATE: UInt8 = 0x10
-alias OP_REMOVE_ATTRIBUTE: UInt8 = 0x11
+comptime OP_END: UInt8 = 0x00
+comptime OP_APPEND_CHILDREN: UInt8 = 0x01
+comptime OP_ASSIGN_ID: UInt8 = 0x02
+comptime OP_CREATE_PLACEHOLDER: UInt8 = 0x03
+comptime OP_CREATE_TEXT_NODE: UInt8 = 0x04
+comptime OP_LOAD_TEMPLATE: UInt8 = 0x05
+comptime OP_REPLACE_WITH: UInt8 = 0x06
+comptime OP_REPLACE_PLACEHOLDER: UInt8 = 0x07
+comptime OP_INSERT_AFTER: UInt8 = 0x08
+comptime OP_INSERT_BEFORE: UInt8 = 0x09
+comptime OP_SET_ATTRIBUTE: UInt8 = 0x0A
+comptime OP_SET_TEXT: UInt8 = 0x0B
+comptime OP_NEW_EVENT_LISTENER: UInt8 = 0x0C
+comptime OP_REMOVE_EVENT_LISTENER: UInt8 = 0x0D
+comptime OP_REMOVE: UInt8 = 0x0E
+comptime OP_PUSH_ROOT: UInt8 = 0x0F
+comptime OP_REGISTER_TEMPLATE: UInt8 = 0x10
+comptime OP_REMOVE_ATTRIBUTE: UInt8 = 0x11
 
 # ── Template node kinds (from core/src/vdom/template.mojo) ───────────────
 
-alias TNODE_ELEMENT: UInt8 = 0x00
-alias TNODE_TEXT: UInt8 = 0x01
-alias TNODE_DYNAMIC: UInt8 = 0x02
-alias TNODE_DYNAMIC_TEXT: UInt8 = 0x03
+comptime TNODE_ELEMENT: UInt8 = 0x00
+comptime TNODE_TEXT: UInt8 = 0x01
+comptime TNODE_DYNAMIC: UInt8 = 0x02
+comptime TNODE_DYNAMIC_TEXT: UInt8 = 0x03
 
 # ── Template attribute kinds ─────────────────────────────────────────────
 
-alias TATTR_STATIC: UInt8 = 0x00
-alias TATTR_DYNAMIC: UInt8 = 0x01
+comptime TATTR_STATIC: UInt8 = 0x00
+comptime TATTR_DYNAMIC: UInt8 = 0x01
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -115,11 +115,11 @@ struct BufReader:
       - path: u8 length prefix + byte array
     """
 
-    var buf: UnsafePointer[UInt8]
+    var buf: UnsafePointer[UInt8, MutAnyOrigin]
     var offset: Int
     var length: Int
 
-    fn __init__(out self, buf: UnsafePointer[UInt8], length: Int):
+    fn __init__(out self, buf: UnsafePointer[UInt8, MutAnyOrigin], length: Int):
         self.buf = buf
         self.offset = 0
         self.length = length
@@ -167,7 +167,8 @@ struct BufReader:
         return result
 
     fn read_short_str(mut self) -> String:
-        """Read a u16-length-prefixed UTF-8 string (for names <= 65535 bytes)."""
+        """Read a u16-length-prefixed UTF-8 string (for names <= 65535 bytes).
+        """
         var str_len = Int(self.read_u16_le())
         if str_len == 0:
             return String("")
@@ -182,7 +183,9 @@ struct BufReader:
         """Read a u8 path length."""
         return Int(self.read_u8())
 
-    fn read_path_bytes(mut self, path_len: Int) -> UnsafePointer[UInt8]:
+    fn read_path_bytes(
+        mut self, path_len: Int
+    ) -> UnsafePointer[UInt8, MutAnyOrigin]:
         """Read path_len bytes and return a pointer to the start.
 
         The pointer points directly into the buffer. The caller must not
@@ -220,10 +223,10 @@ struct MutationInterpreter(Movable):
     outlive the Blitz context.
     """
 
-    var _blitz: UnsafePointer[Blitz]
+    var _blitz: UnsafePointer[Blitz, MutAnyOrigin]
     var _stack: List[UInt32]
 
-    fn __init__(out self, ref blitz: Blitz):
+    fn __init__(out self, ref [MutAnyOrigin]blitz: Blitz):
         """Create a mutation interpreter backed by the given Blitz instance.
 
         Args:
@@ -232,7 +235,7 @@ struct MutationInterpreter(Movable):
         """
         # Store a pointer to the Blitz instance. This is an unsafe borrow —
         # the caller guarantees the Blitz instance outlives the interpreter.
-        self._blitz = UnsafePointer.address_of(blitz)
+        self._blitz = UnsafePointer(to=blitz)
         self._stack = List[UInt32](capacity=64)
 
     fn __moveinit__(out self, deinit other: Self):
@@ -241,7 +244,7 @@ struct MutationInterpreter(Movable):
 
     # ── Public API ───────────────────────────────────────────────────────
 
-    fn apply(mut self, buf: UnsafePointer[UInt8], length: Int):
+    fn apply(mut self, buf: UnsafePointer[UInt8, MutAnyOrigin], length: Int):
         """Apply all mutations in the given buffer to the Blitz DOM.
 
         Reads opcodes sequentially from the buffer until OP_END is
@@ -336,7 +339,7 @@ struct MutationInterpreter(Movable):
         # Remove from stack
         while len(self._stack) > start:
             _ = self._stack.pop()
-        return result
+        return result^
 
     # ── Opcode handlers ──────────────────────────────────────────────────
 
@@ -353,7 +356,7 @@ struct MutationInterpreter(Movable):
         # the Blitz stack operations. We pass children directly.
         if len(children) > 0:
             # Allocate a temporary buffer for the child ID array
-            var child_buf = UnsafePointer[UInt32].alloc(len(children))
+            var child_buf = alloc[UInt32](len(children))
             for i in range(len(children)):
                 child_buf[i] = children[i]
             self._blitz[].append_children(id, child_buf, UInt32(len(children)))
@@ -439,10 +442,12 @@ struct MutationInterpreter(Movable):
 
         var replacements = self._pop_n(Int(m))
         if len(replacements) > 0:
-            var replace_buf = UnsafePointer[UInt32].alloc(len(replacements))
+            var replace_buf = alloc[UInt32](len(replacements))
             for i in range(len(replacements)):
                 replace_buf[i] = replacements[i]
-            self._blitz[].replace_with(id, replace_buf, UInt32(len(replacements)))
+            self._blitz[].replace_with(
+                id, replace_buf, UInt32(len(replacements))
+            )
             replace_buf.free()
 
     fn _op_replace_placeholder(mut self, mut reader: BufReader):
@@ -474,7 +479,7 @@ struct MutationInterpreter(Movable):
             )
 
         if target_id != 0 and len(replacements) > 0:
-            var replace_buf = UnsafePointer[UInt32].alloc(len(replacements))
+            var replace_buf = alloc[UInt32](len(replacements))
             for i in range(len(replacements)):
                 replace_buf[i] = replacements[i]
             self._blitz[].replace_with(
@@ -492,7 +497,7 @@ struct MutationInterpreter(Movable):
 
         var nodes = self._pop_n(Int(m))
         if len(nodes) > 0:
-            var node_buf = UnsafePointer[UInt32].alloc(len(nodes))
+            var node_buf = alloc[UInt32](len(nodes))
             for i in range(len(nodes)):
                 node_buf[i] = nodes[i]
             self._blitz[].insert_after(id, node_buf, UInt32(len(nodes)))
@@ -508,7 +513,7 @@ struct MutationInterpreter(Movable):
 
         var nodes = self._pop_n(Int(m))
         if len(nodes) > 0:
-            var node_buf = UnsafePointer[UInt32].alloc(len(nodes))
+            var node_buf = alloc[UInt32](len(nodes))
             for i in range(len(nodes)):
                 node_buf[i] = nodes[i]
             self._blitz[].insert_before(id, node_buf, UInt32(len(nodes)))
@@ -729,10 +734,10 @@ struct MutationInterpreter(Movable):
         # ── Phase 5: Wire up parent-child relationships ──────────────────
 
         for i in range(node_count):
-            var children = element_children[i]
+            var children = element_children[i].copy()
             if len(children) > 0:
                 var parent_id = node_ids[i]
-                var child_buf = UnsafePointer[UInt32].alloc(len(children))
+                var child_buf = alloc[UInt32](len(children))
                 for c in range(len(children)):
                     var child_idx = children[c]
                     if child_idx < len(node_ids):

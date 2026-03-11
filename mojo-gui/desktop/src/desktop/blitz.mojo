@@ -49,8 +49,9 @@
 #           _ = blitz.step(blocking=True)
 #   blitz.destroy()
 
-from memory import UnsafePointer
-from sys import env_get_string
+from memory import UnsafePointer, alloc
+from os import getenv
+from sys.ffi import _DLHandle
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -110,8 +111,8 @@ struct BlitzEvent(Copyable, Movable):
 # Library name constant
 # ══════════════════════════════════════════════════════════════════════════════
 
-alias _LIB_NAME = "libmojo_blitz.so"
-alias _LIB_NAME_DYLIB = "libmojo_blitz.dylib"
+comptime _LIB_NAME = "libmojo_blitz.so"
+comptime _LIB_NAME_DYLIB = "libmojo_blitz.dylib"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -132,61 +133,52 @@ fn _find_library() -> String:
     if not found (letting the dynamic linker try its default search).
     """
     # 1. Explicit env var
-    try:
-        var lib_dir = env_get_string("MOJO_BLITZ_LIB")
-        if len(lib_dir) > 0:
-            return lib_dir + "/" + _LIB_NAME
-    except:
-        pass
+    var lib_dir = getenv("MOJO_BLITZ_LIB")
+    if len(lib_dir) > 0:
+        return lib_dir + "/" + _LIB_NAME
 
     # 2. NIX_LDFLAGS — parse -L/nix/store/... paths
-    try:
-        var nix_flags = env_get_string("NIX_LDFLAGS")
-        if len(nix_flags) > 0:
-            # Simple parsing: split on spaces, look for -L flags
-            var i = 0
-            var flag_start = 0
-            while i <= len(nix_flags):
-                var at_end = i == len(nix_flags)
-                var is_space = False
-                if not at_end:
-                    is_space = nix_flags[i] == " "
-                if at_end or is_space:
-                    if i > flag_start:
-                        var token = nix_flags[flag_start:i]
-                        if len(token) > 2:
-                            if token[0] == "-" and token[1] == "L":
-                                var dir_path = token[2:]
-                                # Check if the library exists in this directory
-                                # We can't do filesystem checks easily, so just
-                                # try the path. The dynamic linker will reject
-                                # it if it doesn't exist.
-                                var candidate = String(dir_path) + "/" + _LIB_NAME
-                                return candidate
-                    flag_start = i + 1
-                i += 1
-    except:
-        pass
+    var nix_flags = getenv("NIX_LDFLAGS")
+    if len(nix_flags) > 0:
+        # Simple parsing: split on spaces, look for -L flags
+        var i = 0
+        var flag_start = 0
+        while i <= len(nix_flags):
+            var at_end = i == len(nix_flags)
+            var is_space = False
+            if not at_end:
+                is_space = nix_flags[byte=i] == " "
+            if at_end or is_space:
+                if i > flag_start:
+                    var token = nix_flags[flag_start:i]
+                    if len(token) > 2:
+                        if token[byte=0] == "-" and token[byte=1] == "L":
+                            var dir_path = token[2:]
+                            # Check if the library exists in this directory
+                            # We can't do filesystem checks easily, so just
+                            # try the path. The dynamic linker will reject
+                            # it if it doesn't exist.
+                            var candidate = String(dir_path) + "/" + _LIB_NAME
+                            return candidate
+                flag_start = i + 1
+            i += 1
 
     # 3. LD_LIBRARY_PATH
-    try:
-        var ld_path = env_get_string("LD_LIBRARY_PATH")
-        if len(ld_path) > 0:
-            var i = 0
-            var path_start = 0
-            while i <= len(ld_path):
-                var at_end = i == len(ld_path)
-                var is_colon = False
-                if not at_end:
-                    is_colon = ld_path[i] == ":"
-                if at_end or is_colon:
-                    if i > path_start:
-                        var dir_path = ld_path[path_start:i]
-                        return String(dir_path) + "/" + _LIB_NAME
-                    path_start = i + 1
-                i += 1
-    except:
-        pass
+    var ld_path = getenv("LD_LIBRARY_PATH")
+    if len(ld_path) > 0:
+        var i = 0
+        var path_start = 0
+        while i <= len(ld_path):
+            var at_end = i == len(ld_path)
+            var is_colon = False
+            if not at_end:
+                is_colon = ld_path[byte=i] == ":"
+            if at_end or is_colon:
+                if i > path_start:
+                    var dir_path = ld_path[path_start:i]
+                    return String(dir_path) + "/" + _LIB_NAME
+                path_start = i + 1
+            i += 1
 
     # 4. Fall back to bare library name (let the linker search)
     return _LIB_NAME
@@ -208,16 +200,18 @@ struct Blitz(Movable):
     `destroy()` or when the struct is moved/dropped.
     """
 
-    var _lib: DLHandle
-    var _ctx: UnsafePointer[NoneType]
+    var _lib: _DLHandle
+    var _ctx: UnsafePointer[NoneType, MutAnyOrigin]
 
-    fn __init__(out self, lib: DLHandle, ctx: UnsafePointer[NoneType]):
+    fn __init__(
+        out self, lib: _DLHandle, ctx: UnsafePointer[NoneType, MutAnyOrigin]
+    ):
         """Private initializer. Use Blitz.create() instead."""
-        self._lib = lib^
+        self._lib = lib
         self._ctx = ctx
 
     fn __moveinit__(out self, deinit other: Self):
-        self._lib = other._lib^
+        self._lib = other._lib
         self._ctx = other._ctx
 
     # ── Factory ──────────────────────────────────────────────────────────
@@ -244,14 +238,14 @@ struct Blitz(Movable):
             If the shared library cannot be loaded.
         """
         var lib_path = _find_library()
-        var lib = DLHandle(lib_path)
+        var lib = _DLHandle(lib_path)
 
         var title_ptr = title.unsafe_ptr()
         var title_len = UInt32(len(title))
         var debug_flag = Int32(1) if debug else Int32(0)
 
         var ctx = lib.call[
-            "mblitz_create", UnsafePointer[NoneType]
+            "mblitz_create", UnsafePointer[NoneType, MutAnyOrigin]
         ](
             title_ptr,
             title_len,
@@ -260,7 +254,7 @@ struct Blitz(Movable):
             debug_flag,
         )
 
-        return Self(lib^, ctx)
+        return Self(lib, ctx)
 
     # ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -302,7 +296,7 @@ struct Blitz(Movable):
         """
         if self._ctx:
             self._lib.call["mblitz_destroy", NoneType](self._ctx)
-            self._ctx = UnsafePointer[NoneType]()
+            self._ctx = UnsafePointer[NoneType, MutAnyOrigin]()
 
     # ── Window management ────────────────────────────────────────────────
 
@@ -364,9 +358,7 @@ struct Blitz(Movable):
         Returns:
             Blitz node ID of the placeholder.
         """
-        return self._lib.call["mblitz_create_placeholder", UInt32](
-            self._ctx
-        )
+        return self._lib.call["mblitz_create_placeholder", UInt32](self._ctx)
 
     # ── Templates ────────────────────────────────────────────────────────
 
@@ -470,9 +462,7 @@ struct Blitz(Movable):
         Args:
             node_id: Node ID to remove.
         """
-        self._lib.call["mblitz_remove_node", NoneType](
-            self._ctx, node_id
-        )
+        self._lib.call["mblitz_remove_node", NoneType](self._ctx, node_id)
 
     # ── DOM node attributes ──────────────────────────────────────────────
 
@@ -572,9 +562,7 @@ struct Blitz(Movable):
         Returns:
             Number of children.
         """
-        return self._lib.call["mblitz_child_count", UInt32](
-            self._ctx, node_id
-        )
+        return self._lib.call["mblitz_child_count", UInt32](self._ctx, node_id)
 
     # ── Event handling ───────────────────────────────────────────────────
 
@@ -637,9 +625,7 @@ struct Blitz(Movable):
         # For the initial implementation, we'll use a simplified approach
         # where we check event_count first, then use the C API.
 
-        var count = self._lib.call["mblitz_event_count", UInt32](
-            self._ctx
-        )
+        var count = self._lib.call["mblitz_event_count", UInt32](self._ctx)
         if count == 0:
             return BlitzEvent()
 
@@ -659,7 +645,7 @@ struct Blitz(Movable):
         # This is a temporary approach — it will be refined once Mojo's
         # FFI supports aggregate return types natively.
 
-        var buf = UnsafePointer[UInt8].alloc(32)
+        var buf = alloc[UInt8](32)
         # Zero the buffer
         for i in range(32):
             buf[i] = 0
@@ -706,9 +692,7 @@ struct Blitz(Movable):
         Args:
             node_id: Node ID to push (mojo element ID or Blitz node ID).
         """
-        self._lib.call["mblitz_stack_push", NoneType](
-            self._ctx, node_id
-        )
+        self._lib.call["mblitz_stack_push", NoneType](self._ctx, node_id)
 
     fn stack_pop_append(self, parent_id: UInt32, count: UInt32):
         """Pop N nodes from the stack and append them as children.
@@ -802,6 +786,4 @@ struct Blitz(Movable):
             enabled: True to enable layout borders / node IDs overlay.
         """
         var flag = Int32(1) if enabled else Int32(0)
-        self._lib.call["mblitz_set_debug_overlay", NoneType](
-            self._ctx, flag
-        )
+        self._lib.call["mblitz_set_debug_overlay", NoneType](self._ctx, flag)

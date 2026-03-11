@@ -14,7 +14,7 @@
 # On native targets, launch() calls desktop_launch[TodoApp](config)
 # which creates a Blitz window, mounts the DOM, and enters the event loop.
 
-from platform import launch, AppConfig
+from platform.launch import launch, AppConfig
 from todo import TodoApp
 
 
