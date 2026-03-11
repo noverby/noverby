@@ -12,7 +12,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Desktop | Blitz (Stylo + Vello + Winit) | ✅ Complete | Linux Wayland |
 | Desktop | Blitz | 🔲 Untested | macOS |
 | Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
-| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7 ✅) | Linux (headless tests pass) |
+| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8 ✅) | Linux (headless tests pass) |
 | XR Browser | WebXR + JS interpreter | 📋 Future (Phase 5) | — |
 
 | Area | Metric |
@@ -21,6 +21,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | JS integration test suites | 30 (~3,375 tests) |
 | Desktop integration test suites | 1 (75 tests, verified on Linux + Wine) |
 | XR shim integration tests | 37 (headless — real Blitz documents, no XR runtime or GPU needed) |
+| XR example verification | 4/4 (Counter, Todo, Benchmark, MultiView — headless build+run) |
 | Shared example apps | 4 (Counter, Todo, Benchmark, MultiView) |
 | Test/demo app modules | 15 (in `examples/apps/`) |
 | Binary mutation opcodes | 18 |
@@ -163,22 +164,81 @@ just clean                   # Remove all build artifacts
 
 ### Import Conventions
 
-Apps and core modules use `-I` flag paths. The build target determines which renderer is linked:
+Apps and core modules use `-I` flag paths. The build target determines which renderer is linked.
+
+**Note:** All native builds (desktop and XR) must include both `-I desktop/src` and `-I xr/native/src` because Mojo's `@parameter if` does not prevent import resolution in dead branches. The compile-time dispatch in `launch.mojo` imports from both `desktop.launcher` and `xr.launcher` — the linker only pulls in the active branch's code.
 
 ```text
 # Web (WASM):
 mojo build examples/counter/main.mojo --target wasm64-wasi -I core/src -I web/src -I examples
 
 # Desktop (native):
-mojo build examples/counter/main.mojo -I core/src -I desktop/src -I examples
+mojo build examples/counter/main.mojo -I core/src -I desktop/src -I xr/native/src -I examples
 
 # XR (native + OpenXR):
-mojo build examples/counter/main.mojo -D MOJO_TARGET_XR -I core/src -I xr/native/src -I examples
+mojo build examples/counter/main.mojo -D MOJO_TARGET_XR -I core/src -I xr/native/src -I desktop/src -I examples
 ```
 
 ---
 
 ## What Was Done
+
+### Phase 5.8: Verify Shared Examples in XR — ✅ Complete
+
+Verified all 4 shared examples (Counter, Todo, Benchmark, MultiView) build and run as XR floating panels in headless mode. Fixed three issues discovered during verification.
+
+**Issue 1: Mojo `@parameter if` import resolution in dead branches**
+
+The `launch()` function in `core/src/platform/launch.mojo` uses `@parameter if` / `elif` / `else` for compile-time dispatch, importing `desktop.launcher` and `xr.launcher` in different branches. However, Mojo's `@parameter if` does not suppress import resolution in dead branches — the compiler still resolves all imports regardless of which branch is active. This caused build failures when only one renderer's include path was provided.
+
+**Fix:** All native builds now include both `-I desktop/src` and `-I xr/native/src`. The linker only pulls in the active branch's code. Updated `justfile` recipes: `build-desktop`, `build-xr`, `build-desktop-windows`.
+
+**Issue 2: `performance_now()` link failure on native targets**
+
+The benchmark app (`examples/bench/bench.mojo`) used `external_call["performance_now", Float64]()` unconditionally, which emits an unresolved symbol. On WASM this becomes an import; on native targets it causes a linker error.
+
+**Fix:** Made `performance_now()` cross-platform with `@parameter if is_wasm_target()`: WASM path uses `external_call` (unchanged), native path uses `time.perf_counter_ns() / 1_000_000.0`.
+
+**Issue 3: Headless XR frame loop never exits**
+
+The XR launcher's break condition checked `predicted_time == 0` as a "headless sentinel", but the headless `mxr_wait_frame()` returns real `SystemTime` timestamps (not 0). The frame loop ran indefinitely.
+
+**Fix:** Replaced the `predicted_time == 0` check with an idle frame counter. After mount + flush, if no events arrive and no dirty scopes exist for 1 consecutive frame, the loop exits. Real OpenXR sessions block in `wait_frame()` and never hit this counter.
+
+**Verification results:**
+
+```text
+$ just build-xr-all    # ✅ All 4 examples build
+$ just run-xr counter  # ✅ Exit code 0
+$ just run-xr todo     # ✅ Exit code 0
+$ just run-xr bench    # ✅ Exit code 0
+$ just run-xr app      # ✅ Exit code 0
+$ just test-xr         # ✅ 37/37 shim tests pass
+$ just test-desktop    # ✅ 75/75 shim tests pass (no regressions)
+```
+
+**Modified files:**
+
+- **`justfile`** — Added `-I xr/native/src` to desktop build commands and `-I desktop/src` to XR build commands. Added comment explaining the Mojo `@parameter if` workaround.
+- **`examples/bench/bench.mojo`** — Made `performance_now()` cross-platform via `@parameter if is_wasm_target()`. Added `from platform.app import is_wasm_target`.
+- **`xr/native/src/xr/launcher.mojo`** — Replaced `predicted_time == 0` headless exit condition with idle frame counter. Tracks consecutive frames with no events and no dirty scopes; breaks after 1 idle frame.
+
+---
+
+### Mojo 26.1.0 WASM Test Infrastructure Fix — ✅ Complete
+
+Mojo 26.1.0 introduced `clock_gettime` as a new WASM import (`env::clock_gettime`) used by the runtime internally. Both the Mojo wasmtime test harness and the JS/Deno runtime were missing this import, causing all 52 Mojo test suites and all 30 JS test suites to fail with `unknown import: env::clock_gettime`.
+
+**Fix:** Added `clock_gettime` implementation to both runtimes.
+
+- **`core/test/wasm_harness.mojo`** — Added `_cb_clock_gettime` callback (deterministic mock: `tv_sec = mock_time`, `tv_nsec = 0`) and `define_func` registration. Updated import count comment from 15 to 16.
+- **`web/runtime/env.ts`** — Added `clock_gettime` to the env object. Uses `performance.now()` to fill `struct timespec { tv_sec, tv_nsec }` at the pointer in WASM memory.
+
+**Signature:** `clock_gettime(clockid: i32, timespec_ptr: i64) -> i32` where `struct timespec { i64 tv_sec; i64 tv_nsec; }` (WASM64 layout).
+
+**Verification:** All 52 Mojo test suites pass. All 3,375 JS integration tests pass.
+
+---
 
 ### Phase 5.5+5.7: XR Launcher & Compile-Time Dispatch — ✅ Complete
 
@@ -199,9 +259,9 @@ Implemented `xr_launch[AppType: GuiApp]()` — the XR-side counterpart to `deskt
 **Compile targets after this step:**
 
 ```text
-mojo build --target wasm64-wasi -I core/src -I web/src       → web
-mojo build -I core/src -I desktop/src                        → desktop (Blitz)
-mojo build -D MOJO_TARGET_XR -I core/src -I xr/native/src   → XR (OpenXR native)
+mojo build --target wasm64-wasi -I core/src -I web/src                        → web
+mojo build -I core/src -I desktop/src -I xr/native/src                        → desktop (Blitz)
+mojo build -D MOJO_TARGET_XR -I core/src -I xr/native/src -I desktop/src      → XR (OpenXR native)
 ```
 
 ---
@@ -506,16 +566,16 @@ XR panel abstraction that reuses the binary mutation protocol unchanged. Each XR
 | 5.5 | `xr_launch[AppType: GuiApp]()` — single-panel apps get XR for free | ✅ Complete — `xr/native/src/xr/launcher.mojo`. Creates headless/OpenXR session, allocates default panel (size from AppConfig), applies XR UA stylesheet, mounts app, enters XR frame loop (wait_frame → poll_event → handle_event → flush → apply mutations → render → end_frame). Same mutation buffer management as desktop launcher. |
 | 5.6 | WebXR JS runtime (DOM → texture, XR session management) | 🔲 Future |
 | 5.7 | Wire `launch()` for XR targets (`@parameter if is_xr_target()`) | ✅ Complete — `launch()` now dispatches: WASM → web, `-D MOJO_TARGET_XR` → `xr_launch`, native → `desktop_launch`. Added `is_xr_target()` compile-time detection. |
-| 5.8 | Verify shared examples in XR (all 4 apps render as floating panels) | 🔲 Pending |
+| 5.8 | Verify shared examples in XR (all 4 apps render as floating panels) | ✅ Complete — All 4 shared examples (Counter, Todo, Benchmark, MultiView) build and run in XR headless mode. Fixed: Mojo `@parameter if` import resolution (all renderer `-I` paths needed), `performance_now()` cross-platform support (native uses `perf_counter_ns`), headless frame loop exit (idle frame counter replaces broken `predicted_time == 0` check). |
 | 5.9 | Multi-panel XR API — `XRGuiApp` trait for apps managing multiple panels (stretch goal) | 🔮 Future |
 
 **Compile targets after Phase 5:**
 
 ```text
-mojo build --target wasm64-wasi                                    → web
-mojo build --target wasm64-wasi --feature webxr                    → WebXR browser (future)
-mojo build -I core/src -I desktop/src                              → desktop (Blitz)
-mojo build -D MOJO_TARGET_XR -I core/src -I xr/native/src         → OpenXR native
+mojo build --target wasm64-wasi -I core/src -I web/src                        → web
+mojo build --target wasm64-wasi --feature webxr                               → WebXR browser (future)
+mojo build -I core/src -I desktop/src -I xr/native/src                        → desktop (Blitz)
+mojo build -D MOJO_TARGET_XR -I core/src -I xr/native/src -I desktop/src      → OpenXR native
 ```
 
 ### Medium-term — Phase 6: `mojo-web` Raw Bindings
@@ -568,6 +628,8 @@ These decisions are settled and documented here for reference. See [architecture
 
 6. **Blitz over webview for desktop.** No JS runtime, no IPC, no base64 encoding. Direct in-process C FFI. Cross-platform via Winit. Consistent CSS via Stylo. Pinned to Blitz v0.2.0 (rev `2f83df96`).
 
+7. **All renderer include paths in every native build.** Mojo's `@parameter if` does not suppress import resolution in dead branches — the compiler resolves all `from X import Y` statements regardless of which compile-time branch is active. The `launch()` function imports from `desktop.launcher` and `xr.launcher` in different `@parameter if` branches, so all native builds must provide `-I desktop/src -I xr/native/src` even though only one renderer is linked. The linker only pulls in the active branch's code; the extra `-I` paths are a compile-time workaround only. This was discovered during Step 5.8 verification and applies to all current and future renderer backends added to `launch()`.
+
 ---
 
 ## Open Risks
@@ -578,6 +640,8 @@ These decisions are settled and documented here for reference. See [architecture
 | Blitz pre-alpha stability | Rendering bugs, missing CSS | Track Blitz releases; pin versions; document CSS support scope | Mitigated — pinned to v0.2.0 |
 | Native target module-level `var` | Global `var` not supported on native | Avoided in current design; config passed as arguments, not globals | ✅ Resolved |
 | Mojo trait limitations | `GuiApp` may not support future needs | `alias CurrentApp = ...` as fallback; upgrade when Mojo improves | ✅ Resolved for current scope |
+| Mojo `@parameter if` import resolution | Dead branches still trigger import resolution; adding a new renderer backend to `launch()` requires updating ALL native build commands | Include all renderer `-I` paths in every native build; document in justfile and Architecture Decisions (§7) | ✅ Mitigated — workaround in place since Step 5.8; will re-evaluate when Mojo improves `@parameter if` semantics |
+| Mojo WASM runtime import drift | New Mojo versions may add new WASM imports (e.g. `clock_gettime` in 26.1.0) that break the test harness | Pin Mojo version; update both `wasm_harness.mojo` and `web/runtime/env.ts` when upgrading; check `wasm-objdump -j Import` after Mojo upgrades | ✅ Mitigated — `clock_gettime` added for 26.1.0 |
 | OpenXR runtime availability (Phase 5) | XR fails without runtime | Detect at startup; fall back to desktop Blitz | In progress — headless mode (`mxr_create_headless`) implemented for testing without runtime; `xr_launch` uses headless by default until runtime detection is added |
 | DOM-to-texture fidelity for WebXR (Phase 5) | Rendering quality/interactivity loss | Evaluate OffscreenCanvas, html2canvas, CSS 3D, custom 2D renderer | Future |
 | XR input latency (Phase 5) | Raycasting → DOM event adds latency to controller input | Keep raycast math in the shim (Rust); minimize FFI roundtrips | In progress — Rust-side raycasting implemented |

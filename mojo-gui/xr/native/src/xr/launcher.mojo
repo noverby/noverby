@@ -282,9 +282,16 @@ fn xr_launch[AppType: GuiApp](config: AppConfig) raises:
 
     # ── 6. XR frame loop ─────────────────────────────────────────────
 
+    # Track consecutive idle frames (no events, no dirty scopes) to detect
+    # when a headless session has stabilized. Real OpenXR sessions block in
+    # wait_frame() and continue until the runtime signals exit — they never
+    # hit this counter. Headless sessions return immediately from wait_frame
+    # with a real timestamp (not 0), so we need an explicit idle counter.
+    var idle_frames: Int = 0
+
     while xr.is_alive():
         # 6a. Wait for the next frame from the OpenXR runtime.
-        # In headless mode, this returns immediately with time=0.
+        # In headless mode, this returns immediately with a real timestamp.
         var predicted_time = xr.wait_frame()
 
         # 6b. Begin the frame — acquire swapchain image.
@@ -307,7 +314,8 @@ fn xr_launch[AppType: GuiApp](config: AppConfig) raises:
                 )
 
         # 6d. If dirty scopes exist, flush mutations.
-        if app.has_dirty():
+        var had_dirty = app.has_dirty()
+        if had_dirty:
             _reset_writer(writer_ptr, buf_ptr, buf_capacity)
 
             var flush_len = app.flush(writer_ptr)
@@ -323,28 +331,26 @@ fn xr_launch[AppType: GuiApp](config: AppConfig) raises:
         # 6f. End the frame — submit quad layers to compositor.
         xr.end_frame()
 
-        # In headless mode, break after one iteration to avoid infinite
-        # loop in tests. Real OpenXR sessions continue until the runtime
-        # signals exit (session state transitions to STOPPING/EXITING).
-        if not had_event and not app.has_dirty():
-            # No events and no dirty scopes — in headless mode this means
-            # the session is idle. For a real OpenXR session, wait_frame()
-            # blocks until the next frame so this branch naturally pauses.
-            #
-            # In headless mode, we need to detect when the session is done.
-            # The headless session starts in FOCUSED state and stays alive
-            # until explicitly destroyed. For testing, the caller destroys
-            # the session externally. For interactive use, inject_event
-            # drives the loop.
-            #
-            # Break out if the session is no longer alive (destroyed from
-            # outside, or OpenXR session ended).
-            if not xr.is_alive():
+        # 6g. Idle detection for headless sessions.
+        #
+        # Real OpenXR sessions block in wait_frame() and continue until
+        # the runtime transitions to STOPPING/EXITING — they never
+        # accumulate idle frames because wait_frame paces the loop.
+        #
+        # Headless sessions return immediately from wait_frame(), so
+        # without an exit condition the loop spins forever. We track
+        # consecutive idle frames (no events AND no dirty scopes) and
+        # break once the app has stabilized.
+        #
+        # One idle frame is sufficient: after mount + flush, all reactive
+        # effects have settled. Any event-driven work (click handlers,
+        # input binding) requires injected events which reset the counter.
+        if not had_event and not had_dirty:
+            idle_frames += 1
+            if idle_frames >= 1:
                 break
-            # For headless testing, allow the caller to break the loop by
-            # checking that wait_frame returned 0 (headless sentinel).
-            if predicted_time == 0:
-                break
+        else:
+            idle_frames = 0
 
     # ── 7. Cleanup ───────────────────────────────────────────────────
 
