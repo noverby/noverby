@@ -175,20 +175,27 @@ trait PlatformApp(Movable):
 fn is_wasm_target() -> Bool:
     """Return True if the current compilation target is WASM.
 
-    This uses compile-time target detection to determine whether the code
-    is being compiled for a WASM target (wasm32-wasi or wasm64-wasi).
+    Detection strategy: uses `sys.param_env.is_defined` to check for the
+    `MOJO_TARGET_WASM` compile-time define. The build system must pass
+    `-D MOJO_TARGET_WASM` when compiling for a WASM target.
+
+    This replaces the previous `info.os_is_wasi()` call which was removed
+    in Mojo 0.26.1.
+
+    Note: The current WASM build pipeline (`mojo build --emit llvm` then
+    `llc --mtriple=wasm64-wasi`) means the Mojo compiler itself targets
+    the host architecture — it doesn't know about WASM at compile time.
+    The web entry point (`web/src/main.mojo`) uses `@export` functions
+    directly and never calls `launch()`, so this function returning False
+    on native builds is the correct behavior. The define-based approach
+    is forward-looking for when `mojo build --target wasm64-wasi` is
+    supported natively.
 
     Used by launch() to select the appropriate renderer at compile time.
     """
-    # Mojo's os.ARCH reflects the compilation target architecture.
-    # For WASM targets, this will be "wasm32" or "wasm64".
-    # For native targets, it will be "x86_64", "aarch64", etc.
-    #
-    # Note: As Mojo's compile-time introspection evolves, this may be
-    # replaced with a more direct target triple query.
-    from sys import info
+    from sys.param_env import is_defined
 
-    return info.os_is_wasi()
+    return is_defined["MOJO_TARGET_WASM"]()
 
 
 fn is_native_target() -> Bool:

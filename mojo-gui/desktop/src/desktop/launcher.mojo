@@ -54,7 +54,8 @@
 
 from memory import UnsafePointer, alloc
 from bridge import MutationWriter
-from platform import GuiApp, AppConfig
+from platform.gui_app import GuiApp
+from platform.launch import AppConfig
 from .blitz import Blitz, BlitzEvent
 from .renderer import MutationInterpreter
 
@@ -64,7 +65,7 @@ from .renderer import MutationInterpreter
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Default mutation buffer size (64 KiB — same as the webview desktop renderer).
-alias _DEFAULT_BUF_CAPACITY: Int = 65536
+comptime _DEFAULT_BUF_CAPACITY: Int = 65536
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -72,19 +73,21 @@ alias _DEFAULT_BUF_CAPACITY: Int = 65536
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn _alloc_mutation_buffer(capacity: Int) -> UnsafePointer[UInt8]:
+fn _alloc_mutation_buffer(
+    capacity: Int,
+) -> UnsafePointer[UInt8, MutExternalOrigin]:
     """Allocate a heap buffer for mutation data.
 
     Returns a pointer to a zeroed buffer of `capacity` bytes.
     """
-    var buf = UnsafePointer[UInt8].alloc(capacity)
+    var buf = alloc[UInt8](capacity)
     for i in range(capacity):
         buf[i] = 0
     return buf
 
 
 fn _alloc_writer(
-    buf_ptr: UnsafePointer[UInt8], capacity: Int
+    buf_ptr: UnsafePointer[UInt8, MutExternalOrigin], capacity: Int
 ) -> UnsafePointer[MutationWriter, MutExternalOrigin]:
     """Allocate a MutationWriter on the heap backed by the given buffer.
 
@@ -111,7 +114,7 @@ fn _alloc_writer(
 
 fn _reset_writer(
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
-    buf_ptr: UnsafePointer[UInt8],
+    buf_ptr: UnsafePointer[UInt8, MutExternalOrigin],
     capacity: Int,
 ):
     """Reset a MutationWriter to offset 0, reusing the same buffer.
@@ -278,7 +281,7 @@ fn desktop_launch[AppType: GuiApp](config: AppConfig) raises:
 # focus outlines, etc.) and tweaks for the mojo-gui counter/todo/bench
 # examples.
 
-alias _DEFAULT_UA_CSS = """
+comptime _DEFAULT_UA_CSS = """
 /* mojo-gui desktop UA stylesheet */
 
 *, *::before, *::after {

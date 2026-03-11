@@ -1,4 +1,4 @@
-# Phase 4: Desktop Blitz Renderer (Implementation Complete, Verification Pending)
+# Phase 4: Desktop Blitz Renderer (Builds Verified, Runtime Pending)
 
 Replace the webview dependency in the desktop renderer with [Blitz](https://github.com/DioxusLabs/blitz), a native HTML/CSS rendering engine. This is the same evolution Dioxus followed — webview first, then Blitz for native rendering without a browser engine.
 
@@ -153,14 +153,48 @@ Resolved all Blitz dependency issues and successfully built the `libmojo_blitz.s
 
 ---
 
-## Step 4.4 — Verify all shared examples — next priority
+## Step 4.4 — Verify all shared examples — builds ✅, runtime pending
 
 Every example that works on web MUST work on desktop-Blitz. The app code is identical — only the renderer backend changes. Each example now has a `main.mojo` entry point with `launch[AppType](config)`.
 
-- [ ] Counter example builds and runs on desktop (`mojo build examples/counter/main.mojo -I core/src -I desktop/src -I examples`)
-- [ ] Todo example builds and runs on desktop
-- [ ] Bench example builds and runs on desktop
-- [ ] Multi-view app example builds and runs on desktop
+### Build verification ✅
+
+All 4 shared examples compile for **both** desktop-Blitz and web from identical source:
+
+- [x] Counter example builds on desktop (`mojo build examples/counter/main.mojo -I core/src -I desktop/src -I examples`)
+- [x] Todo example builds on desktop
+- [x] Bench example builds on desktop
+- [x] Multi-view app example builds on desktop
+- [x] Web build (`just build` in `web/`) still succeeds with all shared examples
+- [x] All 3,090 JS tests pass
+- [x] All 52 Mojo test suites pass
+
+### Mojo 0.26.1 API migration (completed as part of build verification)
+
+The Mojo FFI and platform modules required updates for Mojo 0.26.1 compatibility:
+
+| Change | Files affected |
+|--------|---------------|
+| `info.os_is_wasi()` → `is_defined["MOJO_TARGET_WASM"]()` | `core/src/platform/app.mojo` |
+| `alias` → `comptime` for module-level constants | `desktop/src/desktop/renderer.mojo`, `launcher.mojo`, `blitz.mojo` |
+| `DLHandle` → `_DLHandle` (from `sys.ffi`) | `desktop/src/desktop/blitz.mojo` |
+| `env_get_string()` → `getenv()` (from `os`) | `desktop/src/desktop/blitz.mojo` |
+| `UnsafePointer[T]` → `UnsafePointer[T, Origin]` (explicit origin) | `blitz.mojo`, `renderer.mojo`, `launcher.mojo` |
+| `UnsafePointer[T].alloc(n)` → `alloc[T](n)` (standalone function) | `blitz.mojo`, `renderer.mojo`, `launcher.mojo` |
+| `UnsafePointer.address_of(x)` → `UnsafePointer(to=x)` | `desktop/src/desktop/renderer.mojo` |
+| `s[i]` → `s[byte=i]` for string byte access | `desktop/src/desktop/blitz.mojo` |
+| `List[T]` implicit copy → explicit `.copy()` or `^` transfer | `desktop/src/desktop/renderer.mojo` |
+| `from platform import launch` → `from platform.launch import launch` | All 4 shared example `main.mojo` files |
+| Circular dependency break: `from platform import` → `from platform.gui_app import` / `from platform.launch import` | `desktop/src/desktop/launcher.mojo` |
+
+**Known Mojo 0.26.1 issue:** Re-exporting parametric functions through `__init__.mojo` triggers a "not subscriptable" error. Workaround: import `launch` directly from `platform.launch` instead of `platform`. All other symbols re-export correctly. Documented in `core/src/platform/__init__.mojo`.
+
+### Runtime verification — pending
+
+- [ ] Counter example runs interactively on desktop (requires `libmojo_blitz.so` + GPU)
+- [ ] Todo example runs interactively on desktop
+- [ ] Bench example runs interactively on desktop
+- [ ] Multi-view app example runs interactively on desktop
 
 ---
 
@@ -194,7 +228,7 @@ Implemented full Winit event loop integration in the Blitz C shim (`shim/src/lib
 | `desktop/shim/mojo_blitz.h` | C API header (~45 FFI functions: lifecycle, DOM, templates, events, stack, debug) |
 | `desktop/shim/Cargo.toml` | Rust crate config (blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, winit, etc.) |
 | `desktop/shim/default.nix` | Nix derivation with GPU/windowing deps (Vulkan, Wayland, X11, fontconfig) |
-| `desktop/src/desktop/blitz.mojo` | Mojo FFI bindings to `libmojo_blitz_shim.so` via `DLHandle` |
+| `desktop/src/desktop/blitz.mojo` | Mojo FFI bindings to `libmojo_blitz_shim.so` via `_DLHandle` |
 | `desktop/src/desktop/renderer.mojo` | `MutationInterpreter`: reads binary opcodes → Blitz C FFI calls (all 18 opcodes) |
 | `desktop/src/desktop/launcher.mojo` | `desktop_launch[AppType: GuiApp]()` — generic Blitz-backed event loop |
 
@@ -202,6 +236,6 @@ Implemented full Winit event loop integration in the Blitz C shim (`shim/src/lib
 
 ## Remaining Work
 
-1. **Step 4.4** — Verify all 4 shared examples build and run on desktop-Blitz (counter, todo, bench, app)
+1. **Step 4.4 runtime** — Verify all 4 shared examples run interactively on desktop-Blitz (requires `libmojo_blitz.so` build + GPU)
 2. **Step 4.5** — Cross-platform testing (Linux, macOS, Windows via Winit)
 3. **Cross-target CI** — Set up CI matrix testing web + desktop-Blitz for every shared example

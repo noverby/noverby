@@ -25,7 +25,9 @@
 - [x] Genericize `main.mojo` `@export` wrappers — `web/src/gui_app_exports.mojo` provides parametric lifecycle helpers; all 4 main apps use them; free functions removed from examples (Step 3.9.5)
 - [x] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` with Blitz mutation interpreter (Step 3.9.2)
 - [x] Add `launch()` to shared examples (Step 3.9.6) — `main.mojo` entry points added to all 4 shared examples (counter, todo, bench, app) with `launch[AppType](AppConfig(...))`; no per-renderer example duplicates existed to delete
-- [ ] Cross-target verification — verify all 4 shared examples on both web and desktop (Step 3.9.7 — needs build verification)
+- [x] Cross-target build verification — all 4 shared examples compile for both web and desktop (Step 3.9.7)
+- [x] Mojo 0.26.1 API migration — updated platform detection, FFI bindings, UnsafePointer origins, alias→comptime, string indexing (see Phase 4 Step 4.4 for details)
+- [ ] Cross-target runtime verification — verify all 4 shared examples run interactively on desktop (requires libmojo_blitz.so + GPU)
 - [x] Update app imports in `apps/*.mojo` for new `html/` path (`from vdom import` → `from html import`)
 - [x] Move `test/*.mojo` to `mojo-gui/core/test/`
 - [x] Update test imports for new paths (`test_handles.mojo`: `from vdom` → `from html`)
@@ -45,7 +47,8 @@
 - [x] Create `web/src/web_launcher.mojo` — `WebApp` implementing the `PlatformApp` trait (no-op stubs for WASM target where JS runtime drives the loop) + `create_web_app()` helper
 - [x] Move web-specific example assets (HTML, JS glue) — web assets (HTML shells, main.js entry points) live in `web/examples/<name>/`; shared Mojo app code lives in `examples/<name>/`; redundant `examples/<name>/web/` copies removed
 - [x] Create `web/scripts/build_examples.sh` — builds all shared examples for WASM target (discovers examples, compiles shared WASM binary via main.mojo, copies per-example HTML/JS assets from both shared and web-specific locations)
-- [ ] Verify shared examples build and run in browser via web target — build paths updated (`-I ../examples`), needs `just build` + browser verification
+- [x] Verify shared examples build for web target — `just build` succeeds with `-I ../examples` paths; all 3,090 JS tests + 52 Mojo test suites pass
+- [ ] Verify shared examples run in browser — browser verification blocked by headless Servo in CI
 - [x] Move `test-js/` to `mojo-gui/web/test-js/`
 - [x] Move `scripts/` to `mojo-gui/web/scripts/`
 - [x] Move build files (`justfile`, `deno.json`, `default.nix`) — updated `justfile` with `-I ../core/src -I ../examples` for core and shared example package resolution
@@ -78,12 +81,13 @@
 - [x] Refactor app structs to implement `GuiApp` — all 4 main apps (CounterApp, TodoApp, BenchmarkApp, MultiViewApp) now implement `GuiApp`; backwards-compatible free functions removed (Step 3.9.4)
 - [x] Genericize `main.mojo` `@export` wrappers over `GuiApp` — `web/src/gui_app_exports.mojo` provides `gui_app_init`, `gui_app_mount`, `gui_app_handle_event`, `gui_app_flush`, etc.; all 4 main app @exports are now one-liners; 3,090 JS tests + 52 Mojo test suites pass (Step 3.9.5)
 - [x] Add `launch[AppType](...)` to shared examples (Step 3.9.6) — `main.mojo` entry points added to all 4 shared examples; no per-renderer duplicates existed to delete
-- [ ] Verify all 4 shared examples build and run on both web and desktop from identical source (Step 3.9.7 — needs build verification)
+- [x] Verify all 4 shared examples build on both web and desktop from identical source (Step 3.9.7 — build verification complete)
+- [ ] Verify all 4 shared examples run interactively on desktop (requires libmojo_blitz.so + GPU)
 - [ ] Set up cross-target CI test matrix (web + desktop for every shared example)
 
 ---
 
-## Phase 4: `mojo-gui/desktop` — Blitz renderer (Winit integration complete, verification pending)
+## Phase 4: `mojo-gui/desktop` — Blitz renderer (builds verified, runtime pending)
 
 - [x] Build Blitz C shim (`shim/src/lib.rs`) — Rust `cdylib` wrapping `blitz-dom`'s `BaseDocument` + `DocumentMutator` via `extern "C"` functions; `BlitzContext` owns document, ID mapping, template registry, event queue, interpreter stack
 - [x] Write C header (`shim/mojo_blitz.h`) — 644-line header covering lifecycle, window, DOM creation, templates, tree mutations, attributes, text, traversal, events, mutation batching, stack operations, ID mapping, root access, layout, debug
@@ -99,7 +103,12 @@
 - [x] Connect `blitz-paint` rendering pipeline — `RedrawRequested` → `doc.resolve()` (Stylo + Taffy) → `paint_scene()` (Vello GPU rendering); `mblitz_request_redraw()` triggers window redraw
 - [x] Implement DOM event routing — `MojoEventHandler` intercepts Blitz DOM events during bubble propagation; `CursorMoved`/`MouseInput` → `UiEvent` → `EventDriver` → buffered events for `mblitz_poll_event()`
 - [x] Fix dependency version mismatches — downgraded anyrender 0.7→0.6, anyrender_vello 0.7→0.6, winit 0.31-beta→0.30 to match Blitz v0.2.0; ported winit API (0.31 → 0.30: `PointerMoved`→`CursorMoved`, `PointerButton`→`MouseInput`, `SurfaceResized`→`Resized`, `can_create_surfaces`→`resumed`, `dyn ActiveEventLoop`→`&ActiveEventLoop`, `Box<dyn Window>`→`Arc<Window>`)
-- [ ] Verify all shared examples on Blitz desktop (counter, todo, bench, app) — Step 4.4
+- [x] Mojo 0.26.1 API migration — `info.os_is_wasi()`→`is_defined`, `DLHandle`→`_DLHandle`, `env_get_string`→`getenv`, `alias`→`comptime`, `UnsafePointer` origin params, `s[i]`→`s[byte=i]`, `UnsafePointer.alloc()`→`alloc[]()`, `UnsafePointer.address_of()`→`UnsafePointer(to=)`, `List[T]` explicit copy/transfer, circular import fix in launcher.mojo, parametric re-export workaround (`from platform.launch import launch`)
+- [x] All 4 shared examples build on desktop-Blitz (counter, todo, bench, app) — Step 4.4 build verification
+- [x] All 4 shared examples build on web — Step 4.4 cross-target build verification
+- [x] All 3,090 JS tests pass after migration
+- [x] All 52 Mojo test suites pass after migration
+- [ ] All 4 shared examples run interactively on Blitz desktop — Step 4.4 runtime verification (requires libmojo_blitz.so + GPU)
 - [ ] Cross-platform testing (Linux, macOS, Windows via Winit) — Step 4.5
 - [ ] Set up cross-target CI test matrix (web + desktop-blitz for every shared example)
 
