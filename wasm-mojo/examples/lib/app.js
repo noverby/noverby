@@ -13,26 +13,26 @@
 // all apps use an identical main.js:
 //
 //   import { launch } from "../lib/app.js";
-//   launch({ app: "myapp", wasm: new URL("../../build/out.wasm", import.meta.url) });
+//   launch({ app: "myapp", wasm: new URL("../../web/build/out.wasm", import.meta.url) });
 //
 // Usage:
 //
 //   // Counter — zero-config launch
 //   launch({
 //     app: "counter",
-//     wasm: new URL("../../build/out.wasm", import.meta.url),
+//     wasm: new URL("../../web/build/out.wasm", import.meta.url),
 //   });
 //
 //   // Todo — zero-config launch (Enter key handled in WASM via onkeydown_enter_custom)
 //   launch({
 //     app: "todo",
-//     wasm: new URL("../../build/out.wasm", import.meta.url),
+//     wasm: new URL("../../web/build/out.wasm", import.meta.url),
 //   });
 //
 //   // Bench — near-zero-config launch (toolbar rendered from WASM, only needs large buffer)
 //   launch({
 //     app: "bench",
-//     wasm: new URL("../../build/out.wasm", import.meta.url),
+//     wasm: new URL("../../web/build/out.wasm", import.meta.url),
 //     bufferCapacity: 8 * 1024 * 1024,
 //   });
 

@@ -128,6 +128,8 @@ from signals import SignalI32, SignalString
 from vdom import (
     VNode,
     VNodeStore,
+)
+from html import (
     Node,
     el_div,
     el_span,

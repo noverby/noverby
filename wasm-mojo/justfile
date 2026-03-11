@@ -1,77 +1,63 @@
+# Root justfile — delegates to sub-project build systems.
+#
+# After the Phase 1/2 separation:
+#   - core/     — renderer-agnostic GUI framework (Mojo library)
+#   - web/      — browser renderer (WASM + TypeScript)
+#   - examples/ — shared example apps (run on every target)
+#
+# Most build commands now live in web/justfile. This root justfile
+# provides convenience aliases.
+
+# Default: build the web target
+default: build
+
+# ── Web target ───────────────────────────────────────────────────────────────
+
+# Build the WASM binary (delegates to web/justfile)
 build:
-    mkdir -p build
-    rm -f build/out.cwasm
-    mojo build -Werror --emit llvm -I examples -o build/out.ll src/main.mojo
-    sed -i '/call void @llvm\.lifetime\.\(start\|end\)/d' build/out.ll
-    sed -i 's/ nocreateundeforpoison//g' build/out.ll
-    sed -i 's/ "target-cpu"="[^"]*"//g; s/ "target-features"="[^"]*"//g' build/out.ll
-    sed -i '/^attributes #[0-9]* = { }$/d' build/out.ll
-    llc --mtriple=wasm64-wasi -filetype=obj build/out.ll
-    wasm-ld --no-entry --export-all --allow-undefined -mwasm64 --initial-memory=268435456 -o build/out.wasm build/out.o
+    cd web && just build
 
-# Incremental build — skip if out.wasm is newer than all source files.
+# Incremental build
 build-if-changed:
-    #!/usr/bin/env nu
-    mkdir build
-    if ("build/out.wasm" | path exists) and (glob "src/**/*.mojo" "examples/**/*.mojo" | where { |f| (ls $f | get 0.modified) > (ls "build/out.wasm" | get 0.modified) } | is-empty) {
-      print "build: out.wasm is up-to-date, skipping."
-    } else {
-      ^just build
-    }
+    cd web && just build-if-changed
 
-precompile: build
-    wasmtime compile -o build/out.cwasm build/out.wasm
+# Precompile WASM for faster loading
+precompile:
+    cd web && just precompile
 
-# Incremental precompile — skip if cwasm is newer than wasm.
-precompile-if-changed: build-if-changed
-    #!/usr/bin/env nu
-    if ("build/out.cwasm" | path exists) and ((ls "build/out.cwasm" | get 0.modified) > (ls "build/out.wasm" | get 0.modified)) {
-      print "precompile: out.cwasm is up-to-date, skipping."
-    } else {
-      ^just precompile
-    }
+# Build Mojo test binaries (parallel, incremental)
+test-build *FILTER:
+    cd web && just test-build {{ FILTER }}
 
-# Build precompiled test binaries (parallel, incremental).
-# Depends on precompile-if-changed so .cwasm exists for fast WASM loading.
-# Pass optional filter args to build only matching modules:
-#   just test-build signals       # build only test_signals
-
-# just test-build signals mut   # build test_signals + test_mutations
-test-build *FILTER: precompile-if-changed
-    nu scripts/build-test-binaries.nu {{ FILTER }}
-
-# Run precompiled test binaries (parallel, ~10s).
-# Pass optional filter args to run only matching modules:
-#   just test-run signals         # run only test_signals
-
-# just test-run -v dsl          # verbose, only test_dsl
+# Run precompiled Mojo test binaries
 test-run *FILTER:
-    nu scripts/run-test-binaries.nu {{ FILTER }}
+    cd web && just test-run {{ FILTER }}
 
-# Build + run precompiled test binaries (fastest full Mojo test cycle).
-# Pass optional filter args to target specific modules:
-#   just test signals             # build + run only test_signals
+# Build + run Mojo test binaries
+test *FILTER:
+    cd web && just test {{ FILTER }}
 
-# just test signals mutations   # build + run test_signals + test_mutations
-test *FILTER: (test-build FILTER) (test-run FILTER)
+# Run JS integration tests
+test-js:
+    cd web && just test-js
 
-test-js: build
-    deno run --allow-read test-js/run.ts
-
-test-all: test test-js
+# Run all tests (Mojo + JS)
+test-all:
+    cd web && just test-all
 
 # End-to-end browser tests via headless Servo + WebDriver
 test-browser:
-    nu test-browser.nu
+    cd web && just test-browser
 
-# Browser tests with verbose Servo output (debugging)
+# Browser tests with verbose Servo output
 test-browser-verbose:
-    nu test-browser.nu --verbose
+    cd web && just test-browser-verbose
 
 # Single app browser test
 test-browser-app app:
-    nu test-browser.nu --app {{ app }}
+    cd web && just test-browser-app {{ app }}
 
+# Serve examples in browser (from project root for correct paths)
 serve: build
     @echo "Open http://localhost:4507/examples/counter/"
     @echo "Open http://localhost:4507/examples/todo/"

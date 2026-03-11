@@ -198,6 +198,8 @@ from signals import SignalI32
 from vdom import (
     VNode,
     VNodeStore,
+)
+from html import (
     Node,
     el_div,
     el_h1,

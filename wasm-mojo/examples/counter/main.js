@@ -10,6 +10,6 @@ import { launch } from "../lib/app.js";
 
 launch({
 	app: "counter",
-	wasm: new URL("../../build/out.wasm", import.meta.url),
+	wasm: new URL("../../web/build/out.wasm", import.meta.url),
 	bufferCapacity: 16384,
 });
