@@ -1,5 +1,5 @@
 # Comparison and boolean logic operations exercised through the real WASM binary
-# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# via mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that eq, ne, lt, le, gt, ge, bool_and, bool_or, and bool_not
 # work correctly when compiled to WASM and executed via the Wasmtime runtime.

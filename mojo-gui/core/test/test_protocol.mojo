@@ -1,5 +1,5 @@
 # MutationWriter binary encoding exercised through the real WASM binary
-# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# via mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the binary encoding of DOM mutations works correctly
 # when compiled to WASM and executed via the Wasmtime runtime.  Each test

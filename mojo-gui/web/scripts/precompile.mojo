@@ -6,7 +6,7 @@ be loaded by the test harness via Module.deserialize_file, which is
 essentially an mmap and skips the expensive compilation step entirely.
 
 Usage:
-    mojo run -I ../wasmtime-mojo/src build/precompile.mojo
+    mojo run -I ../mojo-wasmtime/src build/precompile.mojo
 """
 
 from pathlib import Path

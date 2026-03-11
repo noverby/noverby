@@ -119,7 +119,7 @@ Runs `test-js/run.ts` via Deno. Loads the compiled WASM binary and exercises eve
 just test
 ```
 
-Compiles each `core/test/test_*.mojo` into a standalone binary (using wasmtime-mojo FFI bindings) and runs them in parallel. Tests verify signals, scopes, memos, effects, mutations, templates, DSL, events, and more.
+Compiles each `core/test/test_*.mojo` into a standalone binary (using mojo-wasmtime FFI bindings) and runs them in parallel. Tests verify signals, scopes, memos, effects, mutations, templates, DSL, events, and more.
 
 ## Relationship to Other Packages
 

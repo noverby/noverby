@@ -1,5 +1,5 @@
 # Port of test/print.test.ts — verifies print functions execute without error
-# through the real WASM binary via wasmtime-mojo (pure Mojo FFI bindings —
+# through the real WASM binary via mojo-wasmtime (pure Mojo FFI bindings —
 # no Python interop required).
 #
 # The TypeScript version just calls each print function and checks that they

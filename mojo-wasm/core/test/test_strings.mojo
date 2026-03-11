@@ -1,5 +1,5 @@
 # String operations exercised through the real WASM binary via
-# wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that string identity, length, concatenation, repeat, and
 # equality operations work correctly when compiled to WASM and executed via

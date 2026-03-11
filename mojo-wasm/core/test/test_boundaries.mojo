@@ -1,5 +1,5 @@
 # Integer boundary and overflow tests exercised through the real WASM binary
-# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# via mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests are especially critical to run through the actual WASM binary,
 # because integer overflow/wrapping behavior could differ between native Mojo

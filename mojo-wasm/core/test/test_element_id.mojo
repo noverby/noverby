@@ -1,4 +1,4 @@
-# ElementIdAllocator exercised through the real WASM binary via wasmtime-mojo
+# ElementIdAllocator exercised through the real WASM binary via mojo-wasmtime
 # (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the ElementIdAllocator works correctly when compiled

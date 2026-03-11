@@ -1,6 +1,6 @@
 # Port of test/floats.test.ts — float NaN, Infinity, negative zero, subnormal,
 # and precision edge-case tests exercised through the real WASM binary via
-# wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # Run with:
 #   mojo test test/test_floats.mojo

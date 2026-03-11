@@ -1,4 +1,4 @@
-# wasmtime-mojo
+# mojo-wasmtime
 
 Mojo FFI bindings for the [Wasmtime](https://wasmtime.dev/) WebAssembly runtime.
 
@@ -24,7 +24,7 @@ The shared library is discovered automatically from `NIX_LDFLAGS` (set by the Ni
 ## Project structure
 
 ```txt
-wasmtime-mojo/
+mojo-wasmtime/
 └── src/
     └── wasmtime_mojo/
         ├── __init__.mojo      # Package root — re-exports all public API

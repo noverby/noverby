@@ -1,4 +1,4 @@
-# Runtime / Signals exercised through the real WASM binary via wasmtime-mojo
+# Runtime / Signals exercised through the real WASM binary via mojo-wasmtime
 # (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the reactive runtime's signal system works correctly

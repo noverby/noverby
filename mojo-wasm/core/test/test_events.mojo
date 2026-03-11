@@ -1,5 +1,5 @@
 # HandlerRegistry and event dispatch exercised through the real WASM binary
-# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# via mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the event handler registry and dispatch system work
 # correctly when compiled to WASM and executed via the Wasmtime runtime.

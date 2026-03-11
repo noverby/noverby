@@ -339,8 +339,8 @@ the `alias` → `comptime` migration period.
 **Status:** ✅ Done — added `-Werror` to the `mojo build` command in `justfile`.
 The WASM binary (`src/main.mojo` and all transitive `src/` imports) compiles
 with zero warnings. Note: the Mojo test binaries (which import the external
-`wasmtime-mojo` dependency) are built by `scripts/build_test_binaries.sh`
-without `-Werror` because `wasmtime-mojo` still has `alias` deprecation
+`mojo-wasmtime` dependency) are built by `scripts/build_test_binaries.sh`
+without `-Werror` because `mojo-wasmtime` still has `alias` deprecation
 warnings that are outside this project's control.
 
 ---
@@ -488,7 +488,7 @@ just serve
 
 - ✅ `just build` — compiles with `-Werror`, zero warnings.
 - ✅ `just test-js` — 1,385 JS tests pass.
-- ⚠️ `just test` — blocked by pre-existing `wasmtime-mojo` compile error
+- ⚠️ `just test` — blocked by pre-existing `mojo-wasmtime` compile error
   (pointer origin mismatch in `module.mojo:124`, unrelated to mojo-wasm).
 
 ---

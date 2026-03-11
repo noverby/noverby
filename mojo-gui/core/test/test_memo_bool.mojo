@@ -1,5 +1,5 @@
 # MemoBool (computed/derived Bool signal) operations exercised through the
-# real WASM binary via wasmtime-mojo (pure Mojo FFI bindings — no Python).
+# real WASM binary via mojo-wasmtime (pure Mojo FFI bindings — no Python).
 #
 # These tests verify that MemoBool creation, dirty tracking, computation,
 # dependency auto-tracking, scope cleanup, and propagation chains work

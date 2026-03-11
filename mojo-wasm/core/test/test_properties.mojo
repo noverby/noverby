@@ -1,7 +1,7 @@
 # Port of test/properties.test.ts — algebraic property tests (commutativity,
 # associativity, distributivity, identity elements, annihilators, self-inverse,
 # De Morgan's laws, comparison duality) exercised through the real WASM binary
-# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# via mojo-wasmtime (pure Mojo FFI bindings — no Python interop required).
 #
 # Run with:
 #   mojo test test/test_properties.mojo
