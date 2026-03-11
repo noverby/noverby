@@ -152,6 +152,12 @@ run-desktop-all: build-desktop-all
 test-desktop:
     cd desktop/shim && cargo test
 
+# ── XR tests (Rust integration tests for the XR shim) ───────────────────
+
+# Run XR shim integration tests (headless — no XR runtime or GPU needed)
+test-xr:
+    cd xr/native/shim && cargo test
+
 # ── Windows cross-compilation & Wine verification (S-3) ─────────────────
 
 # Build a shared example for Windows (cross-compiled .exe via MinGW-w64)
@@ -223,8 +229,8 @@ build-web:
 # Build all shared examples for all targets (web + desktop-linux + desktop-windows)
 build-all: build build-desktop-all build-desktop-windows-all
 
-# Run all tests (Mojo + JS + desktop + Wine shim + Wine desktop)
-test-all-targets: test-all test-desktop test-desktop-wine
+# Run all tests (Mojo + JS + desktop + XR + Wine shim + Wine desktop)
+test-all-targets: test-all test-desktop test-xr test-desktop-wine
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
 

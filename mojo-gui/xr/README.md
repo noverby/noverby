@@ -2,7 +2,7 @@
 
 Render mojo-gui panels into 3D XR (extended reality) environments via OpenXR. Each XR panel owns an independent Blitz DOM document rendered to an offscreen GPU texture by Vello. The OpenXR compositor places these textures as quad layers in the XR scene.
 
-> **Status:** Step 5.1 — Design phase. Panel and scene abstractions defined. Rust shim scaffold with headless mode and integration tests implemented. OpenXR runtime integration and GPU rendering are not yet wired up.
+> **Status:** Steps 5.1–5.2 — Real Blitz documents wired up. Each panel owns a `BaseDocument` with Stylo CSS styling and Taffy layout. 30 integration tests pass (headless). OpenXR runtime integration and Vello offscreen GPU rendering are not yet wired up.
 
 ## Architecture
 
@@ -59,7 +59,7 @@ Render mojo-gui panels into 3D XR (extended reality) environments via OpenXR. Ea
 |-----------|------|-------------|
 | **Panel types** | `native/src/xr/panel.mojo` | `XRPanel`, `PanelConfig`, `PanelState`, `Vec3`, `Quaternion`, preset configs |
 | **Scene manager** | `native/src/xr/scene.mojo` | `XRScene`, `XREvent`, `RaycastHit`, spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`) |
-| **XR Blitz shim** | `native/shim/src/lib.rs` | Rust cdylib — multi-panel Blitz DOM, headless mode, raycasting, event ring buffer, DOM serialization |
+| **XR Blitz shim** | `native/shim/src/lib.rs` | Rust cdylib — multi-panel Blitz BaseDocument, headless mode, raycasting, event ring buffer, DOM serialization, Stylo+Taffy layout |
 | **C API header** | `native/shim/mojo_xr.h` | Flat C ABI — session lifecycle, panel management, mutations, events, frame loop, input, raycasting, debug |
 | **Nix derivation** | `native/shim/default.nix` | Rust build with Blitz + OpenXR + GPU deps |
 | **WebXR runtime** | `web/runtime/` | 🔮 Future — WebXR session lifecycle, DOM-to-texture rendering, XR input bridging |
@@ -70,7 +70,7 @@ Render mojo-gui panels into 3D XR (extended reality) environments via OpenXR. Ea
 xr/
 ├── native/                       # OpenXR native renderer
 │   ├── shim/
-│   │   ├── src/lib.rs            # Rust cdylib: multi-panel Blitz + headless DOM + raycasting
+│   │   ├── src/lib.rs            # Rust cdylib: multi-panel Blitz BaseDocument + raycasting + layout
 │   │   ├── mojo_xr.h            # C API header (~80 functions)
 │   │   ├── Cargo.toml           # Blitz + OpenXR + wgpu + Vello deps
 │   │   └── default.nix          # Nix derivation with OpenXR/GPU deps
@@ -174,8 +174,8 @@ mojo build --feature xr                          → OpenXR native renderer
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 5.1 | Design the XR panel abstraction | ✅ Complete — `XRPanel`, `PanelConfig`, `XRScene`, `XREvent`, `RaycastHit`, layout helpers, C API header, Rust shim scaffold with headless DOM and 20+ integration tests |
-| 5.2 | Build the OpenXR + Blitz Rust shim | 🔲 Next — wire up real Blitz documents, Vello offscreen rendering, OpenXR session lifecycle |
+| 5.1 | Design the XR panel abstraction | ✅ Complete — `XRPanel`, `PanelConfig`, `XRScene`, `XREvent`, `RaycastHit`, layout helpers, C API header, Rust shim scaffold with headless DOM and 24 integration tests |
+| 5.2 | Build the OpenXR + Blitz Rust shim | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 30 tests pass, Stylo+Taffy layout resolves). Remaining: Vello offscreen rendering, OpenXR session lifecycle |
 | 5.3 | Mojo FFI bindings (`xr_blitz.mojo`) | 🔲 Pending |
 | 5.4 | XR scene manager and panel routing | 🔲 Pending |
 | 5.5 | `xr_launch[AppType: GuiApp]()` | 🔲 Pending |
