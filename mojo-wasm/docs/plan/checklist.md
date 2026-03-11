@@ -120,6 +120,13 @@
 - [x] GPU rendering via Vello + blitz-paint — `RedrawRequested` triggers `doc.resolve()` (Stylo + Taffy), then `paint_scene()` renders to Vello scene
 - [x] Dependency version alignment — downgraded to match Blitz v0.2.0 pins: anyrender 0.6, winit 0.30; ported from winit 0.31 API
 
+### Step 4.7 — Project infrastructure ✅
+
+- [x] Create root `mojo-gui/justfile` — web commands (delegate to `web/justfile`), desktop commands (`build-shim`, `build-desktop <app>`, `run-desktop <app>`, `build-desktop-all`), cross-target commands (`build-web <app>`, `build-all`), cleanup (`clean`)
+- [x] Create root `mojo-gui/default.nix` — Nix dev shell combining web deps (deno, wabt, llvm, lld, wasmtime, servo) and desktop deps (rustup, pkg-config, cmake, python3, fontconfig, freetype, libxkbcommon, wayland, vulkan-loader, vulkan-headers, libGL, X11 libraries)
+- [x] Update `mojo-gui/README.md` — desktop status "🔮 Future" → "✅ Builds verified"; added `examples/` and `platform/` to package table; added "Unified App Lifecycle", "Shared Examples", "Build & Run (Desktop)" sections; updated project structure tree and import conventions
+- [x] Update `mojo-gui/desktop/README.md` — status "🔮 Future" → "✅ Builds verified, runtime pending"; updated architecture diagram to show `MutationInterpreter`; added "Event loop", "Key Files", "Building", "Winit Event Loop Integration", "Remaining Work" sections
+
 ### Step 4.5 + CI — Cross-platform (remaining)
 
 - [ ] Cross-platform testing (Linux, macOS, Windows via Winit)

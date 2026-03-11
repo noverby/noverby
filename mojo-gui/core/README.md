@@ -31,6 +31,7 @@ The **mutation buffer** is the renderer contract. Every renderer implements an i
 | `events/` | `HandlerRegistry`, `HandlerEntry`, action tags (`ACTION_SIGNAL_ADD_I32`, etc.), event type constants |
 | `component/` | `AppShell`, `ComponentContext`, `ChildComponent`, `KeyedList`, `Router`, lifecycle helpers |
 | `html/` | HTML vocabulary — tag constants (`TAG_DIV`, ...), DSL element constructors (`el_div()`, `el_button()`, ...), `VNodeBuilder`, `to_template()` |
+| `platform/` | Platform abstraction — `GuiApp` trait (app-side lifecycle contract), `launch[AppType]()` (compile-time target dispatch), `AppConfig`, `is_wasm_target()` / `is_native_target()`, `PlatformFeatures` |
 
 ## Key Abstractions
 
@@ -73,6 +74,16 @@ HTML-specific layer on top of the renderer-agnostic core:
 - **`VNodeBuilder`** — Fluent API for constructing VNodes with dynamic slots.
 - **`to_template()`** — Converts a DSL node tree into a registered `Template`.
 
+### Platform Abstraction (`platform/`)
+
+Compile-time target dispatch that enables shared examples across all renderers:
+
+- **`GuiApp` trait** — App-side lifecycle contract (`render`, `mount`, `flush`, `handle_event`, `has_dirty`, `consume_dirty`, `destroy`). Every app struct implements this trait.
+- **`launch[AppType: GuiApp]()`** — Universal entry point. Uses `@parameter if is_wasm_target()` for compile-time dispatch: on WASM it returns immediately (JS drives the loop); on native it calls `desktop_launch[AppType](config)` which creates a Blitz window and enters the event loop.
+- **`AppConfig`** — Platform-independent configuration (title, width, height, debug).
+- **`is_wasm_target()` / `is_native_target()`** — Compile-time target detection.
+- **`PlatformFeatures`** — Runtime feature detection for optional capabilities.
+
 ## Directory Structure
 
 ```text
@@ -88,9 +99,14 @@ core/
 │   ├── events/           # HandlerRegistry, action tags
 │   ├── component/        # AppShell, ComponentContext, lifecycle
 │   ├── html/             # HTML tags, DSL, VNodeBuilder
+│   ├── platform/         # ★ GuiApp trait, launch(), target dispatch
+│   │   ├── gui_app.mojo  # GuiApp trait — app-side lifecycle contract
+│   │   ├── app.mojo      # is_wasm_target(), is_native_target()
+│   │   ├── launch.mojo   # launch[AppType: GuiApp]() + AppConfig
+│   │   ├── features.mojo # PlatformFeatures, runtime feature detection
+│   │   └── __init__.mojo # Re-exports public API
 │   └── lib.mojo          # Package root
-├── apps/                 # Demo/test apps (counter, todo, bench, ...)
-├── test/                 # Mojo-side unit tests
+├── test/                 # Mojo-side unit tests (52+ suites)
 └── README.md
 ```
 
@@ -118,7 +134,7 @@ The split: **`vdom/`** holds renderer-agnostic virtual DOM structures. **`html/`
 
 ## Relationship to Other Packages
 
-- **`mojo-gui/web`** — Browser renderer. Imports `core` for the framework, adds TypeScript runtime + WASM exports.
-- **`mojo-gui/desktop`** — Desktop renderer (future). Imports `core`, renders natively via Blitz (Stylo + Taffy + Vello + Winit + AccessKit).
-- **`mojo-gui/native`** — Native renderer (future). Imports `core`, maps mutations to platform widgets.
-- **`mojo-web`** — Raw Web API bindings (independent). Apps can use both `mojo-gui` and `mojo-web`.
+- **`mojo-gui/web`** — Browser renderer. Imports `core` for the framework, adds TypeScript runtime + WASM `@export` wrappers. Generic `gui_app_exports.mojo` makes per-app exports one-liners via `GuiApp` trait.
+- **`mojo-gui/desktop`** — Desktop renderer (✅ builds verified). Imports `core`, renders natively via Blitz (Stylo + Taffy + Vello + Winit + AccessKit). `desktop_launch[AppType: GuiApp]()` drives the native event loop.
+- **`mojo-gui/examples`** — Shared examples. Each app implements `GuiApp` and calls `launch[AppType](AppConfig(...))`. Same source compiles for both web and desktop.
+- **`mojo-web`** — Raw Web API bindings (future). Apps can use both `mojo-gui` and `mojo-web`.

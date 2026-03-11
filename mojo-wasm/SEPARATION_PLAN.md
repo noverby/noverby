@@ -144,6 +144,8 @@ mojo-gui/
 │   └── README.md
 │
 ├── build/                        # Build output
+├── justfile                      # Root task runner (web + desktop commands)
+├── default.nix                   # Nix dev shell (web + desktop deps)
 └── README.md
 ```
 
@@ -328,6 +330,49 @@ All 4 shared examples compile for both web and desktop from identical source. Mo
 **Step 4.6 — Winit event loop integration** ✅
 
 Full `ApplicationHandler` impl: window creation via `Arc<Window>`, Vello GPU renderer via `anyrender_vello::VelloWindowRenderer`, Winit event routing (CloseRequested, RedrawRequested, Resized, CursorMoved, MouseInput), DOM event extraction via custom `MojoEventHandler`, style resolution + layout via `doc.resolve()`, GPU rendering via `paint_scene()`.
+
+### Phase 4.7: Project Infrastructure — ✅ Complete
+
+Created the missing project infrastructure for `mojo-gui/` so it functions as a standalone project:
+
+**Step 4.7.1 — Root `justfile`** (`mojo-gui/justfile`) ✅
+
+Task runner with commands for both renderers:
+
+- **Web commands** — `build`, `build-if-changed`, `precompile`, `test`, `test-js`, `test-all`, `test-browser`, `serve` (delegate to `web/justfile`)
+- **Desktop commands** — `build-shim` (Rust cdylib), `build-desktop <app>`, `build-desktop-all`, `run-desktop <app>`
+- **Cross-target commands** — `build-web <app>`, `build-all`
+- **Cleanup** — `clean` (removes `build/`, `web/build/`, cargo target)
+
+**Step 4.7.2 — Root `default.nix`** (`mojo-gui/default.nix`) ✅
+
+Nix dev shell combining web and desktop dependencies:
+
+- Build tools: `just`, `mojo`
+- Web renderer: `deno`, `wabt`, `llvm`, `lld`, `wasmtime`, `servo`, `jq`
+- Desktop renderer build: `rustup`, `pkg-config`, `cmake`, `python3`
+- Desktop renderer runtime: `fontconfig`, `freetype`, `libxkbcommon`, `wayland`, `vulkan-loader`, `vulkan-headers`, `libGL`, X11 libraries
+
+**Step 4.7.3 — Updated `mojo-gui/README.md`** ✅
+
+- Desktop status updated from "🔮 Future" to "✅ Builds verified"
+- Added `examples/` and `platform/` to package table and architecture diagram
+- Added "Unified App Lifecycle" section documenting `GuiApp` trait and `launch()`
+- Added "Shared Examples" section with build instructions for both targets
+- Added "Build & Run (Desktop)" quick start section
+- Updated project structure tree to reflect actual Phase 4 implementation
+- Added "Current Status" section with phase summary
+- Updated import conventions to include `platform` package
+
+**Step 4.7.4 — Updated `mojo-gui/desktop/README.md`** ✅
+
+- Status updated from "🔮 Future — planned but not yet implemented" to "✅ Builds verified, runtime pending"
+- Architecture diagram updated to show `MutationInterpreter` (actual) instead of `DesktopBridge` (planned)
+- Added "Event loop" section documenting `desktop_launch` lifecycle
+- Added "Key Files" table with all implemented files
+- Added "Building" section with shim build, example build, and run instructions
+- Added "Winit Event Loop Integration" section documenting `ApplicationHandler` impl
+- Added "Remaining Work" section (runtime verification, cross-platform, CI)
 
 ---
 
