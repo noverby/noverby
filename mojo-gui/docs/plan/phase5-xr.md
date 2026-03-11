@@ -1,97 +1,87 @@
-# Phase 5: XR Renderer (Future)
+# Phase 5: XR Renderer
 
-> **Status:** Future — not yet started. Depends on Phase 4 (Blitz desktop renderer) being fully verified.
+> **Status:** 🔧 In progress — Steps 5.1–5.5, 5.7–5.8 complete. Remaining: Vello offscreen rendering + OpenXR session lifecycle (5.2 remaining), WebXR JS runtime (5.6), multi-panel API (5.9).
 
 Render DOM-based UI panels into XR environments. The mutation protocol is unchanged — each XR panel receives the same binary opcode stream. The Blitz stack (blitz-dom + Stylo + Taffy + Vello) is reused for native OpenXR; the existing web renderer's JS interpreter is extended for WebXR.
 
 **Compile targets (complete picture):**
 
-- `mojo build --target wasm64-wasi` → web renderer (needs `mojo-gui/web` JS runtime)
-- `mojo build --target wasm64-wasi --feature webxr` → WebXR renderer (extends web renderer with XR session)
-- `mojo build` → desktop renderer (Blitz native, implementation complete — verification pending)
-- `mojo build --feature xr` → OpenXR native renderer (Blitz panels → OpenXR swapchain)
+- `mojo build --target wasm64-wasi -I core/src -I web/src` → web renderer
+- `mojo build --target wasm64-wasi --feature webxr` → WebXR renderer (future — extends web renderer with XR session)
+- `mojo build -I core/src -I desktop/src -I xr/native/src` → desktop renderer (Blitz native)
+- `mojo build -D MOJO_TARGET_XR -I core/src -I xr/native/src -I desktop/src` → OpenXR native renderer
 
 ---
 
-## Step 5.1 — Design the XR panel abstraction
+## Step 5.1 — Design the XR panel abstraction — ✅ Complete
 
-Define the `XRPanel` concept: a 2D DOM document with a 3D transform. Each panel:
+Designed and implemented the XR panel abstraction, scene manager, and Rust shim scaffold. Created the `xr/` directory structure with native and web sub-projects.
 
-- Owns a Blitz document (native) or DOM subtree (web) that receives mutations
-- Has a world-space position, rotation, and physical size (in meters)
-- Has a pixels-per-meter density for text legibility
-- Supports pointer input via raycasting (controller ray → 2D hit point → DOM event)
+**Mojo types** (`xr/native/src/xr/`):
 
-```text
-# xr/native/src/panel.mojo
+- `panel.mojo` — `XRPanel` (2D DOM document + 3D transform), `PanelConfig`, `PanelState`, `Vec3`, `Quaternion`. Panel presets: `default_panel_config()` (0.8m × 0.6m, 1200 ppm), `dashboard_panel_config()` (1.6m × 0.9m curved), `tooltip_panel_config()` (0.3m × 0.15m non-interactive), `hand_anchored_panel_config()` (0.2m × 0.15m).
+- `scene.mojo` — `XRScene` (panel registry, focus management, dirty tracking, raycasting via ray-plane intersection, spatial layout helpers). `XREvent` with panel targeting and UV hit coordinates. `RaycastHit`. Layout helpers: `arrange_arc()`, `arrange_grid()`, `arrange_stack()`. Convenience constructors: `create_single_panel_scene()`, `create_dual_panel_scene()`.
 
-struct XRPanel(Movable):
-    """A 2D DOM document placed in 3D XR space."""
-    var panel_id: UInt32
-    var position: SIMD[DType.float32, 4]    # x, y, z, 0
-    var rotation: SIMD[DType.float32, 4]    # quaternion x, y, z, w
-    var size: SIMD[DType.float32, 2]        # width, height in meters
-    var pixels_per_meter: Float32
-    var texture_width: UInt32
-    var texture_height: UInt32
-```
+**Rust shim scaffold** (`xr/native/shim/`):
+
+- `src/lib.rs` — `XrSessionContext` with headless mode (`mxr_create_headless`), multi-panel DOM (`Panel` with `HeadlessNode` tree), ID mapping, interpreter stack, event ring buffer, per-panel DOM operations, raycasting, DOM serialization, and 20+ integration tests.
+- `mojo_xr.h` — C API header (~80 functions).
+- `Cargo.toml` — Blitz v0.2.0 (same rev as desktop), anyrender, anyrender_vello, wgpu, openxr.
+- `default.nix` — Nix derivation with Blitz + OpenXR + GPU dependencies.
+
+**Core platform updates** (`core/src/platform/features.mojo`):
+
+- Added `has_xr`, `has_xr_hand_tracking`, `has_xr_passthrough` fields to `PlatformFeatures`.
+- Added `xr_native_features()` and `xr_web_features()` preset constructors.
 
 ---
 
-## Step 5.2 — Build the OpenXR + Blitz Rust shim
+## Step 5.2 — Build the OpenXR + Blitz Rust shim — 🔧 In progress
 
-Extend the existing Blitz C shim (`desktop/shim/src/lib.rs`) or create a new `xr/native/shim/` that:
+Replaced the lightweight `HeadlessNode` DOM tree with real Blitz `BaseDocument` instances. Each XR panel now owns a full Blitz document with Stylo styling and Taffy layout. Added output-pointer FFI variants for large struct returns.
 
-- Links `blitz-dom`, `stylo`, `taffy`, `vello` (reused from desktop shim)
-- Adds the `openxr` Rust crate for XR session management
-- Manages multiple `BlitzDocument` instances (one per panel)
-- Renders each panel's DOM to an offscreen `wgpu::Texture` via Vello
-- Composites panel textures into the OpenXR swapchain (as quad layers or rendered into the scene)
-- Handles XR frame timing (`xrWaitFrame`, `xrBeginFrame`, `xrEndFrame`)
-- Provides controller pose data and performs panel raycasting
+**What's done:**
 
-**C API surface (indicative):**
+- **Real Blitz documents** — Panel owns a `BaseDocument` with `id_to_node`/`node_to_id` maps (same pattern as desktop shim). All DOM operations delegate to Blitz. Template cloning via `deep_clone_node`. Layout resolution via `doc.resolve(0.0)` in render loop.
+- **Output-pointer FFI variants** — `mxr_poll_event_into()`, `mxr_raycast_panels_into()`, `mxr_get_pose_into()` for struct returns >16 bytes (x86_64 SysV ABI limitation).
+- **37 integration tests** — All pass headless; covers session lifecycle, panel lifecycle, DOM operations, attributes, text nodes, placeholders, serialization, events, raycasting, focus, frame loop, reference spaces, ID mapping, stack operations, multi-panel isolation, Blitz document structure, nested elements, layout resolution, and all output-pointer variants.
 
-| Category        | Functions                                                                           |
-|-----------------|-------------------------------------------------------------------------------------|
-| Session         | `mxr_create_session()`, `mxr_destroy_session()`, `mxr_is_session_active()`          |
-| Panels          | `mxr_create_panel(w, h, ppm)`, `mxr_destroy_panel(id)`, `mxr_panel_set_transform()` |
-| Mutations       | `mxr_panel_apply_mutations(id, buf, len)` — same binary protocol as desktop          |
-| Events          | `mxr_poll_event(buf, len)` — panel_id + handler_id + event_type + value              |
-| Frame loop      | `mxr_wait_frame()`, `mxr_begin_frame()`, `mxr_end_frame()`                          |
-| Input           | `mxr_get_controller_pose(hand)`, `mxr_get_head_pose()`                               |
-| Reference spaces| `mxr_create_reference_space(type)`, `mxr_get_space_location()`                       |
+**What's remaining:**
+
+- Vello offscreen rendering to GPU textures (needs wgpu device setup)
+- OpenXR session lifecycle (`openxr` crate integration — `xrCreateSession`, `xrWaitFrame`, `xrBeginFrame`, `xrEndFrame`)
+- Quad layer compositing (panel textures → OpenXR swapchain)
+- Controller pose tracking via OpenXR input actions
 
 ---
 
-## Step 5.3 — Implement Mojo FFI bindings for OpenXR shim
+## Step 5.3 — Implement Mojo FFI bindings for OpenXR shim — ✅ Complete
 
-Create `xr/native/src/xr_blitz.mojo` — typed `XRBlitz` struct via `DLHandle`, wrapping all shim functions. Follows the same pattern as `desktop/src/desktop/blitz.mojo`.
+Created typed Mojo FFI bindings for all ~80 XR shim C functions, plus a per-panel mutation interpreter.
 
----
-
-## Step 5.4 — Implement XR scene manager and panel routing
-
-Create `xr/native/src/scene.mojo` — manages the collection of XR panels:
-
-- Routes mutation buffers to the correct panel's Blitz document
-- Polls events from the shim and dispatches to the correct panel's `GuiApp`
-- Provides spatial layout helpers (arrange panels in an arc, pin to hand, anchor to world)
+- **`xr/native/src/xr/xr_blitz.mojo`** — `XRBlitz` struct wrapping all `mxr_*` C functions via `DLHandle`. ~70 typed methods covering: session lifecycle, panel lifecycle, panel transform & display, mutation batching, per-panel DOM operations, templates, tree traversal, events, raycasting, frame loop, input, reference spaces, capabilities, ID mapping & stack, debug/inspection. Helper types: `XREvent`, `XRPose`, `XRRaycastHit`. Constants for events, hands, spaces, states.
+- **`xr/native/src/xr/renderer.mojo`** — `XRMutationInterpreter` struct. Per-panel opcode interpreter targeting `XRBlitz` FFI calls scoped to a `panel_id`. All 18 opcodes handled.
+- **`poll_event()`, `raycast_panels()`, `get_pose()`** — All fully functional via `_into()` output-pointer variants (resolved in Step 5.2b).
 
 ---
 
-## Step 5.5 — Implement `xr_launch[AppType: GuiApp]()`
+## Step 5.4 — Implement XR scene manager and panel routing — ✅ Complete (single-panel)
 
-Create `xr/native/src/xr_launcher.mojo`:
+`XRScene` provides panel registry, focus management, dirty tracking, Mojo-side raycasting (ray-plane intersection), and spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`).
 
-- Creates an OpenXR session via the shim
-- Creates a default panel for the app
-- Runs the XR frame loop: wait frame → poll input → raycast panels → dispatch events → re-render dirty panels → composite → end frame
-- Integrates with `launch()` via a new `@parameter if` branch (or `--feature xr` flag)
+For single-panel apps, `xr_launch` (Step 5.5) manages the panel directly via `XRBlitz` FFI — bypassing the scene for simplicity. Multi-panel routing through `XRScene` (scene creates/destroys panels via shim, multiplexes mutation buffers to correct panel's `GuiApp`) deferred to Step 5.9.
 
 ---
 
-## Step 5.6 — Implement WebXR JS runtime
+## Step 5.5 — Implement `xr_launch[AppType: GuiApp]()` — ✅ Complete
+
+Implemented `xr_launch[AppType: GuiApp]()` — the XR-side counterpart to `desktop_launch`.
+
+- **`xr/native/src/xr/launcher.mojo`** — Creates an XR session (headless or OpenXR), allocates a default panel sized from AppConfig, applies XR-specific UA stylesheet (larger fonts, dark background for headset legibility), mounts the app, and enters the XR frame loop: `wait_frame → begin_frame → poll_event → handle_event → flush → apply mutations → render_dirty_panels → end_frame`. Same mutation buffer management and GuiApp lifecycle as `desktop_launch`.
+
+---
+
+## Step 5.6 — Implement WebXR JS runtime — 🔲 Future
 
 Create `xr/web/runtime/`:
 
@@ -102,40 +92,54 @@ Create `xr/web/runtime/`:
 
 ---
 
-## Step 5.7 — Wire `launch()` for XR targets
+## Step 5.7 — Wire `launch()` for XR targets — ✅ Complete
 
-Update `core/src/platform/launch.mojo`:
+Updated `core/src/platform/launch.mojo` with compile-time dispatch:
 
 ```text
-fn launch[AppType: GuiApp](config: AppConfig):
+fn launch[AppType: GuiApp](config: AppConfig) raises:
     @parameter
     if is_wasm_target():
-        @parameter
-        if has_feature("webxr"):
-            _register_webxr_app[AppType]()
-        else:
-            _register_web_app[AppType]()
+        pass  # JS runtime drives the loop; @export wrappers call GuiApp methods
+    elif is_xr_target():
+        from xr.launcher import xr_launch
+        xr_launch[AppType](config)
     else:
-        @parameter
-        if has_feature("xr"):
-            xr_launch[AppType](config)
-        else:
-            desktop_launch[AppType](config)
+        from desktop.launcher import desktop_launch
+        desktop_launch[AppType](config)
+```
+
+Added `is_xr_target()` compile-time detection (checks `-D MOJO_TARGET_XR` define).
+
+**Note:** All native builds must include both `-I desktop/src` and `-I xr/native/src` because Mojo's `@parameter if` does not suppress import resolution in dead branches. The linker only pulls in the active branch's code.
+
+---
+
+## Step 5.8 — Verify shared examples in XR — ✅ Complete
+
+All 4 shared examples (Counter, Todo, Benchmark, MultiView) build and run as XR floating panels in headless mode.
+
+**Issues discovered and fixed:**
+
+1. **Mojo `@parameter if` import resolution** — Dead branches still resolve imports. Fix: all native builds include all renderer `-I` paths.
+2. **`performance_now()` link failure on native** — Used `external_call` unconditionally. Fix: `@parameter if is_wasm_target()` gate; native path uses `perf_counter_ns`.
+3. **Headless frame loop never exits** — `predicted_time == 0` sentinel broken (headless returns real timestamps). Fix: idle frame counter — exit after 1 consecutive frame with no events and no dirty scopes.
+
+**Verification:**
+
+```text
+$ just build-xr-all    # ✅ All 4 examples build
+$ just run-xr counter  # ✅ Exit code 0
+$ just run-xr todo     # ✅ Exit code 0
+$ just run-xr bench    # ✅ Exit code 0
+$ just run-xr app      # ✅ Exit code 0
+$ just test-xr         # ✅ 37/37 shim tests pass
+$ just test-desktop    # ✅ 75/75 desktop shim tests pass (no regressions)
 ```
 
 ---
 
-## Step 5.8 — Verify shared examples in XR
-
-All existing shared examples (counter, todo, bench, app) should work as single-panel XR apps without modification:
-
-- `launch[CounterApp](AppConfig(title="Counter", ...))` opens one XR panel
-- The counter renders into the panel; clicks from XR controllers are translated to DOM events
-- No app code changes required
-
----
-
-## Step 5.9 — Multi-panel XR API (stretch goal)
+## Step 5.9 — Multi-panel XR API (stretch goal) — 🔮 Future
 
 Extend the framework with XR-specific APIs for multi-panel apps:
 
@@ -254,80 +258,94 @@ Extends the existing web renderer:
 - **Panels are the spatial primitive.** A panel is a 2D DOM document placed at a 3D position/rotation in the XR scene. Apps create panels via a new `XRPanel` API; each panel can host a separate `GuiApp` or a view within one.
 - **Input is bridged, not reinvented.** XR controller rays are intersected with panel quads in 3D; the resulting 2D hit coordinates are translated to standard DOM pointer/click events and dispatched through the existing `HandlerRegistry`. App code doesn't know the click came from a VR controller.
 - **wgpu is the unifying GPU layer.** It targets Vulkan/Metal/DX12 natively (for OpenXR) and WebGPU in the browser (for WebXR), providing a single rendering abstraction across both XR backends.
+- **Separate XR shim from desktop shim.** The XR shim (`xr/native/shim/`) is a separate Rust cdylib from the desktop shim (`desktop/shim/`). Both reuse the same Blitz crates, but the XR shim targets multi-document management + offscreen rendering + OpenXR, while the desktop shim targets a single Winit window. This was decided in Step 5.1 (Open Question #1).
 
 ---
 
-## Target Project Structure
+## Actual Project Structure
 
 ```text
-xr/                               # XR renderer (Phase 5)
-├── native/                       # OpenXR native renderer (Blitz DOM → Vello → OpenXR swapchain)
+xr/
+├── native/                       # OpenXR native renderer
 │   ├── shim/
-│   │   ├── src/lib.rs            # Rust cdylib: Blitz + Vello + openxr crate, panel management
-│   │   ├── mojo_xr.h            # C API header — XR session, panels, input
-│   │   ├── Cargo.toml           # Rust crate config (blitz-dom, vello, openxr, winit)
-│   │   └── default.nix          # Nix derivation with OpenXR/GPU deps
-│   └── src/
-│       ├── xr_launcher.mojo     # xr_launch[AppType: GuiApp]() — OpenXR event loop
-│       ├── xr_blitz.mojo        # Mojo FFI bindings to libmojo_xr.so
-│       ├── panel.mojo           # XRPanel — DOM document + 3D transform + input mapping
-│       └── scene.mojo           # XRScene — panel registry, spatial layout, raycasting
-├── web/                          # WebXR browser renderer (extends mojo-gui/web)
-│   ├── runtime/
-│   │   ├── xr-session.ts        # WebXR session lifecycle, reference spaces
-│   │   ├── xr-panels.ts         # DOM → texture rendering, 3D panel placement
-│   │   ├── xr-input.ts          # XR controller ray → DOM event translation
-│   │   └── xr-runtime.ts        # Entry point — extends web runtime with XR
-│   └── src/
-│       └── webxr_launcher.mojo  # WebXR-specific launch configuration
-└── README.md
+│   │   ├── src/lib.rs            # Rust cdylib: multi-panel Blitz + headless DOM + raycasting
+│   │   │                         #   + real BaseDocument per panel (Stylo+Taffy layout)
+│   │   │                         #   + output-pointer FFI variants for large struct returns
+│   │   │                         #   + 37 integration tests (headless)
+│   │   ├── tests/                # Rust integration tests
+│   │   ├── mojo_xr.h            # C API header (~83 functions incl. 3 _into() variants)
+│   │   ├── Cargo.toml           # blitz v0.2.0, anyrender, anyrender_vello, wgpu, openxr
+│   │   └── default.nix          # Nix derivation with Blitz + OpenXR + GPU deps
+│   └── src/xr/
+│       ├── __init__.mojo         # Re-exports for XRBlitz, XRMutationInterpreter, types, constants
+│       ├── launcher.mojo         # xr_launch[AppType: GuiApp]() — XR frame loop
+│       ├── xr_blitz.mojo         # XRBlitz struct (~70 FFI methods via DLHandle)
+│       ├── renderer.mojo         # XRMutationInterpreter (per-panel, all 18 opcodes)
+│       ├── panel.mojo            # XRPanel, PanelConfig, Vec3, Quaternion, PanelState
+│       └── scene.mojo            # XRScene — panel registry, focus, raycasting, layout helpers
+├── web/                          # WebXR browser renderer (future — Step 5.6)
+│   ├── runtime/                  # (not yet created)
+│   └── src/                      # (not yet created)
+└── README.md                     # XR architecture, key types, build instructions, design decisions
 ```
 
 ---
 
 ## Migration Checklist
 
-- [ ] Design XR panel abstraction — `XRPanel` struct (DOM document + 3D transform + texture + input surface), `XRScene` (panel registry + spatial layout + raycasting)
-- [ ] Build OpenXR + Blitz Rust shim (`xr/native/shim/src/lib.rs`) — extend Blitz stack with `openxr` crate; multi-document management (one `blitz-dom` per panel); Vello → offscreen `wgpu::Texture` per panel; OpenXR session lifecycle + frame loop; quad layer compositing; controller pose tracking + panel raycasting
-- [ ] Write C header (`xr/native/shim/mojo_xr.h`) — session, panel, mutation, event, frame loop, input, reference space functions
-- [ ] Write Nix derivation (`xr/native/shim/default.nix`) — Rust build with OpenXR + GPU deps
-- [ ] Implement Mojo FFI bindings (`xr/native/src/xr_blitz.mojo`) — typed `XRBlitz` struct via `DLHandle`
-- [ ] Implement XR scene manager (`xr/native/src/scene.mojo`) — panel lifecycle, mutation routing, event multiplexing
-- [ ] Implement XR panel manager (`xr/native/src/panel.mojo`) — per-panel `GuiApp` + mutation buffer, 3D transform API
-- [ ] Implement `xr_launch[AppType: GuiApp]()` (`xr/native/src/xr_launcher.mojo`) — OpenXR frame loop (wait → poll input → raycast → dispatch → render dirty panels → composite → end frame)
-- [ ] Build WebXR JS runtime (`xr/web/runtime/`) — XR session lifecycle, DOM-to-texture panel rendering, XR input → DOM event bridging
-- [ ] Wire `launch()` for XR targets — add `has_feature("xr")` / `has_feature("webxr")` branches to `core/src/platform/launch.mojo`
-- [ ] Verify all shared examples as single-panel XR apps — counter, todo, bench, app should work unchanged in XR
-- [ ] Multi-panel XR API (stretch goal) — `XRGuiApp` trait for apps that manage multiple panels in 3D space
+- [x] Design XR panel abstraction — `XRPanel` struct, `PanelConfig`, `PanelState`, `Vec3`, `Quaternion`, panel presets (Step 5.1)
+- [x] Design XR scene manager — `XRScene` with focus management, dirty tracking, raycasting, spatial layout helpers (Step 5.1)
+- [x] Build Rust shim scaffold — `XrSessionContext`, headless mode, multi-panel DOM, event ring buffer, raycasting, DOM serialization (Step 5.1)
+- [x] Write C header (`mojo_xr.h`) — ~83 functions including 3 `_into()` output-pointer variants (Steps 5.1, 5.2b)
+- [x] Write Nix derivation (`xr/native/shim/default.nix`) — Rust build with Blitz + OpenXR + GPU deps (Step 5.1)
+- [x] Replace HeadlessNode with real Blitz BaseDocument per panel — Stylo CSS + Taffy layout (Step 5.2)
+- [x] Add output-pointer FFI variants — `mxr_poll_event_into`, `mxr_raycast_panels_into`, `mxr_get_pose_into` (Step 5.2b)
+- [ ] Implement Vello offscreen rendering to GPU textures (Step 5.2 remaining)
+- [ ] Implement OpenXR session lifecycle — `openxr` crate integration (Step 5.2 remaining)
+- [ ] Implement quad layer compositing — panel textures → OpenXR swapchain (Step 5.2 remaining)
+- [ ] Implement controller pose tracking via OpenXR input actions (Step 5.2 remaining)
+- [x] Implement Mojo FFI bindings (`xr_blitz.mojo`) — `XRBlitz` struct with ~70 typed methods via DLHandle (Step 5.3)
+- [x] Implement XR mutation interpreter (`renderer.mojo`) — per-panel binary opcode interpreter, all 18 opcodes (Step 5.3)
+- [x] Implement XR scene manager for single-panel routing (Step 5.4)
+- [x] Implement `xr_launch[AppType: GuiApp]()` — XR frame loop with headless/OpenXR support (Step 5.5)
+- [ ] Build WebXR JS runtime (`xr/web/runtime/`) — XR session, DOM-to-texture, XR input bridging (Step 5.6)
+- [x] Wire `launch()` for XR targets — `@parameter if is_xr_target()` compile-time dispatch (Step 5.7)
+- [x] Verify all 4 shared examples build and run as XR floating panels in headless mode (Step 5.8)
+- [ ] Multi-panel XR API — `XRGuiApp` trait for apps managing multiple panels (Step 5.9, stretch goal)
 
 ---
 
 ## Estimated Effort
 
-| Task | Effort |
-|------|--------|
-| Phase 5 total | 4–8 weeks |
+| Task | Effort | Status |
+|------|--------|--------|
+| Steps 5.1–5.5, 5.7–5.8 (panel design, shim, FFI, launcher, verification) | ~3 weeks | ✅ Complete |
+| Step 5.2 remaining (Vello offscreen + OpenXR session lifecycle) | 1–2 weeks | 🔲 Next |
+| Step 5.6 (WebXR JS runtime) | 1–2 weeks | 🔲 Future |
+| Step 5.9 (Multi-panel API) | 1 week | 🔮 Stretch goal |
+| **Phase 5 total** | **4–8 weeks** | **~60% complete** |
 
 ---
 
 ## XR-Specific Risks
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| OpenXR runtime availability | XR features fail on systems without OpenXR runtime | Runtime detection: check for OpenXR loader at startup; fall back to desktop Blitz renderer if unavailable |
-| DOM-to-texture fidelity (WebXR) | Rendering DOM to WebGL texture may lose interactivity or fidelity | Evaluate multiple approaches: OffscreenCanvas, html2canvas, CSS 3D transforms in DOM overlay; benchmark quality vs. performance |
-| XR input latency | Raycasting → DOM event translation adds latency to controller input | Keep raycast math in the shim (Rust/native) or GPU (WebXR); minimize JS/Mojo roundtrips for input dispatch |
-| Multi-panel mutation routing | Multiple panels need independent mutation streams; current protocol assumes single document | Each panel gets its own mutation buffer and `GuiApp` instance; the XR scene manager multiplexes; no protocol changes needed |
-| XR frame timing constraints | OpenXR requires strict frame pacing; DOM re-render may exceed frame budget | Render panels asynchronously; only re-render dirty panels; cache textures for clean panels; use OpenXR quad layers for compositor-side reprojection |
+| Risk | Impact | Mitigation | Status |
+|------|--------|------------|--------|
+| OpenXR runtime availability | XR features fail on systems without OpenXR runtime | Runtime detection: check for OpenXR loader at startup; fall back to desktop Blitz renderer if unavailable | 🔧 Headless mode implemented for testing; runtime detection pending |
+| DOM-to-texture fidelity (WebXR) | Rendering DOM to WebGL texture may lose interactivity or fidelity | Evaluate multiple approaches: OffscreenCanvas, html2canvas, CSS 3D transforms in DOM overlay; benchmark quality vs. performance | 🔲 Future (Step 5.6) |
+| XR input latency | Raycasting → DOM event translation adds latency to controller input | Keep raycast math in the shim (Rust/native) or GPU (WebXR); minimize JS/Mojo roundtrips for input dispatch | ✅ Rust-side raycasting implemented |
+| Multi-panel mutation routing | Multiple panels need independent mutation streams; current protocol assumes single document | Each panel gets its own mutation buffer and `GuiApp` instance; the XR scene manager multiplexes; no protocol changes needed | ✅ Architecture proven (single-panel); multi-panel routing deferred to Step 5.9 |
+| XR frame timing constraints | OpenXR requires strict frame pacing; DOM re-render may exceed frame budget | Render panels asynchronously; only re-render dirty panels; cache textures for clean panels; use OpenXR quad layers for compositor-side reprojection | 🔧 Dirty tracking per-panel implemented |
+| Mojo `@parameter if` import resolution | Dead branches trigger import resolution; adding a renderer backend to `launch()` requires updating ALL native build commands | Include all renderer `-I` paths in every native build; documented in justfile and Architecture Decisions | ✅ Mitigated — workaround in place since Step 5.8 |
 
 ---
 
 ## Open Questions (XR-Specific)
 
-1. **Should the XR native shim share code with the desktop Blitz shim?** — The XR shim reuses the same Blitz stack (blitz-dom, Stylo, Taffy, Vello) but needs multi-document support, offscreen texture rendering, and OpenXR integration. Options: (a) extend the existing `desktop/shim/` with XR feature flags, (b) create a separate `xr/native/shim/` that depends on the same Blitz crates. Option (b) is cleaner — the desktop shim targets a single Winit window; the XR shim targets an OpenXR session with multiple offscreen panels. Shared Blitz logic can be extracted into a common Rust crate if duplication becomes significant.
+1. ~~**Should the XR native shim share code with the desktop Blitz shim?**~~ **Resolved (Step 5.1):** Separate `xr/native/shim/` created. Both reuse the same Blitz crates but serve different purposes — desktop targets a single Winit window; XR targets an OpenXR session with multiple offscreen panels. Code duplication is minimal and manageable.
 
-2. **How to handle DOM-to-texture rendering for WebXR?** — Several approaches exist: (a) OffscreenCanvas with `drawImage()` from a DOM-rendered element, (b) `html2canvas` or similar rasterization libraries, (c) WebXR DOM Overlay API (limited to a single flat layer, not spatially placed), (d) render mutation protocol directly to a WebGL/WebGPU canvas using a custom 2D renderer (bypassing the DOM entirely on the WebXR path). Evaluate fidelity, performance, and interactivity tradeoffs. Approach (d) would be the most consistent with the native path (Vello-like rendering to a texture) but requires a JS/WASM 2D rendering engine.
+2. **How to handle DOM-to-texture rendering for WebXR?** — Several approaches exist: (a) OffscreenCanvas with `drawImage()` from a DOM-rendered element, (b) `html2canvas` or similar rasterization libraries, (c) WebXR DOM Overlay API (limited to a single flat layer, not spatially placed), (d) render mutation protocol directly to a WebGL/WebGPU canvas using a custom 2D renderer (bypassing the DOM entirely on the WebXR path). Evaluate fidelity, performance, and interactivity tradeoffs. Approach (d) would be the most consistent with the native path (Vello-like rendering to a texture) but requires a JS/WASM 2D rendering engine. *Deferred to Step 5.6.*
 
-3. **Should single-panel XR apps use `GuiApp` directly or always go through `XRGuiApp`?** — For simplicity, single-panel apps should use the existing `GuiApp` trait unchanged. The XR launcher wraps them in a default panel automatically. `XRGuiApp` is only needed for apps that explicitly manage multiple panels or need XR-specific features (hand tracking, spatial anchors). This preserves the "write once, run everywhere" principle — existing apps get XR support for free.
+3. ~~**Should single-panel XR apps use `GuiApp` directly or always go through `XRGuiApp`?**~~ **Resolved (Step 5.5):** Single-panel apps use the existing `GuiApp` trait unchanged. `xr_launch` wraps them in a default panel automatically. `XRGuiApp` (Step 5.9) is only needed for apps that explicitly manage multiple panels.
 
-4. **What OpenXR extensions are required?** — The MVP needs: `XR_KHR_opengl_enable` or `XR_KHR_vulkan_enable` (GPU interop), `XR_KHR_composition_layer_quad` (panel placement). Nice to have: `XR_EXT_hand_tracking` (hand input), `XR_FB_passthrough` (AR), `XR_EXTX_overlay` (overlay apps). The shim should detect available extensions at runtime and expose capability flags to Mojo.
+4. **What OpenXR extensions are required?** — The MVP needs: `XR_KHR_opengl_enable` or `XR_KHR_vulkan_enable` (GPU interop), `XR_KHR_composition_layer_quad` (panel placement). Nice to have: `XR_EXT_hand_tracking` (hand input), `XR_FB_passthrough` (AR), `XR_EXTX_overlay` (overlay apps). The shim detects available extensions at runtime and exposes capability flags to Mojo (`has_extension()`, `has_hand_tracking()`, `has_passthrough()` — implemented in Step 5.3). *Actual OpenXR integration deferred to Step 5.2 remaining work.*

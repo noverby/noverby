@@ -179,7 +179,7 @@ Blitz provides a real DOM (`blitz-dom`) without requiring a browser or webview. 
 
 ---
 
-## XR Renderer (future — `mojo-gui/xr/`)
+## XR Renderer (in progress — `mojo-gui/xr/`)
 
 Strategy: render DOM-based UI panels into XR environments (VR/AR). Each panel is a separate DOM document that receives the standard mutation protocol, is rendered to a GPU texture, and placed as a quad in 3D space. Two backends:
 
