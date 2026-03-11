@@ -105,7 +105,7 @@ No `@export` decorators exist in the library code — those belong to per-render
 
 ## Import Conventions
 
-After the separation from the `wasm-mojo` monolith:
+After the separation from the `mojo-wasm` monolith:
 
 | Old import (monolith) | New import (separated) |
 |----------------------|----------------------|

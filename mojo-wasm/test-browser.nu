@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 
-# test-browser.nu — Load wasm-mojo apps in headless Servo and verify DOM state
+# test-browser.nu — Load mojo-wasm apps in headless Servo and verify DOM state
 #                    via W3C WebDriver, driven entirely from nushell + http + jq.
 #
 # Inspired by nixos-rs/test-boot.nu: build artifact → boot in real environment

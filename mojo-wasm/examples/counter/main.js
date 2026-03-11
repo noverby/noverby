@@ -4,7 +4,7 @@
 // All WASM exports are discovered automatically by the "counter" prefix:
 //   counter_init, counter_rebuild, counter_flush, counter_handle_event
 //
-// This is the minimal wasm-mojo app entry point — zero app-specific JS needed.
+// This is the minimal mojo-wasm app entry point — zero app-specific JS needed.
 
 import { launch } from "../lib/app.js";
 

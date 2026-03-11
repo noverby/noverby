@@ -34,7 +34,7 @@ async function run(): Promise<void> {
 	const wasmPath = new URL("../build/out.wasm", import.meta.url);
 	const fns = await instantiate(wasmPath);
 
-	console.log("wasm-mojo JS runtime tests\n");
+	console.log("mojo-wasm JS runtime tests\n");
 
 	testAllocator();
 	testProtocol(fns);

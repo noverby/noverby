@@ -258,7 +258,7 @@ mojo-gui/
 │   └── README.md                     # How to build & run examples on each target
 │
 ├── web/                              # Browser renderer (WASM + TypeScript)
-│   ├── runtime/                      # TypeScript runtime (from wasm-mojo/runtime/)
+│   ├── runtime/                      # TypeScript runtime (from mojo-wasm/runtime/)
 │   │   ├── mod.ts
 │   │   ├── interpreter.ts            # DOM stack machine
 │   │   ├── events.ts                 # DOM event delegation

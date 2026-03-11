@@ -185,7 +185,7 @@
         ./homepage
         ./wiki
 
-        ./wasm-mojo
+        ./mojo-wasm
         ./zed-mojo
         ./zed-nickel
 

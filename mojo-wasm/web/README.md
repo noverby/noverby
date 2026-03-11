@@ -98,6 +98,7 @@ The web renderer builds the same example apps that run on every target:
 | App     | `/examples/app/`     | Multi-view app with client-side routing |
 
 Each example has:
+
 - **Shared Mojo code** in `../examples/<name>/` — platform-agnostic app logic
 - **Web assets** in `../examples/<name>/` — `index.html` + `main.js` (minimal browser entry point)
 - **Shared JS runtime** in `../examples/lib/` — `app.js` convention-based launcher

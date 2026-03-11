@@ -1,4 +1,4 @@
-# 🔥 wasm-mojo
+# 🔥 mojo-wasm
 
 A reactive UI framework for the browser, written in [Mojo](https://www.modular.com/mojo) and compiled to WebAssembly.
 
@@ -83,7 +83,7 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 ## Project structure
 
 ```txt
-wasm-mojo/
+mojo-wasm/
 ├── src/
 │   ├── main.mojo                 # @export wrappers (WASM entry point, ~6,730 lines)
 │   ├── apps/                     # Demo/test app modules (Phase 40 extraction)
@@ -296,7 +296,7 @@ Mojo and JS communicate through a binary protocol in shared memory. Each mutatio
 Enter the dev shell (requires [Nix](https://nixos.org/)):
 
 ```sh
-nix develop .#wasm-mojo
+nix develop .#mojo-wasm
 ```
 
 This provides `just`, `mojo`, `deno`, `llc`, `wasm-ld`, and `wasmtime`.
@@ -878,7 +878,7 @@ current `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` / `MemoBool` / `
 ### 0.26.1 new features applicable to existing code
 
 Beyond unblocking deferred abstractions, Mojo 0.26.1 brings features that can
-improve wasm-mojo incrementally during the migration:
+improve mojo-wasm incrementally during the migration:
 
 - **Typed errors** (F1) — `raises CustomError` compiles as alternate return values with zero stack unwinding, ideal for WASM. Define `EventError`, `DiffError`, `MutationError` for the dispatch, diff, and mutation paths.
 - **String UTF-8 safety** (F2) — `String(from_utf8=span)`, `String(from_utf8_lossy=span)`, `String(unsafe_from_utf8=span)` for explicit guarantees in the WASM ↔ JS string bridge.

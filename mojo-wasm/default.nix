@@ -1,5 +1,5 @@
 {
-  devShells.wasm-mojo = pkgs: {
+  devShells.mojo-wasm = pkgs: {
     packages = with pkgs; [
       just
       mojo

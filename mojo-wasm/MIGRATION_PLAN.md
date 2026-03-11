@@ -2,7 +2,7 @@
 
 > Tracks all breaking changes, new features, and opportunities from the
 > [Mojo 0.26.1 release](https://docs.modular.com/stable/mojo/changelog#v0261-2026-01-29)
-> relevant to wasm-mojo. Items are ordered by priority.
+> relevant to mojo-wasm. Items are ordered by priority.
 
 ---
 
@@ -50,7 +50,7 @@ Comments and docstrings updated accordingly.
 **What changed:** The compiler now warns on every `alias` usage and suggests
 `comptime` instead. `alias` still works but will eventually become an error.
 
-**Impact:** Pervasive — wasm-mojo uses `alias` for all protocol opcodes, tag
+**Impact:** Pervasive — mojo-wasm uses `alias` for all protocol opcodes, tag
 constants, node kinds, event types, action tags, and sentinels.
 
 **Migration:**
@@ -116,7 +116,7 @@ already used explicit `Bool` comparisons.
 **What changed:** `UInt` became a type alias to `Scalar[DType.uint]`. Implicit
 conversion between `Int` and `UInt` has been removed.
 
-**Impact:** Low — wasm-mojo primarily uses `UInt32`, `UInt8`, and `Int`, not
+**Impact:** Low — mojo-wasm primarily uses `UInt32`, `UInt8`, and `Int`, not
 bare `UInt`. But any `Int` ↔ `UInt` implicit conversions will break.
 
 **Search pattern:** `grep -rn '\bUInt\b' src/ | grep -v UInt8 | grep -v UInt32`
@@ -132,7 +132,7 @@ bare `UInt`. But any `Int` ↔ `UInt` implicit conversions will break.
 `raises StopIteration`. The `Iterator.Element` type no longer requires
 `ImplicitlyDestructible`.
 
-**Impact:** Low — wasm-mojo does not define custom iterators (verified via grep).
+**Impact:** Low — mojo-wasm does not define custom iterators (verified via grep).
 Only affects consumption of standard library iterators, which should work
 transparently.
 
@@ -147,7 +147,7 @@ transparently.
 **What changed:** `Error()` (default construction) and `if error:` patterns
 no longer work. Errors must be constructed with meaningful messages.
 
-**Impact:** Low — wasm-mojo doesn't heavily use `Error` as a value type.
+**Impact:** Low — mojo-wasm doesn't heavily use `Error` as a value type.
 
 **Search pattern:** `grep -rn 'Error()' src/`
 
@@ -489,7 +489,7 @@ just serve
 - ✅ `just build` — compiles with `-Werror`, zero warnings.
 - ✅ `just test-js` — 1,385 JS tests pass.
 - ⚠️ `just test` — blocked by pre-existing `wasmtime-mojo` compile error
-  (pointer origin mismatch in `module.mojo:124`, unrelated to wasm-mojo).
+  (pointer origin mismatch in `module.mojo:124`, unrelated to mojo-wasm).
 
 ---
 

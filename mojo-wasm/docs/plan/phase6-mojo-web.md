@@ -14,7 +14,7 @@
 
 ## Architecture
 
-Since Mojo lacks a `wasm-bindgen` equivalent, `mojo-web` uses the same pattern already proven in `wasm-mojo`: WASM imports backed by a JS-side handle table.
+Since Mojo lacks a `wasm-bindgen` equivalent, `mojo-web` uses the same pattern already proven in `mojo-wasm`: WASM imports backed by a JS-side handle table.
 
 **JS side** — a runtime that exposes Web APIs as flat WASM-importable functions:
 
