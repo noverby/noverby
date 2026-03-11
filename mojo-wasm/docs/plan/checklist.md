@@ -51,37 +51,11 @@
 
 ---
 
-## Phase 3: `desktop/` — webview renderer + unified lifecycle (planned)
-
-- [ ] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — app-side lifecycle contract with `mount`, `handle_event`, `flush`, `has_dirty`, `consume_dirty`, `destroy`
-- [ ] Define `PlatformApp` trait (`core/src/platform/app.mojo`) — renderer-side contract with `init`, `flush_mutations`, `request_animation_frame`, `should_quit`, `destroy`
-- [ ] Create `core/src/platform/launch.mojo` — `launch[AppType: GuiApp]()` with `AppConfig` and compile-time target dispatch (`@parameter if is_wasm_target()`)
-- [ ] Create `core/src/platform/features.mojo` — `PlatformFeatures` struct, runtime feature detection
-- [ ] Create `core/src/platform/__init__.mojo` — re-exports public API
-- [ ] Refactor app structs to implement `GuiApp` — CounterApp, TodoApp, BenchmarkApp, MultiViewApp
-- [ ] Genericize `main.mojo` `@export` wrappers over `GuiApp` — `web/src/gui_app_exports.mojo` for parametric lifecycle helpers
-- [ ] Add `launch[AppType](AppConfig(...))` to shared examples — `main.mojo` entry points in all 4 shared examples
-- [ ] Design desktop webview architecture — polling-based C shim, heap mutation buffer, IPC
-- [ ] Build C shim (`desktop/shim/mojo_webview.c`) — GTK4 + WebKitGTK
-- [ ] Write C header (`desktop/shim/mojo_webview.h`)
-- [ ] Write Nix derivation (`desktop/shim/default.nix`)
-- [ ] Implement Mojo FFI bindings (`desktop/src/desktop/webview.mojo`)
-- [ ] Implement desktop bridge (`desktop/src/desktop/bridge.mojo`)
-- [ ] Implement `DesktopApp` (`desktop/src/desktop/app.mojo`)
-- [ ] Create desktop JS runtime (`desktop/runtime/desktop-runtime.js`)
-- [ ] Create HTML shell (`desktop/runtime/shell.html`)
-- [ ] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()`
-- [ ] Wire `launch()` to call `desktop_launch` on native targets
-- [ ] Verify counter example runs on desktop interactively
-- [ ] Create `desktop/justfile`, `desktop/default.nix`
-- [ ] Write `desktop/README.md`
-- [ ] Verify all 4 shared examples build on both web and desktop from identical source
-- [ ] Verify all 4 shared examples run interactively on desktop
-- [ ] Set up cross-target CI test matrix (web + desktop for every shared example)
-
----
-
 ## Phase 3: `mojo-gui/desktop` — webview renderer ✅ (infra), unified lifecycle ✅
+
+> Implemented in the `mojo-gui/` sibling project. The webview infrastructure (Steps 3.1–3.8) was later superseded by the Blitz renderer (Phase 4), but the unified lifecycle work (Step 3.9) is the lasting contribution.
+
+### Steps 3.1–3.8 — Desktop webview infrastructure ✅
 
 - [x] Design desktop webview architecture — polling-based C shim, heap mutation buffer, base64 IPC, JSON event bridge
 - [x] Build C shim (`shim/mojo_webview.c`) — GTK4 + WebKitGTK, ring buffer events, base64 mutation delivery, non-blocking step API
@@ -92,10 +66,13 @@
 - [x] Implement `DesktopApp` (`src/desktop/app.mojo`) — webview lifecycle, JS runtime injection, shell HTML loading, multiple event loop styles (blocking, mount+run, interactive, manual step)
 - [x] Create desktop JS runtime (`runtime/desktop-runtime.js`) — standalone 900+ line JS: MutationReader, TemplateCache, Interpreter (all opcodes), event dispatch via `window.mojo_post()`
 - [x] Create HTML shell (`runtime/shell.html`) — minimal `#root` mount point with dark mode support
-- [x] Verify counter example runs on desktop (`desktop/examples/counter.mojo`) — full interactive event loop with ConditionalSlot (temporary duplicate; to be replaced by shared example via `launch()`)
+- [x] Verify counter example runs on desktop (`desktop/examples/counter.mojo`) — full interactive event loop with ConditionalSlot (temporary duplicate; replaced by shared example via `launch()`)
 - [x] Create build system (`justfile`) — build-shim, build-counter, run-counter, dev-counter, test-shim, test-runtime
 - [x] Create Nix dev shell (`default.nix`) — GTK4, WebKitGTK 6.0, pkg-config, libmojo-webview, environment variables
 - [x] Write `mojo-gui/desktop/README.md` — architecture, build instructions, API reference, IPC protocol docs
+
+### Step 3.9 — Unified app lifecycle ✅
+
 - [x] Define `GuiApp` trait (`core/src/platform/gui_app.mojo`) — app-side lifecycle contract with `mount`, `handle_event`, `flush`, `has_dirty`, `consume_dirty`, `destroy` (Step 3.9.1)
 - [x] Implement generic desktop event loop (`desktop/src/desktop/launcher.mojo`) — `desktop_launch[AppType: GuiApp]()` with Blitz mutation interpreter (Step 3.9.2)
 - [x] Wire `launch()` compile-time dispatch — `launch[AppType: GuiApp]()` with `@parameter if is_wasm_target()` in `core/src/platform/launch.mojo`; native targets now call `desktop_launch[AppType](config)` (Step 3.9.3)
@@ -103,29 +80,50 @@
 - [x] Genericize `main.mojo` `@export` wrappers over `GuiApp` — `web/src/gui_app_exports.mojo` provides `gui_app_init`, `gui_app_mount`, `gui_app_handle_event`, `gui_app_flush`, etc.; all 4 main app @exports are now one-liners; 3,090 JS tests + 52 Mojo test suites pass (Step 3.9.5)
 - [x] Add `launch[AppType](...)` to shared examples (Step 3.9.6) — `main.mojo` entry points added to all 4 shared examples; no per-renderer duplicates existed to delete
 - [x] Verify all 4 shared examples build on both web and desktop from identical source (Step 3.9.7 — build verification complete)
+
+### Step 3.9.7 — Cross-target verification (remaining)
+
 - [ ] Verify all 4 shared examples run interactively on desktop (requires libmojo_blitz.so + GPU)
 - [ ] Set up cross-target CI test matrix (web + desktop for every shared example)
 
 ---
 
-## Phase 4: `desktop/` — Blitz renderer (planned, depends on Phase 3)
+## Phase 4: `desktop/` — Blitz renderer ✅ (builds verified, runtime pending)
 
-- [ ] Build Blitz C shim (`desktop/shim/src/lib.rs`) — Rust `cdylib` wrapping `blitz-dom` via `extern "C"` functions
-- [ ] Write C header (`desktop/shim/mojo_blitz.h`)
-- [ ] Write Nix derivation (`desktop/shim/default.nix`) — Rust build with GPU/windowing deps
-- [ ] Write `desktop/shim/Cargo.toml` — cdylib depending on blitz, winit, anyrender, vello
-- [ ] Implement Mojo FFI bindings (`desktop/src/desktop/blitz.mojo`) — typed `Blitz` struct via `_DLHandle`
-- [ ] Implement Mojo-side mutation interpreter (`desktop/src/desktop/renderer.mojo`) — reads binary opcodes → Blitz FFI calls
-- [ ] Implement Blitz-backed event loop in `desktop/src/desktop/launcher.mojo`
-- [ ] Wire `launch()` to call `desktop_launch` on native targets
-- [ ] Build the Rust cdylib (`cargo build --release`)
-- [ ] Integrate Winit event loop — `ApplicationHandler` impl, window creation, event routing
-- [ ] Connect `blitz-paint` rendering pipeline — Stylo + Taffy layout, Vello GPU rendering
-- [ ] Implement DOM event routing — Blitz DOM events → buffered events for Mojo polling
-- [ ] All 4 shared examples build on desktop-Blitz
-- [ ] All 4 shared examples run interactively on Blitz desktop (requires libmojo_blitz.so + GPU)
+> Replaced the webview dependency with [Blitz](https://github.com/DioxusLabs/blitz), a native HTML/CSS rendering engine. Implemented in the `mojo-gui/desktop/` directory. No JS runtime, no IPC — mutations are applied in-process via direct C FFI calls.
+
+### Steps 4.1–4.3.1 — Blitz shim + Mojo bindings ✅
+
+- [x] Build Blitz C shim (`desktop/shim/src/lib.rs`) — Rust `cdylib` wrapping `blitz-dom` via `extern "C"` functions; `BlitzContext` with DOM tree, ID mapping, template registry, event queue, interpreter stack
+- [x] Write C header (`desktop/shim/mojo_blitz.h`) — ~45 FFI functions: lifecycle, DOM operations, templates, events, stack, debug
+- [x] Write Nix derivation (`desktop/shim/default.nix`) — Rust build with GPU/windowing deps (Vulkan, Wayland, X11, fontconfig)
+- [x] Write `desktop/shim/Cargo.toml` — cdylib depending on blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, winit, anyrender-vello
+- [x] Implement Mojo FFI bindings (`desktop/src/desktop/blitz.mojo`) — typed `Blitz` struct via `_DLHandle`
+- [x] Implement Mojo-side mutation interpreter (`desktop/src/desktop/renderer.mojo`) — `MutationInterpreter`: reads binary opcodes → Blitz FFI calls (all 18 opcodes)
+- [x] Build the Rust cdylib (`cargo build --release`) — `libmojo_blitz.so` ~23MB (release, thin LTO, stripped), 607 crate dependencies, zero warnings
+
+### Step 4.4 — Shared example builds ✅ (runtime pending)
+
+- [x] All 4 shared examples compile for desktop-Blitz from identical source
+- [x] Mojo 0.26.1 API migration completed as part of build verification
+- [ ] Counter example runs interactively on desktop (requires `libmojo_blitz.so` + GPU)
+- [ ] Todo example runs interactively on desktop
+- [ ] Bench example runs interactively on desktop
+- [ ] Multi-view app example runs interactively on desktop
+
+### Step 4.6 — Winit event loop integration ✅
+
+- [x] `ApplicationHandler` impl for `BlitzContext` — `resumed()` creates Winit window with `Arc<Window>`, initializes Vello GPU renderer via `anyrender_vello::VelloWindowRenderer`, viewport update
+- [x] `mblitz_step(blocking)` wired to `pump_app_events()` — non-blocking via `Duration::ZERO`, blocking via 100ms timeout
+- [x] Winit window event routing — `CloseRequested`, `RedrawRequested`, `Resized`, `ScaleFactorChanged`, `CursorMoved`, `MouseInput`
+- [x] DOM event extraction via `MojoEventHandler` — custom `EventHandler` intercepts Blitz DOM events during bubble propagation, maps `DomEventData` to mojo-gui handler IDs, buffers in `event_queue`
+- [x] GPU rendering via Vello + blitz-paint — `RedrawRequested` triggers `doc.resolve()` (Stylo + Taffy), then `paint_scene()` renders to Vello scene
+- [x] Dependency version alignment — downgraded to match Blitz v0.2.0 pins: anyrender 0.6, winit 0.30; ported from winit 0.31 API
+
+### Step 4.5 + CI — Cross-platform (remaining)
+
 - [ ] Cross-platform testing (Linux, macOS, Windows via Winit)
-- [ ] Set up cross-target CI test matrix (web + desktop-blitz for every shared example)
+- [ ] Set up cross-target CI test matrix (web + desktop-Blitz for every shared example)
 
 ---
 
