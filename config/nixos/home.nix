@@ -29,12 +29,16 @@
       security.sudo.wheelNeedsPassword = false;
       networking = {
         hostName = "home";
-        interfaces.enp0s13f0u3u4.ipv4.addresses = [
-          {
-            address = "10.0.0.2";
-            prefixLength = 24;
-          }
-        ];
+        networkmanager.unmanaged = ["enp0s13f0u3u4"];
+        interfaces.enp0s13f0u3u4 = {
+          useDHCP = false;
+          ipv4.addresses = [
+            {
+              address = "10.0.0.2";
+              prefixLength = 24;
+            }
+          ];
+        };
         defaultGateway = "10.0.0.1";
         nameservers = ["194.242.2.2"];
         firewall.allowedTCPPorts = [22];
