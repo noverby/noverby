@@ -29,6 +29,16 @@ default: build
 
 _blitz-rpath := `nix eval --raw --impure --expr 'let pkgs = import <nixpkgs> {}; in pkgs.lib.makeLibraryPath (with pkgs; [ wayland libxkbcommon vulkan-loader libGL fontconfig freetype ])' 2>/dev/null || echo ""`
 
+# ── Windows cross-compilation sysroot (Nix) ──────────────────────────────
+#
+# The rust-sysroot-windows helper script (from the Nix dev shell) prints the
+# path to a Rust sysroot that includes the x86_64-pc-windows-gnu standard
+# library. This is used by build-shim-windows and test-desktop-wine to pass
+# --sysroot to rustc without replacing the native Rust toolchain.
+
+_rust-sysroot-windows := `rust-sysroot-windows 2>/dev/null || echo ""`
+_mingw-lib-path := `mingw-lib-path 2>/dev/null || echo ""`
+
 # ── Web target ───────────────────────────────────────────────────────────────
 
 # Build the WASM binary (delegates to web/justfile)
@@ -129,6 +139,32 @@ run-desktop-all: build-desktop-all
 test-desktop:
     cd desktop/shim && cargo test
 
+# ── Windows cross-compilation & Wine verification (S-3) ─────────────────
+
+# Build the Blitz C shim for Windows (cross-compile via MinGW-w64)
+# Prepends the rust-bin toolchain (with Windows target std) to PATH so that
+# rustc, cargo, and the sysroot all match. The native devenv Rust is unchanged.
+build-shim-windows:
+    cd desktop/shim && \
+    PATH="{{ _rust-sysroot-windows }}/bin:$PATH" \
+    CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-L native={{ _mingw-lib-path }}" \
+    cargo build --release --lib --target x86_64-pc-windows-gnu
+
+# Run Blitz shim integration tests under Wine (headless — no GPU needed)
+# cargo test cross-compiles the test binary, then Wine runs it automatically
+# via the runner setting in .cargo/config.toml.
+# --test-threads=1: Wine's COM/threading layer crashes with parallel test threads
+# (misaligned pointer in windows-core interface dispatch). Single-threaded is stable.
+test-desktop-wine:
+    cd desktop/shim && \
+    PATH="{{ _rust-sysroot-windows }}/bin:$PATH" \
+    CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-L native={{ _mingw-lib-path }}" \
+    cargo test --target x86_64-pc-windows-gnu -- --test-threads=1
+    @echo "✅ All desktop integration tests pass under Wine"
+
+# Build the shim for both Linux and Windows
+build-shim-all: build-shim build-shim-windows
+
 # ── Cross-target builds ──────────────────────────────────────────────────
 
 # Build a shared example for web (WASM)
@@ -143,8 +179,8 @@ build-web app:
 # Build all shared examples for both targets
 build-all: build build-desktop-all
 
-# Run all tests (Mojo + JS + desktop)
-test-all-targets: test-all test-desktop
+# Run all tests (Mojo + JS + desktop + Wine)
+test-all-targets: test-all test-desktop test-desktop-wine
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
 

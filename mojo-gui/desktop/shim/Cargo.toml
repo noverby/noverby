@@ -27,14 +27,19 @@ anyrender = { version = "0.6" }
 anyrender_vello = { version = "0.6" }
 
 # Windowing (must match Blitz v0.2.0's pinned version exactly)
-# Wayland-only: disable default features (which include x11 + wayland-dlopen).
+# Platform-specific: Linux uses Wayland-only features, Windows uses default Win32.
 # Note: blitz-shell still enables winit defaults transitively, so x11 code is
-# compiled in but never used — we simply don't ship X11 runtime libraries.
+# compiled in on Linux but never used — we simply don't ship X11 runtime libraries.
+
+[target.'cfg(target_os = "linux")'.dependencies]
 winit = { version = "0.30", default-features = false, features = [
   "wayland",
   "wayland-csd-adwaita",
   "rwh_06",
 ] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
 
 # Note: markup5ever types (QualName, LocalName, etc.) are re-exported by blitz-dom.
 # Do NOT add a direct markup5ever dependency — version mismatches cause type errors.

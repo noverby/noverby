@@ -186,6 +186,7 @@
         ./wiki
 
         ./mojo-wasm
+        ./mojo-gui
         ./zed-mojo
         ./zed-nickel
 
