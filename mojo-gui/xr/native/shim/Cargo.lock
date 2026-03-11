@@ -2449,7 +2449,7 @@ dependencies = [
 
 [[package]]
 name = "mojo-xr-shim"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyrender",
  "anyrender_vello",

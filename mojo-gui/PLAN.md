@@ -12,15 +12,15 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Desktop | Blitz (Stylo + Vello + Winit) | ✅ Complete | Linux Wayland |
 | Desktop | Blitz | 🔲 Untested | macOS |
 | Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
-| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Step 5.1 ✅) | Linux (headless tests pass) |
+| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.2 ✅) | Linux (headless tests pass) |
 | XR Browser | WebXR + JS interpreter | 📋 Future (Phase 5) | — |
 
 | Area | Metric |
 |------|--------|
 | Core Mojo test suites | 52 |
 | JS integration test suites | 30 (~3,375 tests) |
-| Desktop integration test suites | 1 (69 tests, verified on Linux + Wine) |
-| XR shim integration tests | 20+ (headless — no XR runtime or GPU needed) |
+| Desktop integration test suites | 1 (75 tests, verified on Linux + Wine) |
+| XR shim integration tests | 30 (headless — real Blitz documents, no XR runtime or GPU needed) |
 | Shared example apps | 4 (Counter, Todo, Benchmark, MultiView) |
 | Test/demo app modules | 15 (in `examples/apps/`) |
 | Binary mutation opcodes | 18 |
@@ -122,6 +122,14 @@ just test-browser            # Run all browser tests (headless Servo)
 just test-browser-app counter  # Single app
 ```
 
+### XR Shim Integration Tests (30 tests)
+
+Rust integration tests for the XR Blitz shim. Each panel owns a real Blitz `BaseDocument` with Stylo CSS styling and Taffy layout. Tests run in headless mode — no XR runtime or GPU needed. Covers: session lifecycle, panel lifecycle, DOM operations (create/append/insert/replace/remove), attributes, text nodes, placeholders, serialization, events, raycasting, focus, frame loop, reference spaces, ID mapping, stack operations, multi-panel isolation, Blitz document structure, nested elements with attributes, and layout resolution.
+
+```text
+just test-xr                 # Run all XR shim integration tests (headless)
+```
+
 ### Build Commands
 
 ```text
@@ -137,10 +145,13 @@ just build-desktop-all       # Build all 4 examples for desktop
 just run-desktop counter     # Build + run a desktop example (Wayland)
 just test-desktop            # Run Blitz shim integration tests (headless)
 
+# ── XR ───────────────────────────────────────────────────────
+just test-xr                 # Run XR shim integration tests (headless)
+
 # ── Cross-target ─────────────────────────────────────────────
 just build-all               # Build web + all desktop examples
 just test-all                # Run Mojo + JS test suites
-just test-all-targets        # Run Mojo + JS + desktop test suites
+just test-all-targets        # Run Mojo + JS + desktop + XR test suites
 just clean                   # Remove all build artifacts
 ```
 
@@ -159,6 +170,30 @@ mojo build examples/counter/main.mojo -I core/src -I desktop/src -I examples
 ---
 
 ## What Was Done
+
+### Phase 5.2: Real Blitz Documents in XR Shim — ✅ Complete
+
+Replaced the lightweight `HeadlessNode` DOM tree in the XR shim with real Blitz `BaseDocument` instances — the same CSS engine used by the desktop renderer. Each XR panel now owns a full Blitz document with Stylo styling and Taffy layout.
+
+**Key changes** (`xr/native/shim/src/lib.rs`):
+
+- **Panel now owns a `BaseDocument`** — replaced `nodes: HashMap<u32, HeadlessNode>` with `doc: BaseDocument` plus `id_to_node`/`node_to_id` maps (same pattern as desktop shim). Mount point is `<body>` (was `<div>`).
+- **All DOM operations delegate to Blitz** — `create_element` → `doc.mutate().create_element(QualName)`, `set_attribute` → `doc.mutate().set_attribute()`, etc. No more manual parent/child tracking.
+- **Template cloning via `deep_clone_node`** — templates are stored as detached Blitz subtrees, deep-cloned on use (same as desktop shim).
+- **DOM inspection uses Blitz node API** — `get_node_tag`, `get_text_content`, `get_attribute_value`, `serialize_subtree` all use `doc.get_node()` and `NodeData` matching.
+- **Layout resolution in render loop** — `mxr_render_dirty_panels` calls `panel.doc.resolve(0.0)` to exercise Stylo + Taffy (future: Vello offscreen rendering).
+- **New FFI functions** — `mxr_panel_assign_id`, `mxr_panel_resolve_id`, `mxr_panel_stack_push`, `mxr_panel_stack_pop` (mutation interpreter support).
+- **6 new tests** (30 total, up from 24) — `id_mapping_assign_and_resolve`, `stack_push_and_pop`, `multi_panel_dom_isolation`, `blitz_document_structure`, `blitz_nested_elements_with_attributes`, `layout_resolve_in_render`.
+- **Version bumped** to 0.2.0.
+
+**What's NOT yet wired up** (deferred to Step 5.2b or 5.3):
+
+- Vello offscreen rendering to GPU textures (needs wgpu device setup)
+- OpenXR session lifecycle (`openxr` crate integration)
+- UA stylesheet application to Blitz documents
+- Binary opcode interpreter on the Rust side (Mojo-side interpreter calls individual FFI functions)
+
+---
 
 ### Phase 5.1: XR Panel Abstraction Design — ✅ Complete
 
@@ -354,7 +389,7 @@ XR panel abstraction that reuses the binary mutation protocol unchanged. Each XR
 | Step | Description | Status |
 |------|-------------|--------|
 | 5.1 | Design the XR panel abstraction (`XRPanel` struct, scene graph, placement) | ✅ Complete — `XRPanel`, `PanelConfig`, `Vec3`, `Quaternion`, `PanelState` (Mojo). `XRScene` with focus management, dirty tracking, raycasting (ray-plane intersection), spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). Rust shim scaffold (`xr/native/shim/src/lib.rs`) with headless multi-panel DOM, event ring buffer, DOM serialization, raycasting, and 20+ integration tests. C API header (`mojo_xr.h`, ~80 functions). `PlatformFeatures` extended with `has_xr`, `has_xr_hand_tracking`, `has_xr_passthrough` and `xr_native_features()` / `xr_web_features()` presets. Panel presets: default, dashboard, tooltip, hand-anchored. |
-| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔲 Next — wire up real Blitz documents, Vello offscreen rendering, OpenXR session lifecycle |
+| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 30 tests pass, Stylo+Taffy layout resolves). Remaining: Vello offscreen rendering, OpenXR session lifecycle. |
 | 5.3 | Mojo FFI bindings for the OpenXR shim | 🔲 Pending |
 | 5.4 | XR scene manager and panel routing (multiplexes mutation buffers) | 🔲 Pending |
 | 5.5 | `xr_launch[AppType: GuiApp]()` — single-panel apps get XR for free | 🔲 Pending |

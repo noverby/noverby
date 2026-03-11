@@ -824,6 +824,40 @@ uint32_t mxr_panel_mount_point_id(MxrSession session, uint32_t panel_id);
 uint32_t mxr_panel_get_child_mojo_id(MxrSession session, uint32_t panel_id,
                                       uint32_t parent_id, uint32_t index);
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ID Mapping (AssignId opcode support)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Assign a mojo-gui element ID to a Blitz node ID within a panel.
+ * Used by the mutation interpreter when processing the AssignId opcode.
+ */
+void mxr_panel_assign_id(MxrSession session, uint32_t panel_id,
+                          uint32_t mojo_id, uint32_t node_id);
+
+/*
+ * Resolve a mojo-gui element ID to a Blitz node ID within a panel.
+ * Returns 0 if the mojo ID is not mapped.
+ */
+uint32_t mxr_panel_resolve_id(MxrSession session, uint32_t panel_id,
+                                uint32_t mojo_id);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Stack Operations (mutation interpreter support)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Push a node ID onto the panel's interpreter stack.
+ */
+void mxr_panel_stack_push(MxrSession session, uint32_t panel_id,
+                           uint32_t node_id);
+
+/*
+ * Pop a node ID from the panel's interpreter stack.
+ * Returns 0 if the stack is empty.
+ */
+uint32_t mxr_panel_stack_pop(MxrSession session, uint32_t panel_id);
+
 
 #ifdef __cplusplus
 }
