@@ -116,8 +116,8 @@ fn main() raises:
 Build for different targets:
 
 ```text
-# Web (WASM):
-mojo build examples/counter/main.mojo --target wasm64-wasi -I core/src -I web/src -I examples
+# Web (WASM) — multi-step pipeline (mojo → LLVM IR → llc → wasm-ld):
+just build
 
 # Desktop (native):
 mojo build examples/counter/main.mojo -I core/src -I desktop/src -I examples
@@ -284,11 +284,9 @@ from events import HandlerRegistry
 - **Phase 5** 🔮 — XR renderer (OpenXR native, WebXR browser)
 - **Phase 6** 🔮 — `mojo-web` raw Web API bindings
 
-See the [Separation Plan](../mojo-wasm/SEPARATION_PLAN.md) for full details.
-
 ## Origin
 
-This project was extracted from the [`mojo-wasm`](../mojo-wasm/) monolith following the [Separation Plan](../mojo-wasm/SEPARATION_PLAN.md). The separation enables:
+This project was extracted from the `mojo-wasm` monolith. The separation enables:
 
 1. **Multi-renderer support** — The same app code runs on web, desktop, and (future) XR
 2. **Clean dependency boundaries** — Core framework has zero browser/WASM dependencies
