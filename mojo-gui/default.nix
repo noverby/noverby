@@ -13,6 +13,7 @@
       # Build tools
       just
       mojo
+      mojo-windows
 
       # Web renderer (WASM + TypeScript)
       deno
@@ -60,6 +61,12 @@
       # Usage in justfile: _mingw-lib-path := `mingw-lib-path`
       (writeShellScriptBin "mingw-lib-path" ''
         echo -n "${pkgsCross.mingwW64.windows.pthreads}/lib"
+      '')
+
+      # Helper: prints the MinGW-w64 mcfgthread library path
+      # Usage in justfile: _mingw-mcf-lib-path := `mingw-mcf-lib-path`
+      (writeShellScriptBin "mingw-mcf-lib-path" ''
+        echo -n "${pkgsCross.mingwW64.windows.mcfgthreads}/lib"
       '')
     ];
   };
