@@ -8,7 +8,7 @@ Split the current `wasm-mojo` monolith into two projects:
    - **`mojo-gui/core`** — Renderer-agnostic reactive GUI framework (Mojo library)
    - **`mojo-gui/web`** — Browser renderer (WASM + TypeScript)
    - **`mojo-gui/desktop`** — Desktop renderer ([Blitz](https://github.com/DioxusLabs/blitz) native HTML/CSS engine — **implementation complete, verification pending**; GTK4 + WebKitGTK webview — legacy)
-   - **`mojo-gui/native`** — Native renderer (platform widgets, future)
+   - **`mojo-gui/xr`** — XR renderer (WebXR in browser, OpenXR native — future)
    - **`mojo-gui/examples`** — Shared example apps that run on **every** renderer target unchanged
 2. **`mojo-web`** — Raw Web API bindings for Mojo/WASM (like Rust's `web-sys`)
 
@@ -35,7 +35,7 @@ Note: Dioxus's desktop renderer evolved through similar stages — early version
 
 Separately, Rust's `web-sys` crate provides raw bindings to **all** Web APIs (DOM, fetch, WebSocket, WebGL, etc.) via `wasm-bindgen`. Any Rust/WASM project can use `web-sys` directly — Dioxus-web uses it under the hood. `mojo-web` fills this same ecosystem role for Mojo.
 
-Key insight: **the mutation protocol stays DOM-oriented even in core**. The desktop webview renderer reuses the same JS mutation interpreter inside an embedded webview. Future desktop renderers can use a native HTML/CSS rendering engine (like [Blitz](https://github.com/DioxusLabs/blitz)) that provides a real DOM without a browser, while future native renderers map DOM concepts to platform widgets. This is pragmatic — HTML/DOM is a universal UI description language. `mojo-gui` uses the mutation protocol (not `mojo-web`) for rendering, keeping the multi-renderer architecture intact. `mojo-web` is for everything else an app needs from the browser: data fetching, storage, timers, canvas, etc.
+Key insight: **the mutation protocol stays DOM-oriented even in core**. The desktop webview renderer reuses the same JS mutation interpreter inside an embedded webview. Future desktop renderers can use a native HTML/CSS rendering engine (like [Blitz](https://github.com/DioxusLabs/blitz)) that provides a real DOM without a browser, while XR renderers render DOM content to textures placed in 3D space. This is pragmatic — HTML/DOM is a universal UI description language. `mojo-gui` uses the mutation protocol (not `mojo-web`) for rendering, keeping the multi-renderer architecture intact. `mojo-web` is for everything else an app needs from the browser: data fetching, storage, timers, canvas, etc.
 
 ---
 
@@ -329,11 +329,26 @@ mojo-gui/
 │   ├── justfile                      # Build commands (build-shim, run-counter, etc.)
 │   └── README.md
 │
-├── native/                           # Native renderer (Phase 5 — future, platform widgets)
-│   ├── src/
-│   │   ├── native_launcher.mojo      # NativeApp — implements App trait for native widgets
-│   │   ├── renderer.mojo             # Mutation interpreter → native widgets
-│   │   └── backend/                  # Platform-specific: GTK, Cocoa, Win32, etc.
+├── xr/                               # XR renderer (Phase 5 — future, OpenXR + WebXR)
+│   ├── native/                       # OpenXR native renderer (Blitz DOM → Vello → OpenXR swapchain)
+│   │   ├── shim/
+│   │   │   ├── src/lib.rs            # Rust cdylib: Blitz + Vello + openxr crate, panel management
+│   │   │   ├── mojo_xr.h            # C API header — XR session, panels, input
+│   │   │   ├── Cargo.toml           # Rust crate config (blitz-dom, vello, openxr, winit)
+│   │   │   └── default.nix          # Nix derivation with OpenXR/GPU deps
+│   │   └── src/
+│   │       ├── xr_launcher.mojo     # xr_launch[AppType: GuiApp]() — OpenXR event loop
+│   │       ├── xr_blitz.mojo        # Mojo FFI bindings to libmojo_xr.so
+│   │       ├── panel.mojo           # XRPanel — DOM document + 3D transform + input mapping
+│   │       └── scene.mojo           # XRScene — panel registry, spatial layout, raycasting
+│   ├── web/                          # WebXR browser renderer (extends mojo-gui/web)
+│   │   ├── runtime/
+│   │   │   ├── xr-session.ts        # WebXR session lifecycle, reference spaces
+│   │   │   ├── xr-panels.ts         # DOM → texture rendering, 3D panel placement
+│   │   │   ├── xr-input.ts          # XR controller ray → DOM event translation
+│   │   │   └── xr-runtime.ts        # Entry point — extends web runtime with XR
+│   │   └── src/
+│   │       └── webxr_launcher.mojo  # WebXR-specific launch configuration
 │   └── README.md
 │
 └── README.md
@@ -358,14 +373,14 @@ The **mutation buffer** is the renderer contract. Every renderer must implement 
 
 The opcodes (`OP_CREATE_TEXT_NODE`, `OP_SET_ATTRIBUTE`, `OP_LOAD_TEMPLATE`, etc.) are DOM-oriented by design. This is intentional — all three renderer targets can interpret them:
 
-| Opcode              | Web (DOM)                     | Desktop (Blitz)                       | Native (future)             |
-|---------------------|-------------------------------|---------------------------------------|-----------------------------|
-| `LOAD_TEMPLATE`     | `cloneNode(true)`             | `blitz_clone_template()` via C FFI    | Create widget tree          |
-| `SET_ATTRIBUTE`     | `el.setAttribute()`           | `blitz_set_attribute()` via C FFI     | Set widget property         |
-| `SET_TEXT`          | `node.textContent = ...`      | `blitz_set_text_content()` via C FFI  | Set label text              |
-| `NEW_EVENT_LISTENER`| `addEventListener()`          | `blitz_add_event_listener()` via C FFI| Register widget callback    |
-| `APPEND_CHILDREN`  | `parent.appendChild()`        | `blitz_append_child()` via C FFI      | Add child widget            |
-| `REMOVE`           | `node.remove()`               | `blitz_remove_node()` via C FFI       | Destroy widget              |
+| Opcode              | Web (DOM)                     | Desktop (Blitz)                       | XR Native (OpenXR + Blitz)                    | XR Web (WebXR)                        |
+|---------------------|-------------------------------|---------------------------------------|------------------------------------------------|---------------------------------------|
+| `LOAD_TEMPLATE`     | `cloneNode(true)`             | `blitz_clone_template()` via C FFI    | `blitz_clone_template()` → panel document      | `cloneNode(true)` → panel DOM         |
+| `SET_ATTRIBUTE`     | `el.setAttribute()`           | `blitz_set_attribute()` via C FFI     | `blitz_set_attribute()` → panel document       | `el.setAttribute()` → panel DOM      |
+| `SET_TEXT`          | `node.textContent = ...`      | `blitz_set_text_content()` via C FFI  | `blitz_set_text_content()` → panel document    | `node.textContent` → panel DOM       |
+| `NEW_EVENT_LISTENER`| `addEventListener()`          | `blitz_add_event_listener()` via C FFI| `blitz_add_event_listener()` → panel document  | `addEventListener()` → panel DOM     |
+| `APPEND_CHILDREN`  | `parent.appendChild()`        | `blitz_append_child()` via C FFI      | `blitz_append_child()` → panel document        | `parent.appendChild()` → panel DOM   |
+| `REMOVE`           | `node.remove()`               | `blitz_remove_node()` via C FFI       | `blitz_remove_node()` → panel document         | `node.remove()` → panel DOM          |
 
 ---
 
@@ -509,7 +524,8 @@ The only difference is the build command. The source code is identical.
 | **Web**              | JS runtime instantiates WASM, calls `@export` init | JS `requestAnimationFrame` + event listeners |
 | **Desktop (webview)**| Native `main()` creates GTK4 window with webview | GTK main loop via `mwv_step()` polling  |
 | **Desktop (Blitz)**  | Native `main()` creates Blitz window (future) | Winit event loop via Blitz C shim       |
-| **Native**           | Native `main()` creates platform window (future) | Platform-specific event loop (GTK, Cocoa, etc.) |
+| **XR (WebXR)**       | JS runtime creates WebXR session, renders DOM panels to textures in 3D | WebXR `requestAnimationFrame` + XR input sources |
+| **XR (OpenXR)**      | Native `main()` creates OpenXR session, Blitz panels render to swapchain textures | OpenXR frame loop + Winit/Vello for panel rendering |
 
 ---
 
@@ -684,16 +700,99 @@ Blitz provides a real DOM (`blitz-dom`) without requiring a browser or webview. 
 - **Better integration** — native window chrome, system menus, accessibility via AccessKit
 - **Consistent rendering** — Stylo (Firefox's CSS engine) provides standards-compliant CSS everywhere
 
-### Native Renderer (future — `mojo-gui/native/`)
+### XR Renderer (future — `mojo-gui/xr/`)
 
-Strategy: direct platform widget mapping. A true native renderer that maps DOM-like mutations to platform-specific widgets (GTK, Cocoa, Win32) rather than rendering HTML/CSS:
+Strategy: render DOM-based UI panels into XR environments (VR/AR). Each panel is a separate DOM document that receives the standard mutation protocol, is rendered to a GPU texture, and placed as a quad in 3D space. Two backends:
 
-- `LOAD_TEMPLATE` → create a widget subtree from a cached layout
-- `SET_TEXT` → update a label/text widget
-- `SET_ATTRIBUTE` → set widget properties (style, class → theme variants)
-- `NEW_EVENT_LISTENER` → register widget callbacks
+**OpenXR Native (`mojo-gui/xr/native/`)** — reuses the Blitz stack from the desktop renderer:
 
-This requires platform-specific backends and a mapping from HTML semantics to native widget concepts. This is a larger effort than the Blitz-based desktop renderer, which stays in the HTML/CSS world.
+- Each `XRPanel` owns a `blitz-dom` document (same as desktop, but rendered to an offscreen texture instead of a Winit window)
+- Vello renders each panel's DOM to a `wgpu::Texture` (Vello already supports arbitrary render targets)
+- The OpenXR runtime composites these textures as quad layers in 3D space, or the shim renders them into the XR swapchain via a simple 3D compositor
+- XR controller raycasting → intersect panel quad → compute 2D hit point → dispatch as DOM pointer events through the existing event protocol
+- The `openxr` Rust crate provides session management, pose tracking, input actions, reference spaces
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Native Process                                                  │
+│                                                                  │
+│  ┌─────────────────────┐                                         │
+│  │  mojo-gui/core       │                                         │
+│  │  (compiled native)   │── mutation buffer ──┐                   │
+│  │  signals, vdom,      │                     │                   │
+│  │  diff, scheduler     │◄── event dispatch ──┤                   │
+│  └─────────────────────┘                     │                   │
+│                                              ▼                   │
+│  ┌─────────────────────────────────────────────────────────┐     │
+│  │  XR Panel Manager                                        │     │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐               │     │
+│  │  │ Panel 0   │  │ Panel 1   │  │ Panel N   │  ...         │     │
+│  │  │ blitz-dom │  │ blitz-dom │  │ blitz-dom │              │     │
+│  │  │ + Stylo   │  │ + Stylo   │  │ + Stylo   │              │     │
+│  │  │ + Taffy   │  │ + Taffy   │  │ + Taffy   │              │     │
+│  │  │ → Vello   │  │ → Vello   │  │ → Vello   │              │     │
+│  │  │ → texture │  │ → texture │  │ → texture │              │     │
+│  │  └─────┬────┘  └─────┬────┘  └─────┬────┘               │     │
+│  │        │              │              │                     │     │
+│  │        ▼              ▼              ▼                     │     │
+│  │  ┌──────────────────────────────────────────────────┐    │     │
+│  │  │  OpenXR compositor / 3D scene                     │    │     │
+│  │  │  (place textures as quads at world positions)     │    │     │
+│  │  │  + controller raycasting → 2D hit → DOM events    │    │     │
+│  │  └──────────────────────────────────────────────────┘    │     │
+│  └─────────────────────────────────────────────────────────┘     │
+│                              │                                    │
+│                              ▼                                    │
+│                     OpenXR Runtime → HMD                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**WebXR Browser (`mojo-gui/xr/web/`)** — extends the existing web renderer:
+
+- The existing JS mutation interpreter applies mutations to real DOM elements
+- A WebXR session manager creates an immersive session and manages reference spaces
+- DOM panel content is rendered to WebGL/WebGPU textures (via OffscreenCanvas or html-to-texture techniques) and placed as quads in the WebXR scene
+- XR input sources (controllers, hands) are raycasted against panel quads; hits are translated to standard DOM pointer events that flow back through the existing event bridge
+- Falls back gracefully to flat web rendering when no XR device is available
+
+```text
+┌─ Browser ──────────────────────────────────────────────────────┐
+│                                                                 │
+│  ┌─────────────────────┐                                        │
+│  │  mojo-gui/core       │                                        │
+│  │  (WASM)              │── mutation buffer ──┐                  │
+│  │                      │                     │                  │
+│  │                      │◄── event dispatch ──┤                  │
+│  └─────────────────────┘                     │                  │
+│                                              ▼                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  XR Panel Manager (JS)                                    │   │
+│  │  ┌─────────────┐  ┌─────────────┐                         │   │
+│  │  │ Panel 0      │  │ Panel 1      │  ...                   │   │
+│  │  │ DOM subtree  │  │ DOM subtree  │                        │   │
+│  │  │ → texture    │  │ → texture    │                        │   │
+│  │  └──────┬──────┘  └──────┬──────┘                         │   │
+│  │         │                │                                 │   │
+│  │         ▼                ▼                                 │   │
+│  │  ┌──────────────────────────────────────────────────┐     │   │
+│  │  │  WebXR session (WebGL/WebGPU)                     │     │   │
+│  │  │  (place textures as quads in XR reference space)  │     │   │
+│  │  │  + XRInputSource raycasting → DOM pointer events  │     │   │
+│  │  └──────────────────────────────────────────────────┘     │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                              │                                   │
+│                              ▼                                   │
+│                     WebXR Runtime → HMD                           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key design decisions:**
+
+- **The mutation protocol is unchanged.** Each XR panel receives the same binary opcode stream as any other renderer. The core framework doesn't know it's running in XR.
+- **Blitz stack is reused, not forked.** The OpenXR native renderer uses the same `blitz-dom` + Stylo + Taffy + Vello pipeline as the desktop renderer. The only difference is the final render target (offscreen texture vs. Winit surface) and the compositor (OpenXR quad layers vs. window manager).
+- **Panels are the spatial primitive.** A panel is a 2D DOM document placed at a 3D position/rotation in the XR scene. Apps create panels via a new `XRPanel` API; each panel can host a separate `GuiApp` or a view within one.
+- **Input is bridged, not reinvented.** XR controller rays are intersected with panel quads in 3D; the resulting 2D hit coordinates are translated to standard DOM pointer/click events and dispatched through the existing `HandlerRegistry`. App code doesn't know the click came from a VR controller.
+- **wgpu is the unifying GPU layer.** It targets Vulkan/Metal/DX12 natively (for OpenXR) and WebGPU in the browser (for WebXR), providing a single rendering abstraction across both XR backends.
 
 ---
 
@@ -1348,15 +1447,142 @@ Implemented full Winit event loop integration in the Blitz C shim (`shim/src/lib
 
 ---
 
-## Phase 5: Native Renderer (Future)
+## Phase 5: XR Renderer (Future)
 
-Like Dioxus's future native widget renderer, this maps DOM-oriented mutations to platform-specific widgets. The shared examples continue to work unchanged — `launch()` dispatches to the native renderer when compiled with `--feature native`.
+Render DOM-based UI panels into XR environments. The mutation protocol is unchanged — each XR panel receives the same binary opcode stream. The Blitz stack (blitz-dom + Stylo + Taffy + Vello) is reused for native OpenXR; the existing web renderer's JS interpreter is extended for WebXR.
 
 **Compile targets (complete picture):**
 
 - `mojo build --target wasm64-wasi` → web renderer (needs `mojo-gui/web` JS runtime)
+- `mojo build --target wasm64-wasi --feature webxr` → WebXR renderer (extends web renderer with XR session)
 - `mojo build` → desktop renderer (Blitz native, implementation complete — verification pending)
-- `mojo build --feature native` → native renderer (platform widgets, future)
+- `mojo build --feature xr` → OpenXR native renderer (Blitz panels → OpenXR swapchain)
+
+### Step 5.1 — Design the XR panel abstraction
+
+Define the `XRPanel` concept: a 2D DOM document with a 3D transform. Each panel:
+
+- Owns a Blitz document (native) or DOM subtree (web) that receives mutations
+- Has a world-space position, rotation, and physical size (in meters)
+- Has a pixels-per-meter density for text legibility
+- Supports pointer input via raycasting (controller ray → 2D hit point → DOM event)
+
+```text
+# xr/native/src/panel.mojo
+
+struct XRPanel(Movable):
+    """A 2D DOM document placed in 3D XR space."""
+    var panel_id: UInt32
+    var position: SIMD[DType.float32, 4]    # x, y, z, 0
+    var rotation: SIMD[DType.float32, 4]    # quaternion x, y, z, w
+    var size: SIMD[DType.float32, 2]        # width, height in meters
+    var pixels_per_meter: Float32
+    var texture_width: UInt32
+    var texture_height: UInt32
+```
+
+### Step 5.2 — Build the OpenXR + Blitz Rust shim
+
+Extend the existing Blitz C shim (`desktop/shim/src/lib.rs`) or create a new `xr/native/shim/` that:
+
+- Links `blitz-dom`, `stylo`, `taffy`, `vello` (reused from desktop shim)
+- Adds the `openxr` Rust crate for XR session management
+- Manages multiple `BlitzDocument` instances (one per panel)
+- Renders each panel's DOM to an offscreen `wgpu::Texture` via Vello
+- Composites panel textures into the OpenXR swapchain (as quad layers or rendered into the scene)
+- Handles XR frame timing (`xrWaitFrame`, `xrBeginFrame`, `xrEndFrame`)
+- Provides controller pose data and performs panel raycasting
+
+**C API surface (indicative):**
+
+| Category        | Functions                                                                           |
+|-----------------|-------------------------------------------------------------------------------------|
+| Session         | `mxr_create_session()`, `mxr_destroy_session()`, `mxr_is_session_active()`          |
+| Panels          | `mxr_create_panel(w, h, ppm)`, `mxr_destroy_panel(id)`, `mxr_panel_set_transform()` |
+| Mutations       | `mxr_panel_apply_mutations(id, buf, len)` — same binary protocol as desktop          |
+| Events          | `mxr_poll_event(buf, len)` — panel_id + handler_id + event_type + value              |
+| Frame loop      | `mxr_wait_frame()`, `mxr_begin_frame()`, `mxr_end_frame()`                          |
+| Input           | `mxr_get_controller_pose(hand)`, `mxr_get_head_pose()`                               |
+| Reference spaces| `mxr_create_reference_space(type)`, `mxr_get_space_location()`                       |
+
+### Step 5.3 — Implement Mojo FFI bindings for OpenXR shim
+
+Create `xr/native/src/xr_blitz.mojo` — typed `XRBlitz` struct via `DLHandle`, wrapping all shim functions. Follows the same pattern as `desktop/src/desktop/blitz.mojo`.
+
+### Step 5.4 — Implement XR scene manager and panel routing
+
+Create `xr/native/src/scene.mojo` — manages the collection of XR panels:
+
+- Routes mutation buffers to the correct panel's Blitz document
+- Polls events from the shim and dispatches to the correct panel's `GuiApp`
+- Provides spatial layout helpers (arrange panels in an arc, pin to hand, anchor to world)
+
+### Step 5.5 — Implement `xr_launch[AppType: GuiApp]()`
+
+Create `xr/native/src/xr_launcher.mojo`:
+
+- Creates an OpenXR session via the shim
+- Creates a default panel for the app
+- Runs the XR frame loop: wait frame → poll input → raycast panels → dispatch events → re-render dirty panels → composite → end frame
+- Integrates with `launch()` via a new `@parameter if` branch (or `--feature xr` flag)
+
+### Step 5.6 — Implement WebXR JS runtime
+
+Create `xr/web/runtime/`:
+
+- `xr-session.ts` — WebXR session lifecycle (`navigator.xr.requestSession('immersive-vr')`)
+- `xr-panels.ts` — render DOM subtrees to WebGL/WebGPU textures, manage panel 3D transforms
+- `xr-input.ts` — XR input source → raycast against panel quads → translate to DOM pointer events → dispatch via existing `EventBridge`
+- `xr-runtime.ts` — entry point that extends the existing web runtime; replaces `requestAnimationFrame` with `XRSession.requestAnimationFrame`
+
+### Step 5.7 — Wire `launch()` for XR targets
+
+Update `core/src/platform/launch.mojo`:
+
+```text
+fn launch[AppType: GuiApp](config: AppConfig):
+    @parameter
+    if is_wasm_target():
+        @parameter
+        if has_feature("webxr"):
+            _register_webxr_app[AppType]()
+        else:
+            _register_web_app[AppType]()
+    else:
+        @parameter
+        if has_feature("xr"):
+            xr_launch[AppType](config)
+        else:
+            desktop_launch[AppType](config)
+```
+
+### Step 5.8 — Verify shared examples in XR
+
+All existing shared examples (counter, todo, bench, app) should work as single-panel XR apps without modification:
+
+- `launch[CounterApp](AppConfig(title="Counter", ...))` opens one XR panel
+- The counter renders into the panel; clicks from XR controllers are translated to DOM events
+- No app code changes required
+
+### Step 5.9 — Multi-panel XR API (stretch goal)
+
+Extend the framework with XR-specific APIs for multi-panel apps:
+
+```text
+# New XR-aware launch pattern (future)
+
+struct XRCounterApp(XRGuiApp):
+    var main_panel: XRPanel
+    var controls_panel: XRPanel
+
+    fn setup_panels(mut self, scene: XRScene):
+        self.main_panel = scene.create_panel(width=0.8, height=0.6, ppm=1200.0)
+        self.main_panel.set_position(0.0, 1.4, -1.0)
+        self.controls_panel = scene.create_panel(width=0.4, height=0.3, ppm=1000.0)
+        self.controls_panel.set_position(0.5, 1.2, -0.8)
+```
+
+This is additive — single-panel apps use the existing `GuiApp` trait unchanged; multi-panel apps implement an extended `XRGuiApp` trait.
 
 ---
 
@@ -1387,26 +1613,28 @@ Like Dioxus's future native widget renderer, this maps DOM-oriented mutations to
               │ platform/│ ◄── PlatformApp trait + launch()
               └────┬─────┘
                    │ implements PlatformApp trait
-         ┌─────────┼──────────────────┐
-         ▼         ▼                  ▼
-  ┌──────────┐ ┌──────────────────┐ ┌──────────┐
-  │ mojo-gui │ │ mojo-gui         │ │ mojo-gui │
-  │ /web     │ │ /desktop         │ │ /native  │
-  │          │ │                  │ │ (future) │
-  │ WebApp   │ │ DesktopApp       │ │          │
-  │ main.mojo│ │ ┌──────┬───────┐│ │ NativeApp│
-  │ runtime/ │ │ │webview│ Blitz ││ │ widget   │
-  │ (TS/JS)  │ │ │(done) │(future││ │ backends │
-  └──────────┘ │ └──────┴───────┘│ └──────────┘
-               └──────────────────┘
+         ┌─────────┼──────────┬────────────┐
+         ▼         ▼          ▼            ▼
+  ┌──────────┐ ┌────────────┐ ┌──────────────────────┐
+  │ mojo-gui │ │ mojo-gui   │ │ mojo-gui/xr          │
+  │ /web     │ │ /desktop   │ │ (future)              │
+  │          │ │            │ │                        │
+  │ WebApp   │ │ DesktopApp │ │ ┌─────────┬──────────┐│
+  │ main.mojo│ │ Blitz +    │ │ │ native  │ web      ││
+  │ runtime/ │ │ Winit +    │ │ │ OpenXR  │ WebXR    ││
+  │ (TS/JS)  │ │ Vello      │ │ │ + Blitz │ + DOM    ││
+  └──────────┘ └────────────┘ │ │ + Vello │ + WebGPU ││
+                              │ └─────────┴──────────┘│
+                              └──────────────────────┘
 ```
 
 Key points:
 
-- **Examples depend only on `core`** — they never import from `web/`, `desktop/`, or `native/`
+- **Examples depend only on `core`** — they never import from `web/`, `desktop/`, or `xr/`
 - **Renderers implement the `PlatformApp` trait** defined in `core/platform/`
 - **`launch()` is the only platform-dispatching call** — it routes to the correct renderer at compile time
-- **Desktop has two backends**: webview (implemented, Linux) and Blitz (future, cross-platform)
+- **Desktop uses Blitz** (Winit + Vello for windowed rendering)
+- **XR reuses the Blitz stack** — same DOM + CSS + rendering pipeline, targeting OpenXR swapchains instead of Winit windows; WebXR extends the web renderer
 - **`mojo-web` is independent** — apps can optionally import it for non-rendering browser features
 
 ---
@@ -1506,6 +1734,21 @@ Key points:
 - [ ] Cross-platform testing (Linux, macOS, Windows via Winit) — Step 4.5
 - [ ] Set up cross-target CI test matrix (web + desktop-blitz for every shared example)
 
+### Phase 5: `mojo-gui/xr` — XR renderer (future)
+
+- [ ] Design XR panel abstraction — `XRPanel` struct (DOM document + 3D transform + texture + input surface), `XRScene` (panel registry + spatial layout + raycasting)
+- [ ] Build OpenXR + Blitz Rust shim (`xr/native/shim/src/lib.rs`) — extend Blitz stack with `openxr` crate; multi-document management (one `blitz-dom` per panel); Vello → offscreen `wgpu::Texture` per panel; OpenXR session lifecycle + frame loop; quad layer compositing; controller pose tracking + panel raycasting
+- [ ] Write C header (`xr/native/shim/mojo_xr.h`) — session, panel, mutation, event, frame loop, input, reference space functions
+- [ ] Write Nix derivation (`xr/native/shim/default.nix`) — Rust build with OpenXR + GPU deps
+- [ ] Implement Mojo FFI bindings (`xr/native/src/xr_blitz.mojo`) — typed `XRBlitz` struct via `DLHandle`
+- [ ] Implement XR scene manager (`xr/native/src/scene.mojo`) — panel lifecycle, mutation routing, event multiplexing
+- [ ] Implement XR panel manager (`xr/native/src/panel.mojo`) — per-panel `GuiApp` + mutation buffer, 3D transform API
+- [ ] Implement `xr_launch[AppType: GuiApp]()` (`xr/native/src/xr_launcher.mojo`) — OpenXR frame loop (wait → poll input → raycast → dispatch → render dirty panels → composite → end frame)
+- [ ] Build WebXR JS runtime (`xr/web/runtime/`) — XR session lifecycle, DOM-to-texture panel rendering, XR input → DOM event bridging
+- [ ] Wire `launch()` for XR targets — add `has_feature("xr")` / `has_feature("webxr")` branches to `core/src/platform/launch.mojo`
+- [ ] Verify all shared examples as single-panel XR apps — counter, todo, bench, app should work unchanged in XR
+- [ ] Multi-panel XR API (stretch goal) — `XRGuiApp` trait for apps that manage multiple panels in 3D space
+
 ---
 
 ## Risks & Mitigations
@@ -1526,6 +1769,11 @@ Key points:
 | Base64 IPC overhead | ~33% mutation size increase for desktop | Acceptable for now; investigate shared memory or binary transfer for optimization | Open — low priority |
 | Desktop event loop busy-wait | High CPU when idle | Implemented blocking `mwv_step(blocking=True)` when no events/dirty scopes | ✅ Resolved |
 | Native target module-level `var` | Global `var` declarations in imported packages not supported on native target | Wrap in struct or use function-local static; to be fixed when native compilation is tested | Open — only affects native compilation; WASM works fine |
+| OpenXR runtime availability | XR features fail on systems without OpenXR runtime | Runtime detection: check for OpenXR loader at startup; fall back to desktop Blitz renderer if unavailable | Future — Phase 5 |
+| DOM-to-texture fidelity (WebXR) | Rendering DOM to WebGL texture may lose interactivity or fidelity | Evaluate multiple approaches: OffscreenCanvas, html2canvas, CSS 3D transforms in DOM overlay; benchmark quality vs. performance | Future — Phase 5 |
+| XR input latency | Raycasting → DOM event translation adds latency to controller input | Keep raycast math in the shim (Rust/native) or GPU (WebXR); minimize JS/Mojo roundtrips for input dispatch | Future — Phase 5 |
+| Multi-panel mutation routing | Multiple panels need independent mutation streams; current protocol assumes single document | Each panel gets its own mutation buffer and `GuiApp` instance; the XR scene manager multiplexes; no protocol changes needed | Future — Phase 5 |
+| XR frame timing constraints | OpenXR requires strict frame pacing; DOM re-render may exceed frame budget | Render panels asynchronously; only re-render dirty panels; cache textures for clean panels; use OpenXR quad layers for compositor-side reprojection | Future — Phase 5 |
 
 ---
 
@@ -1538,7 +1786,7 @@ Key points:
 | Phase 3 (infra) | 1–2 weeks | GTK4/WebKitGTK C shim, Mojo FFI, `DesktopApp`, JS runtime for webview, counter example, Nix integration | ✅ Complete |
 | Phase 3.9 | 3–5 days | `GuiApp` trait, generic desktop event loop, `launch()` dispatch, refactor app structs, genericize `@export` wrappers, shared `main.mojo` entry points, cross-target CI | ✅ Complete (3.9.1–6 done; 3.9.7 cross-target verification pending) |
 | Phase 4 | 2–4 weeks | Blitz C shim (Rust cdylib), Mojo-side mutation interpreter, Winit event loop, Vello rendering, cross-platform testing | 🔧 Implementation complete — shim, FFI, interpreter, launcher, Winit event loop, Vello GPU rendering all done; cdylib builds (23MB); shared example verification pending (Step 4.4) |
-| Phase 5 | TBD | Native widget renderer (platform-specific backends) | Future |
+| Phase 5 | 4–8 weeks | XR renderer: OpenXR native shim (extend Blitz + Vello → offscreen textures + OpenXR compositor), WebXR JS runtime (DOM → texture + XR session), panel abstraction, XR input → DOM event bridging, `launch()` XR dispatch | Future |
 | Phase 6 | 2–3 weeks | `mojo-web` MVP: handle table, DOM, fetch, timers, storage | Future |
 
 ---
@@ -1656,9 +1904,9 @@ mojo-web/
 
 ## Open Questions
 
-1. **~~Mono-repo vs. multi-repo?~~** — ✅ Resolved: Mono-repo. `mojo-gui/` is the workspace root containing `core/`, `web/`, `desktop/`, and `examples/`. Path-based imports (`-I ../core/src -I ../examples`) work well. `mojo-web` will live alongside as a sibling.
+1. **~~Mono-repo vs. multi-repo?~~** — ✅ Resolved: Mono-repo. `mojo-gui/` is the workspace root containing `core/`, `web/`, `desktop/`, `xr/`, and `examples/`. Path-based imports (`-I ../core/src -I ../examples`) work well. `mojo-web` will live alongside as a sibling.
 
-2. **Should `html/` stay in `mojo-gui/core` or become a separate `mojo-gui/html` package?** — Keep in `core` for now. A native renderer that doesn't use HTML elements would need a different DSL (e.g., `el_box()`, `el_label()`), but that's Phase 5+ territory.
+2. **~~Should `html/` stay in `mojo-gui/core` or become a separate `mojo-gui/html` package?~~** — ✅ Resolved: Keep in `core`. The HTML/CSS/DOM model is universal across all renderers: web uses real DOM, desktop uses Blitz DOM, XR uses Blitz DOM per-panel (native) or real DOM per-panel (WebXR). All renderers consume the same DOM-oriented mutation protocol, so the HTML vocabulary stays in core.
 
 3. **~~How to handle the `@export` boilerplate in `main.mojo`?~~** — ✅ Resolved by Phase 3.9 design: the `GuiApp` trait provides a uniform lifecycle interface. `@export` wrappers become generic over `GuiApp` — one set of wrappers works for every app. Each example builds with a compile-time alias (`alias CurrentApp = CounterApp`). The ~6,730 lines of per-app wrappers collapse to a small generic set.
 
@@ -1676,7 +1924,7 @@ mojo-web/
 
 10. **~~Fallback for `launch()` compile-time dispatch?~~** — ✅ Resolved by Phase 3.9 + Phase 4 design: `launch[AppType: GuiApp](config)` uses `@parameter if is_wasm_target()` to dispatch. For WASM, the JS runtime drives the loop via `@export` wrappers generic over `GuiApp`. For native, `launch()` imports and calls `desktop_launch[AppType](config)` from `desktop.launcher`, which provides a fully generic Blitz-backed event loop. No per-renderer entry-point files needed — every example has a single `fn main()` calling `launch()`.
 
-11. **How to handle web-only features in shared examples?** — Examples that need web-specific APIs (e.g., `fetch`, `localStorage`) should use compile-time feature gates: `@parameter if is_wasm_target(): ...`. Platform-specific timing is handled the same way: `performance_now()` uses `external_call` on WASM and `time.perf_counter_ns()` on native, selected at compile time inside the shared source file.
+11. **How to handle web-only features in shared examples?** — Examples that need web-specific APIs (e.g., `fetch`, `localStorage`) should use compile-time feature gates: `@parameter if is_wasm_target(): ...`. Platform-specific timing is handled the same way: `performance_now()` uses `external_call` on WASM and `time.perf_counter_ns()` on native, selected at compile time inside the shared source file. XR-specific features (panel placement, hand tracking) use `@parameter if has_feature("xr"): ...`.
 
 12. **~~Desktop webview cross-platform support?~~** — ✅ Resolved: The webview approach was removed in favor of the Blitz-based native renderer (Phase 4). Blitz uses Winit, which supports Linux, macOS, and Windows natively. No need for platform-specific webview shims.
 
@@ -1684,4 +1932,12 @@ mojo-web/
 
 14. **~~Base64 IPC optimization?~~** — ✅ Resolved: The Blitz desktop renderer eliminates IPC entirely. Mutations are applied in-process via the Mojo `MutationInterpreter` → Blitz C FFI calls. No base64 encoding, no JS eval, no webview.
 
-15. **Can Mojo traits be parametric enough for `GuiApp`?** — The `GuiApp` trait needs to work as a compile-time parameter to `launch[]`, `desktop_launch[]`, and the `@export` wrapper pattern. If Mojo's trait system doesn't support this (e.g., no parametric methods on trait-constrained types), the fallback is concrete `alias CurrentApp = CounterApp` per build, with a shared `@export` module that references the alias. This is still a single source file per example — the alias is a build system concern, not an app authoring concern.
+15. **Can Mojo traits be parametric enough for `GuiApp`?** — The `GuiApp` trait needs to work as a compile-time parameter to `launch[]`, `desktop_launch[]`, `xr_launch[]`, and the `@export` wrapper pattern. If Mojo's trait system doesn't support this (e.g., no parametric methods on trait-constrained types), the fallback is concrete `alias CurrentApp = CounterApp` per build, with a shared `@export` module that references the alias. This is still a single source file per example — the alias is a build system concern, not an app authoring concern.
+
+16. **Should the XR native shim share code with the desktop Blitz shim?** — The XR shim reuses the same Blitz stack (blitz-dom, Stylo, Taffy, Vello) but needs multi-document support, offscreen texture rendering, and OpenXR integration. Options: (a) extend the existing `desktop/shim/` with XR feature flags, (b) create a separate `xr/native/shim/` that depends on the same Blitz crates. Option (b) is cleaner — the desktop shim targets a single Winit window; the XR shim targets an OpenXR session with multiple offscreen panels. Shared Blitz logic can be extracted into a common Rust crate if duplication becomes significant.
+
+17. **How to handle DOM-to-texture rendering for WebXR?** — Several approaches exist: (a) OffscreenCanvas with `drawImage()` from a DOM-rendered element, (b) `html2canvas` or similar rasterization libraries, (c) WebXR DOM Overlay API (limited to a single flat layer, not spatially placed), (d) render mutation protocol directly to a WebGL/WebGPU canvas using a custom 2D renderer (bypassing the DOM entirely on the WebXR path). Evaluate fidelity, performance, and interactivity tradeoffs. Approach (d) would be the most consistent with the native path (Vello-like rendering to a texture) but requires a JS/WASM 2D rendering engine.
+
+18. **Should single-panel XR apps use `GuiApp` directly or always go through `XRGuiApp`?** — For simplicity, single-panel apps should use the existing `GuiApp` trait unchanged. The XR launcher wraps them in a default panel automatically. `XRGuiApp` is only needed for apps that explicitly manage multiple panels or need XR-specific features (hand tracking, spatial anchors). This preserves the "write once, run everywhere" principle — existing apps get XR support for free.
+
+19. **What OpenXR extensions are required?** — The MVP needs: `XR_KHR_opengl_enable` or `XR_KHR_vulkan_enable` (GPU interop), `XR_KHR_composition_layer_quad` (panel placement). Nice to have: `XR_EXT_hand_tracking` (hand input), `XR_FB_passthrough` (AR), `XR_EXTX_overlay` (overlay apps). The shim should detect available extensions at runtime and expose capability flags to Mojo.
