@@ -1,6 +1,6 @@
 # Risks, Estimated Effort & Open Questions
 
-> Split from [SEPARATION_PLAN.md](../../SEPARATION_PLAN.md). See also: [checklist](checklist.md), [architecture](architecture.md).
+> See also: [architecture](architecture.md), [PLAN.md](../../PLAN.md).
 
 ---
 

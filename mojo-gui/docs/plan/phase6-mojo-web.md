@@ -2,7 +2,7 @@
 
 > **Status:** Future
 >
-> **Parent document:** [SEPARATION_PLAN.md](../../SEPARATION_PLAN.md)
+> **Parent document:** [PLAN.md](../../PLAN.md)
 
 ---
 

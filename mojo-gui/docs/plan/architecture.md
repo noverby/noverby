@@ -1,6 +1,6 @@
 # Architecture & Design
 
-> Extracted from [SEPARATION_PLAN.md](../../SEPARATION_PLAN.md) — see [index](../../SEPARATION_PLAN.md) for full plan navigation.
+> Part of the [mojo-gui plan](../../PLAN.md). See also: [renderers](renderers.md), [risks](risks.md).
 
 ## Architectural Inspiration: Dioxus
 
