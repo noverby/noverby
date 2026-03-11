@@ -38,24 +38,39 @@
 #   - launch() is parametric on the GuiApp type. The type parameter tells
 #     the framework which app to instantiate and run.
 #
-#   - For WASM targets, launch() stores the config and returns. The JS
-#     runtime drives the event loop; @export wrappers in main.mojo use
-#     the generic gui_app_exports helpers to call GuiApp trait methods.
+#   - For WASM targets, launch() returns immediately. The JS runtime
+#     drives the event loop; @export wrappers in main.mojo use the
+#     generic gui_app_exports helpers to call GuiApp trait methods.
 #
-#   - For native targets, launch() stores the config and imports the
-#     desktop launcher, which creates the renderer (DesktopApp),
-#     initializes the window, mounts the initial DOM, and enters the
-#     platform event loop (blocking until the window is closed).
+#   - For native targets, launch() passes the config directly to
+#     desktop_launch[AppType](config), which creates the Blitz renderer
+#     window, mounts the initial DOM, and enters the platform event loop
+#     (blocking until the window is closed).
 #
 #   - The compile-time dispatch uses @parameter if with is_wasm_target()
 #     so that only the relevant renderer code is compiled for each target.
 #     This avoids pulling in desktop dependencies for WASM builds and
 #     vice versa.
 #
-# Step 3.9.3: launch() now uses @parameter if is_wasm_target() for
-# compile-time target dispatch. On WASM, it stores config and returns
-# (JS drives the loop). On native, it will call desktop_launch[AppType]()
-# once the Blitz desktop renderer is implemented (Phase 4).
+# Module-level var workaround:
+#
+#   Mojo does not support module-level `var` on native targets. Previous
+#   versions used `var _global_config: AppConfig` at module scope, which
+#   compiled fine for WASM but failed on native.
+#
+#   The current design avoids global mutable state entirely:
+#     - On native: config is passed directly to desktop_launch() as an
+#       argument. No global storage needed.
+#     - On WASM: @export wrappers receive config through compile-time
+#       type parameters and constructor arguments.
+#     - get_launch_config() and has_launched() return defaults on both
+#       targets for API compatibility. Callers should use the config
+#       passed directly to them rather than relying on global state.
+#
+# Step 3.9.3: launch() uses @parameter if is_wasm_target() for
+# compile-time target dispatch. On WASM, it returns immediately
+# (JS drives the loop). On native, it calls desktop_launch[AppType]()
+# with the Blitz desktop renderer.
 
 from .app import is_wasm_target, is_native_target
 from .gui_app import GuiApp
@@ -110,40 +125,49 @@ struct AppConfig(Copyable, Movable):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Global app registry (for WASM target)
+# Config accessors (API compatibility)
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# On the WASM target, the JS runtime drives the event loop. launch() cannot
-# block — it must register the app builder and return, so that the JS side
-# can invoke it later via @export wrappers.
+# These functions exist for backwards compatibility with WebApp and other
+# renderer infrastructure. They return defaults because module-level `var`
+# is not supported on native targets, making global config storage
+# impractical.
 #
-# The registry stores the AppConfig so that @export init functions can
-# access it. The actual app builder function is passed as a compile-time
-# parameter to launch[], so it's available statically — no need to store
-# a function pointer at runtime.
-
-var _global_config: AppConfig = AppConfig()
-var _launched: Bool = False
+# Callers should prefer using the config passed directly to them:
+#   - WebApp receives config via its __init__ constructor
+#   - gui_app_exports receive config via compile-time type parameters
+#   - desktop_launch() receives config as a direct argument from launch()
 
 
 fn get_launch_config() -> AppConfig:
     """Retrieve the AppConfig set by the most recent launch() call.
 
-    This is used by renderer entry points (e.g., WebApp, DesktopApp) to
-    access the configuration provided by the app.
+    Note: This returns the default AppConfig on all targets. The config
+    is passed directly to renderers via launch() arguments rather than
+    stored globally, because module-level `var` is not supported on
+    native targets.
 
-    Returns the default AppConfig if launch() has not been called.
+    For the WASM target, use the config passed to WebApp's constructor
+    or to the @export wrappers directly. For the native target,
+    desktop_launch() receives the config as an argument.
+
+    Returns:
+        The default AppConfig.
     """
-    return _global_config
+    return AppConfig()
 
 
 fn has_launched() -> Bool:
     """Return True if launch() has been called.
 
-    Used by renderer infrastructure to verify that the app has been
-    properly initialized via the launch() entry point.
+    Note: This always returns False because module-level `var` is not
+    supported on native targets. Renderer infrastructure should not
+    depend on this function for correctness — it's a diagnostic hint.
+
+    Returns:
+        False.
     """
-    return _launched
+    return False
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -166,17 +190,16 @@ fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
         config: Optional application configuration (title, size, debug).
 
     On WASM targets:
-        Stores the config for the JS runtime to access. The actual app
-        initialization happens when the JS side calls the @export init
-        function (which uses gui_app_init[AppType]()). launch() returns
-        immediately — the browser event loop drives rendering.
+        Returns immediately. The JS runtime drives the event loop;
+        @export wrappers in main.mojo use gui_app_exports helpers to
+        call GuiApp trait methods. The config is available to @export
+        init functions via the AppType parameter.
 
     On native targets:
-        Stores the config, then calls desktop_launch[AppType](config)
-        which creates the renderer window, mounts the initial DOM, and
-        enters the platform event loop (blocking until the window is
-        closed). Currently a placeholder — the Blitz desktop renderer
-        will be implemented in Phase 4.
+        Calls desktop_launch[AppType](config) which creates the Blitz
+        renderer window, mounts the initial DOM, and enters the platform
+        event loop (blocking until the window is closed). The config is
+        passed directly — no global state needed.
 
     Example (shared app entry point):
 
@@ -195,37 +218,19 @@ fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
     (native). The GuiApp trait ensures the renderer can drive the app
     uniformly regardless of platform.
     """
-    _global_config = config
-    _launched = True
 
     @parameter
     if is_wasm_target():
-        # Web path: config is stored; JS runtime drives the event loop.
+        # Web path: JS runtime drives the event loop.
         # The @export wrappers in main.mojo use gui_app_exports helpers
         # (gui_app_init[AppType], gui_app_mount[AppType], etc.) to call
         # GuiApp trait methods. Nothing more to do here.
         pass
     else:
         # Desktop path: create Blitz window and enter event loop.
-        # Phase 4: The Blitz desktop renderer is now implemented.
         # desktop_launch creates the native window, mounts the initial
         # DOM, and enters a blocking event loop until the window is closed.
+        # The config is passed directly — no need for global state.
         from desktop.launcher import desktop_launch
 
         desktop_launch[AppType](config)
-
-
-fn launch(config: AppConfig = AppConfig()):
-    """Store launch configuration without specifying an app type.
-
-    This is a convenience overload for the WASM target where the app type
-    is determined by the @export wrappers (each example builds with a
-    specific AppType alias). On native targets, prefer the parametric
-    version launch[AppType](config) which can dispatch to the desktop
-    renderer.
-
-    Args:
-        config: Optional application configuration (title, size, debug).
-    """
-    _global_config = config
-    _launched = True

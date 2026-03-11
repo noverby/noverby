@@ -7,20 +7,46 @@
 //! Architecture:
 //!   Mojo → extern "C" calls → BlitzContext → blitz-dom / blitz-shell / blitz-paint
 //!
+//! The shim integrates three subsystems:
+//!   1. DOM manipulation — create/modify nodes via DocumentMutator
+//!   2. Windowing — Winit event loop with pump_app_events() for cooperative polling
+//!   3. Rendering — Vello GPU renderer via anyrender_vello + blitz-paint
+//!
 //! Key design decisions:
 //!   - Polling-based: no callbacks across FFI. Events are buffered in a ring buffer.
 //!   - Node IDs are u32 (mapped from Blitz's usize slab keys).
 //!   - Templates are stored as detached DOM subtrees, deep-cloned on use.
 //!   - All functions must be called from the main/UI thread.
+//!   - The Winit EventLoop is stored in an Option and temporarily taken out
+//!     during pump_app_events() to avoid borrow conflicts with the document.
+
+#![allow(private_interfaces)] // FFI functions intentionally expose opaque pointers to private types
+#![allow(clippy::missing_safety_doc)] // All extern "C" functions share the same safety contract: ctx must be a valid pointer from mblitz_create()
 
 use std::collections::HashMap;
-use std::ffi::CStr;
 use std::slice;
 use std::sync::Arc;
+use std::time::Duration;
 
-use blitz_dom::{Attribute, BaseDocument, DocumentConfig, ElementData, NodeData};
+use blitz_dom::{
+    BaseDocument, DocumentConfig, ElementData, EventDriver, LocalName, NodeData, Prefix, QualName,
+    local_name, ns,
+};
+use blitz_paint::paint_scene;
+use blitz_traits::events::{
+    BlitzMouseButtonEvent, DomEvent, DomEventData, EventState, MouseEventButton, MouseEventButtons,
+    UiEvent,
+};
 use blitz_traits::shell::Viewport;
-use markup5ever::{local_name, ns, LocalName, Namespace, Prefix, QualName};
+
+use anyrender::WindowRenderer;
+use anyrender_vello::VelloWindowRenderer;
+
+use winit::application::ApplicationHandler;
+use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
+use winit::window::{Window, WindowAttributes, WindowId};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Event types — must match mojo-gui/core event type constants
@@ -50,17 +76,85 @@ struct BufferedEvent {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Event handler registration
+// Event handler registration (mojo-gui handler_id → DOM event name)
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[derive(Clone, Debug)]
-struct EventHandler {
+struct MojoHandler {
     handler_id: u32,
     event_name: String,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// BlitzContext — owns the document, templates, event queue, and node ID map
+// MojoEventHandler — routes Blitz DOM events to mojo-gui handler IDs
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Custom EventHandler that intercepts DOM events during bubble propagation,
+/// looks up registered mojo-gui handler IDs, and buffers them for polling.
+struct MojoEventHandler<'a> {
+    /// Reference to the mojo event handler registrations (Blitz node ID → handlers).
+    event_handlers: &'a HashMap<usize, Vec<MojoHandler>>,
+    /// Output buffer for events that matched a registered handler.
+    event_queue: &'a mut Vec<BufferedEvent>,
+}
+
+impl blitz_dom::EventHandler for MojoEventHandler<'_> {
+    fn handle_event(
+        &mut self,
+        chain: &[usize],
+        event: &mut DomEvent,
+        _mutr: &mut blitz_dom::DocumentMutator<'_>,
+        _event_state: &mut EventState,
+    ) {
+        // Map DomEventData to the event name string used by mojo-gui
+        let event_name = match &event.data {
+            DomEventData::Click(_) => "click",
+            DomEventData::Input(_) => "input",
+            DomEventData::KeyDown(_) => "keydown",
+            DomEventData::KeyUp(_) => "keyup",
+            DomEventData::MouseDown(_) => "mousedown",
+            DomEventData::MouseUp(_) => "mouseup",
+            DomEventData::MouseMove(_) => "mousemove",
+            DomEventData::Ime(_) => "input",
+            DomEventData::KeyPress(_) => return, // not used by mojo-gui
+        };
+
+        let event_type = match &event.data {
+            DomEventData::Click(_) => EVT_CLICK,
+            DomEventData::Input(_) => EVT_INPUT,
+            DomEventData::KeyDown(_) => _EVT_KEYDOWN,
+            DomEventData::KeyUp(_) => _EVT_KEYUP,
+            DomEventData::MouseDown(_) => _EVT_MOUSEDOWN,
+            DomEventData::MouseUp(_) => _EVT_MOUSEUP,
+            DomEventData::MouseMove(_) => _EVT_MOUSEMOVE,
+            DomEventData::Ime(_) => EVT_INPUT,
+            DomEventData::KeyPress(_) => return,
+        };
+
+        // Walk the bubble chain (target → ancestors), check for registered handlers
+        for &node_id in chain {
+            if let Some(handlers) = self.event_handlers.get(&node_id) {
+                for handler in handlers {
+                    if handler.event_name == event_name {
+                        // Extract string value for input events
+                        let value = match &event.data {
+                            DomEventData::Input(data) => data.value.to_string(),
+                            _ => String::new(),
+                        };
+                        self.event_queue.push(BufferedEvent {
+                            handler_id: handler.handler_id,
+                            event_type,
+                            value,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BlitzContext — owns the document, window, renderer, and event state
 // ═══════════════════════════════════════════════════════════════════════════
 
 struct BlitzContext {
@@ -81,13 +175,14 @@ struct BlitzContext {
 
     /// Next available mojo-gui element ID for internally created nodes
     /// that don't get an explicit AssignId.
+    #[allow(dead_code)]
     next_internal_id: u32,
 
     /// Registered templates: template_id → root Blitz node ID.
     templates: HashMap<u32, usize>,
 
     /// Event handlers: Blitz node ID → list of handlers.
-    event_handlers: HashMap<usize, Vec<EventHandler>>,
+    event_handlers: HashMap<usize, Vec<MojoHandler>>,
 
     /// Buffered events ready for Mojo to poll.
     event_queue: Vec<BufferedEvent>,
@@ -108,6 +203,39 @@ struct BlitzContext {
 
     /// Whether we're currently inside a begin_mutations/end_mutations batch.
     in_mutation_batch: bool,
+
+    // ── Windowing state (populated after first pump_app_events call) ────
+    /// Winit event loop. Stored in an Option so it can be temporarily taken
+    /// out during pump_app_events() (which needs &mut EventLoop while our
+    /// ApplicationHandler impl needs &mut BlitzContext — same struct).
+    event_loop: Option<EventLoop<()>>,
+
+    /// The Winit window handle (Arc for sharing with the renderer).
+    window: Option<Arc<Window>>,
+
+    /// Vello GPU renderer.
+    renderer: VelloWindowRenderer,
+
+    /// Desired window title (stored until window is created).
+    title: String,
+
+    /// Desired window dimensions.
+    initial_width: u32,
+    initial_height: u32,
+
+    /// Whether the window has been created and the renderer resumed.
+    window_initialized: bool,
+
+    /// Whether a redraw has been requested (set by mblitz_request_redraw,
+    /// consumed during the next step).
+    needs_redraw: bool,
+
+    // ── Input state (tracked across Winit events) ──────────────────────
+    /// Current mouse button state.
+    mouse_buttons: MouseEventButtons,
+
+    /// Current mouse position in logical pixels.
+    mouse_pos: (f32, f32),
 }
 
 impl BlitzContext {
@@ -151,7 +279,7 @@ impl BlitzContext {
             let title_text_id = doc.create_text_node(title);
 
             let mut mutator = doc.mutate();
-            mutator.insert_before(html_id, &[head_id]);
+            mutator.insert_nodes_before(body_id, &[head_id]);
             mutator.append_children(head_id, &[title_el_id]);
             mutator.append_children(title_el_id, &[title_text_id]);
         }
@@ -161,6 +289,10 @@ impl BlitzContext {
         // Element ID 0 → body (mount point)
         id_to_node.insert(0, body_id);
         node_to_id.insert(body_id, 0);
+
+        // Create the Winit event loop
+        let event_loop = EventLoop::<()>::builder().build().unwrap();
+        event_loop.set_control_flow(ControlFlow::Wait);
 
         BlitzContext {
             doc,
@@ -176,6 +308,20 @@ impl BlitzContext {
             alive: true,
             debug,
             in_mutation_batch: false,
+
+            // Windowing state
+            event_loop: Some(event_loop),
+            window: None,
+            renderer: VelloWindowRenderer::new(),
+            title: title.to_string(),
+            initial_width: width,
+            initial_height: height,
+            window_initialized: false,
+            needs_redraw: false,
+
+            // Input state
+            mouse_buttons: MouseEventButtons::None,
+            mouse_pos: (0.0, 0.0),
         }
     }
 
@@ -191,6 +337,7 @@ impl BlitzContext {
     }
 
     /// Allocate an internal element ID for nodes that don't get explicit AssignId.
+    #[allow(dead_code)] // Will be used in Winit event loop integration (Step 4.6)
     fn alloc_internal_id(&mut self) -> u32 {
         let id = self.next_internal_id;
         self.next_internal_id += 1;
@@ -198,11 +345,12 @@ impl BlitzContext {
     }
 
     /// Create an HTML element by tag name string.
+    /// Uses DocumentMutator for proper stylo data initialization.
     fn create_element(&mut self, tag: &str) -> usize {
         let local = LocalName::from(tag);
         let name = QualName::new(None::<Prefix>, ns!(html), local);
-        self.doc
-            .create_node(NodeData::Element(ElementData::new(name, vec![])))
+        let mut mutator = self.doc.mutate();
+        mutator.create_element(name, vec![])
     }
 
     /// Create a text node.
@@ -277,15 +425,23 @@ impl BlitzContext {
     }
 
     /// Navigate to a child at path from a starting node.
+    /// Uses the public `get_node` API to traverse children.
     fn node_at_path(&self, start_id: usize, path: &[u8]) -> usize {
-        let mutator = self.doc.mutate();
-        mutator.node_at_path(start_id, path)
+        let mut current = start_id;
+        for &idx in path {
+            let node = self
+                .doc
+                .get_node(current)
+                .expect("node_at_path: node not found");
+            current = node.children[idx as usize];
+        }
+        current
     }
 
     /// Add an event handler registration.
     fn add_event_listener(&mut self, node_id: usize, handler_id: u32, event_name: &str) {
         let handlers = self.event_handlers.entry(node_id).or_default();
-        handlers.push(EventHandler {
+        handlers.push(MojoHandler {
             handler_id,
             event_name: event_name.to_string(),
         });
@@ -302,12 +458,132 @@ impl BlitzContext {
     }
 
     /// Queue a synthetic event (for testing or programmatic dispatch).
+    #[allow(dead_code)]
     fn queue_event(&mut self, handler_id: u32, event_type: u8, value: String) {
         self.event_queue.push(BufferedEvent {
             handler_id,
             event_type,
             value,
         });
+    }
+
+    // ── Windowing methods ───────────────────────────────────────────────
+
+    /// Process a single Winit window event, converting to Blitz UI events
+    /// and routing DOM events to the mojo handler queue.
+    fn handle_winit_event(&mut self, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => {
+                self.alive = false;
+            }
+
+            WindowEvent::RedrawRequested => {
+                // Resolve styles and layout, then paint
+                self.doc.resolve(0.0);
+                let (width, height) = self.doc.viewport().window_size;
+                let scale = self.doc.viewport().scale_f64();
+                self.renderer.render(|scene| {
+                    paint_scene(scene, &self.doc, scale, width, height);
+                });
+            }
+
+            WindowEvent::Resized(physical_size) => {
+                let (w, h) = (physical_size.width, physical_size.height);
+                if w > 0 && h > 0 {
+                    let mut viewport = self.doc.viewport().clone();
+                    viewport.window_size = (w, h);
+                    self.doc.set_viewport(viewport);
+                    self.renderer.set_size(w, h);
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                let mut viewport = self.doc.viewport().clone();
+                viewport.set_hidpi_scale(scale_factor as f32);
+                self.doc.set_viewport(viewport);
+            }
+
+            WindowEvent::CursorMoved { position, .. } => {
+                if let Some(ref window) = self.window {
+                    let scale = window.scale_factor();
+                    let pos: winit::dpi::LogicalPosition<f32> = position.to_logical(scale);
+                    self.mouse_pos = (pos.x, pos.y);
+
+                    let ui_event = UiEvent::MouseMove(BlitzMouseButtonEvent {
+                        x: pos.x,
+                        y: pos.y,
+                        button: Default::default(),
+                        buttons: self.mouse_buttons,
+                        mods: Default::default(),
+                    });
+                    self.dispatch_ui_event(ui_event);
+                }
+            }
+
+            WindowEvent::MouseInput {
+                button: mouse_button,
+                state,
+                ..
+            } => {
+                let btn = match mouse_button {
+                    MouseButton::Left => MouseEventButton::Main,
+                    MouseButton::Right => MouseEventButton::Secondary,
+                    _ => return,
+                };
+
+                // Mouse position is already tracked by CursorMoved events
+
+                match state {
+                    ElementState::Pressed => self.mouse_buttons |= btn.into(),
+                    ElementState::Released => self.mouse_buttons ^= btn.into(),
+                }
+
+                let event_data = BlitzMouseButtonEvent {
+                    x: self.mouse_pos.0,
+                    y: self.mouse_pos.1,
+                    button: btn,
+                    buttons: self.mouse_buttons,
+                    mods: Default::default(),
+                };
+
+                let ui_event = match state {
+                    ElementState::Pressed => UiEvent::MouseDown(event_data),
+                    ElementState::Released => UiEvent::MouseUp(event_data),
+                };
+                self.dispatch_ui_event(ui_event);
+
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+
+            // Ignore other events for now
+            _ => {}
+        }
+    }
+
+    /// Dispatch a UiEvent through the Blitz event pipeline with our custom
+    /// MojoEventHandler that captures DOM events for polling.
+    fn dispatch_ui_event(&mut self, event: UiEvent) {
+        // We need to split borrows: the EventDriver borrows the document
+        // (via mutate()), while MojoEventHandler borrows event_handlers
+        // and event_queue. These are disjoint fields of BlitzContext.
+        //
+        // To satisfy the borrow checker, we use a raw pointer trick:
+        // take references to disjoint fields before creating the driver.
+        let event_handlers_ptr = &self.event_handlers as *const HashMap<usize, Vec<MojoHandler>>;
+        let event_queue_ptr = &mut self.event_queue as *mut Vec<BufferedEvent>;
+
+        let handler = MojoEventHandler {
+            event_handlers: unsafe { &*event_handlers_ptr },
+            event_queue: unsafe { &mut *event_queue_ptr },
+        };
+
+        let mut driver = EventDriver::new(self.doc.mutate(), handler);
+        driver.handle_ui_event(event);
     }
 
     /// Poll the next event from the queue.
@@ -328,6 +604,66 @@ impl BlitzContext {
     fn stack_pop_n(&mut self, n: usize) -> Vec<usize> {
         let start = self.stack.len().saturating_sub(n);
         self.stack.drain(start..).collect()
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ApplicationHandler — Winit event loop integration
+// ═══════════════════════════════════════════════════════════════════════════
+
+impl ApplicationHandler for BlitzContext {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_none() {
+            // Create the window on first resumed notification
+            let attrs = WindowAttributes::default()
+                .with_title(self.title.clone())
+                .with_inner_size(winit::dpi::LogicalSize::new(
+                    self.initial_width,
+                    self.initial_height,
+                ));
+            let winit_window = Arc::new(event_loop.create_window(attrs).unwrap());
+            winit_window.set_ime_allowed(true);
+
+            // Update document viewport with actual window size and scale
+            let size = winit_window.inner_size();
+            let scale = winit_window.scale_factor() as f32;
+            let viewport = Viewport::new(size.width, size.height, scale, Default::default());
+            self.doc.set_viewport(viewport);
+
+            // Resume the Vello renderer — anyrender 0.6 expects Arc<dyn WindowHandle>
+            let (width, height) = (size.width, size.height);
+            self.renderer.resume(
+                winit_window.clone() as Arc<dyn anyrender::WindowHandle>,
+                width,
+                height,
+            );
+
+            self.window = Some(winit_window);
+            self.window_initialized = true;
+        } else {
+            // Re-resume after suspend
+            if let Some(ref window) = self.window {
+                let size = window.inner_size();
+                self.renderer.resume(
+                    window.clone() as Arc<dyn anyrender::WindowHandle>,
+                    size.width,
+                    size.height,
+                );
+            }
+        }
+    }
+
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        self.renderer.suspend();
+    }
+
+    fn window_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        self.handle_winit_event(event);
     }
 }
 
@@ -398,11 +734,7 @@ pub unsafe extern "C" fn mblitz_is_alive(ctx: *mut BlitzContext) -> i32 {
         return 0;
     }
     let ctx = unsafe { &*ctx };
-    if ctx.alive {
-        1
-    } else {
-        0
-    }
+    if ctx.alive { 1 } else { 0 }
 }
 
 #[unsafe(no_mangle)]
@@ -410,15 +742,42 @@ pub unsafe extern "C" fn mblitz_step(ctx: *mut BlitzContext, blocking: i32) -> i
     if ctx.is_null() {
         return 0;
     }
-    // TODO: Integrate with Winit event loop.
-    // For now, this is a placeholder. The actual Winit integration requires
-    // running the event loop on the main thread with ApplicationHandler.
-    // Phase 4 implementation will use blitz-shell's BlitzApplication.
-    //
-    // Current approach: the shim buffers mutations and events without a real
-    // window. A follow-up commit will add the Winit/Vello rendering pipeline.
-    let _ctx = unsafe { &mut *ctx };
-    0
+    let ctx = unsafe { &mut *ctx };
+
+    // Take the event loop out temporarily so we can pass `ctx` as the
+    // ApplicationHandler (pump_app_events needs &mut EventLoop and
+    // &mut ApplicationHandler — both are &mut BlitzContext otherwise).
+    let Some(mut event_loop) = ctx.event_loop.take() else {
+        return 0;
+    };
+
+    // If a redraw was requested, ensure we trigger it
+    if ctx.needs_redraw {
+        if let Some(ref window) = ctx.window {
+            window.request_redraw();
+        }
+        ctx.needs_redraw = false;
+    }
+
+    let timeout = if blocking != 0 {
+        // Block until an event arrives (up to 100ms to allow periodic checks)
+        Some(Duration::from_millis(100))
+    } else {
+        // Non-blocking: process pending events and return immediately
+        Some(Duration::ZERO)
+    };
+
+    let status = event_loop.pump_app_events(timeout, &mut *ctx);
+
+    // Check if the event loop requested exit
+    if matches!(status, PumpStatus::Exit(_)) {
+        ctx.alive = false;
+    }
+
+    // Put the event loop back
+    ctx.event_loop = Some(event_loop);
+
+    if ctx.alive { 1 } else { 0 }
 }
 
 #[unsafe(no_mangle)]
@@ -426,8 +785,11 @@ pub unsafe extern "C" fn mblitz_request_redraw(ctx: *mut BlitzContext) {
     if ctx.is_null() {
         return;
     }
-    // TODO: Trigger Winit redraw request when window integration is complete.
-    let _ctx = unsafe { &*ctx };
+    let ctx = unsafe { &mut *ctx };
+    ctx.needs_redraw = true;
+    if let Some(ref window) = ctx.window {
+        window.request_redraw();
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -443,8 +805,12 @@ pub unsafe extern "C" fn mblitz_set_title(
     if ctx.is_null() {
         return;
     }
-    let _title = unsafe { str_from_ptr(title, title_len) };
-    // TODO: Update the Winit window title when window integration is complete.
+    let ctx = unsafe { &mut *ctx };
+    let title_str = unsafe { str_from_ptr(title, title_len) };
+    ctx.title = title_str.to_string();
+    if let Some(ref window) = ctx.window {
+        window.set_title(title_str);
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -902,7 +1268,7 @@ pub unsafe extern "C" fn mblitz_end_mutations(ctx: *mut BlitzContext) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mblitz_root_node_id(ctx: *mut BlitzContext) -> u32 {
+pub unsafe extern "C" fn mblitz_root_node_id(_ctx: *mut BlitzContext) -> u32 {
     // The Blitz document root is always node 0.
     0
 }
@@ -925,8 +1291,9 @@ pub unsafe extern "C" fn mblitz_resolve_layout(ctx: *mut BlitzContext) {
     if ctx.is_null() {
         return;
     }
-    // TODO: Call Blitz's layout resolution (style computation + Taffy layout).
-    // This requires the full Blitz pipeline integration with blitz-paint.
+    let ctx = unsafe { &mut *ctx };
+    // Resolve styles (Stylo) and layout (Taffy) for the entire document.
+    ctx.doc.resolve(0.0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
