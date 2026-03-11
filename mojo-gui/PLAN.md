@@ -130,10 +130,10 @@ Runtime verified — all 4 desktop windows launch and render on Wayland with Vel
 
 ### Short-term
 
-1. **Cross-target CI** — Set up CI matrix testing web + desktop-Blitz for every shared example
-2. **macOS support** — Verify Blitz renderer on macOS (currently Linux Wayland-only; X11 not supported)
+1. **Phase 5: [XR Renderer](docs/plan/phase5-xr.md)** — XR panel abstraction, OpenXR + Blitz shim for native, WebXR JS runtime for browser
+2. **Phase 6: [`mojo-web` Raw Bindings](docs/plan/phase6-mojo-web.md)** — Extract raw Web API bindings (DOM, fetch, WebSocket, etc.) as a standalone package
 
 ### Medium-term
 
-3. **Phase 5: [XR Renderer](docs/plan/phase5-xr.md)** — XR panel abstraction, OpenXR + Blitz shim for native, WebXR JS runtime for browser
-4. **Phase 6: [`mojo-web` Raw Bindings](docs/plan/phase6-mojo-web.md)** — Extract raw Web API bindings (DOM, fetch, WebSocket, etc.) as a standalone package
+3. **Cross-target CI** — Set up CI matrix testing web + desktop-Blitz for every shared example
+4. **macOS support** — Verify Blitz renderer on macOS (currently Linux Wayland-only; X11 not supported)
