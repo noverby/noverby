@@ -1971,6 +1971,134 @@ pub unsafe extern "C" fn mxr_panel_stack_pop(session: *mut XrSessionContext, pan
 }
 
 // ---------------------------------------------------------------------------
+// Output-pointer FFI variants — avoids struct-return ABI issues with
+// Mojo's DLHandle (which can't reliably return C structs > 16 bytes).
+// These mirror the desktop shim's mblitz_poll_event_into() pattern.
+// ---------------------------------------------------------------------------
+
+/// Poll the next event, writing each field to caller-provided output pointers.
+///
+/// Returns 1 if an event was available, 0 if the queue was empty.
+/// When returning 0, the output pointers are not modified.
+///
+/// The `out_value_ptr` / `out_value_len` pair points into an internal buffer
+/// that stays alive until the next `mxr_poll_event_into()` call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mxr_poll_event_into(
+    session: *mut XrSessionContext,
+    out_panel_id: *mut u32,
+    out_handler_id: *mut u32,
+    out_event_type: *mut u8,
+    out_value_ptr: *mut *const u8,
+    out_value_len: *mut u32,
+    out_hit_u: *mut f32,
+    out_hit_v: *mut f32,
+    out_hand: *mut u8,
+) -> i32 {
+    if session.is_null() {
+        return 0;
+    }
+    let ctx = unsafe { &mut *session };
+    if ctx.events.events.is_empty() {
+        return 0;
+    }
+
+    let event = ctx.events.events.remove(0);
+    ctx.events.last_polled_value = event.value;
+
+    unsafe {
+        *out_panel_id = event.panel_id;
+        *out_handler_id = event.handler_id;
+        *out_event_type = event.event_type;
+        *out_hit_u = event.hit_u;
+        *out_hit_v = event.hit_v;
+        *out_hand = event.hand;
+
+        if ctx.events.last_polled_value.is_empty() {
+            *out_value_ptr = std::ptr::null();
+            *out_value_len = 0;
+        } else {
+            *out_value_ptr = ctx.events.last_polled_value.as_ptr();
+            *out_value_len = ctx.events.last_polled_value.len() as u32;
+        }
+    }
+    1
+}
+
+/// Raycast against all visible, interactive panels, writing the result to
+/// caller-provided output pointers.
+///
+/// Returns 1 if a panel was hit, 0 if the ray missed all panels.
+/// When returning 0, output pointers are zeroed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mxr_raycast_panels_into(
+    session: *mut XrSessionContext,
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    dx: f32,
+    dy: f32,
+    dz: f32,
+    out_panel_id: *mut u32,
+    out_u: *mut f32,
+    out_v: *mut f32,
+    out_distance: *mut f32,
+) -> i32 {
+    if session.is_null() {
+        unsafe {
+            *out_panel_id = 0;
+            *out_u = 0.0;
+            *out_v = 0.0;
+            *out_distance = 0.0;
+        }
+        return 0;
+    }
+    let result = unsafe { &*session }.raycast([ox, oy, oz], [dx, dy, dz]);
+    unsafe {
+        *out_panel_id = result.panel_id;
+        *out_u = result.u;
+        *out_v = result.v;
+        *out_distance = result.distance;
+    }
+    result.hit
+}
+
+/// Get a controller/head pose, writing the result to caller-provided
+/// output pointers.
+///
+/// Returns 1 if the pose is valid (tracking active), 0 otherwise.
+/// In headless mode, always returns 0 and zeroes the output.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mxr_get_pose_into(
+    session: *mut XrSessionContext,
+    _hand: u8,
+    out_px: *mut f32,
+    out_py: *mut f32,
+    out_pz: *mut f32,
+    out_qx: *mut f32,
+    out_qy: *mut f32,
+    out_qz: *mut f32,
+    out_qw: *mut f32,
+) -> i32 {
+    unsafe {
+        *out_px = 0.0;
+        *out_py = 0.0;
+        *out_pz = 0.0;
+        *out_qx = 0.0;
+        *out_qy = 0.0;
+        *out_qz = 0.0;
+        *out_qw = 1.0;
+    }
+    if session.is_null() {
+        return 0;
+    }
+    // In headless mode, poses are not tracked — return invalid.
+    // When OpenXR is wired up, this will query the runtime for the
+    // actual controller/head pose and write valid data.
+    0
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -2813,6 +2941,341 @@ mod tests {
                 html,
                 "<body><div class=\"container\"><span>Hello</span></div></body>"
             );
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Output-pointer FFI variants (_into)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn poll_event_into_empty_queue_returns_zero() {
+        unsafe {
+            let session = mxr_create_headless();
+            let p = mxr_create_panel(session, 800, 600);
+
+            let mut panel_id: u32 = 0xFF;
+            let mut handler_id: u32 = 0xFF;
+            let mut event_type: u8 = 0xFF;
+            let mut value_ptr: *const u8 = std::ptr::null();
+            let mut value_len: u32 = 0xFF;
+            let mut hit_u: f32 = -1.0;
+            let mut hit_v: f32 = -1.0;
+            let mut hand: u8 = 0xFF;
+
+            let valid = mxr_poll_event_into(
+                session,
+                &mut panel_id,
+                &mut handler_id,
+                &mut event_type,
+                &mut value_ptr,
+                &mut value_len,
+                &mut hit_u,
+                &mut hit_v,
+                &mut hand,
+            );
+            assert_eq!(valid, 0);
+            // Output pointers should be untouched when queue is empty
+            assert_eq!(panel_id, 0xFF);
+            assert_eq!(handler_id, 0xFF);
+
+            let _ = p;
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn poll_event_into_click_event() {
+        unsafe {
+            let session = mxr_create_headless();
+            let p = mxr_create_panel(session, 800, 600);
+
+            // Inject a click event
+            let value = "";
+            mxr_panel_inject_event(
+                session,
+                p,
+                42,
+                MXR_EVT_CLICK as u8,
+                value.as_ptr() as *const c_char,
+                0,
+            );
+
+            let mut panel_id: u32 = 0;
+            let mut handler_id: u32 = 0;
+            let mut event_type: u8 = 0;
+            let mut value_ptr: *const u8 = std::ptr::null();
+            let mut value_len: u32 = 0;
+            let mut hit_u: f32 = -1.0;
+            let mut hit_v: f32 = -1.0;
+            let mut hand: u8 = 0xFF;
+
+            let valid = mxr_poll_event_into(
+                session,
+                &mut panel_id,
+                &mut handler_id,
+                &mut event_type,
+                &mut value_ptr,
+                &mut value_len,
+                &mut hit_u,
+                &mut hit_v,
+                &mut hand,
+            );
+            assert_eq!(valid, 1);
+            assert_eq!(panel_id, p);
+            assert_eq!(handler_id, 42);
+            assert_eq!(event_type, MXR_EVT_CLICK as u8);
+            assert_eq!(value_len, 0);
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn poll_event_into_input_event_with_value() {
+        unsafe {
+            let session = mxr_create_headless();
+            let p = mxr_create_panel(session, 800, 600);
+
+            let value = "hello 🌍";
+            mxr_panel_inject_event(
+                session,
+                p,
+                7,
+                MXR_EVT_INPUT as u8,
+                value.as_ptr() as *const c_char,
+                value.len() as u32,
+            );
+
+            let mut panel_id: u32 = 0;
+            let mut handler_id: u32 = 0;
+            let mut event_type: u8 = 0;
+            let mut value_ptr: *const u8 = std::ptr::null();
+            let mut value_len: u32 = 0;
+            let mut hit_u: f32 = -1.0;
+            let mut hit_v: f32 = -1.0;
+            let mut hand: u8 = 0xFF;
+
+            let valid = mxr_poll_event_into(
+                session,
+                &mut panel_id,
+                &mut handler_id,
+                &mut event_type,
+                &mut value_ptr,
+                &mut value_len,
+                &mut hit_u,
+                &mut hit_v,
+                &mut hand,
+            );
+            assert_eq!(valid, 1);
+            assert_eq!(handler_id, 7);
+            assert_eq!(event_type, MXR_EVT_INPUT as u8);
+            assert!(value_len > 0);
+
+            // Reconstruct string from pointer
+            let slice = std::slice::from_raw_parts(value_ptr, value_len as usize);
+            let s = std::str::from_utf8(slice).unwrap();
+            assert_eq!(s, "hello 🌍");
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn poll_event_into_multiple_events_in_order() {
+        unsafe {
+            let session = mxr_create_headless();
+            let p = mxr_create_panel(session, 800, 600);
+
+            let v1 = "";
+            mxr_panel_inject_event(
+                session,
+                p,
+                1,
+                MXR_EVT_CLICK as u8,
+                v1.as_ptr() as *const c_char,
+                0,
+            );
+            let v2 = "second";
+            mxr_panel_inject_event(
+                session,
+                p,
+                2,
+                MXR_EVT_INPUT as u8,
+                v2.as_ptr() as *const c_char,
+                v2.len() as u32,
+            );
+
+            let mut panel_id: u32 = 0;
+            let mut handler_id: u32 = 0;
+            let mut event_type: u8 = 0;
+            let mut value_ptr: *const u8 = std::ptr::null();
+            let mut value_len: u32 = 0;
+            let mut hit_u: f32 = 0.0;
+            let mut hit_v: f32 = 0.0;
+            let mut hand: u8 = 0;
+
+            // First event
+            let valid = mxr_poll_event_into(
+                session,
+                &mut panel_id,
+                &mut handler_id,
+                &mut event_type,
+                &mut value_ptr,
+                &mut value_len,
+                &mut hit_u,
+                &mut hit_v,
+                &mut hand,
+            );
+            assert_eq!(valid, 1);
+            assert_eq!(handler_id, 1);
+
+            // Second event
+            let valid = mxr_poll_event_into(
+                session,
+                &mut panel_id,
+                &mut handler_id,
+                &mut event_type,
+                &mut value_ptr,
+                &mut value_len,
+                &mut hit_u,
+                &mut hit_v,
+                &mut hand,
+            );
+            assert_eq!(valid, 1);
+            assert_eq!(handler_id, 2);
+            let slice = std::slice::from_raw_parts(value_ptr, value_len as usize);
+            assert_eq!(std::str::from_utf8(slice).unwrap(), "second");
+
+            // Queue empty
+            let valid = mxr_poll_event_into(
+                session,
+                &mut panel_id,
+                &mut handler_id,
+                &mut event_type,
+                &mut value_ptr,
+                &mut value_len,
+                &mut hit_u,
+                &mut hit_v,
+                &mut hand,
+            );
+            assert_eq!(valid, 0);
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn raycast_panels_into_hit() {
+        unsafe {
+            let session = mxr_create_headless();
+            let p = mxr_create_panel(session, 800, 600);
+
+            // Position the panel at (0, 0, -1), facing +Z (identity rotation)
+            mxr_panel_set_transform(session, p, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0);
+            mxr_panel_set_size(session, p, 1.0, 1.0);
+
+            let mut out_panel_id: u32 = 0;
+            let mut out_u: f32 = 0.0;
+            let mut out_v: f32 = 0.0;
+            let mut out_distance: f32 = 0.0;
+
+            // Ray from origin pointing at -Z should hit the panel
+            let hit = mxr_raycast_panels_into(
+                session,
+                0.0,
+                0.0,
+                0.0, // origin
+                0.0,
+                0.0,
+                -1.0, // direction
+                &mut out_panel_id,
+                &mut out_u,
+                &mut out_v,
+                &mut out_distance,
+            );
+            assert_eq!(hit, 1);
+            assert_eq!(out_panel_id, p);
+            assert!(out_distance > 0.0);
+            // Hit should be near center (u≈0.5, v≈0.5)
+            assert!((out_u - 0.5).abs() < 0.1);
+            assert!((out_v - 0.5).abs() < 0.1);
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn raycast_panels_into_miss() {
+        unsafe {
+            let session = mxr_create_headless();
+            let p = mxr_create_panel(session, 800, 600);
+
+            // Panel at (0, 0, -1)
+            mxr_panel_set_transform(session, p, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0);
+            mxr_panel_set_size(session, p, 0.5, 0.5);
+
+            let mut out_panel_id: u32 = 0xFF;
+            let mut out_u: f32 = -1.0;
+            let mut out_v: f32 = -1.0;
+            let mut out_distance: f32 = -1.0;
+
+            // Ray pointing away (+Z) should miss
+            let hit = mxr_raycast_panels_into(
+                session,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0, // wrong direction
+                &mut out_panel_id,
+                &mut out_u,
+                &mut out_v,
+                &mut out_distance,
+            );
+            assert_eq!(hit, 0);
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn get_pose_into_headless_returns_invalid() {
+        unsafe {
+            let session = mxr_create_headless();
+
+            let mut px: f32 = 99.0;
+            let mut py: f32 = 99.0;
+            let mut pz: f32 = 99.0;
+            let mut qx: f32 = 99.0;
+            let mut qy: f32 = 99.0;
+            let mut qz: f32 = 99.0;
+            let mut qw: f32 = 99.0;
+
+            let valid = mxr_get_pose_into(
+                session,
+                MXR_HAND_LEFT as u8,
+                &mut px,
+                &mut py,
+                &mut pz,
+                &mut qx,
+                &mut qy,
+                &mut qz,
+                &mut qw,
+            );
+            assert_eq!(valid, 0);
+            // Position should be zeroed
+            assert_eq!(px, 0.0);
+            assert_eq!(py, 0.0);
+            assert_eq!(pz, 0.0);
+            // Quaternion should be identity (0,0,0,1)
+            assert_eq!(qx, 0.0);
+            assert_eq!(qy, 0.0);
+            assert_eq!(qz, 0.0);
+            assert_eq!(qw, 1.0);
 
             mxr_destroy_session(session);
         }

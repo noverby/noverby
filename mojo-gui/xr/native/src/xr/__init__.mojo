@@ -54,9 +54,12 @@ Usage (direct, for multi-panel XR apps — future, Step 5.9):
 
 Current Status:
     Step 5.1 — ✅ Complete. Panel and scene abstractions defined.
-    Step 5.2 — 🔧 In progress. Real Blitz documents in shim (30 tests pass).
+    Step 5.2 — 🔧 In progress. Real Blitz documents in shim (37 tests pass).
+               Output-pointer FFI variants (_into) implemented.
     Step 5.3 — ✅ Complete. Mojo FFI bindings (XRBlitz) and per-panel
                mutation interpreter (XRMutationInterpreter) implemented.
+    Step 5.4 — ✅ Complete. XRScene wired to XRBlitz FFI.
+    Step 5.5 — ✅ Complete. xr_launch[AppType: GuiApp]() implemented.
 """
 
 # ── Panel abstraction (Step 5.1) ─────────────────────────────────────────
@@ -128,3 +131,7 @@ from .xr_blitz import (
 # ── Mutation interpreter (Step 5.3) ──────────────────────────────────────
 
 from .renderer import XRMutationInterpreter
+
+# ── XR launcher (Step 5.5) ───────────────────────────────────────────────
+
+from .launcher import xr_launch

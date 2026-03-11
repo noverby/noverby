@@ -859,6 +859,89 @@ void mxr_panel_stack_push(MxrSession session, uint32_t panel_id,
 uint32_t mxr_panel_stack_pop(MxrSession session, uint32_t panel_id);
 
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Output-pointer FFI variants — avoid struct-return ABI issues
+ *
+ * Mojo's DLHandle cannot reliably return C structs larger than 16 bytes
+ * (on x86_64 SysV ABI, large structs use a hidden first pointer that
+ * DLHandle doesn't handle). These _into() variants write each field to
+ * caller-provided output pointers instead.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Poll the next event, writing each field to caller-provided output pointers.
+ *
+ * Returns non-zero if an event was available, 0 if the queue was empty.
+ * When returning 0, output pointers are NOT modified.
+ *
+ * The out_value_ptr / out_value_len pair points into an internal buffer
+ * that stays alive until the next mxr_poll_event_into() call.
+ *
+ * Parameters:
+ *   session        — The XR session.
+ *   out_panel_id   — Output: panel this event targets.
+ *   out_handler_id — Output: handler ID in the panel's HandlerRegistry.
+ *   out_event_type — Output: event type tag (MXR_EVT_*).
+ *   out_value_ptr  — Output: pointer to string payload (NULL if none).
+ *   out_value_len  — Output: length of string payload in bytes.
+ *   out_hit_u      — Output: panel-local U coordinate (0.0–1.0, or -1.0).
+ *   out_hit_v      — Output: panel-local V coordinate (0.0–1.0, or -1.0).
+ *   out_hand       — Output: which hand produced this event (MXR_HAND_*).
+ */
+int32_t mxr_poll_event_into(MxrSession session,
+                             uint32_t *out_panel_id,
+                             uint32_t *out_handler_id,
+                             uint8_t *out_event_type,
+                             const uint8_t **out_value_ptr,
+                             uint32_t *out_value_len,
+                             float *out_hit_u,
+                             float *out_hit_v,
+                             uint8_t *out_hand);
+
+/*
+ * Raycast against all visible, interactive panels, writing the result
+ * to caller-provided output pointers.
+ *
+ * Returns non-zero if a panel was hit, 0 if the ray missed all panels.
+ * When returning 0, output pointers are zeroed.
+ *
+ * Parameters:
+ *   session       — The XR session.
+ *   ox,oy,oz      — Ray origin in world space (meters).
+ *   dx,dy,dz      — Ray direction in world space (normalized).
+ *   out_panel_id  — Output: ID of the hit panel.
+ *   out_u         — Output: hit U coordinate (0.0–1.0).
+ *   out_v         — Output: hit V coordinate (0.0–1.0).
+ *   out_distance  — Output: distance from ray origin to hit point (meters).
+ */
+int32_t mxr_raycast_panels_into(MxrSession session,
+                                 float ox, float oy, float oz,
+                                 float dx, float dy, float dz,
+                                 uint32_t *out_panel_id,
+                                 float *out_u,
+                                 float *out_v,
+                                 float *out_distance);
+
+/*
+ * Get a controller/head pose, writing the result to caller-provided
+ * output pointers.
+ *
+ * Returns non-zero if the pose is valid (tracking active), 0 otherwise.
+ * In headless mode, always returns 0 and writes identity pose (position
+ * zeroed, quaternion = (0,0,0,1)).
+ *
+ * Parameters:
+ *   session          — The XR session.
+ *   hand             — MXR_HAND_LEFT, MXR_HAND_RIGHT, or MXR_HAND_HEAD.
+ *   out_px,py,pz     — Output: position in meters.
+ *   out_qx,qy,qz,qw — Output: orientation as unit quaternion.
+ */
+int32_t mxr_get_pose_into(MxrSession session, uint8_t hand,
+                           float *out_px, float *out_py, float *out_pz,
+                           float *out_qx, float *out_qy, float *out_qz,
+                           float *out_qw);
+
+
 #ifdef __cplusplus
 }
 #endif

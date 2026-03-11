@@ -12,7 +12,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Desktop | Blitz (Stylo + Vello + Winit) | ✅ Complete | Linux Wayland |
 | Desktop | Blitz | 🔲 Untested | macOS |
 | Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
-| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.3 ✅) | Linux (headless tests pass) |
+| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7 ✅) | Linux (headless tests pass) |
 | XR Browser | WebXR + JS interpreter | 📋 Future (Phase 5) | — |
 
 | Area | Metric |
@@ -20,13 +20,14 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Core Mojo test suites | 52 |
 | JS integration test suites | 30 (~3,375 tests) |
 | Desktop integration test suites | 1 (75 tests, verified on Linux + Wine) |
-| XR shim integration tests | 30 (headless — real Blitz documents, no XR runtime or GPU needed) |
+| XR shim integration tests | 37 (headless — real Blitz documents, no XR runtime or GPU needed) |
 | Shared example apps | 4 (Counter, Todo, Benchmark, MultiView) |
 | Test/demo app modules | 15 (in `examples/apps/`) |
 | Binary mutation opcodes | 18 |
 | Desktop Blitz C FFI functions | ~45 |
-| XR C FFI functions | ~80 |
+| XR C FFI functions | ~83 (includes 3 `_into()` output-pointer variants) |
 | XR Mojo FFI wrapper methods | ~70 (XRBlitz struct) |
+| XR compile targets | 3 (web, desktop, XR via `-D MOJO_TARGET_XR`) |
 
 ---
 
@@ -56,7 +57,7 @@ mojo-gui/
 ├── xr/             — XR renderer (OpenXR native + WebXR browser, Phase 5)
 │   ├── native/     — OpenXR native: Blitz DOM → Vello → offscreen textures → OpenXR
 │   │   ├── shim/   — Rust cdylib: multi-panel Blitz + headless DOM + raycasting
-│   │   └── src/    — Mojo: XRPanel, XRScene, XRBlitz FFI, XRMutationInterpreter
+│   │   └── src/    — Mojo: XRPanel, XRScene, XRBlitz FFI, XRMutationInterpreter, xr_launch
 │   └── web/        — WebXR browser renderer (future)
 ├── docs/plan/      — Detailed plan documents
 ├── build/          — Build output (gitignored)
@@ -147,10 +148,14 @@ just run-desktop counter     # Build + run a desktop example (Wayland)
 just test-desktop            # Run Blitz shim integration tests (headless)
 
 # ── XR ───────────────────────────────────────────────────────
+just build-xr-shim           # Build XR Blitz cdylib (first time / shim changes)
+just build-xr counter        # Build single example for XR
+just build-xr-all            # Build all 4 examples for XR
+just run-xr counter          # Build + run an XR example (headless)
 just test-xr                 # Run XR shim integration tests (headless)
 
 # ── Cross-target ─────────────────────────────────────────────
-just build-all               # Build web + all desktop examples
+just build-all               # Build web + desktop + windows + XR examples
 just test-all                # Run Mojo + JS test suites
 just test-all-targets        # Run Mojo + JS + desktop + XR test suites
 just clean                   # Remove all build artifacts
@@ -166,11 +171,77 @@ mojo build examples/counter/main.mojo --target wasm64-wasi -I core/src -I web/sr
 
 # Desktop (native):
 mojo build examples/counter/main.mojo -I core/src -I desktop/src -I examples
+
+# XR (native + OpenXR):
+mojo build examples/counter/main.mojo -D MOJO_TARGET_XR -I core/src -I xr/native/src -I examples
 ```
 
 ---
 
 ## What Was Done
+
+### Phase 5.5+5.7: XR Launcher & Compile-Time Dispatch — ✅ Complete
+
+Implemented `xr_launch[AppType: GuiApp]()` — the XR-side counterpart to `desktop_launch`. Wraps any GuiApp in a single XR panel and enters the XR frame loop. Also wired `launch()` to dispatch to XR targets at compile time via `-D MOJO_TARGET_XR`.
+
+**New files:**
+
+- **`xr/native/src/xr/launcher.mojo`** — `xr_launch[AppType: GuiApp](config)`. Creates an XR session (headless or OpenXR), allocates a default panel sized from AppConfig, applies UA stylesheet, mounts the app, and enters the XR frame loop: `wait_frame → begin_frame → poll_event → handle_event → flush → apply mutations → render_dirty_panels → end_frame`. Follows the exact same architecture as `desktop_launch` (same mutation buffer management, same GuiApp lifecycle). XR-specific UA stylesheet with larger fonts and dark background for headset legibility.
+
+**Modified files:**
+
+- **`core/src/platform/app.mojo`** — Added `is_xr_target()` compile-time target detection (checks `MOJO_TARGET_XR` define).
+- **`core/src/platform/launch.mojo`** — Added `elif is_xr_target()` branch to `launch()` that imports and calls `xr_launch[AppType](config)`. Compile-time dispatch: WASM → web, XR → xr_launch, native → desktop_launch.
+- **`core/src/platform/__init__.mojo`** — Re-exports `is_xr_target`.
+- **`xr/native/src/xr/__init__.mojo`** — Re-exports `xr_launch`.
+- **`justfile`** — Added `build-xr-shim`, `build-xr`, `build-xr-all`, `run-xr` recipes. Updated `build-all` to include XR.
+
+**Compile targets after this step:**
+
+```text
+mojo build --target wasm64-wasi -I core/src -I web/src       → web
+mojo build -I core/src -I desktop/src                        → desktop (Blitz)
+mojo build -D MOJO_TARGET_XR -I core/src -I xr/native/src   → XR (OpenXR native)
+```
+
+---
+
+### Phase 5.2b: Output-Pointer FFI Variants — ✅ Complete
+
+Added `_into()` output-pointer variants for three XR shim functions that return C structs too large for reliable DLHandle struct-return (>16 bytes on x86_64 SysV ABI). This resolves all known FFI limitations from Phase 5.3.
+
+**New Rust FFI functions** (in `xr/native/shim/src/lib.rs`):
+
+- **`mxr_poll_event_into()`** — Polls the next event, writing panel_id, handler_id, event_type, value_ptr, value_len, hit_u, hit_v, hand to caller-provided output pointers. Returns 1 if event available, 0 if queue empty.
+- **`mxr_raycast_panels_into()`** — Raycasts against all visible panels, writing panel_id, u, v, distance to output pointers. Returns 1 if hit, 0 if miss.
+- **`mxr_get_pose_into()`** — Gets controller/head pose, writing px/py/pz + qx/qy/qz/qw to output pointers. Returns 1 if valid, 0 if not tracked.
+
+**7 new Rust integration tests** (37 total, up from 30):
+
+- `poll_event_into_empty_queue_returns_zero` — Empty queue returns 0, output pointers untouched.
+- `poll_event_into_click_event` — Click event fields correctly written to output pointers.
+- `poll_event_into_input_event_with_value` — Input event with unicode string payload reconstructed correctly.
+- `poll_event_into_multiple_events_in_order` — Events polled in FIFO order, queue drains properly.
+- `raycast_panels_into_hit` — Ray hitting a panel writes correct panel_id, UV, and distance.
+- `raycast_panels_into_miss` — Ray missing all panels returns 0.
+- `get_pose_into_headless_returns_invalid` — Headless mode returns 0 with identity quaternion.
+
+**Updated Mojo FFI wrappers** (in `xr/native/src/xr/xr_blitz.mojo`):
+
+- `poll_event()` — Now uses `mxr_poll_event_into()` with per-field output pointers. Fully functional (was previously returning empty events).
+- `raycast_panels()` — Now uses `mxr_raycast_panels_into()` with output pointers. Fully functional (was previously returning miss).
+- `get_pose()` — Now uses `mxr_get_pose_into()` with output pointers. Fully functional (was previously returning invalid pose).
+
+**Updated C header** (`xr/native/shim/mojo_xr.h`) — Added declarations for all three `_into()` functions with full documentation.
+
+**Resolved limitations from Phase 5.3:**
+
+- ✅ `poll_event()` — Now works via `mxr_poll_event_into()`.
+- ✅ `raycast_panels()` — Now works via `mxr_raycast_panels_into()`.
+- ✅ `get_pose()` — Now works via `mxr_get_pose_into()`.
+- ⏳ Template registration via Mojo-side interpreter — Still requires `mxr_panel_register_template_by_node()` for live DOM node registration. Works fine via Rust-side interpreter (`panel_apply_mutations`).
+
+---
 
 ### Phase 5.3: Mojo FFI Bindings for OpenXR Shim — ✅ Complete
 
@@ -202,11 +273,11 @@ Implemented typed Mojo FFI bindings for all ~80 XR shim C functions, plus a per-
 
 - **`xr/native/src/xr/__init__.mojo`** — Updated with re-exports for `XRBlitz`, `XRMutationInterpreter`, `XRPose`, `XRRaycastHit`, and all constants.
 
-**Known limitations** (deferred to Step 5.5 — XR launcher):
+**Known limitations** (resolved in Step 5.2b):
 
-- `poll_event()` — Returns empty event; needs `mxr_poll_event_into()` shim function (DLHandle can't return large C structs reliably). `panel_inject_event()` + `event_count()` work for testing.
-- `raycast_panels()` — Returns miss; needs `mxr_raycast_panels_into()`. Same DLHandle struct-return limitation.
-- `get_pose()` — Returns invalid pose; needs `mxr_get_pose_into()`. `get_aim_ray()` works (uses output pointers).
+- ~~`poll_event()` — Returns empty event; needs `mxr_poll_event_into()` shim function.~~ ✅ Resolved — `mxr_poll_event_into()` added in Step 5.2b.
+- ~~`raycast_panels()` — Returns miss; needs `mxr_raycast_panels_into()`.~~ ✅ Resolved — `mxr_raycast_panels_into()` added in Step 5.2b.
+- ~~`get_pose()` — Returns invalid pose; needs `mxr_get_pose_into()`.~~ ✅ Resolved — `mxr_get_pose_into()` added in Step 5.2b.
 - Template registration via Mojo-side interpreter — Templates built as live DOM nodes can't be registered for clone-based instantiation without `mxr_panel_register_template_by_node()`. Works fine when using Rust-side interpreter (`panel_apply_mutations`).
 
 ---
@@ -429,22 +500,22 @@ XR panel abstraction that reuses the binary mutation protocol unchanged. Each XR
 | Step | Description | Status |
 |------|-------------|--------|
 | 5.1 | Design the XR panel abstraction (`XRPanel` struct, scene graph, placement) | ✅ Complete — `XRPanel`, `PanelConfig`, `Vec3`, `Quaternion`, `PanelState` (Mojo). `XRScene` with focus management, dirty tracking, raycasting (ray-plane intersection), spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). Rust shim scaffold (`xr/native/shim/src/lib.rs`) with headless multi-panel DOM, event ring buffer, DOM serialization, raycasting, and 20+ integration tests. C API header (`mojo_xr.h`, ~80 functions). `PlatformFeatures` extended with `has_xr`, `has_xr_hand_tracking`, `has_xr_passthrough` and `xr_native_features()` / `xr_web_features()` presets. Panel presets: default, dashboard, tooltip, hand-anchored. |
-| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 30 tests pass, Stylo+Taffy layout resolves). Remaining: Vello offscreen rendering, OpenXR session lifecycle, `_into()` FFI variants for struct-return functions. |
-| 5.3 | Mojo FFI bindings for the OpenXR shim | ✅ Complete — `XRBlitz` struct (~70 methods wrapping all `mxr_*` C functions via DLHandle). `XRMutationInterpreter` (per-panel binary opcode interpreter, all 18 opcodes). Helper types: `XREvent`, `XRPose`, `XRRaycastHit`. Constants for events, hands, spaces, states. Library search via env vars / Nix / ld paths. |
-| 5.4 | XR scene manager and panel routing (multiplexes mutation buffers) | 🔲 Pending |
-| 5.5 | `xr_launch[AppType: GuiApp]()` — single-panel apps get XR for free | 🔲 Pending |
+| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 37 tests pass, Stylo+Taffy layout resolves). **Output-pointer FFI variants ✅** (`mxr_poll_event_into`, `mxr_raycast_panels_into`, `mxr_get_pose_into`). Remaining: Vello offscreen rendering, OpenXR session lifecycle. |
+| 5.3 | Mojo FFI bindings for the OpenXR shim | ✅ Complete — `XRBlitz` struct (~70 methods wrapping all `mxr_*` C functions via DLHandle). `XRMutationInterpreter` (per-panel binary opcode interpreter, all 18 opcodes). Helper types: `XREvent`, `XRPose`, `XRRaycastHit`. Constants for events, hands, spaces, states. Library search via env vars / Nix / ld paths. `poll_event()`, `raycast_panels()`, `get_pose()` now fully functional via `_into()` output-pointer variants. |
+| 5.4 | XR scene manager and panel routing (multiplexes mutation buffers) | ✅ Complete (single-panel) — `XRScene` provides panel registry, focus management, dirty tracking, Mojo-side raycasting (ray-plane intersection), and spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). For single-panel apps, `xr_launch` (Step 5.5) manages the panel directly via `XRBlitz` FFI — bypassing the scene for simplicity. Multi-panel routing through `XRScene` (scene creates/destroys panels via shim, multiplexes mutation buffers to correct panel's `GuiApp`) deferred to Step 5.9 (multi-panel XR API). |
+| 5.5 | `xr_launch[AppType: GuiApp]()` — single-panel apps get XR for free | ✅ Complete — `xr/native/src/xr/launcher.mojo`. Creates headless/OpenXR session, allocates default panel (size from AppConfig), applies XR UA stylesheet, mounts app, enters XR frame loop (wait_frame → poll_event → handle_event → flush → apply mutations → render → end_frame). Same mutation buffer management as desktop launcher. |
 | 5.6 | WebXR JS runtime (DOM → texture, XR session management) | 🔲 Future |
-| 5.7 | Wire `launch()` for XR targets (`@parameter if has_feature("xr")`) | 🔲 Pending |
+| 5.7 | Wire `launch()` for XR targets (`@parameter if is_xr_target()`) | ✅ Complete — `launch()` now dispatches: WASM → web, `-D MOJO_TARGET_XR` → `xr_launch`, native → `desktop_launch`. Added `is_xr_target()` compile-time detection. |
 | 5.8 | Verify shared examples in XR (all 4 apps render as floating panels) | 🔲 Pending |
 | 5.9 | Multi-panel XR API — `XRGuiApp` trait for apps managing multiple panels (stretch goal) | 🔮 Future |
 
 **Compile targets after Phase 5:**
 
 ```text
-mojo build --target wasm64-wasi             → web
-mojo build --target wasm64-wasi --feature webxr  → WebXR browser
-mojo build                                  → desktop (Blitz)
-mojo build --feature xr                     → OpenXR native
+mojo build --target wasm64-wasi                                    → web
+mojo build --target wasm64-wasi --feature webxr                    → WebXR browser (future)
+mojo build -I core/src -I desktop/src                              → desktop (Blitz)
+mojo build -D MOJO_TARGET_XR -I core/src -I xr/native/src         → OpenXR native
 ```
 
 ### Medium-term — Phase 6: `mojo-web` Raw Bindings
@@ -503,11 +574,11 @@ These decisions are settled and documented here for reference. See [architecture
 
 | Risk | Impact | Mitigation | Status |
 |------|--------|------------|--------|
-| Platform abstraction too leaky | Shared examples break on some targets | Cross-target CI matrix as gate; treat failures as framework bugs | In progress — `GuiApp` + `launch()` complete; CI pending (S-1) |
+| Platform abstraction too leaky | Shared examples break on some targets | Cross-target CI matrix as gate; treat failures as framework bugs | In progress — `GuiApp` + `launch()` complete (web + desktop + XR dispatch); CI pending (S-1) |
 | Blitz pre-alpha stability | Rendering bugs, missing CSS | Track Blitz releases; pin versions; document CSS support scope | Mitigated — pinned to v0.2.0 |
 | Native target module-level `var` | Global `var` not supported on native | Avoided in current design; config passed as arguments, not globals | ✅ Resolved |
 | Mojo trait limitations | `GuiApp` may not support future needs | `alias CurrentApp = ...` as fallback; upgrade when Mojo improves | ✅ Resolved for current scope |
-| OpenXR runtime availability (Phase 5) | XR fails without runtime | Detect at startup; fall back to desktop Blitz | In progress — headless mode (`mxr_create_headless`) implemented for testing without runtime |
+| OpenXR runtime availability (Phase 5) | XR fails without runtime | Detect at startup; fall back to desktop Blitz | In progress — headless mode (`mxr_create_headless`) implemented for testing without runtime; `xr_launch` uses headless by default until runtime detection is added |
 | DOM-to-texture fidelity for WebXR (Phase 5) | Rendering quality/interactivity loss | Evaluate OffscreenCanvas, html2canvas, CSS 3D, custom 2D renderer | Future |
 | XR input latency (Phase 5) | Raycasting → DOM event adds latency to controller input | Keep raycast math in the shim (Rust); minimize FFI roundtrips | In progress — Rust-side raycasting implemented |
 | XR frame timing constraints (Phase 5) | OpenXR requires strict frame pacing; DOM re-render may exceed budget | Only re-render dirty panels; cache textures; use quad layers for compositor-side reprojection | In progress — dirty tracking per-panel implemented |

@@ -26,6 +26,7 @@ from .app import (
     PlatformApp,
     is_wasm_target,
     is_native_target,
+    is_xr_target,
 )
 from .gui_app import (
     GuiApp,

@@ -152,6 +152,30 @@ run-desktop-all: build-desktop-all
 test-desktop:
     cd desktop/shim && cargo test
 
+# ── XR target (OpenXR native) ───────────────────────────────────────────
+
+# Build the XR C shim (Rust cdylib)
+build-xr-shim:
+    cd xr/native/shim && cargo build --release --lib
+
+# Build a shared example for XR (native binary)
+# Usage: just build-xr counter
+build-xr app: build-xr-shim
+    mkdir -p build
+    mojo build examples/{{ app }}/main.mojo \
+        -D MOJO_TARGET_XR \
+        -I core/src -I xr/native/src -I examples \
+        -o build/{{ app }}-xr
+
+# Build all shared examples for XR
+build-xr-all: (build-xr "counter") (build-xr "todo") (build-xr "bench") (build-xr "app")
+
+# Run a shared example in XR (headless — no XR runtime needed for testing)
+# Usage: just run-xr counter
+run-xr app: (build-xr app)
+    MOJO_XR_LIB="{{ justfile_directory() }}/xr/native/shim/target/release" \
+    ./build/{{ app }}-xr
+
 # ── XR tests (Rust integration tests for the XR shim) ───────────────────
 
 # Run XR shim integration tests (headless — no XR runtime or GPU needed)
@@ -226,8 +250,8 @@ build-windows-all: build-shim-windows build-desktop-windows-all
 build-web:
     cd web && just build
 
-# Build all shared examples for all targets (web + desktop-linux + desktop-windows)
-build-all: build build-desktop-all build-desktop-windows-all
+# Build all shared examples for all targets (web + desktop-linux + desktop-windows + xr)
+build-all: build build-desktop-all build-desktop-windows-all build-xr-all
 
 # Run all tests (Mojo + JS + desktop + XR + Wine shim + Wine desktop)
 test-all-targets: test-all test-desktop test-xr test-desktop-wine

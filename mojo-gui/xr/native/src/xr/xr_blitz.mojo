@@ -572,9 +572,7 @@ struct XRBlitz(Movable):
         Args:
             panel_id: Panel to destroy.
         """
-        self._lib.call["mxr_destroy_panel", NoneType](
-            self._session, panel_id
-        )
+        self._lib.call["mxr_destroy_panel", NoneType](self._session, panel_id)
 
     fn panel_count(self) -> UInt32:
         """Query the number of active panels.
@@ -650,9 +648,7 @@ struct XRBlitz(Movable):
         )
         return result != 0
 
-    fn panel_set_curved(
-        self, panel_id: UInt32, curved: Bool, radius: Float32
-    ):
+    fn panel_set_curved(self, panel_id: UInt32, curved: Bool, radius: Float32):
         """Set the curved display flag and curvature radius for a panel.
 
         Args:
@@ -757,9 +753,7 @@ struct XRBlitz(Movable):
             self._session, panel_id, tag_ptr, UInt32(len(tag))
         )
 
-    fn panel_create_text_node(
-        self, panel_id: UInt32, text: String
-    ) -> UInt32:
+    fn panel_create_text_node(self, panel_id: UInt32, text: String) -> UInt32:
         """Create a text node (detached) in a panel.
 
         Args:
@@ -1133,160 +1127,98 @@ struct XRBlitz(Movable):
     fn poll_event(self) -> XREvent:
         """Poll the next event from the XR input queue.
 
-        Returns the next buffered event. If no events are pending,
-        returns an event with valid=False.
-
-        The MxrEvent struct is returned by value from the C shim. We
-        read each field from the struct returned by the FFI call.
+        Uses `mxr_poll_event_into` which writes event fields to
+        caller-provided output pointers, avoiding struct-return ABI
+        issues with Mojo's DLHandle.
 
         Returns:
             An XREvent with valid=True if an event was available,
             or valid=False if the queue is empty.
         """
-        # The MxrEvent C struct layout (from mojo_xr.h):
-        #   int32_t  valid       (4 bytes)
-        #   uint32_t panel_id    (4 bytes)
-        #   uint32_t handler_id  (4 bytes)
-        #   uint8_t  event_type  (1 byte + 3 padding)
-        #   const char* value_ptr (8 bytes, pointer)
-        #   uint32_t value_len   (4 bytes + 4 padding)
-        #   float    hit_u       (4 bytes)
-        #   float    hit_v       (4 bytes)
-        #   uint8_t  hand        (1 byte + 7 padding)
-        #
-        # Total: ~48 bytes with alignment padding.
-        #
-        # Since Mojo's DLHandle struct-return ABI is unreliable for complex
-        # C structs, we use mxr_panel_inject_event for testing and rely on
-        # the per-field polling approach: allocate output slots for each
-        # field and call a decomposed poll function.
-        #
-        # For now, we use the struct-return approach with a raw byte buffer
-        # and manual field extraction, matching the C struct layout.
-        # If this proves problematic (ABI mismatch), we can add a
-        # mxr_poll_event_into() function to the shim (like the desktop's
-        # mblitz_poll_event_into).
+        # Allocate output slots for each event field.
+        var out_panel_id = alloc[UInt32](1)
+        var out_handler_id = alloc[UInt32](1)
+        var out_event_type = alloc[UInt8](1)
+        var out_value_ptr = alloc[Int](
+            1
+        )  # pointer-sized (same pattern as desktop)
+        var out_value_len = alloc[UInt32](1)
+        var out_hit_u = alloc[Float32](1)
+        var out_hit_v = alloc[Float32](1)
+        var out_hand = alloc[UInt8](1)
 
-        # Allocate a buffer large enough for the MxrEvent struct (64 bytes
-        # to be safe with padding).
-        var buf = alloc[UInt8](64)
-        for i in range(64):
-            buf[i] = 0
+        out_panel_id[0] = 0
+        out_handler_id[0] = 0
+        out_event_type[0] = 0
+        out_value_ptr[0] = 0
+        out_value_len[0] = 0
+        out_hit_u[0] = -1.0
+        out_hit_v[0] = -1.0
+        out_hand[0] = 0
 
-        # Call the poll function, which writes the MxrEvent into our buffer.
-        # We pass the buffer as the return-value destination.
-        #
-        # Actually, mxr_poll_event returns MxrEvent by value. We need to
-        # use the standard approach: call the function and decode the
-        # struct from the return value.
-        #
-        # Since DLHandle's struct return is tricky, we use a simpler
-        # approach: poll each field individually using helper FFI calls.
-        # But the C API only has mxr_poll_event() returning MxrEvent.
-        #
-        # Workaround: Use the event count + inject/poll pattern. We poll
-        # the event struct by calling mxr_poll_event and interpreting the
-        # raw bytes of the return value.
-        #
-        # For maximum compatibility, we'll extract fields from the raw
-        # MxrEvent struct. The struct is small enough for register return
-        # on x86_64 Linux (System V ABI returns structs <= 16 bytes in
-        # registers, larger structs via hidden pointer). At ~48 bytes,
-        # MxrEvent uses the hidden-pointer convention.
+        var valid = self._lib.call["mxr_poll_event_into", Int32](
+            self._session,
+            out_panel_id,
+            out_handler_id,
+            out_event_type,
+            out_value_ptr,
+            out_value_len,
+            out_hit_u,
+            out_hit_v,
+            out_hand,
+        )
 
-        buf.free()
-
-        # Since direct struct return is complex with DLHandle, we use the
-        # event_count + inject pattern for now, polling events via a
-        # manual approach.
-        #
-        # Check if there are pending events first.
-        var count = self.event_count()
-        if count == 0:
+        if valid == 0:
+            out_panel_id.free()
+            out_handler_id.free()
+            out_event_type.free()
+            out_value_ptr.free()
+            out_value_len.free()
+            out_hit_u.free()
+            out_hit_v.free()
+            out_hand.free()
             return XREvent()
 
-        # Use alloc-based field extraction. We allocate individual output
-        # slots and use a helper that writes into them.
-        # Since the shim doesn't have mxr_poll_event_into yet, we use the
-        # struct-return approach via a 64-byte buffer passed as hidden
-        # first argument (System V ABI for large struct return).
-        var out_buf = alloc[UInt8](64)
-        for i in range(64):
-            out_buf[i] = 0
+        var panel_id = out_panel_id[0]
+        var handler_id = out_handler_id[0]
+        var event_type = out_event_type[0]
+        var v_ptr_int = out_value_ptr[0]
+        var v_len = Int(out_value_len[0])
+        var hit_u = out_hit_u[0]
+        var hit_v = out_hit_v[0]
+        var hand = out_hand[0]
 
-        # On x86_64 System V ABI, functions returning large structs receive
-        # a hidden first pointer parameter. DLHandle handles this via the
-        # return type mechanism. Let's try calling with the return type as
-        # a raw integer and reinterpret.
-        #
-        # Alternative: Call it as returning NoneType with the buffer as a
-        # hidden out parameter. This is fragile.
-        #
-        # The safest approach: decompose into count check + individual
-        # event inspection. Since we don't have a decomposed poll API,
-        # let's use inject_event for testing and defer the real poll_event
-        # to when we add mxr_poll_event_into() to the shim.
-        #
-        # For now: return an invalid event and document the limitation.
-        # The XR launcher (Step 5.5) will add mxr_poll_event_into() to
-        # the shim at that point.
+        out_panel_id.free()
+        out_handler_id.free()
+        out_event_type.free()
+        out_value_ptr.free()
+        out_value_len.free()
+        out_hit_u.free()
+        out_hit_v.free()
+        out_hand.free()
 
-        out_buf.free()
+        # Build the value string from the pointer + length.
+        # The pointer points into the shim's last_polled_value which
+        # stays alive until the next poll call.
+        var value = String("")
+        if v_len > 0 and v_ptr_int != 0:
+            var slot = alloc[Int](1)
+            slot[0] = v_ptr_int
+            var v_ptr = slot.bitcast[UnsafePointer[UInt8, MutAnyOrigin]]()[0]
+            slot.free()
+            for i in range(v_len):
+                value += chr(Int(v_ptr[i]))
 
-        # TODO(Step 5.5): Add mxr_poll_event_into() to the Rust shim
-        # (matching desktop's mblitz_poll_event_into pattern) and implement
-        # proper per-field event polling here. For now, use the workaround
-        # below which reads from inject_event's ring buffer via the
-        # count-based API.
-        #
-        # Workaround: We know there are events (count > 0). Use the raw
-        # struct return. On Linux x86_64 with System V ABI, structs > 16
-        # bytes are returned via a hidden pointer. DLHandle should handle
-        # this correctly since it uses the C calling convention.
-        #
-        # Let's attempt the struct return by treating the entire MxrEvent
-        # as a sequence of known-sized fields read from a buffer.
-
-        # Allocate the struct buffer — the shim writes into this via hidden
-        # first parameter (SysV ABI for large struct return).
-        var evt_buf = alloc[UInt8](64)
-        for i in range(64):
-            evt_buf[i] = 0
-
-        # Call mxr_poll_event. For large struct returns on SysV ABI,
-        # the caller passes a hidden pointer as the first argument and
-        # the function writes the struct there. DLHandle should handle
-        # this automatically when the return type matches the struct size.
-        #
-        # However, since we can't define a matching Mojo struct for the
-        # C MxrEvent (DLHandle doesn't support custom struct returns),
-        # we use a different approach: read each field from known offsets.
-        #
-        # Actually, the simplest reliable approach with DLHandle is to
-        # add mxr_poll_event_into() to the shim. Until then, use a
-        # field-by-field extraction via pointer math on the raw call.
-
-        evt_buf.free()
-
-        # === Pragmatic solution ===
-        # Use mxr_event_count to check for events, then use
-        # mxr_poll_event via a hack: call it with the return buffer
-        # treated as an opaque blob. We allocate output slots and
-        # manually decode the struct layout.
-        #
-        # On x86_64 Linux, MxrEvent (~48 bytes) is returned via hidden
-        # pointer (rdi). When DLHandle calls a function returning a type
-        # T, it allocates stack space for T and passes a hidden pointer.
-        # For NoneType, no return is expected. For UInt32, 4 bytes.
-        #
-        # We can abuse this by declaring the return type as a large enough
-        # SIMD or tuple, but Mojo DLHandle only supports scalar returns.
-        #
-        # Final answer: This requires mxr_poll_event_into(). We document
-        # this as a known limitation and provide inject_event + event_count
-        # for testing.
-
-        return XREvent()
+        return XREvent(
+            valid=True,
+            panel_id=panel_id,
+            handler_id=handler_id,
+            event_type=event_type,
+            value=value,
+            hit_u=hit_u,
+            hit_v=hit_v,
+            hand=hand,
+        )
 
     fn event_count(self) -> UInt32:
         """Get the number of buffered events.
@@ -1315,13 +1247,9 @@ struct XRBlitz(Movable):
     ) -> XRRaycastHit:
         """Raycast against all visible, interactive panels.
 
-        Tests the given ray against every visible panel's quad and returns
-        the closest hit.
-
-        Note: MxrRaycastHit is 20 bytes — larger than 16 bytes, so on
-        SysV ABI it uses the hidden-pointer return convention. Like
-        poll_event, we need a decomposed API for reliable FFI. For now,
-        we attempt the call and return a miss on failure.
+        Uses `mxr_raycast_panels_into` which writes result fields to
+        caller-provided output pointers, avoiding struct-return ABI
+        issues with Mojo's DLHandle.
 
         Args:
             ox, oy, oz: Ray origin in world space (meters).
@@ -1330,13 +1258,44 @@ struct XRBlitz(Movable):
         Returns:
             Raycast hit result.
         """
-        # MxrRaycastHit is 20 bytes (int32 + uint32 + 3×float).
-        # On SysV ABI this fits in 2 integer registers + 1 SSE register,
-        # but the mixed int/float layout means it goes via hidden pointer.
-        # Same limitation as poll_event — needs a decomposed API.
-        #
-        # TODO(Step 5.5): Add mxr_raycast_panels_into() to the shim.
-        return XRRaycastHit()
+        var out_panel_id = alloc[UInt32](1)
+        var out_u = alloc[Float32](1)
+        var out_v = alloc[Float32](1)
+        var out_distance = alloc[Float32](1)
+
+        out_panel_id[0] = 0
+        out_u[0] = 0.0
+        out_v[0] = 0.0
+        out_distance[0] = 0.0
+
+        var hit = self._lib.call["mxr_raycast_panels_into", Int32](
+            self._session,
+            ox,
+            oy,
+            oz,
+            dx,
+            dy,
+            dz,
+            out_panel_id,
+            out_u,
+            out_v,
+            out_distance,
+        )
+
+        var result = XRRaycastHit()
+        if hit != 0:
+            result.hit = True
+            result.panel_id = out_panel_id[0]
+            result.u = out_u[0]
+            result.v = out_v[0]
+            result.distance = out_distance[0]
+
+        out_panel_id.free()
+        out_u.free()
+        out_v.free()
+        out_distance.free()
+
+        return result
 
     fn set_focused_panel(self, panel_id: UInt32):
         """Set the focused panel (receives keyboard/text input).
@@ -1394,9 +1353,7 @@ struct XRBlitz(Movable):
         Returns:
             The number of panels that were re-rendered.
         """
-        return self._lib.call["mxr_render_dirty_panels", UInt32](
-            self._session
-        )
+        return self._lib.call["mxr_render_dirty_panels", UInt32](self._session)
 
     fn end_frame(self):
         """End the frame and submit composition layers to OpenXR.
@@ -1412,8 +1369,9 @@ struct XRBlitz(Movable):
     fn get_pose(self, hand: UInt8) -> XRPose:
         """Get the current pose of a controller or the head.
 
-        Note: MxrPose is 32 bytes — uses hidden-pointer return on SysV ABI.
-        Same limitation as poll_event.
+        Uses `mxr_get_pose_into` which writes pose fields to
+        caller-provided output pointers, avoiding struct-return ABI
+        issues with Mojo's DLHandle.
 
         Args:
             hand: HAND_LEFT, HAND_RIGHT, or HAND_HEAD.
@@ -1422,8 +1380,54 @@ struct XRBlitz(Movable):
             The pose in the session's reference space. If the controller
             is not tracked, the pose's valid field is False.
         """
-        # TODO(Step 5.5): Add mxr_get_pose_into() to the shim.
-        return XRPose()
+        var out_px = alloc[Float32](1)
+        var out_py = alloc[Float32](1)
+        var out_pz = alloc[Float32](1)
+        var out_qx = alloc[Float32](1)
+        var out_qy = alloc[Float32](1)
+        var out_qz = alloc[Float32](1)
+        var out_qw = alloc[Float32](1)
+
+        out_px[0] = 0.0
+        out_py[0] = 0.0
+        out_pz[0] = 0.0
+        out_qx[0] = 0.0
+        out_qy[0] = 0.0
+        out_qz[0] = 0.0
+        out_qw[0] = 1.0
+
+        var valid = self._lib.call["mxr_get_pose_into", Int32](
+            self._session,
+            hand,
+            out_px,
+            out_py,
+            out_pz,
+            out_qx,
+            out_qy,
+            out_qz,
+            out_qw,
+        )
+
+        var result = XRPose()
+        if valid != 0:
+            result.valid = True
+            result.px = out_px[0]
+            result.py = out_py[0]
+            result.pz = out_pz[0]
+            result.qx = out_qx[0]
+            result.qy = out_qy[0]
+            result.qz = out_qz[0]
+            result.qw = out_qw[0]
+
+        out_px.free()
+        out_py.free()
+        out_pz.free()
+        out_qx.free()
+        out_qy.free()
+        out_qz.free()
+        out_qw.free()
+
+        return result
 
     fn get_aim_ray(
         self,
@@ -1537,9 +1541,7 @@ struct XRBlitz(Movable):
         Returns:
             True if XR_FB_passthrough is available.
         """
-        var result = self._lib.call["mxr_has_passthrough", Int32](
-            self._session
-        )
+        var result = self._lib.call["mxr_has_passthrough", Int32](self._session)
         return result != 0
 
     # ══════════════════════════════════════════════════════════════════════
@@ -1675,9 +1677,7 @@ struct XRBlitz(Movable):
         buf.free()
         return result
 
-    fn panel_get_node_tag(
-        self, panel_id: UInt32, node_id: UInt32
-    ) -> String:
+    fn panel_get_node_tag(self, panel_id: UInt32, node_id: UInt32) -> String:
         """Get the tag name of a node in a panel (for testing).
 
         Args:
@@ -1750,9 +1750,7 @@ struct XRBlitz(Movable):
             buf[i] = 0
 
         var name_ptr = name.unsafe_ptr()
-        var written = self._lib.call[
-            "mxr_panel_get_attribute_value", UInt32
-        ](
+        var written = self._lib.call["mxr_panel_get_attribute_value", UInt32](
             self._session,
             panel_id,
             node_id,
