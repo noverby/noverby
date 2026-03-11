@@ -11,7 +11,6 @@
   vulkan-loader,
   vulkan-headers,
   libGL,
-  xorg,
   makeWrapper,
 }:
 rustPlatform.buildRustPackage {
@@ -40,11 +39,6 @@ rustPlatform.buildRustPackage {
     vulkan-loader
     vulkan-headers
     libGL
-    xorg.libX11
-    xorg.libXcursor
-    xorg.libXrandr
-    xorg.libXi
-    xorg.libxcb
   ];
 
   # Blitz/Vello need GPU access at runtime
@@ -56,11 +50,6 @@ rustPlatform.buildRustPackage {
       libxkbcommon
       fontconfig
       freetype
-      xorg.libX11
-      xorg.libXcursor
-      xorg.libXrandr
-      xorg.libXi
-      xorg.libxcb
     ]}" $out/lib/libmojo_blitz.so
   '';
 

@@ -135,6 +135,6 @@ The split: **`vdom/`** holds renderer-agnostic virtual DOM structures. **`html/`
 ## Relationship to Other Packages
 
 - **`mojo-gui/web`** — Browser renderer. Imports `core` for the framework, adds TypeScript runtime + WASM `@export` wrappers. Generic `gui_app_exports.mojo` makes per-app exports one-liners via `GuiApp` trait.
-- **`mojo-gui/desktop`** — Desktop renderer (✅ builds verified). Imports `core`, renders natively via Blitz (Stylo + Taffy + Vello + Winit + AccessKit). `desktop_launch[AppType: GuiApp]()` drives the native event loop.
+- **`mojo-gui/desktop`** — Desktop renderer (✅ complete, Wayland-only). Imports `core`, renders natively via Blitz (Stylo + Taffy + Vello + Winit + AccessKit). `desktop_launch[AppType: GuiApp]()` drives the native event loop.
 - **`mojo-gui/examples`** — Shared examples. Each app implements `GuiApp` and calls `launch[AppType](AppConfig(...))`. Same source compiles for both web and desktop.
 - **`mojo-web`** — Raw Web API bindings (future). Apps can use both `mojo-gui` and `mojo-web`.

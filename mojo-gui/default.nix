@@ -21,7 +21,7 @@
       cmake
       python3
 
-      # Desktop renderer (GPU + windowing runtime deps)
+      # Desktop renderer (Wayland + GPU runtime deps)
       fontconfig
       freetype
       libxkbcommon
@@ -29,11 +29,6 @@
       vulkan-loader
       vulkan-headers
       libGL
-      xorg.libX11
-      xorg.libXcursor
-      xorg.libXrandr
-      xorg.libXi
-      xorg.libxcb
     ];
   };
 }

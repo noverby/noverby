@@ -12,11 +12,22 @@
 #   # Web (WASM):
 #   mojo build examples/counter/main.mojo --target wasm64-wasi -I core/src -I web/src -I examples
 #
-#   # Desktop (native):
+#   # Desktop (native, Wayland-only):
 #   mojo build examples/counter/main.mojo -I core/src -I desktop/src -I examples
 
 # Default: build the web target
 default: build
+
+# ── Runtime library path (Nix) ───────────────────────────────────────────────
+#
+# The Blitz renderer (via Winit) uses dlopen to load Wayland and GPU libraries
+# at runtime. In a Nix environment these live in /nix/store paths that aren't
+# on the default ld search path. We use nix eval to resolve the paths and
+# patchelf to bake them into libmojo_blitz.so during build-shim.
+#
+# The same paths are also used as LD_LIBRARY_PATH fallback for run-desktop.
+
+_blitz-rpath := `nix eval --raw --impure --expr 'let pkgs = import <nixpkgs> {}; in pkgs.lib.makeLibraryPath (with pkgs; [ wayland libxkbcommon vulkan-loader libGL fontconfig freetype ])' 2>/dev/null || echo ""`
 
 # ── Web target ───────────────────────────────────────────────────────────────
 
@@ -72,11 +83,16 @@ serve: build
     @echo "Open http://localhost:4507/web/examples/app/"
     deno run --allow-net --allow-read jsr:@std/http/file-server
 
-# ── Desktop target ───────────────────────────────────────────────────────────
+# ── Desktop target (Wayland-only) ───────────────────────────────────────────
 
-# Build the Blitz C shim (Rust cdylib)
+# Build the Blitz C shim (Rust cdylib) and patchelf runtime rpaths
 build-shim:
     cd desktop/shim && cargo build --release --lib
+    @# Bake Wayland/GPU library rpaths into the cdylib so dlopen finds them
+    @if [ -n "{{ _blitz-rpath }}" ] && command -v patchelf >/dev/null 2>&1; then \
+        patchelf --set-rpath "{{ _blitz-rpath }}" desktop/shim/target/release/libmojo_blitz.so && \
+        echo "patchelf: set rpath on libmojo_blitz.so"; \
+    fi
 
 # Build a shared example for desktop (native binary)
 # Usage: just build-desktop counter
@@ -89,10 +105,23 @@ build-desktop app:
 # Build all shared examples for desktop
 build-desktop-all: (build-desktop "counter") (build-desktop "todo") (build-desktop "bench") (build-desktop "app")
 
-# Run a shared example on desktop
+# Run a shared example on desktop (Wayland)
 # Usage: just run-desktop counter
 run-desktop app: (build-desktop app)
+    LD_LIBRARY_PATH="{{ _blitz-rpath }}:${LD_LIBRARY_PATH:-}" \
+    MOJO_BLITZ_LIB="{{ justfile_directory() }}/desktop/shim/target/release" \
     ./build/{{ app }}-desktop
+
+# Run all shared examples on desktop (sequentially — each opens a window)
+run-desktop-all: build-desktop-all
+    @echo "Running counter…"
+    just run-desktop counter
+    @echo "Running todo…"
+    just run-desktop todo
+    @echo "Running bench…"
+    just run-desktop bench
+    @echo "Running app…"
+    just run-desktop app
 
 # ── Cross-target builds ──────────────────────────────────────────────────────
 

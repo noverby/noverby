@@ -81,35 +81,35 @@
 - [x] Add `launch[AppType](...)` to shared examples (Step 3.9.6) — `main.mojo` entry points added to all 4 shared examples; no per-renderer duplicates existed to delete
 - [x] Verify all 4 shared examples build on both web and desktop from identical source (Step 3.9.7 — build verification complete)
 
-### Step 3.9.7 — Cross-target verification (remaining)
+### Step 3.9.7 — Cross-target verification (runtime ✅, CI remaining)
 
-- [ ] Verify all 4 shared examples run interactively on desktop (requires libmojo_blitz.so + GPU)
+- [x] Verify all 4 shared examples run interactively on desktop (Wayland) via `just run-desktop <app>`
 - [ ] Set up cross-target CI test matrix (web + desktop for every shared example)
 
 ---
 
-## Phase 4: `desktop/` — Blitz renderer ✅ (builds verified, runtime pending)
+## Phase 4: `desktop/` — Blitz renderer ✅ Complete (Wayland-only)
 
-> Replaced the webview dependency with [Blitz](https://github.com/DioxusLabs/blitz), a native HTML/CSS rendering engine. Implemented in the `mojo-gui/desktop/` directory. No JS runtime, no IPC — mutations are applied in-process via direct C FFI calls.
+> Replaced the webview dependency with [Blitz](https://github.com/DioxusLabs/blitz), a native HTML/CSS rendering engine. Implemented in the `mojo-gui/desktop/` directory. No JS runtime, no IPC — mutations are applied in-process via direct C FFI calls. Wayland-only on Linux (X11 not supported).
 
 ### Steps 4.1–4.3.1 — Blitz shim + Mojo bindings ✅
 
 - [x] Build Blitz C shim (`desktop/shim/src/lib.rs`) — Rust `cdylib` wrapping `blitz-dom` via `extern "C"` functions; `BlitzContext` with DOM tree, ID mapping, template registry, event queue, interpreter stack
 - [x] Write C header (`desktop/shim/mojo_blitz.h`) — ~45 FFI functions: lifecycle, DOM operations, templates, events, stack, debug
-- [x] Write Nix derivation (`desktop/shim/default.nix`) — Rust build with GPU/windowing deps (Vulkan, Wayland, X11, fontconfig)
-- [x] Write `desktop/shim/Cargo.toml` — cdylib depending on blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, winit, anyrender-vello
+- [x] Write Nix derivation (`desktop/shim/default.nix`) — Rust build with Wayland + GPU deps (Vulkan, Wayland, fontconfig)
+- [x] Write `desktop/shim/Cargo.toml` — cdylib depending on blitz-dom, blitz-html, blitz-traits, blitz-shell, blitz-paint, winit (Wayland-only), anyrender-vello
 - [x] Implement Mojo FFI bindings (`desktop/src/desktop/blitz.mojo`) — typed `Blitz` struct via `_DLHandle`
 - [x] Implement Mojo-side mutation interpreter (`desktop/src/desktop/renderer.mojo`) — `MutationInterpreter`: reads binary opcodes → Blitz FFI calls (all 18 opcodes)
 - [x] Build the Rust cdylib (`cargo build --release`) — `libmojo_blitz.so` ~23MB (release, thin LTO, stripped), 607 crate dependencies, zero warnings
 
-### Step 4.4 — Shared example builds ✅ (runtime pending)
+### Step 4.4 — Shared example builds + runtime ✅
 
 - [x] All 4 shared examples compile for desktop-Blitz from identical source
 - [x] Mojo 0.26.1 API migration completed as part of build verification
-- [ ] Counter example runs interactively on desktop (requires `libmojo_blitz.so` + GPU)
-- [ ] Todo example runs interactively on desktop
-- [ ] Bench example runs interactively on desktop
-- [ ] Multi-view app example runs interactively on desktop
+- [x] Counter example runs interactively on desktop (Wayland)
+- [x] Todo example runs interactively on desktop (Wayland)
+- [x] Bench example runs interactively on desktop (Wayland)
+- [x] Multi-view app example runs interactively on desktop (Wayland)
 
 ### Step 4.6 — Winit event loop integration ✅
 
@@ -122,14 +122,14 @@
 
 ### Step 4.7 — Project infrastructure ✅
 
-- [x] Create root `mojo-gui/justfile` — web commands (delegate to `web/justfile`), desktop commands (`build-shim`, `build-desktop <app>`, `run-desktop <app>`, `build-desktop-all`), cross-target commands (`build-web <app>`, `build-all`), cleanup (`clean`)
-- [x] Create root `mojo-gui/default.nix` — Nix dev shell combining web deps (deno, wabt, llvm, lld, wasmtime, servo) and desktop deps (rustup, pkg-config, cmake, python3, fontconfig, freetype, libxkbcommon, wayland, vulkan-loader, vulkan-headers, libGL, X11 libraries)
-- [x] Update `mojo-gui/README.md` — desktop status "🔮 Future" → "✅ Builds verified"; added `examples/` and `platform/` to package table; added "Unified App Lifecycle", "Shared Examples", "Build & Run (Desktop)" sections; updated project structure tree and import conventions
-- [x] Update `mojo-gui/desktop/README.md` — status "🔮 Future" → "✅ Builds verified, runtime pending"; updated architecture diagram to show `MutationInterpreter`; added "Event loop", "Key Files", "Building", "Winit Event Loop Integration", "Remaining Work" sections
+- [x] Create root `mojo-gui/justfile` — web commands (delegate to `web/justfile`), desktop commands (`build-shim` + patchelf rpaths, `build-desktop <app>`, `run-desktop <app>`, `run-desktop-all`, `build-desktop-all`), cross-target commands (`build-web <app>`, `build-all`), cleanup (`clean`)
+- [x] Create root `mojo-gui/default.nix` — Nix dev shell combining web deps (deno, wabt, llvm, lld, wasmtime, servo) and desktop Wayland deps (rustup, pkg-config, cmake, python3, fontconfig, freetype, libxkbcommon, wayland, vulkan-loader, vulkan-headers, libGL)
+- [x] Update `mojo-gui/README.md` — desktop status "🔮 Future" → "✅ Complete"; added `examples/` and `platform/` to package table; added "Unified App Lifecycle", "Shared Examples", "Build & Run (Desktop)" sections; updated project structure tree and import conventions
+- [x] Update `mojo-gui/desktop/README.md` — status "🔮 Future" → "✅ Complete (Wayland-only)"; updated architecture diagram to show `MutationInterpreter`; added "Event loop", "Key Files", "Building", "Winit Event Loop Integration", "Remaining Work" sections
 
-### Step 4.5 + CI — Cross-platform (remaining)
+### Step 4.5 + CI — macOS + CI (remaining)
 
-- [ ] Cross-platform testing (Linux, macOS, Windows via Winit)
+- [ ] macOS support (currently Linux Wayland-only)
 - [ ] Set up cross-target CI test matrix (web + desktop-Blitz for every shared example)
 
 ---

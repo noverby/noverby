@@ -27,7 +27,14 @@ anyrender = { version = "0.6" }
 anyrender_vello = { version = "0.6" }
 
 # Windowing (must match Blitz v0.2.0's pinned version exactly)
-winit = { version = "0.30" }
+# Wayland-only: disable default features (which include x11 + wayland-dlopen).
+# Note: blitz-shell still enables winit defaults transitively, so x11 code is
+# compiled in but never used — we simply don't ship X11 runtime libraries.
+winit = { version = "0.30", default-features = false, features = [
+  "wayland",
+  "wayland-csd-adwaita",
+  "rwh_06",
+] }
 
 # Note: markup5ever types (QualName, LocalName, etc.) are re-exported by blitz-dom.
 # Do NOT add a direct markup5ever dependency — version mismatches cause type errors.
