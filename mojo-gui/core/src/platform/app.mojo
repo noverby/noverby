@@ -204,3 +204,25 @@ fn is_native_target() -> Bool:
     Convenience inverse of is_wasm_target().
     """
     return not is_wasm_target()
+
+
+fn is_xr_target() -> Bool:
+    """Return True if the current compilation target is XR (OpenXR native).
+
+    Detection strategy: uses `sys.param_env.is_defined` to check for the
+    `MOJO_TARGET_XR` compile-time define. The build system must pass
+    `-D MOJO_TARGET_XR` when compiling for an XR target.
+
+    When this is True, `launch()` dispatches to `xr_launch[AppType]()`
+    instead of `desktop_launch[AppType]()`. The app's GuiApp instance
+    is wrapped in a single XR panel automatically.
+
+    Build command:
+        mojo build examples/counter/main.mojo -D MOJO_TARGET_XR \\
+            -I core/src -I xr/native/src -I examples
+
+    Used by launch() to select the XR renderer at compile time.
+    """
+    from sys.param_env import is_defined
+
+    return is_defined["MOJO_TARGET_XR"]()

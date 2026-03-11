@@ -4,6 +4,7 @@
 # The renderer is selected at **compile time** based on the build target:
 #
 #   - WASM target → web renderer (JS runtime drives the event loop)
+#   - XR target   → XR renderer (OpenXR frame loop drives rendering)
 #   - Native target → desktop renderer (Blitz drives the event loop)
 #
 # This is the key enabler for shared examples. App code calls launch() and
@@ -30,6 +31,9 @@
 #     # Desktop (native):
 #     mojo build app.mojo -I core/src -I desktop/src
 #
+#     # XR (native + OpenXR):
+#     mojo build app.mojo -D MOJO_TARGET_XR -I core/src -I xr/native/src
+#
 # The same source file, different build targets — the framework handles
 # the rest.
 #
@@ -46,6 +50,11 @@
 #     desktop_launch[AppType](config), which creates the Blitz renderer
 #     window, mounts the initial DOM, and enters the platform event loop
 #     (blocking until the window is closed).
+#
+#   - For XR targets (compile with -D MOJO_TARGET_XR), launch() passes
+#     the config to xr_launch[AppType](config), which creates an OpenXR
+#     session, wraps the app in a single floating panel, mounts the DOM,
+#     and enters the XR frame loop (blocking until the session ends).
 #
 #   - The compile-time dispatch uses @parameter if with is_wasm_target()
 #     so that only the relevant renderer code is compiled for each target.
@@ -69,10 +78,11 @@
 #
 # Step 3.9.3: launch() uses @parameter if is_wasm_target() for
 # compile-time target dispatch. On WASM, it returns immediately
-# (JS drives the loop). On native, it calls desktop_launch[AppType]()
-# with the Blitz desktop renderer.
+# (JS drives the loop). On XR native, it calls xr_launch[AppType]().
+# On desktop native, it calls desktop_launch[AppType]() with the
+# Blitz desktop renderer.
 
-from .app import is_wasm_target, is_native_target
+from .app import is_wasm_target, is_native_target, is_xr_target
 from .gui_app import GuiApp
 
 
@@ -226,6 +236,14 @@ fn launch[AppType: GuiApp](config: AppConfig = AppConfig()) raises:
         # (gui_app_init[AppType], gui_app_mount[AppType], etc.) to call
         # GuiApp trait methods. Nothing more to do here.
         pass
+    elif is_xr_target():
+        # XR path: create OpenXR session + panel and enter XR frame loop.
+        # xr_launch creates the session, wraps the app in a default panel,
+        # mounts the initial DOM, and enters the XR frame loop (blocking
+        # until the session ends). The app never sees the XR infrastructure.
+        from xr.launcher import xr_launch
+
+        xr_launch[AppType](config)
     else:
         # Desktop path: create Blitz window and enter event loop.
         # desktop_launch creates the native window, mounts the initial
