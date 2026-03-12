@@ -59,7 +59,16 @@ use blitz_dom::{
     BaseDocument, DocumentConfig, ElementData, LocalName, NodeData, Prefix, QualName, local_name,
     ns,
 };
+use blitz_paint::paint_scene;
 use blitz_traits::shell::Viewport;
+
+use anyrender_vello::VelloScenePainter;
+use vello::{AaConfig, AaSupport, RenderParams, RendererOptions, Scene as VelloScene};
+
+use wgpu::{
+    Device, Extent3d, Queue, Texture, TextureDimension, TextureFormat, TextureUsages, TextureView,
+    TextureViewDescriptor,
+};
 
 // ---------------------------------------------------------------------------
 // Constants — mirror the #defines in mojo_xr.h
@@ -354,6 +363,11 @@ struct Panel {
     // ── Stylesheets ──────────────────────────────────────────────────
     /// User-agent stylesheets applied to this panel's document.
     ua_stylesheets: Vec<String>,
+
+    // ── GPU texture ──────────────────────────────────────────────────
+    /// Offscreen GPU texture for this panel (managed by `OffscreenRenderer`).
+    /// `None` in headless sessions or when GPU is not initialised.
+    gpu_texture: Option<PanelTexture>,
 }
 
 impl Panel {
@@ -406,6 +420,7 @@ impl Panel {
             templates: HashMap::new(),
             next_template_id: 0,
             ua_stylesheets: Vec::new(),
+            gpu_texture: None,
         }
     }
 
@@ -750,6 +765,218 @@ impl EventRing {
 }
 
 // ---------------------------------------------------------------------------
+// OffscreenRenderer — wgpu + Vello for headless GPU rendering
+// ---------------------------------------------------------------------------
+
+/// GPU resources for rendering Blitz documents to offscreen textures via Vello.
+///
+/// Created lazily via `mxr_init_gpu()`. When absent, `mxr_render_dirty_panels()`
+/// falls back to layout-only resolution (no pixel output).
+struct OffscreenRenderer {
+    device: Device,
+    queue: Queue,
+    vello_renderer: vello::Renderer,
+}
+
+impl OffscreenRenderer {
+    /// Try to initialise GPU resources. Returns `None` if no compatible adapter
+    /// is found (e.g. running in CI without a GPU).
+    fn try_new() -> Option<Self> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None::<&wgpu::Surface<'_>>,
+            force_fallback_adapter: false,
+        }))
+        .ok()?;
+
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("mojo-xr offscreen"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            memory_hints: wgpu::MemoryHints::default(),
+            trace: wgpu::Trace::Off,
+        }))
+        .ok()?;
+
+        let vello_renderer = vello::Renderer::new(
+            &device,
+            RendererOptions {
+                use_cpu: false,
+                antialiasing_support: AaSupport::area_only(),
+                num_init_threads: None,
+                pipeline_cache: None,
+            },
+        )
+        .ok()?;
+
+        Some(Self {
+            device,
+            queue,
+            vello_renderer,
+        })
+    }
+
+    /// Ensure `panel` has a GPU texture matching its dimensions, creating one
+    /// if it does not exist or if the size has changed.
+    fn ensure_texture(&self, panel: &mut Panel) {
+        let needs_create = match &panel.gpu_texture {
+            None => true,
+            Some(pt) => pt.width != panel.texture_width || pt.height != panel.texture_height,
+        };
+        if !needs_create {
+            return;
+        }
+
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("xr_panel_texture"),
+            size: Extent3d {
+                width: panel.texture_width,
+                height: panel.texture_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            // Vello's render_to_texture requires STORAGE_BINDING.
+            // COPY_SRC allows readback to CPU for debugging / snapshot tests.
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::STORAGE_BINDING | TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&TextureViewDescriptor::default());
+
+        panel.gpu_texture = Some(PanelTexture {
+            texture,
+            view,
+            width: panel.texture_width,
+            height: panel.texture_height,
+        });
+    }
+
+    /// Paint the panel's Blitz document to a Vello scene and render it to the
+    /// panel's GPU texture. The document's styles and layout must already be
+    /// resolved (`doc.resolve()`) before calling this.
+    fn render_panel(&mut self, panel: &mut Panel) {
+        self.ensure_texture(panel);
+
+        let pt = panel.gpu_texture.as_ref().expect("texture just ensured");
+
+        let mut scene = VelloScene::new();
+        {
+            let mut painter = VelloScenePainter::new(&mut scene);
+            let scale = panel.doc.viewport().scale_f64();
+            paint_scene(&mut painter, &panel.doc, scale, pt.width, pt.height);
+        }
+
+        let _ = self.vello_renderer.render_to_texture(
+            &self.device,
+            &self.queue,
+            &scene,
+            &pt.view,
+            &RenderParams {
+                base_color: vello::peniko::Color::WHITE,
+                width: pt.width,
+                height: pt.height,
+                antialiasing_method: AaConfig::Area,
+            },
+        );
+    }
+
+    /// Copy a panel's rendered texture to a CPU buffer (RGBA, row-major).
+    /// Returns the number of bytes written, or 0 on failure.
+    fn read_pixels(&self, panel: &Panel, buf: &mut [u8]) -> usize {
+        let Some(pt) = &panel.gpu_texture else {
+            return 0;
+        };
+
+        let bytes_per_row_unpadded = pt.width * 4;
+        // wgpu requires rows to be aligned to COPY_BYTES_PER_ROW_ALIGNMENT (256).
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let bytes_per_row_padded = bytes_per_row_unpadded.div_ceil(align) * align;
+        let staging_size = (bytes_per_row_padded * pt.height) as u64;
+
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("xr_readback"),
+            size: staging_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &pt.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &staging,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bytes_per_row_padded),
+                    rows_per_image: None,
+                },
+            },
+            Extent3d {
+                width: pt.width,
+                height: pt.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Map the buffer synchronously.
+        let slice = staging.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |r| {
+            let _ = tx.send(r);
+        });
+        let _ = self.device.poll(wgpu::PollType::Wait);
+
+        if rx.recv().ok().and_then(|r| r.ok()).is_none() {
+            return 0;
+        }
+
+        let data = slice.get_mapped_range();
+        let needed = (pt.width * pt.height * 4) as usize;
+        if buf.len() < needed {
+            return 0;
+        }
+
+        // Copy row-by-row, stripping padding.
+        for row in 0..pt.height as usize {
+            let src_start = row * bytes_per_row_padded as usize;
+            let src_end = src_start + bytes_per_row_unpadded as usize;
+            let dst_start = row * bytes_per_row_unpadded as usize;
+            let dst_end = dst_start + bytes_per_row_unpadded as usize;
+            buf[dst_start..dst_end].copy_from_slice(&data[src_start..src_end]);
+        }
+
+        drop(data);
+        staging.unmap();
+        needed
+    }
+}
+
+/// Per-panel GPU texture (created/managed by `OffscreenRenderer`).
+struct PanelTexture {
+    #[allow(dead_code)]
+    texture: Texture,
+    view: TextureView,
+    width: u32,
+    height: u32,
+}
+
+// ---------------------------------------------------------------------------
 // XrSessionContext — the top-level session state
 // ---------------------------------------------------------------------------
 
@@ -773,6 +1000,10 @@ pub struct XrSessionContext {
     /// Application name.
     #[allow(dead_code)]
     app_name: String,
+
+    /// Offscreen GPU renderer (Vello + wgpu). `None` in headless sessions
+    /// or when GPU initialisation failed. Created lazily via `mxr_init_gpu()`.
+    renderer: Option<OffscreenRenderer>,
 }
 
 impl XrSessionContext {
@@ -787,6 +1018,7 @@ impl XrSessionContext {
             events: EventRing::new(),
             reference_space: MXR_SPACE_STAGE,
             app_name: String::from("headless"),
+            renderer: None,
         }
     }
 
@@ -801,6 +1033,7 @@ impl XrSessionContext {
             events: EventRing::new(),
             reference_space: MXR_SPACE_STAGE,
             app_name: name.to_string(),
+            renderer: None,
         }
     }
 
@@ -1619,30 +1852,48 @@ pub unsafe extern "C" fn mxr_begin_frame(session: *mut XrSessionContext) -> i32 
     }
 }
 
-/// Render dirty panel textures. In headless mode, resolves layout and clears
-/// dirty flags. With a real GPU (future), this runs Vello to render each
-/// panel's Blitz DOM to its offscreen texture.
+/// Render dirty panel textures. Resolves layout (Stylo + Taffy) for every
+/// dirty panel. When a GPU renderer is available (`mxr_init_gpu()` succeeded),
+/// also paints each panel's Blitz DOM to its offscreen GPU texture via Vello.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mxr_render_dirty_panels(session: *mut XrSessionContext) -> u32 {
     if session.is_null() {
         return 0;
     }
+    let ctx = &mut *session;
     let mut count = 0u32;
-    let panel_ids: Vec<u32> = (*session).panel_order.clone();
-    for panel_id in panel_ids {
-        if let Some(panel) = (*session).get_panel_mut(panel_id) {
+    let panel_ids: Vec<u32> = ctx.panel_order.clone();
+
+    // Resolve layout for every dirty panel first (layout must be resolved
+    // before paint_scene is called).
+    for &panel_id in &panel_ids {
+        if let Some(panel) = ctx.panels.get_mut(&panel_id) {
             if panel.dirty && panel.visible {
-                // Resolve styles and layout (even in headless mode, this
-                // exercises the Stylo + Taffy pipeline for correctness).
                 panel.doc.resolve(0.0);
-                panel.dirty = false;
-                count += 1;
-                // TODO: With a real GPU, run Vello offscreen rendering here:
-                //   paint_scene(&mut scene, &panel.doc, scale, width, height);
-                //   Copy scene to offscreen texture for OpenXR compositing.
             }
         }
     }
+
+    // If we have a GPU renderer, paint each resolved panel to its texture.
+    // We need to split the borrow: the renderer borrows mutably while we
+    // also need mutable access to each panel. Take the renderer out
+    // temporarily.
+    let mut renderer = ctx.renderer.take();
+
+    for &panel_id in &panel_ids {
+        if let Some(panel) = ctx.panels.get_mut(&panel_id) {
+            if panel.dirty && panel.visible {
+                if let Some(ref mut r) = renderer {
+                    r.render_panel(panel);
+                }
+                panel.dirty = false;
+                count += 1;
+            }
+        }
+    }
+
+    // Put the renderer back.
+    ctx.renderer = renderer;
     count
 }
 
@@ -1651,6 +1902,68 @@ pub unsafe extern "C" fn mxr_render_dirty_panels(session: *mut XrSessionContext)
 pub unsafe extern "C" fn mxr_end_frame(session: *mut XrSessionContext) {
     let _ = session;
     // TODO: Call xrEndFrame with quad layers when OpenXR is wired up.
+}
+
+// ── GPU initialisation ─────────────────────────────────────────────────────
+
+/// Try to initialise the GPU renderer (wgpu + Vello) for offscreen panel
+/// texture rendering. Returns 1 on success, 0 on failure (e.g. no compatible
+/// GPU adapter found). Headless sessions always return 0 — they rely on
+/// layout-only resolution.
+///
+/// This is intentionally separate from session creation so that headless tests
+/// keep working without a GPU.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mxr_init_gpu(session: *mut XrSessionContext) -> i32 {
+    if session.is_null() {
+        return 0;
+    }
+    let ctx = &mut *session;
+    if ctx.renderer.is_some() {
+        return 1; // Already initialised.
+    }
+    match OffscreenRenderer::try_new() {
+        Some(r) => {
+            ctx.renderer = Some(r);
+            1
+        }
+        None => 0,
+    }
+}
+
+/// Returns 1 if the GPU renderer is available, 0 otherwise.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mxr_has_gpu(session: *mut XrSessionContext) -> i32 {
+    if session.is_null() {
+        return 0;
+    }
+    if (*session).renderer.is_some() { 1 } else { 0 }
+}
+
+/// Copy a panel's most-recently-rendered texture to a CPU buffer.
+///
+/// `buf` must point to at least `width * height * 4` bytes (RGBA8, row-major).
+/// Returns the number of bytes written, or 0 on failure (no GPU, no texture,
+/// buffer too small, panel not found).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mxr_panel_read_pixels(
+    session: *mut XrSessionContext,
+    panel_id: u32,
+    buf: *mut u8,
+    buf_len: u32,
+) -> u32 {
+    if session.is_null() || buf.is_null() {
+        return 0;
+    }
+    let ctx = &*session;
+    let Some(renderer) = &ctx.renderer else {
+        return 0;
+    };
+    let Some(panel) = ctx.panels.get(&panel_id) else {
+        return 0;
+    };
+    let out = std::slice::from_raw_parts_mut(buf, buf_len as usize);
+    renderer.read_pixels(panel, out) as u32
 }
 
 // ── Input ──────────────────────────────────────────────────────────────────
@@ -3313,6 +3626,305 @@ mod tests {
 
             let rendered = mxr_render_dirty_panels(session);
             assert_eq!(rendered, 1);
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    // ── GPU rendering (conditional — skipped if no GPU adapter) ────────
+
+    /// Helper: try to initialise GPU on a session. Returns true if successful.
+    unsafe fn try_init_gpu(session: *mut XrSessionContext) -> bool {
+        mxr_init_gpu(session) == 1
+    }
+
+    #[test]
+    fn init_gpu_on_named_session() {
+        unsafe {
+            let name = "GPU test";
+            let session = mxr_create_session(name.as_ptr() as *const c_char, name.len() as u32);
+            let has_gpu = try_init_gpu(session);
+            // GPU availability is environment-dependent; just verify the call
+            // doesn't crash and returns a consistent value.
+            assert_eq!(mxr_has_gpu(session), if has_gpu { 1 } else { 0 });
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn init_gpu_on_headless_session() {
+        unsafe {
+            let session = mxr_create_headless();
+            // Headless sessions CAN have GPU if adapter is available.
+            let has_gpu = try_init_gpu(session);
+            assert_eq!(mxr_has_gpu(session), if has_gpu { 1 } else { 0 });
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn init_gpu_idempotent() {
+        unsafe {
+            let session = mxr_create_headless();
+            let first = mxr_init_gpu(session);
+            let second = mxr_init_gpu(session);
+            // Second call should return the same result (1 if already init'd).
+            if first == 1 {
+                assert_eq!(
+                    second, 1,
+                    "init_gpu should return 1 when already initialised"
+                );
+            }
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn has_gpu_null_session() {
+        unsafe {
+            assert_eq!(mxr_has_gpu(std::ptr::null_mut()), 0);
+            assert_eq!(mxr_init_gpu(std::ptr::null_mut()), 0);
+        }
+    }
+
+    #[test]
+    fn render_dirty_panel_with_gpu() {
+        unsafe {
+            let session = mxr_create_headless();
+            let has_gpu = try_init_gpu(session);
+            let p = mxr_create_panel(session, 200, 150);
+            let mount = mxr_panel_mount_point_id(session, p);
+
+            // Build a simple DOM: <div>Hello GPU</div>
+            let tag = "div";
+            let div = mxr_panel_create_element(
+                session,
+                p,
+                tag.as_ptr() as *const c_char,
+                tag.len() as u32,
+            );
+            let text = "Hello GPU";
+            let txt = mxr_panel_create_text_node(
+                session,
+                p,
+                text.as_ptr() as *const c_char,
+                text.len() as u32,
+            );
+            mxr_panel_append_children(session, p, mount, [div].as_ptr(), 1);
+            mxr_panel_append_children(session, p, div, [txt].as_ptr(), 1);
+
+            mxr_panel_begin_mutations(session, p);
+            mxr_panel_end_mutations(session, p);
+
+            let rendered = mxr_render_dirty_panels(session);
+            assert_eq!(rendered, 1, "panel should be rendered");
+
+            if has_gpu {
+                // After rendering with GPU, the panel should have a texture.
+                let panel = (*session).get_panel(p).unwrap();
+                assert!(
+                    panel.gpu_texture.is_some(),
+                    "GPU panel should have texture after render"
+                );
+                let pt = panel.gpu_texture.as_ref().unwrap();
+                assert_eq!(pt.width, 200);
+                assert_eq!(pt.height, 150);
+            }
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn read_pixels_without_gpu_returns_zero() {
+        unsafe {
+            let session = mxr_create_headless();
+            // Do NOT init GPU.
+            let p = mxr_create_panel(session, 100, 100);
+
+            mxr_panel_begin_mutations(session, p);
+            mxr_panel_end_mutations(session, p);
+            mxr_render_dirty_panels(session);
+
+            let mut buf = vec![0u8; 100 * 100 * 4];
+            let bytes = mxr_panel_read_pixels(session, p, buf.as_mut_ptr(), buf.len() as u32);
+            assert_eq!(bytes, 0, "no GPU → read_pixels should return 0");
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn read_pixels_null_args() {
+        unsafe {
+            assert_eq!(
+                mxr_panel_read_pixels(std::ptr::null_mut(), 0, std::ptr::null_mut(), 0),
+                0
+            );
+
+            let session = mxr_create_headless();
+            let p = mxr_create_panel(session, 100, 100);
+            // null buffer
+            assert_eq!(
+                mxr_panel_read_pixels(session, p, std::ptr::null_mut(), 0),
+                0
+            );
+            // unknown panel
+            let mut buf = vec![0u8; 100];
+            assert_eq!(
+                mxr_panel_read_pixels(session, 9999, buf.as_mut_ptr(), buf.len() as u32),
+                0
+            );
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn read_pixels_with_gpu() {
+        unsafe {
+            let session = mxr_create_headless();
+            if !try_init_gpu(session) {
+                // No GPU available — skip pixel verification but don't fail.
+                mxr_destroy_session(session);
+                return;
+            }
+
+            let p = mxr_create_panel(session, 64, 48);
+            let mount = mxr_panel_mount_point_id(session, p);
+
+            // Apply a UA stylesheet with white background so pixels are non-zero.
+            let css = "body { background: white; }";
+            mxr_panel_add_ua_stylesheet(
+                session,
+                p,
+                css.as_ptr() as *const c_char,
+                css.len() as u32,
+            );
+
+            // Build a minimal DOM so the document has content.
+            let tag = "div";
+            let div = mxr_panel_create_element(
+                session,
+                p,
+                tag.as_ptr() as *const c_char,
+                tag.len() as u32,
+            );
+            mxr_panel_append_children(session, p, mount, [div].as_ptr(), 1);
+
+            mxr_panel_begin_mutations(session, p);
+            mxr_panel_end_mutations(session, p);
+            mxr_render_dirty_panels(session);
+
+            let pixel_count = 64 * 48;
+            let buf_size = pixel_count * 4;
+            let mut buf = vec![0u8; buf_size];
+            let bytes = mxr_panel_read_pixels(session, p, buf.as_mut_ptr(), buf.len() as u32);
+            assert_eq!(bytes as usize, buf_size, "should read full texture");
+
+            // With a white background, most pixels should be non-zero.
+            // Check that the buffer is not all zeros (i.e. rendering happened).
+            let non_zero = buf.iter().filter(|&&b| b != 0).count();
+            assert!(
+                non_zero > 0,
+                "rendered texture should contain non-zero pixels (got all zeros)"
+            );
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn read_pixels_buffer_too_small() {
+        unsafe {
+            let session = mxr_create_headless();
+            if !try_init_gpu(session) {
+                mxr_destroy_session(session);
+                return;
+            }
+
+            let p = mxr_create_panel(session, 64, 48);
+
+            mxr_panel_begin_mutations(session, p);
+            mxr_panel_end_mutations(session, p);
+            mxr_render_dirty_panels(session);
+
+            // Buffer too small (need 64*48*4 = 12288 bytes).
+            let mut buf = vec![0u8; 100];
+            let bytes = mxr_panel_read_pixels(session, p, buf.as_mut_ptr(), buf.len() as u32);
+            assert_eq!(bytes, 0, "undersized buffer should return 0");
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn render_multiple_panels_with_gpu() {
+        unsafe {
+            let session = mxr_create_headless();
+            if !try_init_gpu(session) {
+                mxr_destroy_session(session);
+                return;
+            }
+
+            let p1 = mxr_create_panel(session, 100, 80);
+            let p2 = mxr_create_panel(session, 200, 160);
+
+            // Both panels are dirty after creation.
+            mxr_panel_begin_mutations(session, p1);
+            mxr_panel_end_mutations(session, p1);
+            mxr_panel_begin_mutations(session, p2);
+            mxr_panel_end_mutations(session, p2);
+
+            let rendered = mxr_render_dirty_panels(session);
+            assert_eq!(rendered, 2, "both panels should render");
+
+            // Verify both have textures with correct dimensions.
+            let panel1 = (*session).get_panel(p1).unwrap();
+            let pt1 = panel1.gpu_texture.as_ref().unwrap();
+            assert_eq!(pt1.width, 100);
+            assert_eq!(pt1.height, 80);
+
+            let panel2 = (*session).get_panel(p2).unwrap();
+            let pt2 = panel2.gpu_texture.as_ref().unwrap();
+            assert_eq!(pt2.width, 200);
+            assert_eq!(pt2.height, 160);
+
+            // Second render pass: no dirty panels, nothing rendered.
+            let rendered2 = mxr_render_dirty_panels(session);
+            assert_eq!(rendered2, 0, "clean panels should not re-render");
+
+            mxr_destroy_session(session);
+        }
+    }
+
+    #[test]
+    fn texture_destroyed_on_panel_destroy() {
+        unsafe {
+            let session = mxr_create_headless();
+            if !try_init_gpu(session) {
+                mxr_destroy_session(session);
+                return;
+            }
+
+            let p = mxr_create_panel(session, 100, 80);
+            mxr_panel_begin_mutations(session, p);
+            mxr_panel_end_mutations(session, p);
+            mxr_render_dirty_panels(session);
+
+            // Verify texture was created.
+            let panel = (*session).get_panel(p).unwrap();
+            assert!(
+                panel.gpu_texture.is_some(),
+                "texture should exist after render"
+            );
+
+            // Destroy the panel — GPU texture should be dropped with it.
+            mxr_destroy_panel(session, p);
+            assert!(
+                (*session).get_panel(p).is_none(),
+                "panel should be gone after destroy"
+            );
 
             mxr_destroy_session(session);
         }

@@ -217,6 +217,18 @@ fn xr_launch[AppType: GuiApp](config: AppConfig) raises:
     #   except:
     #       xr = XRBlitz.create_headless()
 
+    # Try to initialise the GPU renderer (wgpu + Vello) for offscreen
+    # panel texture rendering. If no compatible GPU adapter is found,
+    # render_dirty_panels() will fall back to layout-only resolution
+    # (Stylo + Taffy, no pixel output). This is fine for headless
+    # testing but means no visible rendering in a real XR session.
+    var has_gpu = xr.init_gpu()
+    if config.debug:
+        if has_gpu:
+            print("XR: GPU renderer initialised (Vello offscreen)")
+        else:
+            print("XR: GPU not available — layout-only mode")
+
     # ── 2. Create the default panel ──────────────────────────────────
 
     # Convert desktop pixel dimensions to XR panel meters.

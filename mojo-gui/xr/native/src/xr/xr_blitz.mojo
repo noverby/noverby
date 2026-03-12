@@ -1363,6 +1363,66 @@ struct XRBlitz(Movable):
         self._lib.call["mxr_end_frame", NoneType](self._session)
 
     # ══════════════════════════════════════════════════════════════════════
+    # GPU initialisation — Vello offscreen rendering pipeline
+    # ══════════════════════════════════════════════════════════════════════
+
+    fn init_gpu(self) -> Bool:
+        """Try to initialise the GPU renderer (wgpu + Vello) for offscreen
+        panel texture rendering.
+
+        This is intentionally separate from session creation so that
+        headless tests keep working without a GPU. Call once after
+        creating the session.
+
+        When GPU is available, render_dirty_panels() will paint each
+        panel's Blitz DOM to an offscreen GPU texture via Vello. Without
+        GPU, it falls back to layout-only resolution (Stylo + Taffy, no
+        pixel output).
+
+        Returns:
+            True on success (GPU renderer initialised or already init'd).
+            False on failure (no compatible GPU adapter found).
+        """
+        var result = self._lib.call["mxr_init_gpu", Int32](self._session)
+        return result != 0
+
+    fn has_gpu(self) -> Bool:
+        """Check whether the GPU renderer is available.
+
+        Returns:
+            True if init_gpu() has been called successfully.
+            False otherwise.
+        """
+        var result = self._lib.call["mxr_has_gpu", Int32](self._session)
+        return result != 0
+
+    fn read_pixels(
+        self,
+        panel_id: UInt32,
+        buf: UnsafePointer[UInt8],
+        buf_len: UInt32,
+    ) -> UInt32:
+        """Copy a panel's most-recently-rendered texture to a CPU buffer.
+
+        The buffer receives RGBA8 pixel data in row-major order
+        (top-left origin). The required buffer size is
+        panel_width * panel_height * 4 bytes.
+
+        Args:
+            panel_id: The panel whose texture to read.
+            buf: Destination buffer (caller-allocated).
+            buf_len: Size of buf in bytes.
+
+        Returns:
+            Number of bytes written on success (== width * height * 4).
+            0 on failure (no GPU, no texture, buffer too small, panel
+            not found).
+        """
+        return self._lib.call["mxr_panel_read_pixels", UInt32](
+            self._session, panel_id, buf, buf_len
+        )
+
+    # ══════════════════════════════════════════════════════════════════════
     # Input — controller and head pose tracking
     # ══════════════════════════════════════════════════════════════════════
 

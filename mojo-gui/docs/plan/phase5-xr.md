@@ -38,17 +38,31 @@ Designed and implemented the XR panel abstraction, scene manager, and Rust shim 
 
 ## Step 5.2 — Build the OpenXR + Blitz Rust shim — 🔧 In progress
 
-Replaced the lightweight `HeadlessNode` DOM tree with real Blitz `BaseDocument` instances. Each XR panel now owns a full Blitz document with Stylo styling and Taffy layout. Added output-pointer FFI variants for large struct returns.
+Replaced the lightweight `HeadlessNode` DOM tree with real Blitz `BaseDocument` instances. Each XR panel now owns a full Blitz document with Stylo styling and Taffy layout. Added output-pointer FFI variants for large struct returns. Added Vello offscreen GPU rendering pipeline.
 
 **What's done:**
 
 - **Real Blitz documents** — Panel owns a `BaseDocument` with `id_to_node`/`node_to_id` maps (same pattern as desktop shim). All DOM operations delegate to Blitz. Template cloning via `deep_clone_node`. Layout resolution via `doc.resolve(0.0)` in render loop.
 - **Output-pointer FFI variants** — `mxr_poll_event_into()`, `mxr_raycast_panels_into()`, `mxr_get_pose_into()` for struct returns >16 bytes (x86_64 SysV ABI limitation).
-- **37 integration tests** — All pass headless; covers session lifecycle, panel lifecycle, DOM operations, attributes, text nodes, placeholders, serialization, events, raycasting, focus, frame loop, reference spaces, ID mapping, stack operations, multi-panel isolation, Blitz document structure, nested elements, layout resolution, and all output-pointer variants.
+- **Vello offscreen rendering** — `OffscreenRenderer` struct owns `wgpu::Device`, `wgpu::Queue`, and `vello::Renderer`. Created lazily via `mxr_init_gpu()`. Uses the same `blitz_paint::paint_scene()` + `anyrender_vello::VelloScenePainter` pipeline as the desktop renderer, but targets an offscreen `wgpu::Texture` (Rgba8Unorm, STORAGE_BINDING + COPY_SRC) instead of a window surface. Per-panel textures are created on first render and reused. `mxr_render_dirty_panels()` now resolves layout AND paints via Vello when GPU is available; gracefully degrades to layout-only when not. `mxr_panel_read_pixels()` copies rendered textures to CPU buffers for debugging/testing (wgpu buffer mapping with row-stride padding removal).
+- **48 integration tests** — 37 headless DOM tests + 11 GPU rendering tests. GPU tests cover: init/has_gpu lifecycle, idempotent init, null safety, panel texture creation with correct dimensions, pixel readback (verifies non-zero content with white background), multi-panel rendering to separate textures, clean-panel skip, buffer-too-small rejection, and texture cleanup on panel destroy.
+
+**Dependencies updated:**
+
+- `vello = "0.6"` — direct dependency for `Scene`, `Renderer`, `RenderParams`, `AaConfig`/`AaSupport`
+- `wgpu` bumped from v24 to v26 — matching vello 0.6's wgpu version (avoids type mismatch between crate versions)
+- `pollster = "0.4"` — blocking executor for async wgpu adapter/device creation
+
+**New FFI functions (3):**
+
+| Function | Description |
+|----------|-------------|
+| `mxr_init_gpu(session) → i32` | Try to initialise GPU renderer (wgpu + Vello). Returns 1 on success, 0 on failure. Idempotent. Separate from session creation so headless tests work without GPU. |
+| `mxr_has_gpu(session) → i32` | Returns 1 if GPU renderer is available, 0 otherwise. |
+| `mxr_panel_read_pixels(session, panel_id, buf, buf_len) → u32` | Copy panel's rendered texture to CPU buffer (RGBA8, row-major). Returns bytes written or 0 on failure. |
 
 **What's remaining:**
 
-- Vello offscreen rendering to GPU textures (needs wgpu device setup)
 - OpenXR session lifecycle (`openxr` crate integration — `xrCreateSession`, `xrWaitFrame`, `xrBeginFrame`, `xrEndFrame`)
 - Quad layer compositing (panel textures → OpenXR swapchain)
 - Controller pose tracking via OpenXR input actions
@@ -376,10 +390,11 @@ xr/
 | Task | Effort | Status |
 |------|--------|--------|
 | Steps 5.1–5.5, 5.7–5.8 (panel design, shim, FFI, launcher, verification) | ~3 weeks | ✅ Complete |
-| Step 5.2 remaining (Vello offscreen + OpenXR session lifecycle) | 1–2 weeks | 🔲 Next |
+| Step 5.2 Vello offscreen rendering | 1–2 days | ✅ Complete |
+| Step 5.2 remaining (OpenXR session lifecycle + quad layers + input) | 1–2 weeks | 🔲 Next |
 | Step 5.6 (WebXR JS runtime) | 1–2 weeks | 🔧 In progress (~80% — runtime built, needs E2E testing) |
 | Step 5.9 (Multi-panel API) | 1 week | 🔮 Stretch goal |
-| **Phase 5 total** | **4–8 weeks** | **~75% complete** |
+| **Phase 5 total** | **4–8 weeks** | **~80% complete** |
 
 ---
 
@@ -387,7 +402,7 @@ xr/
 
 | Risk | Impact | Mitigation | Status |
 |------|--------|------------|--------|
-| OpenXR runtime availability | XR features fail on systems without OpenXR runtime | Runtime detection: check for OpenXR loader at startup; fall back to desktop Blitz renderer if unavailable | 🔧 Headless mode implemented for testing; runtime detection pending |
+| OpenXR runtime availability | XR features fail on systems without OpenXR runtime | Runtime detection: check for OpenXR loader at startup; fall back to desktop Blitz renderer if unavailable | 🔧 Headless mode implemented for testing; `mxr_init_gpu()` lazy GPU init preserves headless compatibility; runtime detection pending |
 | DOM-to-texture fidelity (WebXR) | Rendering DOM to WebGL texture may lose interactivity or fidelity | SVG foreignObject rasterization implemented with fallback text renderer; evaluate OffscreenCanvas, html2canvas for higher fidelity | 🔧 In progress — initial approach in `xr/web/runtime/xr-panel.ts`; needs real-device validation |
 | XR input latency | Raycasting → DOM event translation adds latency to controller input | Keep raycast math in the shim (Rust/native) or GPU (WebXR); minimize JS/Mojo roundtrips for input dispatch | ✅ Rust-side raycasting implemented |
 | Multi-panel mutation routing | Multiple panels need independent mutation streams; current protocol assumes single document | Each panel gets its own mutation buffer and `GuiApp` instance; the XR scene manager multiplexes; no protocol changes needed | ✅ Architecture proven (single-panel); multi-panel routing deferred to Step 5.9 |
