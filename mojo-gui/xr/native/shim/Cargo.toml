@@ -40,10 +40,21 @@ vello = { version = "0.6" }
 pollster = { version = "0.4" }
 
 # OpenXR bindings — session management, frame loop, input, reference spaces.
-# The "linked" feature uses the OpenXR loader (libopenxr_loader.so) via
-# dynamic linking at runtime. This matches how most OpenXR apps work —
-# the loader dispatches to the active runtime (Monado, SteamVR, etc.).
-openxr = { version = "0.19", features = ["linked"] }
+# The "loaded" feature uses dlopen at runtime to find the OpenXR loader
+# (libopenxr_loader.so). This means the cdylib can always be loaded by Mojo
+# even on systems without an OpenXR runtime — `Entry::load()` returns an error
+# which we handle by falling back to headless mode. The loader dispatches to
+# the active runtime (Monado, SteamVR, etc.) when available.
+openxr = { version = "0.19", features = ["loaded"] }
+
+# Vulkan bindings — used to create the Vulkan instance and device that OpenXR
+# requires for its graphics binding. The version must match wgpu-hal's ash
+# dependency exactly (0.38) to avoid type conflicts when wrapping raw Vulkan
+# handles in wgpu via the HAL API.
+ash = { version = "0.38", default-features = false, features = [
+  "linked",
+  "debug",
+] }
 
 # Note: markup5ever types (QualName, LocalName, etc.) are re-exported by blitz-dom.
 # Do NOT add a direct markup5ever dependency — version mismatches cause type errors.

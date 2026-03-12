@@ -12,7 +12,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Desktop | Blitz (Stylo + Vello + Winit) | ✅ Complete | Linux Wayland |
 | Desktop | Blitz | 🔲 Untested | macOS |
 | Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
-| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8, Vello offscreen ✅) | Linux (headless + GPU tests pass) |
+| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8, Vello offscreen ✅, OpenXR backend ✅) | Linux (headless + GPU tests pass) |
 | XR Browser | WebXR + JS interpreter | 🔧 In progress (Step 5.6, JS+rasterize+E2E tests ✅) | WebXR browsers |
 | CI | `nix flake check` | ✅ Complete | Tangled CI (push/PR on main) |
 
@@ -28,7 +28,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Test/demo app modules | 15 (in `examples/apps/`) |
 | Binary mutation opcodes | 18 |
 | Desktop Blitz C FFI functions | ~45 |
-| XR C FFI functions | ~86 (includes 3 `_into()` output-pointer variants + 3 GPU functions) |
+| XR C FFI functions | ~88 (includes 3 `_into()` output-pointer variants + 3 GPU functions + 2 input state queries) |
 | XR Mojo FFI wrapper methods | ~70 (XRBlitz struct) |
 | XR compile targets | 3 (web, desktop, XR via `-D MOJO_TARGET_XR`) |
 | CI check derivations | 6 (test-desktop, test-xr, test, test-js, test-xr-js, build-all) |
@@ -206,6 +206,53 @@ mojo build examples/counter/main.mojo -D MOJO_TARGET_XR -I core/src -I xr/native
 ---
 
 ## What Was Done
+
+### Phase 5.2d: OpenXR Backend Integration — ✅ Complete
+
+**Goal:** Wire up real OpenXR session lifecycle, Vulkan graphics binding, frame loop, controller input, and per-panel swapchain management in the XR shim — completing the native XR rendering pipeline.
+
+**What was built:**
+
+| File | Description |
+|------|-------------|
+| `xr/native/shim/src/openxr_backend.rs` | New module (~1,190 lines): `OpenXrBackend` struct encapsulating all OpenXR + Vulkan state. Full initialization sequence: load OpenXR entry via `Entry::load()` (dlopen), create instance with `XR_KHR_vulkan_enable2`, get HMD system, create Vulkan instance/device via `ash` per OpenXR requirements, create OpenXR session with Vulkan graphics binding, create reference spaces (stage/view with fallback to local), set up input actions (grip/aim poses, select/squeeze booleans) with Khronos Simple Controller + Oculus Touch interaction profiles, wrap shared Vulkan device in wgpu via HAL APIs for Vello rendering. |
+| `xr/native/shim/src/lib.rs` (modified) | Integrated `OpenXrBackend` into `XrSessionContext`. `mxr_create_session` now attempts real OpenXR initialization with graceful fallback to headless. All frame loop functions (`mxr_wait_frame`, `mxr_begin_frame`, `mxr_render_dirty_panels`, `mxr_end_frame`) dispatch to the OpenXR backend when active. Input functions (`mxr_get_pose`, `mxr_get_aim_ray`) return real tracked poses. Capability queries (`mxr_has_extension`, `mxr_has_hand_tracking`, `mxr_has_passthrough`) delegate to the backend. Two new FFI functions: `mxr_get_select_state`, `mxr_get_squeeze_state`. |
+| `xr/native/shim/Cargo.toml` (modified) | Changed `openxr` from `features = ["linked"]` to `features = ["loaded"]` for runtime detection (cdylib loads without OpenXR loader). Added `ash = "0.38"` as direct dependency for Vulkan interop. |
+
+**Key design decisions:**
+
+1. **Runtime detection via `Entry::load()`** — The "loaded" feature uses dlopen at runtime. If the OpenXR loader isn't available, `mxr_create_session` falls back to headless mode transparently. The cdylib can always be loaded by Mojo even on systems without an XR runtime.
+2. **Shared Vulkan device** — A single Vulkan instance/device is shared between OpenXR compositing and Vello rendering via wgpu HAL APIs (`Instance::from_raw`, `expose_adapter`, `device_from_raw`, `create_texture_from_hal`). No GPU→CPU→GPU copies needed.
+3. **Per-panel swapchains** — Each panel gets its own OpenXR swapchain (`XrCompositionLayerQuad`). Swapchain images are wrapped in wgpu textures for direct Vello rendering. Format negotiation prefers `R8G8B8A8_SRGB` with `R8G8B8A8_UNORM` fallback.
+4. **Quad layer compositing** — `mxr_end_frame` submits one `CompositionLayerQuad` per visible panel with pose derived from panel transform (position + quaternion rotation + size in meters).
+5. **Input actions** — Action set with grip/aim pose actions and select/squeeze boolean actions. Bindings for Khronos Simple Controller (universal) and Oculus Touch (Meta Quest). Aim ray extracted from aim space pose with quaternion-rotated forward vector.
+6. **Graceful degradation** — All functions handle the no-backend case (headless). Session state is `FOCUSED` when falling back (matching headless behavior). Existing 48 tests pass unchanged.
+
+**New FFI functions (2):**
+
+| Function | Description |
+|----------|-------------|
+| `mxr_get_select_state(session) → i32` | Bitfield: bit 0 = left trigger active, bit 1 = right trigger active. |
+| `mxr_get_squeeze_state(session) → i32` | Bitfield: bit 0 = left grip active, bit 1 = right grip active. |
+
+**OpenXR subsystems implemented:**
+
+| Subsystem | Description |
+|-----------|-------------|
+| Session lifecycle | `xrCreateSession` with Vulkan binding, `xrBeginSession`/`xrEndSession` on state transitions, event polling for state machine |
+| Frame loop | `xrWaitFrame` → predicted display time, `xrBeginFrame`, `xrEndFrame` with composition layers |
+| Reference spaces | Stage space (fallback to Local), View space — created at session init |
+| Input | Action set with 6 actions (left/right grip pose, left/right aim pose, select, squeeze), space creation for pose tracking, `xrSyncActions` per frame |
+| Swapchain management | Per-panel swapchain creation/destruction, image acquisition/wait/release, wgpu texture wrapping via HAL |
+| Panel rendering | Vello scene painting to acquired swapchain image, layout resolution before paint |
+| Capabilities | Extension queries, hand tracking detection, passthrough detection |
+
+**Interaction profiles:**
+
+| Profile | Controller | Bindings |
+|---------|-----------|----------|
+| `/interaction_profiles/khr/simple_controller` | Universal | grip/aim poses, select/click, squeeze/click |
+| `/interaction_profiles/oculus/touch_controller` | Meta Quest | grip/aim poses, trigger/value, squeeze/click |
 
 ### Phase 5.2c: Vello Offscreen Rendering — ✅ Complete
 
@@ -517,6 +564,10 @@ Added `_into()` output-pointer variants for three XR shim functions that return 
 
 ---
 
+**Recently completed:**
+
+- ✅ **OpenXR backend integration** (`openxr_backend.rs`, ~1,190 lines) — full OpenXR + Vulkan session lifecycle, frame loop, input, swapchain management, wgpu/Vello rendering integration. All 48 existing tests pass. Graceful fallback to headless when OpenXR runtime unavailable.
+
 ### Phase 5.3: Mojo FFI Bindings for OpenXR Shim — ✅ Complete
 
 Implemented typed Mojo FFI bindings for all ~80 XR shim C functions, plus a per-panel mutation interpreter that translates binary opcodes into XR Blitz FFI calls. Follows the same architecture as the desktop renderer (`blitz.mojo` + `renderer.mojo`).
@@ -774,7 +825,7 @@ XR panel abstraction that reuses the binary mutation protocol unchanged. Each XR
 | Step | Description | Status |
 |------|-------------|--------|
 | 5.1 | Design the XR panel abstraction (`XRPanel` struct, scene graph, placement) | ✅ Complete — `XRPanel`, `PanelConfig`, `Vec3`, `Quaternion`, `PanelState` (Mojo). `XRScene` with focus management, dirty tracking, raycasting (ray-plane intersection), spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). Rust shim scaffold (`xr/native/shim/src/lib.rs`) with headless multi-panel DOM, event ring buffer, DOM serialization, raycasting, and 20+ integration tests. C API header (`mojo_xr.h`, ~80 functions). `PlatformFeatures` extended with `has_xr`, `has_xr_hand_tracking`, `has_xr_passthrough` and `xr_native_features()` / `xr_web_features()` presets. Panel presets: default, dashboard, tooltip, hand-anchored. |
-| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, Stylo+Taffy layout resolves). **Output-pointer FFI variants ✅** (`mxr_poll_event_into`, `mxr_raycast_panels_into`, `mxr_get_pose_into`). **Vello offscreen rendering ✅** (`OffscreenRenderer` with wgpu+Vello, `mxr_init_gpu`/`mxr_has_gpu`/`mxr_panel_read_pixels`, 48 tests pass including 11 GPU tests). Remaining: OpenXR session lifecycle, quad layer compositing, controller pose tracking. |
+| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | ✅ Complete — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, Stylo+Taffy layout resolves). **Output-pointer FFI variants ✅** (`mxr_poll_event_into`, `mxr_raycast_panels_into`, `mxr_get_pose_into`). **Vello offscreen rendering ✅** (`OffscreenRenderer` with wgpu+Vello, `mxr_init_gpu`/`mxr_has_gpu`/`mxr_panel_read_pixels`, 48 tests pass including 11 GPU tests). **OpenXR backend ✅** (`openxr_backend.rs`: session lifecycle via `Entry::load()` + Vulkan graphics binding, frame loop with `xrWaitFrame`/`xrBeginFrame`/`xrEndFrame`, per-panel swapchain management with quad layer compositing, controller input via action sets with grip/aim poses + select/squeeze, wgpu/Vello rendering to swapchain images via shared Vulkan device, graceful headless fallback). |
 | 5.3 | Mojo FFI bindings for the OpenXR shim | ✅ Complete — `XRBlitz` struct (~70 methods wrapping all `mxr_*` C functions via DLHandle). `XRMutationInterpreter` (per-panel binary opcode interpreter, all 18 opcodes). Helper types: `XREvent`, `XRPose`, `XRRaycastHit`. Constants for events, hands, spaces, states. Library search via env vars / Nix / ld paths. `poll_event()`, `raycast_panels()`, `get_pose()` now fully functional via `_into()` output-pointer variants. |
 | 5.4 | XR scene manager and panel routing (multiplexes mutation buffers) | ✅ Complete (single-panel) — `XRScene` provides panel registry, focus management, dirty tracking, Mojo-side raycasting (ray-plane intersection), and spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). For single-panel apps, `xr_launch` (Step 5.5) manages the panel directly via `XRBlitz` FFI — bypassing the scene for simplicity. Multi-panel routing through `XRScene` (scene creates/destroys panels via shim, multiplexes mutation buffers to correct panel's `GuiApp`) deferred to Step 5.9 (multi-panel XR API). |
 | 5.5 | `xr_launch[AppType: GuiApp]()` — single-panel apps get XR for free | ✅ Complete — `xr/native/src/xr/launcher.mojo`. Creates headless/OpenXR session, allocates default panel (size from AppConfig), applies XR UA stylesheet, mounts app, enters XR frame loop (wait_frame → poll_event → handle_event → flush → apply mutations → render → end_frame). Same mutation buffer management as desktop launcher. |
@@ -850,13 +901,13 @@ These decisions are settled and documented here for reference. See [architecture
 
 | Risk | Impact | Mitigation | Status |
 |------|--------|------------|--------|
-| Platform abstraction too leaky | Shared examples break on some targets | Cross-target CI matrix as gate; treat failures as framework bugs | ✅ Mitigated — `GuiApp` + `launch()` complete; 5 CI checks gate all PRs via `nix flake check` |
+| Platform abstraction too leaky | Shared examples break on some targets | Cross-target CI matrix as gate; treat failures as framework bugs | ✅ Mitigated — `GuiApp` + `launch()` complete; 6 CI checks gate all PRs via `nix flake check` |
 | Blitz pre-alpha stability | Rendering bugs, missing CSS | Track Blitz releases; pin versions; document CSS support scope | Mitigated — pinned to v0.2.0 |
 | Native target module-level `var` | Global `var` not supported on native | Avoided in current design; config passed as arguments, not globals | ✅ Resolved |
 | Mojo trait limitations | `GuiApp` may not support future needs | `alias CurrentApp = ...` as fallback; upgrade when Mojo improves | ✅ Resolved for current scope |
 | Mojo `@parameter if` import resolution | Dead branches still trigger import resolution; adding a new renderer backend to `launch()` requires updating ALL native build commands | Include all renderer `-I` paths in every native build; document in justfile and Architecture Decisions (§7) | ✅ Mitigated — workaround in place since Step 5.8; will re-evaluate when Mojo improves `@parameter if` semantics |
 | Mojo WASM runtime import drift | New Mojo versions may add new WASM imports (e.g. `clock_gettime` in 26.1.0) that break the test harness | Pin Mojo version; update both `wasm_harness.mojo` and `web/runtime/env.ts` when upgrading; check `wasm-objdump -j Import` after Mojo upgrades | ✅ Mitigated — `clock_gettime` added for 26.1.0 |
-| OpenXR runtime availability (Phase 5) | XR fails without runtime | Detect at startup; fall back to desktop Blitz | In progress — headless mode (`mxr_create_headless`) implemented for testing without runtime; `mxr_init_gpu()` lazy GPU init preserves headless compatibility; `xr_launch` uses headless by default until runtime detection is added |
+| OpenXR runtime availability (Phase 5) | XR fails without runtime | Detect at startup; fall back to headless | ✅ Mitigated — `OpenXrBackend::try_new()` loads OpenXR via dlopen; `mxr_create_session` falls back to headless transparently; "loaded" openxr feature decouples cdylib from loader at link time |
 | DOM-to-texture fidelity for WebXR (Phase 5) | Rendering quality/interactivity loss | SVG foreignObject rasterization implemented with fallback text renderer; evaluate OffscreenCanvas, html2canvas for higher fidelity | 🔧 In progress — initial SVG foreignObject approach in `xr/web/runtime/xr-panel.ts`; needs real-device validation |
 | XR input latency (Phase 5) | Raycasting → DOM event adds latency to controller input | Keep raycast math in the shim (Rust); minimize FFI roundtrips | In progress — Rust-side raycasting implemented |
 | XR frame timing constraints (Phase 5) | OpenXR requires strict frame pacing; DOM re-render may exceed budget | Only re-render dirty panels; cache textures; use quad layers for compositor-side reprojection | In progress — dirty tracking per-panel implemented |
