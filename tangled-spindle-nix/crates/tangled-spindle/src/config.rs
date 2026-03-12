@@ -116,6 +116,7 @@ impl fmt::Display for EngineKind {
 }
 
 /// OpenBao-specific secrets configuration.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct OpenBaoConfig {
     /// Address of the OpenBao proxy (e.g. `http://127.0.0.1:8200`).
@@ -125,6 +126,7 @@ pub struct OpenBaoConfig {
 }
 
 /// Secrets manager configuration.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SecretsConfig {
     /// Which secrets backend to use.
@@ -134,6 +136,7 @@ pub struct SecretsConfig {
 }
 
 /// Engine configuration.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
     /// Which engine to use.
@@ -154,6 +157,7 @@ pub struct EngineConfig {
 ///
 /// Loaded from environment variables. The `did_web` field is derived from
 /// `hostname` (as `did:web:{hostname}`), matching the upstream Go spindle.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Public hostname of this spindle instance (e.g. `spindle1.example.com`).
@@ -232,6 +236,7 @@ impl Config {
     /// Convert this configuration into a map of environment variables.
     ///
     /// Useful for passing configuration to child processes or for debugging.
+    #[allow(dead_code)]
     pub fn to_env_map(&self) -> Vec<(String, String)> {
         let mut env = vec![
             ("SPINDLE_SERVER_HOSTNAME".into(), self.hostname.clone()),
@@ -299,28 +304,28 @@ impl Config {
 /// Load the authentication token from `SPINDLE_SERVER_TOKEN` or `SPINDLE_SERVER_TOKEN_FILE`.
 fn load_token() -> Result<String, ConfigError> {
     // Try direct token first
-    if let Ok(token) = env::var("SPINDLE_SERVER_TOKEN") {
-        if !token.is_empty() {
-            return Ok(token);
-        }
+    if let Ok(token) = env::var("SPINDLE_SERVER_TOKEN")
+        && !token.is_empty()
+    {
+        return Ok(token);
     }
 
     // Fall back to token file
-    if let Ok(path) = env::var("SPINDLE_SERVER_TOKEN_FILE") {
-        if !path.is_empty() {
-            let contents = fs::read_to_string(&path).map_err(|e| ConfigError::FileRead {
-                path: path.clone(),
-                source: e,
-            })?;
-            let token = contents.trim().to_owned();
-            if token.is_empty() {
-                return Err(ConfigError::InvalidValue {
-                    key: "SPINDLE_SERVER_TOKEN_FILE".into(),
-                    message: format!("token file {path:?} is empty"),
-                });
-            }
-            return Ok(token);
+    if let Ok(path) = env::var("SPINDLE_SERVER_TOKEN_FILE")
+        && !path.is_empty()
+    {
+        let contents = fs::read_to_string(&path).map_err(|e| ConfigError::FileRead {
+            path: path.clone(),
+            source: e,
+        })?;
+        let token = contents.trim().to_owned();
+        if token.is_empty() {
+            return Err(ConfigError::InvalidValue {
+                key: "SPINDLE_SERVER_TOKEN_FILE".into(),
+                message: format!("token file {path:?} is empty"),
+            });
         }
+        return Ok(token);
     }
 
     Err(ConfigError::MissingEnvVar(
@@ -466,14 +471,15 @@ fn parse_duration(s: &str) -> Result<Duration, String> {
 }
 
 /// Format a [`Duration`] as a human-readable string (e.g. `"5m"`, `"300s"`).
+#[allow(dead_code)]
 fn format_duration(d: Duration) -> String {
     let secs = d.as_secs();
     if secs == 0 {
         return "0s".into();
     }
-    if secs % 3600 == 0 {
+    if secs.is_multiple_of(3600) {
         format!("{}h", secs / 3600)
-    } else if secs % 60 == 0 {
+    } else if secs.is_multiple_of(60) {
         format!("{}m", secs / 60)
     } else {
         format!("{secs}s")

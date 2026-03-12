@@ -239,15 +239,15 @@ tangled-spindle-nix/
 
 **Goal**: Support both SQLite and OpenBao secrets backends, matching upstream.
 
-- [ ] Implement `spindle-secrets`:
+- [x] Implement `spindle-secrets`:
   - `Manager` trait: `get_secrets_unlocked(repo) -> Vec<UnlockedSecret>`, `put_secret(repo, key, value)`, `delete_secret(repo, key)`, `list_secrets(repo) -> Vec<String>`
-  - `SqliteManager` — encrypted secrets in SQLite (using `ring` or `aes-gcm` for at-rest encryption)
+  - `SqliteManager` — encrypted secrets in SQLite (using `aes-gcm` for at-rest encryption)
   - `OpenBaoManager` — HTTP client to OpenBao proxy at `SPINDLE_SERVER_SECRETS_OPENBAO_PROXY_ADDR`
     - KV v2 mount at configurable path
     - Secret path convention: `{mount}/repos/{sanitized_repo_path}/{key}`
     - Path sanitization: `did:plc:alice/myrepo` → `did_plc_alice_myrepo`
   - `Stopper` trait for managers that need cleanup (OpenBao token renewal)
-- [ ] Write integration tests (SQLite: in-memory DB; OpenBao: mock HTTP server)
+- [x] Write integration tests (SQLite: in-memory DB; OpenBao: mock HTTP server)
 
 ### Phase 4 — The Nix Engine ★
 

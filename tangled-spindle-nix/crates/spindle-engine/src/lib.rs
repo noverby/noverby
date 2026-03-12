@@ -15,3 +15,7 @@
 pub mod traits;
 
 pub use traits::Engine;
+
+// Re-export `UnlockedSecret` from `spindle-models` for backward compatibility.
+// The canonical definition lives in `spindle_models::UnlockedSecret`.
+pub use spindle_models::UnlockedSecret;

@@ -457,10 +457,10 @@ impl JetstreamClient {
                         Some(Ok(Message::Close(frame))) => {
                             info!(?frame, "Jetstream server closed connection");
                             // Save cursor before disconnecting
-                            if events_since_save > 0 {
-                                if let Err(e) = save_cursor(*cursor) {
-                                    warn!(%e, "failed to persist cursor on close");
-                                }
+                            if events_since_save > 0
+                                && let Err(e) = save_cursor(*cursor)
+                            {
+                                warn!(%e, "failed to persist cursor on close");
                             }
                             return Ok(());
                         }

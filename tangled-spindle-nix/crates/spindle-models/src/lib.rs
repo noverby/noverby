@@ -10,6 +10,7 @@ pub mod pipeline_env;
 pub mod secret_mask;
 pub mod status;
 pub mod step;
+pub mod unlocked_secret;
 pub mod workflow;
 pub mod workflow_logger;
 
@@ -22,5 +23,6 @@ pub use pipeline_env::{
 pub use secret_mask::SecretMask;
 pub use status::StatusKind;
 pub use step::{CloneStep, Step, StepKind, UserStep};
+pub use unlocked_secret::UnlockedSecret;
 pub use workflow::{Workflow, WorkflowId};
 pub use workflow_logger::{FileWorkflowLogger, NullLogger, WorkflowLogger};
