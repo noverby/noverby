@@ -644,6 +644,58 @@ void mxr_end_frame(MxrSession session);
 
 
 /* ══════════════════════════════════════════════════════════════════════════════
+ * GPU initialisation — Vello offscreen rendering pipeline
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Try to initialise the GPU renderer (wgpu + Vello) for offscreen panel
+ * texture rendering.
+ *
+ * This is intentionally separate from session creation so that headless
+ * tests keep working without a GPU. Call once after mxr_create_session()
+ * or mxr_create_headless().
+ *
+ * When GPU is available, mxr_render_dirty_panels() will paint each panel's
+ * Blitz DOM to an offscreen GPU texture via Vello. Without GPU, it falls
+ * back to layout-only resolution (Stylo + Taffy, no pixel output).
+ *
+ * Returns:
+ *   1 on success (GPU renderer initialised).
+ *   0 on failure (no compatible GPU adapter found) or if already initialised.
+ *   Idempotent: returns 1 on subsequent calls if the first succeeded.
+ */
+int32_t mxr_init_gpu(MxrSession session);
+
+/*
+ * Check whether the GPU renderer is available.
+ *
+ * Returns:
+ *   1 if mxr_init_gpu() has been called successfully.
+ *   0 otherwise (no GPU, not initialised, or null session).
+ */
+int32_t mxr_has_gpu(MxrSession session);
+
+/*
+ * Copy a panel's most-recently-rendered texture to a CPU buffer.
+ *
+ * The buffer receives RGBA8 pixel data in row-major order (top-left origin).
+ * The required buffer size is panel_width * panel_height * 4 bytes.
+ *
+ * Parameters:
+ *   session  — The XR session.
+ *   panel_id — The panel whose texture to read.
+ *   buf      — Destination buffer (caller-allocated).
+ *   buf_len  — Size of buf in bytes.
+ *
+ * Returns:
+ *   Number of bytes written on success (== width * height * 4).
+ *   0 on failure (no GPU, no texture, buffer too small, panel not found).
+ */
+uint32_t mxr_panel_read_pixels(MxrSession session, uint32_t panel_id,
+                                uint8_t *buf, uint32_t buf_len);
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
  * Input — controller and head pose tracking
  * ══════════════════════════════════════════════════════════════════════════════ */
 

@@ -12,7 +12,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Desktop | Blitz (Stylo + Vello + Winit) | ✅ Complete | Linux Wayland |
 | Desktop | Blitz | 🔲 Untested | macOS |
 | Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
-| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8 ✅) | Linux (headless tests pass) |
+| XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8, Vello offscreen ✅) | Linux (headless + GPU tests pass) |
 | XR Browser | WebXR + JS interpreter | 🔧 In progress (Step 5.6, JS+rasterize+E2E tests ✅) | WebXR browsers |
 | CI | `nix flake check` | ✅ Complete | Tangled CI (push/PR on main) |
 
@@ -22,13 +22,13 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | JS integration test suites | 30 (~3,375 tests) |
 | XR web runtime JS tests | 5 suites (523 tests — types, panel, input, runtime, rasterize) |
 | Desktop integration test suites | 1 (75 tests, verified on Linux + Wine) |
-| XR shim integration tests | 37 (headless — real Blitz documents, no XR runtime or GPU needed) |
+| XR shim integration tests | 48 (37 headless + 11 GPU rendering — Vello offscreen pipeline) |
 | XR example verification | 4/4 (Counter, Todo, Benchmark, MultiView — headless build+run) |
 | Shared example apps | 4 (Counter, Todo, Benchmark, MultiView) |
 | Test/demo app modules | 15 (in `examples/apps/`) |
 | Binary mutation opcodes | 18 |
 | Desktop Blitz C FFI functions | ~45 |
-| XR C FFI functions | ~83 (includes 3 `_into()` output-pointer variants) |
+| XR C FFI functions | ~86 (includes 3 `_into()` output-pointer variants + 3 GPU functions) |
 | XR Mojo FFI wrapper methods | ~70 (XRBlitz struct) |
 | XR compile targets | 3 (web, desktop, XR via `-D MOJO_TARGET_XR`) |
 | CI check derivations | 6 (test-desktop, test-xr, test, test-js, test-xr-js, build-all) |
@@ -132,12 +132,12 @@ just test-browser            # Run all browser tests (headless Servo)
 just test-browser-app counter  # Single app
 ```
 
-### XR Shim Integration Tests (30 tests)
+### XR Shim Integration Tests (48 tests)
 
-Rust integration tests for the XR Blitz shim. Each panel owns a real Blitz `BaseDocument` with Stylo CSS styling and Taffy layout. Tests run in headless mode — no XR runtime or GPU needed. Covers: session lifecycle, panel lifecycle, DOM operations (create/append/insert/replace/remove), attributes, text nodes, placeholders, serialization, events, raycasting, focus, frame loop, reference spaces, ID mapping, stack operations, multi-panel isolation, Blitz document structure, nested elements with attributes, and layout resolution.
+Rust integration tests for the XR Blitz shim. Each panel owns a real Blitz `BaseDocument` with Stylo CSS styling and Taffy layout. Headless DOM tests run without GPU. GPU rendering tests (Vello offscreen pipeline) run when a compatible adapter is available — they verify texture creation, pixel readback, multi-panel rendering, and cleanup. Covers: session lifecycle, panel lifecycle, DOM operations (create/append/insert/replace/remove), attributes, text nodes, placeholders, serialization, events, raycasting, focus, frame loop, reference spaces, ID mapping, stack operations, multi-panel isolation, Blitz document structure, nested elements with attributes, layout resolution, GPU initialisation, offscreen texture rendering, and pixel readback.
 
 ```text
-just test-xr                 # Run all XR shim integration tests (headless)
+just test-xr                 # Run all XR shim integration tests (headless + GPU)
 ```
 
 ### XR Web Runtime JS Tests (4 suites, 414 tests)
@@ -206,6 +206,88 @@ mojo build examples/counter/main.mojo -D MOJO_TARGET_XR -I core/src -I xr/native
 ---
 
 ## What Was Done
+
+### Phase 5.2c: Vello Offscreen Rendering — ✅ Complete
+
+Added GPU offscreen rendering to the XR shim via Vello + wgpu. Each panel's Blitz DOM can now be rendered to a GPU texture — the same `paint_scene()` pipeline used by the desktop renderer, but targeting an offscreen `wgpu::Texture` instead of a window surface.
+
+**New capability:** `mxr_render_dirty_panels()` now does two things:
+
+1. Resolves styles and layout (Stylo + Taffy) — same as before
+2. Paints each dirty panel's DOM to its offscreen GPU texture via Vello — **new**
+
+When GPU is not available (CI, headless-only), the function falls back to layout-only resolution (no pixel output), preserving backward compatibility.
+
+**New structs:**
+
+| Struct | Description |
+|--------|-------------|
+| `OffscreenRenderer` | Owns `wgpu::Device`, `wgpu::Queue`, and `vello::Renderer`. Created lazily via `mxr_init_gpu()`. Handles texture creation, Vello scene painting, `render_to_texture()`, and CPU pixel readback. |
+| `PanelTexture` | Per-panel `wgpu::Texture` + `TextureView` at the panel's pixel dimensions. Created on first render, reused for subsequent frames. |
+
+**New FFI functions (3):**
+
+| Function | Description |
+|----------|-------------|
+| `mxr_init_gpu(session) → i32` | Try to initialise the GPU renderer (wgpu adapter + device + Vello). Returns 1 on success, 0 on failure. Idempotent. Intentionally separate from session creation so headless tests keep working without a GPU. |
+| `mxr_has_gpu(session) → i32` | Returns 1 if GPU renderer is available, 0 otherwise. |
+| `mxr_panel_read_pixels(session, panel_id, buf, buf_len) → u32` | Copy a panel's most-recently-rendered texture to a CPU buffer (RGBA8, row-major). Returns bytes written, or 0 on failure. Uses wgpu buffer mapping with row-stride padding removal. |
+
+**Rendering pipeline:**
+
+```text
+mxr_init_gpu(session)                    # One-time GPU init
+  └── wgpu::Instance → Adapter → Device + Queue
+  └── vello::Renderer::new(device, RendererOptions)
+
+mxr_render_dirty_panels(session)         # Per-frame
+  ├── For each dirty panel:
+  │   ├── panel.doc.resolve(0.0)         # Stylo + Taffy layout
+  │   ├── ensure_texture(panel)          # Create/resize wgpu::Texture
+  │   ├── VelloScenePainter + paint_scene()  # Blitz DOM → Vello Scene
+  │   └── vello_renderer.render_to_texture() # Scene → GPU texture
+  └── Clear dirty flags
+
+mxr_panel_read_pixels(session, id, buf)  # Debug/test readback
+  └── copy_texture_to_buffer → map_async → strip row padding → copy to buf
+```
+
+**New integration tests (11, 48 total):**
+
+| Test | Description |
+|------|-------------|
+| `init_gpu_on_named_session` | GPU init on non-headless session doesn't crash, returns consistent result |
+| `init_gpu_on_headless_session` | GPU init on headless session works if adapter available |
+| `init_gpu_idempotent` | Second `mxr_init_gpu()` call returns 1 if first succeeded |
+| `has_gpu_null_session` | Null session returns 0 for both `has_gpu` and `init_gpu` |
+| `render_dirty_panel_with_gpu` | Panel with DOM content renders to texture with correct dimensions |
+| `read_pixels_without_gpu_returns_zero` | No GPU → `read_pixels` returns 0 |
+| `read_pixels_null_args` | Null session/buffer/unknown panel all return 0 |
+| `read_pixels_with_gpu` | Renders white-background panel, reads pixels, verifies non-zero content |
+| `read_pixels_buffer_too_small` | Undersized buffer returns 0 |
+| `render_multiple_panels_with_gpu` | Two panels render to separate textures with correct dimensions; clean panels skip re-render |
+| `texture_destroyed_on_panel_destroy` | Panel destruction cleans up GPU texture |
+
+**Modified files:**
+
+- **`xr/native/shim/Cargo.toml`** — Added `vello = "0.6"`, `pollster = "0.4"` as direct dependencies. Updated `wgpu` from v24 to v26 (matching vello 0.6's wgpu version).
+- **`xr/native/shim/src/lib.rs`** — Added `OffscreenRenderer`, `PanelTexture` structs. Added `gpu_texture` field to `Panel`, `renderer` field to `XrSessionContext`. Updated `mxr_render_dirty_panels()` to paint via Vello when GPU available. Added 3 new FFI functions (`mxr_init_gpu`, `mxr_has_gpu`, `mxr_panel_read_pixels`) and 11 integration tests.
+- **`xr/native/shim/mojo_xr.h`** — Added GPU initialisation section with declarations for `mxr_init_gpu`, `mxr_has_gpu`, `mxr_panel_read_pixels`.
+
+**Key design decisions:**
+
+1. **Lazy GPU init** — `mxr_init_gpu()` is separate from session creation. Headless tests don't need a GPU; the rendering pipeline gracefully degrades to layout-only mode.
+2. **Same paint pipeline as desktop** — Uses `blitz_paint::paint_scene()` with `anyrender_vello::VelloScenePainter`, ensuring pixel-identical rendering between desktop windows and XR panel textures.
+3. **Per-panel textures** — Each panel gets its own `wgpu::Texture` at its pixel dimensions (`texture_width × texture_height`). Textures are created on first render and reused for subsequent frames.
+4. **Renderer borrow split** — The renderer is temporarily `take()`n out of `XrSessionContext` during `mxr_render_dirty_panels()` to avoid borrow conflicts (renderer needs `&mut` while iterating panels also needs `&mut`).
+
+**Remaining Step 5.2 work:**
+
+- OpenXR session lifecycle (`xrCreateSession`, `xrWaitFrame`, `xrBeginFrame`, `xrEndFrame`)
+- Quad layer compositing (submit panel GPU textures as OpenXR `CompositionLayerQuad`)
+- Controller pose tracking via OpenXR input actions
+
+---
 
 ### S-1: Cross-Target CI Pipeline — ✅ Complete
 
@@ -679,7 +761,7 @@ All four stabilization tasks are complete.
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| S-1 | **Cross-target CI pipeline** | 3–5 days | ✅ Complete — 6 Nix check derivations in `mojo-gui/default.nix`: `mojo-gui-test-desktop` (75 Rust tests), `mojo-gui-test-xr` (37 Rust tests), `mojo-gui-test` (52 Mojo suites via wasmtime), `mojo-gui-test-js` (3,375 JS tests via Deno with pre-fetched npm cache FOD), `mojo-gui-test-xr-js` (414 XR web JS tests via Deno), `mojo-gui-build-all` (4 examples × 3 targets). All run in the Nix sandbox without network access. Gated on `nix flake check` via Tangled CI. |
+| S-1 | **Cross-target CI pipeline** | 3–5 days | ✅ Complete — 6 Nix check derivations in `mojo-gui/default.nix`: `mojo-gui-test-desktop` (75 Rust tests), `mojo-gui-test-xr` (48 Rust tests incl. GPU), `mojo-gui-test` (52 Mojo suites via wasmtime), `mojo-gui-test-js` (3,375 JS tests via Deno with pre-fetched npm cache FOD), `mojo-gui-test-xr-js` (414 XR web JS tests via Deno), `mojo-gui-build-all` (4 examples × 3 targets). All run in the Nix sandbox without network access. Gated on `nix flake check` via Tangled CI. |
 | S-2 | **macOS desktop verification** | 2–3 days | Blitz uses Winit which supports macOS. Build the Blitz shim on macOS, verify `cargo build --release` succeeds, run the Counter example. Document any platform-specific quirks (GPU backend selection, font fallback, etc.). |
 | S-3 | **Windows desktop verification (Wine)** | 2–3 days | ✅ Complete — Cross-compiled to `x86_64-pc-windows-gnu` from Linux via MinGW-w64. Produces `mojo_blitz.dll` (26MB PE32+ DLL). All 69 Rust integration tests pass under Wine (single-threaded; Wine's COM layer crashes with parallel threads — misaligned pointer in `windows-core` interface dispatch). Nix dev shell provides: `rust-bin` with Windows target std, MinGW-w64 cross-linker (stripped setup hooks to avoid polluting native CC/AR), Wine 10.0 for test execution. New justfile recipes: `build-shim-windows`, `test-desktop-wine`, `build-shim-all`. Cargo config (`.cargo/config.toml`) sets MinGW linker and Wine runner for the Windows target. |
 
@@ -692,7 +774,7 @@ XR panel abstraction that reuses the binary mutation protocol unchanged. Each XR
 | Step | Description | Status |
 |------|-------------|--------|
 | 5.1 | Design the XR panel abstraction (`XRPanel` struct, scene graph, placement) | ✅ Complete — `XRPanel`, `PanelConfig`, `Vec3`, `Quaternion`, `PanelState` (Mojo). `XRScene` with focus management, dirty tracking, raycasting (ray-plane intersection), spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). Rust shim scaffold (`xr/native/shim/src/lib.rs`) with headless multi-panel DOM, event ring buffer, DOM serialization, raycasting, and 20+ integration tests. C API header (`mojo_xr.h`, ~80 functions). `PlatformFeatures` extended with `has_xr`, `has_xr_hand_tracking`, `has_xr_passthrough` and `xr_native_features()` / `xr_web_features()` presets. Panel presets: default, dashboard, tooltip, hand-anchored. |
-| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, 37 tests pass, Stylo+Taffy layout resolves). **Output-pointer FFI variants ✅** (`mxr_poll_event_into`, `mxr_raycast_panels_into`, `mxr_get_pose_into`). Remaining: Vello offscreen rendering, OpenXR session lifecycle. |
+| 5.2 | Build the OpenXR + Blitz Rust shim (offscreen Vello rendering → OpenXR swapchain textures) | 🔧 In progress — **real Blitz documents ✅** (HeadlessNode replaced with BaseDocument, Stylo+Taffy layout resolves). **Output-pointer FFI variants ✅** (`mxr_poll_event_into`, `mxr_raycast_panels_into`, `mxr_get_pose_into`). **Vello offscreen rendering ✅** (`OffscreenRenderer` with wgpu+Vello, `mxr_init_gpu`/`mxr_has_gpu`/`mxr_panel_read_pixels`, 48 tests pass including 11 GPU tests). Remaining: OpenXR session lifecycle, quad layer compositing, controller pose tracking. |
 | 5.3 | Mojo FFI bindings for the OpenXR shim | ✅ Complete — `XRBlitz` struct (~70 methods wrapping all `mxr_*` C functions via DLHandle). `XRMutationInterpreter` (per-panel binary opcode interpreter, all 18 opcodes). Helper types: `XREvent`, `XRPose`, `XRRaycastHit`. Constants for events, hands, spaces, states. Library search via env vars / Nix / ld paths. `poll_event()`, `raycast_panels()`, `get_pose()` now fully functional via `_into()` output-pointer variants. |
 | 5.4 | XR scene manager and panel routing (multiplexes mutation buffers) | ✅ Complete (single-panel) — `XRScene` provides panel registry, focus management, dirty tracking, Mojo-side raycasting (ray-plane intersection), and spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). For single-panel apps, `xr_launch` (Step 5.5) manages the panel directly via `XRBlitz` FFI — bypassing the scene for simplicity. Multi-panel routing through `XRScene` (scene creates/destroys panels via shim, multiplexes mutation buffers to correct panel's `GuiApp`) deferred to Step 5.9 (multi-panel XR API). |
 | 5.5 | `xr_launch[AppType: GuiApp]()` — single-panel apps get XR for free | ✅ Complete — `xr/native/src/xr/launcher.mojo`. Creates headless/OpenXR session, allocates default panel (size from AppConfig), applies XR UA stylesheet, mounts app, enters XR frame loop (wait_frame → poll_event → handle_event → flush → apply mutations → render → end_frame). Same mutation buffer management as desktop launcher. |
@@ -774,7 +856,7 @@ These decisions are settled and documented here for reference. See [architecture
 | Mojo trait limitations | `GuiApp` may not support future needs | `alias CurrentApp = ...` as fallback; upgrade when Mojo improves | ✅ Resolved for current scope |
 | Mojo `@parameter if` import resolution | Dead branches still trigger import resolution; adding a new renderer backend to `launch()` requires updating ALL native build commands | Include all renderer `-I` paths in every native build; document in justfile and Architecture Decisions (§7) | ✅ Mitigated — workaround in place since Step 5.8; will re-evaluate when Mojo improves `@parameter if` semantics |
 | Mojo WASM runtime import drift | New Mojo versions may add new WASM imports (e.g. `clock_gettime` in 26.1.0) that break the test harness | Pin Mojo version; update both `wasm_harness.mojo` and `web/runtime/env.ts` when upgrading; check `wasm-objdump -j Import` after Mojo upgrades | ✅ Mitigated — `clock_gettime` added for 26.1.0 |
-| OpenXR runtime availability (Phase 5) | XR fails without runtime | Detect at startup; fall back to desktop Blitz | In progress — headless mode (`mxr_create_headless`) implemented for testing without runtime; `xr_launch` uses headless by default until runtime detection is added |
+| OpenXR runtime availability (Phase 5) | XR fails without runtime | Detect at startup; fall back to desktop Blitz | In progress — headless mode (`mxr_create_headless`) implemented for testing without runtime; `mxr_init_gpu()` lazy GPU init preserves headless compatibility; `xr_launch` uses headless by default until runtime detection is added |
 | DOM-to-texture fidelity for WebXR (Phase 5) | Rendering quality/interactivity loss | SVG foreignObject rasterization implemented with fallback text renderer; evaluate OffscreenCanvas, html2canvas for higher fidelity | 🔧 In progress — initial SVG foreignObject approach in `xr/web/runtime/xr-panel.ts`; needs real-device validation |
 | XR input latency (Phase 5) | Raycasting → DOM event adds latency to controller input | Keep raycast math in the shim (Rust); minimize FFI roundtrips | In progress — Rust-side raycasting implemented |
 | XR frame timing constraints (Phase 5) | OpenXR requires strict frame pacing; DOM re-render may exceed budget | Only re-render dirty panels; cache textures; use quad layers for compositor-side reprojection | In progress — dirty tracking per-panel implemented |

@@ -26,8 +26,18 @@ anyrender = { version = "0.6" }
 anyrender_vello = { version = "0.6" }
 
 # GPU abstraction — used for offscreen texture rendering (Vello → wgpu texture)
-# and OpenXR swapchain interop.
-wgpu = { version = "24" }
+# and OpenXR swapchain interop. Must match vello 0.6's wgpu version exactly.
+wgpu = { version = "26" }
+
+# Vello 2D rendering engine — used directly for offscreen render_to_texture().
+# anyrender_vello provides the PaintScene trait impl (VelloScenePainter) that
+# bridges blitz-paint's paint_scene() to a vello::Scene, but we need vello
+# directly for Scene, Renderer, RenderParams, and AaConfig/AaSupport types.
+vello = { version = "0.6" }
+
+# Blocking executor for async wgpu adapter/device creation.
+# Already a transitive dependency (via anyrender_vello) — pinned here for clarity.
+pollster = { version = "0.4" }
 
 # OpenXR bindings — session management, frame loop, input, reference spaces.
 # The "linked" feature uses the OpenXR loader (libopenxr_loader.so) via
