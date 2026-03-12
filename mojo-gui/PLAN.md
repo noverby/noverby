@@ -14,6 +14,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
 | XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8 ✅) | Linux (headless tests pass) |
 | XR Browser | WebXR + JS interpreter | 📋 Future (Phase 5) | — |
+| CI | `nix flake check` | ✅ Complete | Tangled CI (push/PR on main) |
 
 | Area | Metric |
 |------|--------|
@@ -29,6 +30,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | XR C FFI functions | ~83 (includes 3 `_into()` output-pointer variants) |
 | XR Mojo FFI wrapper methods | ~70 (XRBlitz struct) |
 | XR compile targets | 3 (web, desktop, XR via `-D MOJO_TARGET_XR`) |
+| CI check derivations | 5 (test-desktop, test-xr, test, test-js, build-all) |
 
 ---
 
@@ -160,6 +162,14 @@ just build-all               # Build web + desktop + windows + XR examples
 just test-all                # Run Mojo + JS test suites
 just test-all-targets        # Run Mojo + JS + desktop + XR test suites
 just clean                   # Remove all build artifacts
+
+# ── CI (Nix check derivations) ───────────────────────────────
+nix build .#checks.x86_64-linux.mojo-gui-test-desktop  # 75 Rust tests (Blitz shim)
+nix build .#checks.x86_64-linux.mojo-gui-test-xr       # 37 Rust tests (XR shim)
+nix build .#checks.x86_64-linux.mojo-gui-test           # 52 Mojo test suites
+nix build .#checks.x86_64-linux.mojo-gui-test-js        # 3,375 JS tests (Deno)
+nix build .#checks.x86_64-linux.mojo-gui-build-all      # 4 examples × {web, desktop, xr}
+nix flake check                                          # Run ALL checks (used by CI)
 ```
 
 ### Import Conventions
@@ -182,6 +192,48 @@ mojo build examples/counter/main.mojo -D MOJO_TARGET_XR -I core/src -I xr/native
 ---
 
 ## What Was Done
+
+### S-1: Cross-Target CI Pipeline — ✅ Complete
+
+Added 5 Nix check derivations to `mojo-gui/default.nix` that build and run all test suites inside the Nix sandbox. The Tangled CI pipeline (`.tangled/workflows/ci.yml`) already runs `nix flake check` on push/PR to main — these checks are now automatically included.
+
+**Check derivations:**
+
+| Check | Type | Tests | Time |
+|-------|------|-------|------|
+| `mojo-gui-test-desktop` | `rustPlatform.buildRustPackage` | 75 Rust integration tests (headless Blitz shim) | ~1m 23s |
+| `mojo-gui-test-xr` | `rustPlatform.buildRustPackage` | 37 Rust integration tests (headless XR shim) | ~1m |
+| `mojo-gui-test` | `stdenv.mkDerivation` | 52 Mojo test suites via wasmtime | ~1m 12s |
+| `mojo-gui-test-js` | `stdenv.mkDerivation` | 3,375 JS integration tests via Deno | ~1m |
+| `mojo-gui-build-all` | `stdenv.mkDerivation` | 4 examples × {web, desktop, xr} = 12 builds | ~50s |
+
+**Key implementation details:**
+
+- **Rust checks** use `rustPlatform.buildRustPackage` with `doCheck = true`. Shared Blitz build dependencies (pkg-config, cmake, python3, fontconfig, freetype, libxkbcommon, wayland, vulkan-loader, libGL, openssl) are factored out. XR additionally needs `openxr-loader`.
+
+- **Mojo test check** builds the WASM binary inline (mojo → llc → wasm-ld pipeline), precompiles via `wasmtime compile`, then runs test binary build + execution via nu scripts. System libraries for the Mojo native linker (zlib, ncurses) are in `buildInputs`. `LD_LIBRARY_PATH` is set for `libwasmtime.so` dlopen at test runtime.
+
+- **JS test check** uses a **fixed-output derivation** (`denoDeps`) to pre-fetch the `npm:linkedom` dependency tree from npm into a Deno cache. The test check copies this cache to a writable `$TMPDIR/deno-cache` and sets `DENO_DIR`. No network access needed during test execution.
+
+- **Build-all check** runs the WASM build pipeline and `mojo build` for desktop (native) and XR (`-D MOJO_TARGET_XR`) targets directly — bypasses justfile recipes that use `nix eval` (unavailable in sandbox) or `/usr/bin/env nu` shebangs.
+
+- **Sandbox workaround:** The justfile's incremental build recipes use `#!/usr/bin/env nu` shebangs which fail in the Nix sandbox (no `/usr/bin/env`). The Mojo and JS checks run build commands directly instead of via `just test` / `just test-js`.
+
+**Verification:**
+
+```text
+$ nix build .#checks.x86_64-linux.mojo-gui-test-desktop  # ✅ 75/75
+$ nix build .#checks.x86_64-linux.mojo-gui-test-xr       # ✅ 37/37
+$ nix build .#checks.x86_64-linux.mojo-gui-test           # ✅ 52/52 suites
+$ nix build .#checks.x86_64-linux.mojo-gui-test-js        # ✅ 3375/3375
+$ nix build .#checks.x86_64-linux.mojo-gui-build-all      # ✅ 12/12 builds
+```
+
+**Modified files:**
+
+- **`mojo-gui/default.nix`** — Added `checks` attribute with 5 check derivations and a `denoDeps` fixed-output derivation for Deno npm cache. Shared Blitz build dependencies factored into `blitzNativeBuildInputs` / `blitzBuildInputs`.
+
+---
 
 ### Phase 5.8: Verify Shared Examples in XR — ✅ Complete
 
@@ -547,7 +599,7 @@ All four stabilization tasks are complete.
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| S-1 | **Cross-target CI pipeline** | 3–5 days | Tangled CI already runs `nix flake check` on push/PR (`.tangled/workflows/ci.yml`). Add Nix check derivations to `mojo-gui/default.nix` that build and run test suites inside the Nix sandbox: `checks.mojo-gui-test` (52 Mojo test suites via wasmtime), `checks.mojo-gui-test-js` (30 JS integration test suites via Deno), `checks.mojo-gui-test-desktop` (75 Rust integration tests for Blitz shim), `checks.mojo-gui-test-xr` (37 Rust integration tests for XR shim), `checks.mojo-gui-build-all` (build all 4 examples × {web, desktop, xr}). Each check is a Nix derivation that runs the corresponding `just` recipe in a sandboxed build environment. Gate PRs on green `nix flake check`. |
+| S-1 | **Cross-target CI pipeline** | 3–5 days | ✅ Complete — 5 Nix check derivations in `mojo-gui/default.nix`: `mojo-gui-test-desktop` (75 Rust tests), `mojo-gui-test-xr` (37 Rust tests), `mojo-gui-test` (52 Mojo suites via wasmtime), `mojo-gui-test-js` (3,375 JS tests via Deno with pre-fetched npm cache FOD), `mojo-gui-build-all` (4 examples × 3 targets). All run in the Nix sandbox without network access. Gated on `nix flake check` via Tangled CI. |
 | S-2 | **macOS desktop verification** | 2–3 days | Blitz uses Winit which supports macOS. Build the Blitz shim on macOS, verify `cargo build --release` succeeds, run the Counter example. Document any platform-specific quirks (GPU backend selection, font fallback, etc.). |
 | S-3 | **Windows desktop verification (Wine)** | 2–3 days | ✅ Complete — Cross-compiled to `x86_64-pc-windows-gnu` from Linux via MinGW-w64. Produces `mojo_blitz.dll` (26MB PE32+ DLL). All 69 Rust integration tests pass under Wine (single-threaded; Wine's COM layer crashes with parallel threads — misaligned pointer in `windows-core` interface dispatch). Nix dev shell provides: `rust-bin` with Windows target std, MinGW-w64 cross-linker (stripped setup hooks to avoid polluting native CC/AR), Wine 10.0 for test execution. New justfile recipes: `build-shim-windows`, `test-desktop-wine`, `build-shim-all`. Cargo config (`.cargo/config.toml`) sets MinGW linker and Wine runner for the Windows target. |
 
@@ -636,7 +688,7 @@ These decisions are settled and documented here for reference. See [architecture
 
 | Risk | Impact | Mitigation | Status |
 |------|--------|------------|--------|
-| Platform abstraction too leaky | Shared examples break on some targets | Cross-target CI matrix as gate; treat failures as framework bugs | In progress — `GuiApp` + `launch()` complete (web + desktop + XR dispatch); CI pending (S-1) |
+| Platform abstraction too leaky | Shared examples break on some targets | Cross-target CI matrix as gate; treat failures as framework bugs | ✅ Mitigated — `GuiApp` + `launch()` complete; 5 CI checks gate all PRs via `nix flake check` |
 | Blitz pre-alpha stability | Rendering bugs, missing CSS | Track Blitz releases; pin versions; document CSS support scope | Mitigated — pinned to v0.2.0 |
 | Native target module-level `var` | Global `var` not supported on native | Avoided in current design; config passed as arguments, not globals | ✅ Resolved |
 | Mojo trait limitations | `GuiApp` may not support future needs | `alias CurrentApp = ...` as fallback; upgrade when Mojo improves | ✅ Resolved for current scope |
