@@ -188,6 +188,10 @@ run-xr app: (build-xr app)
 test-xr:
     cd xr/native/shim && cargo test
 
+# Run XR web runtime JS tests (Deno — headless DOM via linkedom)
+test-xr-js:
+    cd xr/web && deno run --allow-read --allow-env test-js/run.ts
+
 # ── Windows cross-compilation & Wine verification (S-3) ─────────────────
 
 # Build a shared example for Windows (cross-compiled .exe via MinGW-w64)
@@ -259,8 +263,8 @@ build-web:
 # Build all shared examples for all targets (web + desktop-linux + desktop-windows + xr)
 build-all: build build-desktop-all build-desktop-windows-all build-xr-all
 
-# Run all tests (Mojo + JS + desktop + XR + Wine shim + Wine desktop)
-test-all-targets: test-all test-desktop test-xr test-desktop-wine
+# Run all tests (Mojo + JS + desktop + XR + XR JS + Wine shim + Wine desktop)
+test-all-targets: test-all test-desktop test-xr test-xr-js test-desktop-wine
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
 
