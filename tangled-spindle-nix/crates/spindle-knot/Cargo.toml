@@ -1,0 +1,18 @@
+[package]
+name = "spindle-knot"
+version = "0.1.0"
+authors = ["Niclas Overby <niclas@overby.me>"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Knot event consumer for pipeline events in tangled-spindle-nix"
+
+[dependencies]
+spindle-models = { workspace = true }
+spindle-db = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
