@@ -207,25 +207,21 @@ fn xr_launch[AppType: GuiApp](config: AppConfig) raises:
     """
     # ── 1. Create the XR session ─────────────────────────────────────
 
-    var xr = XRBlitz.create_headless()
+    # Try to create a real OpenXR session first. mxr_create_session()
+    # internally attempts to load the OpenXR runtime via dlopen and
+    # initialize a Vulkan-backed session. If the runtime is unavailable
+    # (no HMD, no OpenXR loader, Vulkan failure), it transparently falls
+    # back to headless mode — same Blitz DOM fidelity, no XR compositing.
+    var xr = XRBlitz.create_session(config.title)
 
-    # TODO: When OpenXR runtime detection is implemented, try real session
-    # first and fall back to headless:
-    #
-    #   try:
-    #       xr = XRBlitz.create_session(config.title)
-    #   except:
-    #       xr = XRBlitz.create_headless()
-
-    # Try to initialise the GPU renderer (wgpu + Vello) for offscreen
-    # panel texture rendering. If no compatible GPU adapter is found,
-    # render_dirty_panels() will fall back to layout-only resolution
-    # (Stylo + Taffy, no pixel output). This is fine for headless
-    # testing but means no visible rendering in a real XR session.
+    # The OpenXR backend (when active) already has GPU via the Vulkan
+    # graphics binding. For headless fallback, init_gpu() creates a
+    # standalone offscreen renderer (wgpu + Vello). Either way, this
+    # call is idempotent and safe.
     var has_gpu = xr.init_gpu()
     if config.debug:
         if has_gpu:
-            print("XR: GPU renderer initialised (Vello offscreen)")
+            print("XR: GPU renderer initialised")
         else:
             print("XR: GPU not available — layout-only mode")
 

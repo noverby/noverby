@@ -2428,6 +2428,7 @@ version = "0.2.0"
 dependencies = [
  "anyrender",
  "anyrender_vello",
+ "ash",
  "blitz",
  "blitz-dom",
  "blitz-html",

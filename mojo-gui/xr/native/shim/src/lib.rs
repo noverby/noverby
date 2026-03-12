@@ -51,9 +51,13 @@
 //!   - Vello offscreen rendering is possible (wired up in a later step)
 //!   - Template cloning uses Blitz's `deep_clone_node`
 
+mod openxr_backend;
+
 use std::collections::HashMap;
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicU32, Ordering};
+
+use openxr_backend::OpenXrBackend;
 
 use blitz_dom::{
     BaseDocument, DocumentConfig, ElementData, LocalName, NodeData, Prefix, QualName, local_name,
@@ -1004,6 +1008,11 @@ pub struct XrSessionContext {
     /// Offscreen GPU renderer (Vello + wgpu). `None` in headless sessions
     /// or when GPU initialisation failed. Created lazily via `mxr_init_gpu()`.
     renderer: Option<OffscreenRenderer>,
+
+    /// Real OpenXR backend. `None` in headless sessions or when the OpenXR
+    /// runtime is not available. When present, provides real XR session
+    /// lifecycle, frame loop, input, and per-panel swapchain rendering.
+    xr_backend: Option<OpenXrBackend>,
 }
 
 impl XrSessionContext {
@@ -1019,13 +1028,30 @@ impl XrSessionContext {
             reference_space: MXR_SPACE_STAGE,
             app_name: String::from("headless"),
             renderer: None,
+            xr_backend: None,
         }
     }
 
     fn new_with_name(name: &str) -> Self {
+        // Try to create a real OpenXR backend. If it fails (no runtime,
+        // no HMD, Vulkan issues), fall back to a non-headless context
+        // without a backend (same as headless but with IDLE initial state).
+        let xr_backend = OpenXrBackend::try_new(name);
+        let has_backend = xr_backend.is_some();
+
+        if has_backend {
+            eprintln!("XR: OpenXR session created for '{name}'");
+        } else {
+            eprintln!("XR: OpenXR not available, using headless mode for '{name}'");
+        }
+
         Self {
-            headless: false,
-            state: MXR_STATE_IDLE,
+            headless: xr_backend.is_none(),
+            state: if has_backend {
+                MXR_STATE_IDLE
+            } else {
+                MXR_STATE_FOCUSED // Fallback: start focused like headless
+            },
             destroyed: false,
             panels: HashMap::new(),
             panel_order: Vec::new(),
@@ -1034,6 +1060,7 @@ impl XrSessionContext {
             reference_space: MXR_SPACE_STAGE,
             app_name: name.to_string(),
             renderer: None,
+            xr_backend,
         }
     }
 
@@ -1257,6 +1284,8 @@ pub unsafe extern "C" fn mxr_destroy_session(session: *mut XrSessionContext) {
     let mut ctx = Box::from_raw(session);
     ctx.destroyed = true;
     ctx.state = MXR_STATE_EXITING;
+    // Drop the OpenXR backend first (destroys swapchains, session, Vulkan).
+    ctx.xr_backend = None;
     // Box drop runs here, freeing all panels and their Blitz documents.
 }
 
@@ -1278,6 +1307,10 @@ pub unsafe extern "C" fn mxr_create_panel(
 pub unsafe extern "C" fn mxr_destroy_panel(session: *mut XrSessionContext, panel_id: u32) {
     if session.is_null() {
         return;
+    }
+    // Destroy the panel's swapchain if one exists.
+    if let Some(ref mut backend) = (*session).xr_backend {
+        backend.destroy_panel_swapchain(panel_id);
     }
     (*session).destroy_panel(panel_id);
 }
@@ -1820,41 +1853,53 @@ pub unsafe extern "C" fn mxr_get_focused_panel(session: *mut XrSessionContext) -
 // ── Frame loop ─────────────────────────────────────────────────────────────
 
 /// Wait for the next frame. In headless mode, returns a synthetic timestamp.
+/// With OpenXR, blocks until the runtime signals the next frame.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mxr_wait_frame(session: *mut XrSessionContext) -> i64 {
     if session.is_null() {
         return 0;
     }
-    if (*session).headless {
-        // Return a monotonic timestamp in nanoseconds for testing.
+    let ctx = &mut *session;
+
+    // Poll OpenXR session events and update state.
+    if let Some(ref mut backend) = ctx.xr_backend {
+        let new_state = backend.poll_session_events();
+        if new_state >= 0 {
+            ctx.state = new_state;
+        }
+    }
+
+    if let Some(ref mut backend) = ctx.xr_backend {
+        backend.wait_frame()
+    } else {
+        // Headless: return a monotonic timestamp in nanoseconds for testing.
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos() as i64)
             .unwrap_or(0)
-    } else {
-        // TODO: Call xrWaitFrame when OpenXR is wired up.
-        0
     }
 }
 
-/// Begin a new frame. In headless mode, always succeeds.
+/// Begin a new frame. Returns 1 if we should render, 0 otherwise.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mxr_begin_frame(session: *mut XrSessionContext) -> i32 {
     if session.is_null() {
         return 0;
     }
-    if (*session).headless {
-        1 // Always succeeds in headless mode.
+    let ctx = &mut *session;
+    if let Some(ref mut backend) = ctx.xr_backend {
+        backend.begin_frame()
     } else {
-        // TODO: Call xrBeginFrame when OpenXR is wired up.
-        0
+        1 // Headless: always succeeds.
     }
 }
 
 /// Render dirty panel textures. Resolves layout (Stylo + Taffy) for every
-/// dirty panel. When a GPU renderer is available (`mxr_init_gpu()` succeeded),
-/// also paints each panel's Blitz DOM to its offscreen GPU texture via Vello.
+/// dirty panel. When a GPU renderer is available (`mxr_init_gpu()` succeeded
+/// or OpenXR backend is active), also paints each panel's Blitz DOM to its
+/// texture via Vello — either to an OpenXR swapchain image or an offscreen
+/// wgpu texture.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mxr_render_dirty_panels(session: *mut XrSessionContext) -> u32 {
     if session.is_null() {
@@ -1874,10 +1919,33 @@ pub unsafe extern "C" fn mxr_render_dirty_panels(session: *mut XrSessionContext)
         }
     }
 
-    // If we have a GPU renderer, paint each resolved panel to its texture.
-    // We need to split the borrow: the renderer borrows mutably while we
-    // also need mutable access to each panel. Take the renderer out
-    // temporarily.
+    // If we have an OpenXR backend, render dirty panels to swapchain images.
+    if ctx.xr_backend.is_some() {
+        // Sync input actions once per frame.
+        if let Some(ref backend) = ctx.xr_backend {
+            backend.sync_actions();
+        }
+
+        // Take the backend out temporarily to satisfy the borrow checker
+        // (we need mut access to both the backend and individual panels).
+        let mut backend = ctx.xr_backend.take().unwrap();
+
+        for &panel_id in &panel_ids {
+            if let Some(panel) = ctx.panels.get_mut(&panel_id) {
+                if panel.dirty && panel.visible {
+                    if backend.render_panel(panel) {
+                        count += 1;
+                    }
+                    panel.dirty = false;
+                }
+            }
+        }
+
+        ctx.xr_backend = Some(backend);
+        return count;
+    }
+
+    // Fallback: offscreen renderer (headless GPU testing).
     let mut renderer = ctx.renderer.take();
 
     for &panel_id in &panel_ids {
@@ -1897,20 +1965,29 @@ pub unsafe extern "C" fn mxr_render_dirty_panels(session: *mut XrSessionContext)
     count
 }
 
-/// End the frame. In headless mode, no-op.
+/// End the frame. Submits composition layers (quad layers for visible panels)
+/// to the OpenXR compositor. In headless mode, no-op.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mxr_end_frame(session: *mut XrSessionContext) {
-    let _ = session;
-    // TODO: Call xrEndFrame with quad layers when OpenXR is wired up.
+    if session.is_null() {
+        return;
+    }
+    let ctx = &mut *session;
+    if let Some(ref mut backend) = ctx.xr_backend {
+        backend.end_frame(&ctx.panels, &ctx.panel_order);
+    }
 }
 
 // ── GPU initialisation ─────────────────────────────────────────────────────
 
 /// Try to initialise the GPU renderer (wgpu + Vello) for offscreen panel
 /// texture rendering. Returns 1 on success, 0 on failure (e.g. no compatible
-/// GPU adapter found). Headless sessions always return 0 — they rely on
-/// layout-only resolution.
+/// GPU adapter found).
 ///
+/// When an OpenXR backend is active, the GPU is already initialised as part
+/// of the Vulkan graphics binding — this function returns 1 immediately.
+///
+/// For headless sessions, this creates a standalone offscreen renderer.
 /// This is intentionally separate from session creation so that headless tests
 /// keep working without a GPU.
 #[unsafe(no_mangle)]
@@ -1919,6 +1996,12 @@ pub unsafe extern "C" fn mxr_init_gpu(session: *mut XrSessionContext) -> i32 {
         return 0;
     }
     let ctx = &mut *session;
+
+    // OpenXR backend already has GPU via Vulkan.
+    if ctx.xr_backend.is_some() {
+        return 1;
+    }
+
     if ctx.renderer.is_some() {
         return 1; // Already initialised.
     }
@@ -1937,7 +2020,12 @@ pub unsafe extern "C" fn mxr_has_gpu(session: *mut XrSessionContext) -> i32 {
     if session.is_null() {
         return 0;
     }
-    if (*session).renderer.is_some() { 1 } else { 0 }
+    let ctx = &*session;
+    if ctx.xr_backend.is_some() || ctx.renderer.is_some() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Copy a panel's most-recently-rendered texture to a CPU buffer.
@@ -1968,21 +2056,27 @@ pub unsafe extern "C" fn mxr_panel_read_pixels(
 
 // ── Input ──────────────────────────────────────────────────────────────────
 
-/// Get a controller/head pose. In headless mode, returns an invalid pose.
+/// Get a controller/head pose. With OpenXR, returns the tracked pose relative
+/// to stage space. In headless mode, returns an invalid pose.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mxr_get_pose(session: *mut XrSessionContext, _hand: u8) -> MxrPose {
+pub unsafe extern "C" fn mxr_get_pose(session: *mut XrSessionContext, hand: u8) -> MxrPose {
     if session.is_null() {
         return MxrPose::default();
     }
-    // In headless mode, poses are not tracked.
-    MxrPose::default()
+    let ctx = &*session;
+    if let Some(ref backend) = ctx.xr_backend {
+        backend.get_pose(hand)
+    } else {
+        MxrPose::default()
+    }
 }
 
-/// Get the aim ray for a controller. In headless mode, returns invalid.
+/// Get the aim ray for a controller. With OpenXR, returns the aim ray from
+/// the controller's aim space. In headless mode, returns invalid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mxr_get_aim_ray(
     session: *mut XrSessionContext,
-    _hand: u8,
+    hand: u8,
     out_ox: *mut f32,
     out_oy: *mut f32,
     out_oz: *mut f32,
@@ -1993,26 +2087,54 @@ pub unsafe extern "C" fn mxr_get_aim_ray(
     if session.is_null() {
         return 0;
     }
-    // In headless mode, aim rays are not available.
-    if !out_ox.is_null() {
-        *out_ox = 0.0;
+    let ctx = &*session;
+    if let Some(ref backend) = ctx.xr_backend {
+        let (origin, direction, valid) = backend.get_aim_ray(hand);
+        if valid {
+            if !out_ox.is_null() {
+                *out_ox = origin[0];
+            }
+            if !out_oy.is_null() {
+                *out_oy = origin[1];
+            }
+            if !out_oz.is_null() {
+                *out_oz = origin[2];
+            }
+            if !out_dx.is_null() {
+                *out_dx = direction[0];
+            }
+            if !out_dy.is_null() {
+                *out_dy = direction[1];
+            }
+            if !out_dz.is_null() {
+                *out_dz = direction[2];
+            }
+            1
+        } else {
+            0
+        }
+    } else {
+        // Headless: aim rays not available.
+        if !out_ox.is_null() {
+            *out_ox = 0.0;
+        }
+        if !out_oy.is_null() {
+            *out_oy = 0.0;
+        }
+        if !out_oz.is_null() {
+            *out_oz = 0.0;
+        }
+        if !out_dx.is_null() {
+            *out_dx = 0.0;
+        }
+        if !out_dy.is_null() {
+            *out_dy = 0.0;
+        }
+        if !out_dz.is_null() {
+            *out_dz = 0.0;
+        }
+        0
     }
-    if !out_oy.is_null() {
-        *out_oy = 0.0;
-    }
-    if !out_oz.is_null() {
-        *out_oz = 0.0;
-    }
-    if !out_dx.is_null() {
-        *out_dx = 0.0;
-    }
-    if !out_dy.is_null() {
-        *out_dy = 0.0;
-    }
-    if !out_dz.is_null() {
-        *out_dz = 0.0;
-    }
-    0 // Not valid
 }
 
 // ── Reference spaces ───────────────────────────────────────────────────────
@@ -2045,14 +2167,19 @@ pub unsafe extern "C" fn mxr_get_reference_space(session: *mut XrSessionContext)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mxr_has_extension(
     session: *mut XrSessionContext,
-    _ext_name_ptr: *const c_char,
-    _ext_name_len: u32,
+    ext_name_ptr: *const c_char,
+    ext_name_len: u32,
 ) -> i32 {
     if session.is_null() {
         return 0;
     }
-    // In headless mode and the current scaffold, no extensions are available.
-    0
+    let ctx = &*session;
+    if let Some(ref backend) = ctx.xr_backend {
+        let name = read_str(ext_name_ptr, ext_name_len);
+        backend.has_extension(name) as i32
+    } else {
+        0 // Headless: no extensions.
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -2060,7 +2187,12 @@ pub unsafe extern "C" fn mxr_has_hand_tracking(session: *mut XrSessionContext) -
     if session.is_null() {
         return 0;
     }
-    0 // Not available in headless mode.
+    let ctx = &*session;
+    if let Some(ref backend) = ctx.xr_backend {
+        backend.has_hand_tracking() as i32
+    } else {
+        0
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -2068,7 +2200,12 @@ pub unsafe extern "C" fn mxr_has_passthrough(session: *mut XrSessionContext) -> 
     if session.is_null() {
         return 0;
     }
-    0 // Not available in headless mode.
+    let ctx = &*session;
+    if let Some(ref backend) = ctx.xr_backend {
+        backend.has_passthrough() as i32
+    } else {
+        0
+    }
 }
 
 // ── Debug & inspection ─────────────────────────────────────────────────────
@@ -2289,6 +2426,38 @@ pub unsafe extern "C" fn mxr_panel_stack_pop(session: *mut XrSessionContext, pan
 // These mirror the desktop shim's mblitz_poll_event_into() pattern.
 // ---------------------------------------------------------------------------
 
+/// Get the select (trigger) state for both hands. Returns a bitfield:
+/// bit 0 = left active, bit 1 = right active.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mxr_get_select_state(session: *mut XrSessionContext) -> i32 {
+    if session.is_null() {
+        return 0;
+    }
+    let ctx = &*session;
+    if let Some(ref backend) = ctx.xr_backend {
+        let (left, right) = backend.get_select_state();
+        (left as i32) | ((right as i32) << 1)
+    } else {
+        0
+    }
+}
+
+/// Get the squeeze (grip) state for both hands. Returns a bitfield:
+/// bit 0 = left active, bit 1 = right active.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mxr_get_squeeze_state(session: *mut XrSessionContext) -> i32 {
+    if session.is_null() {
+        return 0;
+    }
+    let ctx = &*session;
+    if let Some(ref backend) = ctx.xr_backend {
+        let (left, right) = backend.get_squeeze_state();
+        (left as i32) | ((right as i32) << 1)
+    } else {
+        0
+    }
+}
+
 /// Poll the next event, writing each field to caller-provided output pointers.
 ///
 /// Returns 1 if an event was available, 0 if the queue was empty.
@@ -2439,7 +2608,13 @@ mod tests {
             let session = mxr_create_session(name.as_ptr() as *const c_char, name.len() as u32);
             assert!(!session.is_null());
             assert_eq!(mxr_is_alive(session), 1);
-            assert_eq!(mxr_session_state(session), MXR_STATE_IDLE);
+            // With a real OpenXR runtime, state starts at IDLE.
+            // Without one (CI, headless fallback), state starts at FOCUSED.
+            let state = mxr_session_state(session);
+            assert!(
+                state == MXR_STATE_IDLE || state == MXR_STATE_FOCUSED,
+                "expected IDLE or FOCUSED, got {state}"
+            );
             mxr_destroy_session(session);
         }
     }

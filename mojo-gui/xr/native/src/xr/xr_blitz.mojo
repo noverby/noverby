@@ -1604,6 +1604,38 @@ struct XRBlitz(Movable):
         var result = self._lib.call["mxr_has_passthrough", Int32](self._session)
         return result != 0
 
+    fn get_select_state(self) -> Int32:
+        """Get the select (trigger) state for both hands.
+
+        Returns a bitfield:
+          - bit 0 (0x1): left hand trigger active
+          - bit 1 (0x2): right hand trigger active
+
+        With a real OpenXR session, this reflects the current state of the
+        select action (trigger press on most controllers). In headless mode,
+        always returns 0.
+
+        Returns:
+            Bitfield with left (bit 0) and right (bit 1) trigger state.
+        """
+        return self._lib.call["mxr_get_select_state", Int32](self._session)
+
+    fn get_squeeze_state(self) -> Int32:
+        """Get the squeeze (grip) state for both hands.
+
+        Returns a bitfield:
+          - bit 0 (0x1): left hand grip active
+          - bit 1 (0x2): right hand grip active
+
+        With a real OpenXR session, this reflects the current state of the
+        squeeze action (grip button on most controllers). In headless mode,
+        always returns 0.
+
+        Returns:
+            Bitfield with left (bit 0) and right (bit 1) grip state.
+        """
+        return self._lib.call["mxr_get_squeeze_state", Int32](self._session)
+
     # ══════════════════════════════════════════════════════════════════════
     # ID mapping (per-panel)
     # ══════════════════════════════════════════════════════════════════════
