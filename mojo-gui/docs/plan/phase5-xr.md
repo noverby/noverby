@@ -94,23 +94,50 @@ Created `xr/web/runtime/` — the browser-side WebXR renderer that reuses the bi
 | `xr-panel.ts` | `XRPanel` — offscreen DOM container, SVG foreignObject DOM→canvas rasterization (async), fallback text rasterizer, WebGL texture upload, ray-plane intersection raycasting, 4×4 model matrix from quaternion. `XRPanelManager` — panel lifecycle, focus management, throttled dirty texture updates, raycasting, spatial layout (`arrangeArc`, `arrangeGrid`, `arrangeStack`) |
 | `xr-renderer.ts` | `XRQuadRenderer` — WebGL2 GLSL ES 3.0 shader (textured quad + alpha/opacity), VAO/VBO/EBO unit quad, per-view stereo rendering from `XRView` matrices, cursor dot visualization at UV hit, GL state save/restore |
 | `xr-input.ts` | `XRInputHandler` — extracts rays from `XRInputSource.targetRaySpace`, raycasts against panels, per-source hover tracking (enter/leave/move with ~30Hz throttle), click synthesis from select events (selectstart→mousedown, selectend→mouseup+click), focus transitions, callback-based dispatch |
-| `xr-runtime.ts` | `XRRuntime` — main entry point. WASM loading with full env imports. `createAppPanel()` for convention-based export discovery. Self-contained inline mutation interpreter (all 18 opcodes incl. `RegisterTemplate`). Handler map for XR input→WASM dispatch. "Enter VR" button. Flat-fallback mode. Per-frame: input → flush → rasterize → render → cursors |
+| `xr-runtime.ts` | `XRRuntime` — main entry point. WASM loading with full env imports. `createAppPanel()` for convention-based export discovery. Uses shared `Interpreter` + `TemplateCache` from `web/runtime/` for full DOM feature parity (all 18 opcodes). Handler map for XR input→WASM dispatch (wired via `onNewListener`/`onRemoveListener`). "Enter VR" button. Flat-fallback mode. Per-frame: input → flush → rasterize → render → cursors |
 | `mod.ts` | Module re-exports — single import path for the full public API |
+| `examples/lib/xr-app.js` | Shared XR app launcher — `launchXR()` initializes XRRuntime, creates app panel from WASM, starts XR or flat fallback, status display, event wiring |
+| `examples/counter/` | XR counter entry point: `index.html` (flat-fallback panel styling) + `main.js` (loads shared WASM via `launchXR()`) |
+| `examples/todo/` | XR todo entry point: `index.html` + `main.js` |
+| `examples/bench/` | XR benchmark entry point: `index.html` + `main.js` (8 MiB buffer) |
+| `examples/app/` | XR multi-view app entry point: `index.html` + `main.js` |
+| `scripts/bundle.ts` | esbuild-based TS→JS bundler for browser consumption. Bundles each XR example entry point + full runtime into a self-contained ES module (`bundle.js`). Supports per-app build, `--clean`, source maps |
+| `test-browser.nu` | Browser E2E test script for XR flat-fallback mode via headless Servo + W3C WebDriver. Verifies panel containers, flat-fallback CSS, `#xr-status`, WASM mutations, absence of "Enter VR" button, structural properties. Tests all 4 apps |
+| `test-js/xr-rasterize.test.ts` | SVG foreignObject fidelity validation: markup structure, fallback rasterizer (9 content types), dirty tracking, mutation→rasterize flow, texture upload integration, manager dirty orchestration, fidelity edge cases (inline styles/classes/data-attrs/flexbox/SVG/100-node DOM/overflow), multi-panel independence, canvas state, panel background (109 tests) |
 
 **Key design decisions:**
 
-1. **Mutation protocol unchanged** — each panel receives the same binary opcode stream; the inline interpreter covers all 18 opcodes
+1. **Mutation protocol unchanged** — each panel receives the same binary opcode stream; the shared `Interpreter` from `web/runtime/` processes all 18 opcodes
 2. **DOM→texture via SVG foreignObject** — real CSS rendering fidelity; falls back to simple text renderer when SVG fails
 3. **Callback-based input dispatch** — `XRInputHandler` emits synthetic DOM event names without touching the DOM; the runtime wires callbacks to WASM
 4. **Flat fallback** — when WebXR is unavailable, panel containers become visible DOM elements with standard CSS
-5. **Independent of `web/runtime/`** — self-contained inline mutation interpreter avoids import-time coupling; can swap in full `web/runtime/Interpreter` later
+5. **Shared `web/runtime/` Interpreter** — the XR runtime imports the full `Interpreter` and `TemplateCache` from `web/runtime/`, ensuring complete DOM feature parity. Handler map wiring uses `onNewListener`/`onRemoveListener` callbacks added to the shared Interpreter for XR integration
+6. **esbuild bundling for browser** — XR runtime is TypeScript; browsers can't load `.ts` modules directly. `scripts/bundle.ts` produces self-contained ES module bundles (`bundle.js`) for each example app
+
+**Test coverage (523 tests, 5 suites):**
+
+| Suite | Tests | Coverage |
+|-------|-------|----------|
+| `xr-types.test.ts` | 68 | Panel config presets, texture dimensions, runtime config, event constants, spread patterns, aspect ratios |
+| `xr-panel.test.ts` | 174 | Panel construction, DOM container, transforms, model matrix, raycasting, rasterize fallback, destroy, panel manager CRUD, focus, dirty tracking, layout |
+| `xr-input.test.ts` | 78 | Hover state machine, click synthesis, focus transitions, source removal/reset, multi-source independence, cursor queries, source filtering, callback error resilience |
+| `xr-runtime.test.ts` | 94 | State machine transitions, mock navigator.xr, panel creation, event listeners, config, Enter VR button, flat fallback visibility, input handler wiring |
+| `xr-rasterize.test.ts` | 109 | SVG markup structure, fallback rasterizer (9 content types), dirty tracking, mutation→rasterize flow, texture upload, manager orchestration, fidelity edge cases, multi-panel, canvas state, panel background |
 
 **Remaining:**
 
-- End-to-end testing with a real WebXR device or browser emulator
-- SVG foreignObject fidelity validation (external resources, CSS features)
-- Integration with `web/runtime/Interpreter` for full DOM feature parity
-- Browser E2E test suite for the WebXR path
+- End-to-end testing with a real WebXR device or browser emulator (browser E2E script created but not yet run against Servo — requires `just build-xr-web`)
+- Real-device SVG foreignObject pixel-level fidelity validation (unit tests cover markup structure and fallback; pixel rendering needs a real browser)
+
+**Completed:**
+
+- ✅ Integration with `web/runtime/Interpreter` — replaced ~420-line inline mutation applier; added `onRemoveListener` callback
+- ✅ SVG foreignObject fidelity test suite — 109 tests validating the DOM→texture rasterization pipeline
+- ✅ XR web example entry points — HTML + JS for all 4 shared examples, shared `launchXR()` launcher
+- ✅ esbuild TS→JS bundler — all 4 apps bundle successfully (~3,700 lines each)
+- ✅ Browser E2E test script — flat-fallback validation via headless Servo + WebDriver
+- ✅ Justfile recipes — `build-xr-web`, `serve-xr`, `test-browser-xr`, `test-all-browser`, etc.
+- ✅ Nix check derivation `mojo-gui-test-xr-js` — 523 tests in Nix sandbox
 
 ---
 

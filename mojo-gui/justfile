@@ -192,6 +192,42 @@ test-xr:
 test-xr-js:
     cd xr/web && deno run --allow-read --allow-env test-js/run.ts
 
+# ── XR web target (WebXR browser) ───────────────────────────────────────
+
+# Bundle XR web examples (TS→JS via esbuild for browser consumption)
+# Requires WASM binary: run `just build` first.
+build-xr-web: build
+    cd xr/web && deno run --allow-read --allow-write --allow-env --allow-run scripts/bundle.ts
+
+# Bundle a single XR web example
+# Usage: just build-xr-web-app counter
+build-xr-web-app app:
+    cd xr/web && deno run --allow-read --allow-write --allow-env --allow-run scripts/bundle.ts {{ app }}
+
+# Clean XR web bundles
+clean-xr-web:
+    cd xr/web && deno run --allow-read --allow-write --allow-env --allow-run scripts/bundle.ts --clean
+
+# Serve XR web examples in browser (builds WASM + bundles first)
+serve-xr: build-xr-web
+    @echo "Open http://localhost:4507/xr/web/examples/counter/"
+    @echo "Open http://localhost:4507/xr/web/examples/todo/"
+    @echo "Open http://localhost:4507/xr/web/examples/bench/"
+    @echo "Open http://localhost:4507/xr/web/examples/app/"
+    deno run --allow-net --allow-read jsr:@std/http/file-server
+
+# End-to-end browser tests for XR flat fallback via headless Servo + WebDriver
+test-browser-xr: build-xr-web
+    nu xr/web/test-browser.nu
+
+# Browser tests with verbose Servo output
+test-browser-xr-verbose: build-xr-web
+    nu xr/web/test-browser.nu --verbose
+
+# Single app XR browser test
+test-browser-xr-app app: build-xr-web
+    nu xr/web/test-browser.nu --app {{ app }}
+
 # ── Windows cross-compilation & Wine verification (S-3) ─────────────────
 
 # Build a shared example for Windows (cross-compiled .exe via MinGW-w64)
@@ -260,11 +296,14 @@ build-windows-all: build-shim-windows build-desktop-windows-all
 build-web:
     cd web && just build
 
-# Build all shared examples for all targets (web + desktop-linux + desktop-windows + xr)
-build-all: build build-desktop-all build-desktop-windows-all build-xr-all
+# Build all shared examples for all targets (web + desktop-linux + desktop-windows + xr + xr-web)
+build-all: build build-desktop-all build-desktop-windows-all build-xr-all build-xr-web
 
 # Run all tests (Mojo + JS + desktop + XR + XR JS + Wine shim + Wine desktop)
 test-all-targets: test-all test-desktop test-xr test-xr-js test-desktop-wine
+
+# Run all tests including browser E2E (requires servo)
+test-all-browser: test-all-targets test-browser test-browser-xr
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
 
@@ -273,3 +312,4 @@ clean:
     rm -rf build/
     rm -rf web/build/
     cd desktop/shim && cargo clean 2>/dev/null || true
+    cd xr/web && deno run --allow-read --allow-write --allow-env --allow-run scripts/bundle.ts --clean 2>/dev/null || true
