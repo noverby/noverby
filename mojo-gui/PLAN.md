@@ -13,7 +13,7 @@ Multi-renderer reactive GUI framework for Mojo. Write a GUI app **once**, run it
 | Desktop | Blitz | 🔲 Untested | macOS |
 | Desktop | Blitz (Wine) | ✅ Verified | Windows (via Wine) |
 | XR Native | OpenXR + Blitz offscreen | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8 ✅) | Linux (headless tests pass) |
-| XR Browser | WebXR + JS interpreter | 📋 Future (Phase 5) | — |
+| XR Browser | WebXR + JS interpreter | 🔧 In progress (Step 5.6) | WebXR browsers |
 | CI | `nix flake check` | ✅ Complete | Tangled CI (push/PR on main) |
 
 | Area | Metric |
@@ -61,7 +61,8 @@ mojo-gui/
 │   ├── native/     — OpenXR native: Blitz DOM → Vello → offscreen textures → OpenXR
 │   │   ├── shim/   — Rust cdylib: multi-panel Blitz + headless DOM + raycasting
 │   │   └── src/    — Mojo: XRPanel, XRScene, XRBlitz FFI, XRMutationInterpreter, xr_launch
-│   └── web/        — WebXR browser renderer (future)
+│   └── web/        — WebXR browser renderer (Step 5.6)
+│       └── runtime/ — TS: XRSessionManager, XRPanelManager, XRQuadRenderer, XRInputHandler, XRRuntime
 ├── docs/plan/      — Detailed plan documents
 ├── build/          — Build output (gitignored)
 ├── justfile        — Root task runner (web + desktop + xr commands)
@@ -87,7 +88,7 @@ mojo-gui/
 
 | Phase | Document | Status |
 |-------|----------|--------|
-| Phase 5 | [XR Renderer](docs/plan/phase5-xr.md) | 🔧 In progress (Steps 5.1–5.5, 5.7–5.8 ✅) |
+| Phase 5 | [XR Renderer](docs/plan/phase5-xr.md) | 🔧 In progress (Steps 5.1–5.6, 5.7–5.8 ✅) |
 | Phase 6 | [`mojo-web` Raw Web API Bindings](docs/plan/phase6-mojo-web.md) | 📋 Future |
 
 ### Cross-Cutting
@@ -234,6 +235,38 @@ $ nix build .#checks.x86_64-linux.mojo-gui-build-all      # ✅ 12/12 builds
 - **`mojo-gui/default.nix`** — Added `checks` attribute with 5 check derivations and a `denoDeps` fixed-output derivation for Deno npm cache. Shared Blitz build dependencies factored into `blitzNativeBuildInputs` / `blitzBuildInputs`.
 
 ---
+
+### Phase 5.6: WebXR JS Runtime — 🔧 In Progress
+
+**Goal:** Create `xr/web/runtime/` — the browser-side WebXR renderer that reuses the binary mutation protocol unchanged, rendering panel DOM content as textured quads in an immersive WebXR scene.
+
+**What was built:**
+
+| File | Description |
+|------|-------------|
+| `xr/web/runtime/xr-types.ts` | TypeScript types mirroring native XR panel types: `Vec3`, `Quaternion`, `PanelConfig` (with presets: default, dashboard, tooltip, hand-anchored), `PanelState`, `XRPanelDescriptor`, `RaycastHit`, `XRInputRay`, `XRRuntimeConfig`, WebXR API compat interfaces (`XRSessionCompat`, `XRFrameCompat`, `XRViewCompat`, etc.) |
+| `xr/web/runtime/xr-session.ts` | `XRSessionManager` — full WebXR session lifecycle: feature detection (`navigator.xr`), session request (immersive-vr/ar/inline), WebGL2 context creation with `xrCompatible`, `XRWebGLLayer` binding, reference space negotiation (tries `local-floor` → `bounded-floor` → `local` → `viewer`), XR frame loop delegation, session end + cleanup, runtime event emission |
+| `xr/web/runtime/xr-panel.ts` | `XRPanel` — offscreen DOM container per panel, SVG foreignObject DOM→canvas rasterization (async), fallback text rasterizer, WebGL texture upload (`texImage2D`/`texSubImage2D`), ray-plane intersection raycasting, 4×4 model matrix computation from position/rotation/scale. `XRPanelManager` — panel lifecycle, focus management (exclusive), throttled dirty texture updates, raycasting across all panels, spatial layout helpers (`arrangeArc`, `arrangeGrid`, `arrangeStack`) |
+| `xr/web/runtime/xr-renderer.ts` | `XRQuadRenderer` — WebGL2 GLSL ES 3.0 shader program (textured quad with alpha + opacity uniform), VAO/VBO/EBO for unit quad geometry, per-view stereo rendering (`setView()` from `XRView.projectionMatrix` + `transform.inverse.matrix`), cursor dot visualization at UV hit point, GL state save/restore |
+| `xr/web/runtime/xr-input.ts` | `XRInputHandler` — extracts input rays from `XRInputSource.targetRaySpace` poses, raycasts against panel quads, tracks per-source hover state (mouseenter/mouseleave/mousemove with ~30Hz throttle), synthesizes click sequences from XR select events (selectstart → mousedown, selectend → mouseup + click if same panel within 20px), focus transitions on click, callback-based dispatch (no DOM/WASM coupling) |
+| `xr/web/runtime/xr-runtime.ts` | `XRRuntime` — main entry point orchestrating all subsystems. WASM app loading with full env imports (matching `web/runtime/env.ts`). `createAppPanel()` for convention-based WASM export discovery (`{name}_init/rebuild/flush/handle_event/destroy`). Inline binary mutation interpreter (self-contained, all 18 opcodes including `RegisterTemplate`). Handler map for XR input → WASM dispatch. "Enter VR" button. Flat-fallback mode (panels visible as normal DOM when no WebXR). Per-frame pipeline: process input → flush WASM → rasterize dirty panels → render quads → draw cursors |
+| `xr/web/runtime/mod.ts` | Module re-exports — single import path for the full public API |
+
+**Key design decisions:**
+
+1. **Mutation protocol unchanged** — each panel receives the same binary opcode stream; the inline interpreter covers all 18 opcodes
+2. **DOM→texture via SVG foreignObject** — real CSS rendering fidelity with async rasterization; falls back to simple text renderer when SVG fails
+3. **Callback-based input dispatch** — `XRInputHandler` emits synthetic DOM event names but doesn't touch the DOM directly; the runtime wires callbacks to WASM dispatch
+4. **Flat fallback** — when WebXR is unavailable, panel containers become visible DOM elements with standard CSS styling
+5. **Independent of `web/runtime/`** — the XR runtime includes its own inline mutation interpreter to avoid import-time coupling; production deployments can swap in the full `web/runtime/Interpreter` for complete feature parity
+
+**Remaining work:**
+
+- End-to-end testing with a real WebXR device or browser emulator
+- SVG foreignObject fidelity validation (external resources, CSS features)
+- Integration with `web/runtime/Interpreter` for full DOM feature parity (currently uses self-contained inline interpreter)
+- Browser E2E test suite for the WebXR path
+- Nix check derivation for XR web tests
 
 ### Phase 5.8: Verify Shared Examples in XR — ✅ Complete
 
@@ -616,7 +649,7 @@ XR panel abstraction that reuses the binary mutation protocol unchanged. Each XR
 | 5.3 | Mojo FFI bindings for the OpenXR shim | ✅ Complete — `XRBlitz` struct (~70 methods wrapping all `mxr_*` C functions via DLHandle). `XRMutationInterpreter` (per-panel binary opcode interpreter, all 18 opcodes). Helper types: `XREvent`, `XRPose`, `XRRaycastHit`. Constants for events, hands, spaces, states. Library search via env vars / Nix / ld paths. `poll_event()`, `raycast_panels()`, `get_pose()` now fully functional via `_into()` output-pointer variants. |
 | 5.4 | XR scene manager and panel routing (multiplexes mutation buffers) | ✅ Complete (single-panel) — `XRScene` provides panel registry, focus management, dirty tracking, Mojo-side raycasting (ray-plane intersection), and spatial layout helpers (`arrange_arc`, `arrange_grid`, `arrange_stack`). For single-panel apps, `xr_launch` (Step 5.5) manages the panel directly via `XRBlitz` FFI — bypassing the scene for simplicity. Multi-panel routing through `XRScene` (scene creates/destroys panels via shim, multiplexes mutation buffers to correct panel's `GuiApp`) deferred to Step 5.9 (multi-panel XR API). |
 | 5.5 | `xr_launch[AppType: GuiApp]()` — single-panel apps get XR for free | ✅ Complete — `xr/native/src/xr/launcher.mojo`. Creates headless/OpenXR session, allocates default panel (size from AppConfig), applies XR UA stylesheet, mounts app, enters XR frame loop (wait_frame → poll_event → handle_event → flush → apply mutations → render → end_frame). Same mutation buffer management as desktop launcher. |
-| 5.6 | WebXR JS runtime (DOM → texture, XR session management) | 🔲 Future |
+| 5.6 | WebXR JS runtime (DOM → texture, XR session management) | 🔧 In progress — `xr/web/runtime/` created: `XRSessionManager` (WebXR session lifecycle, reference space negotiation, frame loop delegation), `XRPanelManager` + `XRPanel` (offscreen DOM containers, SVG foreignObject rasterization, WebGL texture upload, raycasting, spatial layout helpers), `XRQuadRenderer` (WebGL2 textured quad shader, per-view stereo rendering, cursor visualization), `XRInputHandler` (controller/hand ray → panel raycast → DOM pointer event synthesis with hover tracking, select→click sequences, focus management), `XRRuntime` (main entry point tying all subsystems together, WASM app loading, inline mutation interpreter, "Enter VR" button, flat-fallback mode). Remaining: end-to-end testing with a real WebXR device/emulator, SVG foreignObject fidelity validation, integration with `web/runtime/` Interpreter for full feature parity. |
 | 5.7 | Wire `launch()` for XR targets (`@parameter if is_xr_target()`) | ✅ Complete — `launch()` now dispatches: WASM → web, `-D MOJO_TARGET_XR` → `xr_launch`, native → `desktop_launch`. Added `is_xr_target()` compile-time detection. |
 | 5.8 | Verify shared examples in XR (all 4 apps render as floating panels) | ✅ Complete — All 4 shared examples (Counter, Todo, Benchmark, MultiView) build and run in XR headless mode. Fixed: Mojo `@parameter if` import resolution (all renderer `-I` paths needed), `performance_now()` cross-platform support (native uses `perf_counter_ns`), headless frame loop exit (idle frame counter replaces broken `predicted_time == 0` check). |
 | 5.9 | Multi-panel XR API — `XRGuiApp` trait for apps managing multiple panels (stretch goal) | 🔮 Future |
@@ -695,7 +728,7 @@ These decisions are settled and documented here for reference. See [architecture
 | Mojo `@parameter if` import resolution | Dead branches still trigger import resolution; adding a new renderer backend to `launch()` requires updating ALL native build commands | Include all renderer `-I` paths in every native build; document in justfile and Architecture Decisions (§7) | ✅ Mitigated — workaround in place since Step 5.8; will re-evaluate when Mojo improves `@parameter if` semantics |
 | Mojo WASM runtime import drift | New Mojo versions may add new WASM imports (e.g. `clock_gettime` in 26.1.0) that break the test harness | Pin Mojo version; update both `wasm_harness.mojo` and `web/runtime/env.ts` when upgrading; check `wasm-objdump -j Import` after Mojo upgrades | ✅ Mitigated — `clock_gettime` added for 26.1.0 |
 | OpenXR runtime availability (Phase 5) | XR fails without runtime | Detect at startup; fall back to desktop Blitz | In progress — headless mode (`mxr_create_headless`) implemented for testing without runtime; `xr_launch` uses headless by default until runtime detection is added |
-| DOM-to-texture fidelity for WebXR (Phase 5) | Rendering quality/interactivity loss | Evaluate OffscreenCanvas, html2canvas, CSS 3D, custom 2D renderer | Future |
+| DOM-to-texture fidelity for WebXR (Phase 5) | Rendering quality/interactivity loss | SVG foreignObject rasterization implemented with fallback text renderer; evaluate OffscreenCanvas, html2canvas for higher fidelity | 🔧 In progress — initial SVG foreignObject approach in `xr/web/runtime/xr-panel.ts`; needs real-device validation |
 | XR input latency (Phase 5) | Raycasting → DOM event adds latency to controller input | Keep raycast math in the shim (Rust); minimize FFI roundtrips | In progress — Rust-side raycasting implemented |
 | XR frame timing constraints (Phase 5) | OpenXR requires strict frame pacing; DOM re-render may exceed budget | Only re-render dirty panels; cache textures; use quad layers for compositor-side reprojection | In progress — dirty tracking per-panel implemented |
 
