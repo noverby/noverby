@@ -183,10 +183,10 @@ tangled-spindle-nix/
 
 **Goal**: Establish the Cargo workspace, Nix build, dev shell, and shared model types.
 
-- [ ] Create `Cargo.toml` workspace with all member crates
-- [ ] Set up `default.nix` with `rustPlatform.buildRustPackage`, dev shell, and `nixosModules.tangled-spindle-nix`
-- [ ] Set up `justfile` with common commands (`build`, `test`, `check`, `clippy`, `run`)
-- [ ] Implement `spindle-models` crate:
+- [x] Create `Cargo.toml` workspace with all member crates
+- [x] Set up `default.nix` with `rustPlatform.buildRustPackage`, dev shell, and `nixosModules.tangled-spindle-nix`
+- [x] Set up `justfile` with common commands (`build`, `test`, `check`, `clippy`, `run`)
+- [x] Implement `spindle-models` crate:
   - `PipelineId`, `WorkflowId` (matching upstream `models.go`)
   - `StatusKind` enum (`Pending`, `Running`, `Failed`, `Timeout`, `Cancelled`, `Success`)
   - `LogLine`, `LogKind`, `StepStatus`, `StepKind` types
@@ -194,7 +194,7 @@ tangled-spindle-nix/
   - `PipelineEnvVars` builder (matching upstream `pipeline_env.go`)
   - `SecretMask` (log redaction for secret values)
   - `WorkflowLogger` trait + `FileWorkflowLogger` + `NullLogger`
-- [ ] Write unit tests for model serialization, `WorkflowId::to_string()` normalization, and `PipelineEnvVars`
+- [x] Write unit tests for model serialization, `WorkflowId::to_string()` normalization, and `PipelineEnvVars`
 
 ### Phase 1 — Configuration & Database
 
@@ -287,6 +287,7 @@ pub trait Engine: Send + Sync {
 Transform workflow `dependencies` into a Nix environment:
 
 - [ ] Parse the `dependencies` map from the workflow YAML (same format as upstream):
+
   ```yaml
   dependencies:
     nixpkgs:
@@ -297,7 +298,9 @@ Transform workflow `dependencies` into a Nix environment:
     git+https://tangled.org/@example.com/my_pkg:
       - my_pkg
   ```
+
 - [ ] Generate a Nix expression that produces a combined `PATH` environment:
+
   ```nix
   let
     nixpkgs = import <nixpkgs> {};
@@ -318,7 +321,9 @@ Transform workflow `dependencies` into a Nix environment:
     ];
   }
   ```
+
   Or, more efficiently, use `nix build --expr` or `nix shell` with flake references.
+
 - [ ] Build the Nix closure: `nix build --no-link --print-out-paths -f /tmp/spindle-env-{wid}.nix`
 - [ ] Cache built closures by content-addressing the dependency set (hash the sorted dependency map)
 - [ ] Handle build failures gracefully, streaming Nix build output to the workflow logger
@@ -338,6 +343,7 @@ Transform workflow `dependencies` into a Nix environment:
 Each workflow step runs as a **child process** of the runner daemon. The runner's systemd service provides all sandboxing — child processes inherit it automatically, just like `github-runners`.
 
 - [ ] Implement step execution via `tokio::process::Command`:
+
   ```rust
   let child = Command::new("/bin/bash")
       .args(["-euo", "pipefail", "-c", &step.command])
@@ -353,6 +359,7 @@ Each workflow step runs as a **child process** of the runner daemon. The runner'
       .kill_on_drop(true)
       .spawn()?;
   ```
+
 - [ ] Stream stdout and stderr line-by-line to the `WorkflowLogger`, applying `SecretMask`
 - [ ] Handle exit codes: 0 = success, non-zero = step failure
 - [ ] Handle workflow timeout: wrap execution in `tokio::time::timeout`, kill child on expiry

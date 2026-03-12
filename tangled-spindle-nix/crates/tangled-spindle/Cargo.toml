@@ -1,0 +1,31 @@
+[package]
+name = "tangled-spindle"
+version = "0.1.0"
+authors = ["Niclas Overby <niclas@overby.me>"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust reimplementation of the Tangled Spindle CI runner with native Nix engine"
+
+[[bin]]
+name = "tangled-spindle"
+path = "src/main.rs"
+
+[dependencies]
+spindle-models = { workspace = true }
+spindle-engine = { workspace = true }
+spindle-jetstream = { workspace = true }
+spindle-knot = { workspace = true }
+spindle-db = { workspace = true }
+spindle-rbac = { workspace = true }
+spindle-secrets = { workspace = true }
+spindle-queue = { workspace = true }
+spindle-xrpc = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }

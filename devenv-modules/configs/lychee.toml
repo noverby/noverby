@@ -5,6 +5,8 @@ exclude = [
   '\$\{',
   '%7B',
   'localhost',
+  '127\.0\.0\.1',
+  'host\.docker\.internal',
   'https://github.com/example/',
   'https://fuchsia.googlesource.com/',
   'https://xcancel.com/',
