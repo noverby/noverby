@@ -11,8 +11,11 @@ description = "Knot event consumer for pipeline events in tangled-spindle-nix"
 spindle-models = { workspace = true }
 spindle-db = { workspace = true }
 tokio = { workspace = true }
-reqwest = { workspace = true }
+tokio-util = "0.7"
+reqwest = { workspace = true, features = ["stream"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+futures-util = "0.3"
+tokio-stream = "0.1"

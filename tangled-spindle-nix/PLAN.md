@@ -218,22 +218,22 @@ tangled-spindle-nix/
 
 **Goal**: Ingest AT Protocol events, matching upstream `ingester.go` and event consumer behavior.
 
-- [ ] Implement `spindle-jetstream`:
+- [x] Implement `spindle-jetstream`:
   - WebSocket client connecting to the Jetstream endpoint
   - Filter for `sh.tangled.spindle.member`, `sh.tangled.repo`, `sh.tangled.repo.collaborator` collections
   - DID-based subscription management (`add_did`, `remove_did`)
   - Cursor persistence via `spindle-db`
   - Reconnection with exponential backoff
-- [ ] Implement `spindle-knot`:
+- [x] Implement `spindle-knot`:
   - Event consumer that subscribes to knot HTTP event streams
   - Filters for `sh.tangled.pipeline` events
   - Cursor-based replay on reconnection
   - Dynamic source management (add/remove knots at runtime)
-- [ ] Implement ingestion logic in the main crate:
+- [x] Implement ingestion logic in the main crate:
   - `ingest_member` — add/remove spindle members, update DID watch list
   - `ingest_repo` — add repos to watch list when `spindle` field matches hostname, subscribe to knot
   - `ingest_collaborator` — resolve repo owner, add collaborator to RBAC
-- [ ] Write tests using mock WebSocket servers
+- [x] Write tests using mock WebSocket servers
 
 ### Phase 3 — Secrets Manager
 
