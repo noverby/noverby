@@ -134,6 +134,35 @@
       installPhase = "true";
     };
 
+    # ── Deno dependency cache for XR web tests ──────────────────────────
+    #
+    # Same npm:linkedom dependency as the main JS tests, but cached from
+    # the xr/web/deno.lock file. The XR web runtime tests also import
+    # from web/runtime/ (shared Interpreter), but those are local .ts
+    # files that don't require npm fetching.
+    #
+    # To update after changing XR JS dependencies:
+    #   1. Set outputHash to lib.fakeHash
+    #   2. Run: nix build .#checks.x86_64-linux.mojo-gui-test-xr-js 2>&1 | grep 'got:'
+    #   3. Replace outputHash with the printed hash
+    #
+    denoXrDeps = pkgs.stdenv.mkDerivation {
+      name = "mojo-gui-deno-xr-deps";
+      src = ./xr/web;
+      nativeBuildInputs = [pkgs.deno pkgs.cacert];
+
+      outputHash = "sha256-m9tykPefsuYkKq6nHAYh41ZxQizTXJ+LdpgNyLJnzbk=";
+      outputHashMode = "recursive";
+      outputHashAlgo = "sha256";
+
+      buildPhase = ''
+        export DENO_DIR=$out
+        export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+        deno cache --lock=deno.lock test-js/run.ts
+      '';
+      installPhase = "true";
+    };
+
     # ── System libraries required by the Mojo native linker ─────────────
     #
     # mojo build (native target) invokes the system linker with:
@@ -320,7 +349,43 @@
       meta.description = "mojo-gui JS integration tests (30 suites, ~3,375 tests via Deno)";
     };
 
-    # ── 5. Build all examples for all targets ─────────────────────────
+    # ── 5. XR web runtime JS tests ───────────────────────────────────
+    #
+    # 4 JS test suites (414 tests) for the WebXR browser renderer.
+    # Tests cover: XR types/config, panel management/raycasting/layout,
+    # input handler (hover/click/focus), and runtime state machine.
+    # Runs via Deno with linkedom for headless DOM — no WebXR, GPU,
+    # or WASM needed.
+    #
+    # The XR runtime imports the shared Interpreter and TemplateCache
+    # from web/runtime/, so monoSrc is used (not just xr/web/).
+    mojo-gui-test-xr-js = pkgs.stdenv.mkDerivation {
+      name = "check-mojo-gui-test-xr-js";
+      src = monoSrc;
+
+      nativeBuildInputs = [pkgs.deno];
+
+      buildPhase = ''
+        export HOME=$TMPDIR
+
+        # Point Deno at the pre-fetched dependency cache.
+        # Use a writable copy since Deno may write metadata files.
+        cp -r ${denoXrDeps} $TMPDIR/deno-cache
+        chmod -R u+w $TMPDIR/deno-cache
+        export DENO_DIR=$TMPDIR/deno-cache
+
+        cd mojo-gui/xr/web
+
+        # Run XR web runtime JS tests
+        deno run --allow-read --allow-env test-js/run.ts
+      '';
+
+      installPhase = "touch $out";
+
+      meta.description = "mojo-gui XR web runtime JS tests (4 suites, 414 tests via Deno)";
+    };
+
+    # ── 6. Build all examples for all targets ─────────────────────────
     #
     # Verifies that all 4 shared examples (Counter, Todo, Benchmark,
     # MultiView) compile for web (WASM), desktop (native), and XR (native).
