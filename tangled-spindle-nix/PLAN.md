@@ -200,19 +200,19 @@ tangled-spindle-nix/
 
 **Goal**: Configuration loading and SQLite persistence, matching the upstream schema.
 
-- [ ] Implement `spindle-config` inside `tangled-spindle` (or as part of its `config.rs`):
+- [x] Implement `spindle-config` inside `tangled-spindle` (or as part of its `config.rs`):
   - Parse the same `SPINDLE_SERVER_*` and `SPINDLE_NIXERY_PIPELINES_*` env vars
   - Add new `SPINDLE_ENGINE` env var (default `"nix"`) for engine selection
   - Derive `did:web:{hostname}` just like upstream
-- [ ] Implement `spindle-db`:
+- [x] Implement `spindle-db`:
   - SQLite via `rusqlite` with WAL mode
   - Migration system (embed SQL via `include_str!`)
   - Tables: `repos`, `spindle_members`, `dids`, `events`, `workflow_status`, `last_time_us`
   - Query functions: `add_repo`, `get_repo`, `get_all_dids`, `add_did`, `remove_did`, `save_last_time_us`, `get_events(cursor)`, `status_pending`, `status_running`, `status_failed`, `status_success`, `status_timeout`, `status_cancelled`, `get_status`, `knots`
-- [ ] Implement `spindle-rbac`:
+- [x] Implement `spindle-rbac`:
   - Use `casbin-rs` with the same model/policy as upstream
   - `add_spindle`, `add_spindle_owner`, `add_spindle_member`, `remove_spindle_member`, `is_spindle_invite_allowed`, `add_repo`, `add_collaborator`, `is_collaborator_invite_allowed`, `get_spindle_users_by_role`
-- [ ] Write integration tests for DB and RBAC (using temp SQLite databases)
+- [x] Write integration tests for DB and RBAC (using temp SQLite databases)
 
 ### Phase 2 — Jetstream & Knot Event Consumers
 

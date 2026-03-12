@@ -15,3 +15,22 @@
 //! - `is_spindle_invite_allowed`
 //! - `add_repo` / `add_collaborator` / `is_collaborator_invite_allowed`
 //! - `get_spindle_users_by_role`
+//!
+//! # Usage
+//!
+//! ```no_run
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! use spindle_rbac::SpindleEnforcer;
+//!
+//! let enforcer = SpindleEnforcer::new().await?;
+//! enforcer.add_spindle("did:web:spindle.example.com").await?;
+//! enforcer.add_spindle_owner("did:web:spindle.example.com", "did:plc:owner123").await?;
+//!
+//! assert!(enforcer.is_spindle_invite_allowed("did:plc:owner123").await?);
+//! # Ok(())
+//! # }
+//! ```
+
+pub mod enforcer;
+
+pub use enforcer::{RbacError, SpindleEnforcer};
