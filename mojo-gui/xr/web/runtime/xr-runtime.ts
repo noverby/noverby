@@ -42,6 +42,12 @@
 //   // Later:
 //   await runtime.stop();
 
+// Shared mutation interpreter and template cache from web/runtime.
+// These replace the inline mutation applier that was previously duplicated
+// in this file (~420 lines). Using the shared implementation ensures full
+// DOM feature parity with the web renderer.
+import { Interpreter } from "../../../web/runtime/interpreter.ts";
+import { TemplateCache } from "../../../web/runtime/templates.ts";
 import type { XRPointerEventNameType } from "./xr-input.ts";
 import { XRInputHandler } from "./xr-input.ts";
 import { type XRPanel, XRPanelManager } from "./xr-panel.ts";
@@ -477,40 +483,46 @@ export class XRRuntime {
 			bufPtr = 0n;
 		}
 
-		// 6. Set up an inline Interpreter-like handler for mutations.
-		// We apply mutations to the panel's container element using a
-		// lightweight mutation applier. For the full integration, the
-		// existing web/runtime Interpreter would be used, but to avoid
-		// import-time coupling, we store a reference and let the caller
-		// wire it up.
+		// 6. Set up a shared Interpreter for mutations.
+		// We use the web/runtime Interpreter and TemplateCache to apply
+		// binary mutation buffers to the panel's DOM container. This gives
+		// full DOM feature parity with the web renderer.
 		//
 		// The handler map tracks (panelId:elementId:eventName) → handlerId
 		// for event dispatch from XR input.
 		const panelId = panel.id;
-		const interpreterState = {
-			nodes: new Map<number, Node>([[0, panel.container]]),
-			stack: [] as Node[],
-			templateRoots: new Map<number, Node[]>(),
-			listeners: new Map<number, Map<string, EventListener>>(),
+		const templateCache = new TemplateCache(this._doc);
+		const interpreter = new Interpreter(
+			panel.container,
+			templateCache,
+			this._doc,
+		);
+
+		// Wire the Interpreter's listener callbacks to populate the
+		// handler map. XR input doesn't use DOM event listeners directly —
+		// it raycasts controller rays and dispatches via the handler map.
+		interpreter.onNewListener = (
+			elementId: number,
+			eventName: string,
+			handlerId: number,
+		): EventListener => {
+			this._handlerMap.set(`${panelId}:${elementId}:${eventName}`, handlerId);
+			return () => {}; // no-op — XR input bypasses DOM events
 		};
 
-		// Create a minimal mutation applier that works with the panel's DOM.
-		// This replicates the core logic from web/examples/lib/interpreter.js
-		// and web/runtime/interpreter.ts, tailored for the XR panel context.
+		interpreter.onRemoveListener = (
+			elementId: number,
+			eventName: string,
+		): void => {
+			this._handlerMap.delete(`${panelId}:${elementId}:${eventName}`);
+		};
+
 		const applyMutations = (
 			buffer: ArrayBuffer,
 			byteOffset: number,
 			byteLength: number,
 		) => {
-			applyMutationsToPanel(
-				buffer,
-				byteOffset,
-				byteLength,
-				interpreterState,
-				this._doc,
-				panelId,
-				this._handlerMap,
-			);
+			interpreter.applyMutations(buffer, byteOffset, byteLength);
 			panel.markDirty();
 		};
 
@@ -1169,440 +1181,6 @@ export class XRRuntime {
 			} catch (err) {
 				console.error("XRRuntime: error in event listener:", err);
 			}
-		}
-	}
-}
-
-// ── Inline Mutation Applier ─────────────────────────────────────────────────
-// A minimal, self-contained mutation interpreter that applies binary mutation
-// buffers to a panel's DOM container. This replicates the essential logic
-// from web/runtime/interpreter.ts and web/runtime/protocol.ts without
-// requiring those modules as imports (to keep xr/web/runtime independent
-// of web/runtime's module system).
-//
-// In production, you'd import and reuse the web/runtime Interpreter directly.
-// This inline version covers the critical opcodes for the MVP.
-
-// Opcodes (must match core/src/bridge/protocol.mojo and web/runtime/protocol.ts)
-const Op = {
-	End: 0x00,
-	AppendChildren: 0x01,
-	AssignId: 0x02,
-	CreatePlaceholder: 0x03,
-	CreateTextNode: 0x04,
-	LoadTemplate: 0x05,
-	ReplaceWith: 0x06,
-	ReplacePlaceholder: 0x07,
-	InsertAfter: 0x08,
-	InsertBefore: 0x09,
-	SetAttribute: 0x0a,
-	SetText: 0x0b,
-	NewEventListener: 0x0c,
-	RemoveEventListener: 0x0d,
-	Remove: 0x0e,
-	PushRoot: 0x0f,
-	RegisterTemplate: 0x10,
-	RemoveAttribute: 0x11,
-} as const;
-
-// Tag names (must match core/src/vdom/tags.mojo)
-const TAG_NAMES = [
-	"div",
-	"span",
-	"p",
-	"section",
-	"header",
-	"footer",
-	"nav",
-	"main",
-	"article",
-	"aside",
-	"h1",
-	"h2",
-	"h3",
-	"h4",
-	"h5",
-	"h6",
-	"ul",
-	"ol",
-	"li",
-	"button",
-	"input",
-	"form",
-	"textarea",
-	"select",
-	"option",
-	"label",
-	"a",
-	"img",
-	"table",
-	"thead",
-	"tbody",
-	"tr",
-	"td",
-	"th",
-	"strong",
-	"em",
-	"br",
-	"hr",
-	"pre",
-	"code",
-];
-
-interface InterpreterState {
-	nodes: Map<number, Node>;
-	stack: Node[];
-	templateRoots: Map<number, Node[]>;
-	listeners: Map<number, Map<string, EventListener>>;
-}
-
-/**
- * Apply binary-encoded mutations to a panel's DOM.
- *
- * This is a self-contained implementation that doesn't depend on
- * web/runtime imports. It decodes the binary protocol and applies
- * DOM operations to the interpreter state.
- */
-function applyMutationsToPanel(
-	buffer: ArrayBuffer,
-	byteOffset: number,
-	byteLength: number,
-	state: InterpreterState,
-	doc: Document,
-	panelId: number,
-	handlerMap: Map<string, number>,
-): void {
-	const decoder = new TextDecoder();
-	const view = new DataView(buffer, byteOffset, byteLength);
-	const bytes = new Uint8Array(buffer, byteOffset, byteLength);
-	let offset = 0;
-
-	function readU8(): number {
-		const v = view.getUint8(offset);
-		offset += 1;
-		return v;
-	}
-
-	function readU16(): number {
-		const v = view.getUint16(offset, true);
-		offset += 2;
-		return v;
-	}
-
-	function readU32(): number {
-		const v = view.getUint32(offset, true);
-		offset += 4;
-		return v;
-	}
-
-	function readStr(): string {
-		const len = readU32();
-		if (len === 0) return "";
-		const slice = bytes.subarray(offset, offset + len);
-		offset += len;
-		return decoder.decode(slice);
-	}
-
-	function readShortStr(): string {
-		const len = readU16();
-		if (len === 0) return "";
-		const slice = bytes.subarray(offset, offset + len);
-		offset += len;
-		return decoder.decode(slice);
-	}
-
-	function readPath(): Uint8Array {
-		const len = readU8();
-		const path = bytes.slice(offset, offset + len);
-		offset += len;
-		return path;
-	}
-
-	function buildTemplateNode(
-		nodeIdx: number,
-		nodes: Array<{
-			kind: number;
-			tag?: number;
-			children?: number[];
-			attrFirst?: number;
-			attrCount?: number;
-			text?: string;
-		}>,
-		attrs: Array<{ kind: number; name?: string; value?: string }>,
-	): Node {
-		const node = nodes[nodeIdx];
-		switch (node.kind) {
-			case 0x00: {
-				const tag = TAG_NAMES[node.tag!] || "div";
-				const el = doc.createElement(tag);
-				if (node.attrCount! > 0) {
-					for (let a = 0; a < node.attrCount!; a++) {
-						const attr = attrs[node.attrFirst! + a];
-						if (attr.kind === 0x00 && attr.name && attr.value !== undefined) {
-							el.setAttribute(attr.name, attr.value);
-						}
-					}
-				}
-				if (node.children) {
-					for (const childIdx of node.children) {
-						el.appendChild(buildTemplateNode(childIdx, nodes, attrs));
-					}
-				}
-				return el;
-			}
-			case 0x01:
-				return doc.createTextNode(node.text || "");
-			case 0x02:
-				return doc.createComment("placeholder");
-			case 0x03:
-				return doc.createTextNode("");
-			default:
-				return doc.createComment("unknown");
-		}
-	}
-
-	while (offset < byteLength) {
-		const op = readU8();
-
-		switch (op) {
-			case Op.End:
-				return;
-
-			case Op.PushRoot: {
-				const id = readU32();
-				const node = state.nodes.get(id);
-				if (node) state.stack.push(node);
-				break;
-			}
-
-			case Op.AppendChildren: {
-				const id = readU32();
-				const m = readU32();
-				const parent = state.nodes.get(id);
-				if (parent) {
-					const children = state.stack.splice(-m, m);
-					for (const c of children) parent.appendChild(c);
-				}
-				break;
-			}
-
-			case Op.CreateTextNode: {
-				const id = readU32();
-				const text = readStr();
-				const node = doc.createTextNode(text);
-				state.nodes.set(id, node);
-				state.stack.push(node);
-				break;
-			}
-
-			case Op.CreatePlaceholder: {
-				const id = readU32();
-				const node = doc.createComment("placeholder");
-				state.nodes.set(id, node);
-				state.stack.push(node);
-				break;
-			}
-
-			case Op.LoadTemplate: {
-				const tmplId = readU32();
-				const index = readU32();
-				const id = readU32();
-				const roots = state.templateRoots.get(tmplId);
-				if (roots?.[index]) {
-					const node = roots[index].cloneNode(true);
-					state.nodes.set(id, node);
-					state.stack.push(node);
-				}
-				break;
-			}
-
-			case Op.AssignId: {
-				const path = readPath();
-				const id = readU32();
-				let node = state.stack[state.stack.length - 1];
-				for (const idx of path) node = node.childNodes[idx];
-				state.nodes.set(id, node);
-				break;
-			}
-
-			case Op.SetAttribute: {
-				const id = readU32();
-				const _ns = readU8();
-				const name = readShortStr();
-				const value = readStr();
-				const node = state.nodes.get(id);
-				if (node && "setAttribute" in node) {
-					(node as Element).setAttribute(name, value);
-				}
-				break;
-			}
-
-			case Op.RemoveAttribute: {
-				const id = readU32();
-				const _ns = readU8();
-				const name = readShortStr();
-				const node = state.nodes.get(id);
-				if (node && "removeAttribute" in node) {
-					(node as Element).removeAttribute(name);
-				}
-				break;
-			}
-
-			case Op.SetText: {
-				const id = readU32();
-				const text = readStr();
-				const node = state.nodes.get(id);
-				if (node) node.textContent = text;
-				break;
-			}
-
-			case Op.NewEventListener: {
-				const id = readU32();
-				const handlerId = readU32();
-				const name = readShortStr();
-
-				// Register in the handler map for XR input dispatch
-				handlerMap.set(`${panelId}:${id}:${name}`, handlerId);
-				break;
-			}
-
-			case Op.RemoveEventListener: {
-				const id = readU32();
-				const name = readShortStr();
-				handlerMap.delete(`${panelId}:${id}:${name}`);
-				break;
-			}
-
-			case Op.Remove: {
-				const id = readU32();
-				const node = state.nodes.get(id);
-				if (node?.parentNode) node.parentNode.removeChild(node);
-				break;
-			}
-
-			case Op.ReplaceWith: {
-				const id = readU32();
-				const m = readU32();
-				const old = state.nodes.get(id);
-				const reps = state.stack.splice(-m, m);
-				if (old?.parentNode) {
-					old.parentNode.replaceChild(reps[0], old);
-					for (let i = 1; i < reps.length; i++) {
-						old.parentNode!.insertBefore(reps[i], reps[i - 1].nextSibling);
-					}
-				}
-				break;
-			}
-
-			case Op.ReplacePlaceholder: {
-				const path = readPath();
-				const m = readU32();
-				const reps = state.stack.splice(-m, m);
-				let target: Node = state.stack[state.stack.length - 1];
-				for (const idx of path) target = target.childNodes[idx];
-				const parent = target.parentNode;
-				if (parent) {
-					for (const r of reps) parent.insertBefore(r, target);
-					parent.removeChild(target);
-				}
-				break;
-			}
-
-			case Op.InsertAfter: {
-				const id = readU32();
-				const m = readU32();
-				const ref = state.nodes.get(id);
-				const newNodes = state.stack.splice(-m, m);
-				if (ref?.parentNode) {
-					let point = ref.nextSibling;
-					for (const n of newNodes) {
-						ref.parentNode.insertBefore(n, point);
-						point = n.nextSibling;
-					}
-				}
-				break;
-			}
-
-			case Op.InsertBefore: {
-				const id = readU32();
-				const m = readU32();
-				const ref = state.nodes.get(id);
-				const newNodes = state.stack.splice(-m, m);
-				if (ref?.parentNode) {
-					for (const n of newNodes) ref.parentNode.insertBefore(n, ref);
-				}
-				break;
-			}
-
-			case Op.RegisterTemplate: {
-				const tmplId = readU32();
-				const _name = readShortStr();
-				const rootCount = readU16();
-				const nodeCount = readU16();
-				const attrCount = readU16();
-
-				const nodes: Array<{
-					kind: number;
-					tag?: number;
-					children?: number[];
-					attrFirst?: number;
-					attrCount?: number;
-					text?: string;
-					dynamicIndex?: number;
-				}> = [];
-
-				for (let i = 0; i < nodeCount; i++) {
-					const kind = readU8();
-					if (kind === 0x00) {
-						const tag = readU8();
-						const childCount = readU16();
-						const children: number[] = [];
-						for (let c = 0; c < childCount; c++) children.push(readU16());
-						const attrFirst = readU16();
-						const attrNum = readU16();
-						nodes.push({ kind, tag, children, attrFirst, attrCount: attrNum });
-					} else if (kind === 0x01) {
-						nodes.push({ kind, text: readStr() });
-					} else if (kind === 0x02) {
-						nodes.push({ kind, dynamicIndex: readU32() });
-					} else if (kind === 0x03) {
-						nodes.push({ kind, dynamicIndex: readU32() });
-					}
-				}
-
-				const attrs: Array<{
-					kind: number;
-					name?: string;
-					value?: string;
-					dynamicIndex?: number;
-				}> = [];
-
-				for (let i = 0; i < attrCount; i++) {
-					const akind = readU8();
-					if (akind === 0x00) {
-						attrs.push({ kind: akind, name: readShortStr(), value: readStr() });
-					} else if (akind === 0x01) {
-						attrs.push({ kind: akind, dynamicIndex: readU32() });
-					}
-				}
-
-				const rootIndices: number[] = [];
-				for (let i = 0; i < rootCount; i++) rootIndices.push(readU16());
-
-				const roots: Node[] = [];
-				for (const rootIdx of rootIndices) {
-					roots.push(buildTemplateNode(rootIdx, nodes, attrs));
-				}
-				state.templateRoots.set(tmplId, roots);
-				break;
-			}
-
-			default:
-				// Unknown opcode — skip (this shouldn't happen)
-				console.warn(
-					`XR mutation applier: unknown opcode 0x${op.toString(16)} at offset ${offset - 1}`,
-				);
-				return;
 		}
 	}
 }
