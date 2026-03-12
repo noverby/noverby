@@ -8,6 +8,7 @@
 import { summary } from "./harness.ts";
 import { testXRInput } from "./xr-input.test.ts";
 import { testXRPanel } from "./xr-panel.test.ts";
+import { testXRRasterize, testXRRasterizeAsync } from "./xr-rasterize.test.ts";
 import { testXRRuntime } from "./xr-runtime.test.ts";
 import { testXRTypes } from "./xr-types.test.ts";
 
@@ -18,8 +19,11 @@ async function run(): Promise<void> {
 	testXRTypes();
 	testXRPanel();
 	testXRInput();
+	testXRRasterize();
 
-	// Async test suites (XR runtime uses async initialize/destroy)
+	// Async test suites (XR runtime uses async initialize/destroy,
+	// rasterize async tests use async updateDirtyTextures)
+	await testXRRasterizeAsync();
 	await testXRRuntime();
 
 	summary();
