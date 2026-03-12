@@ -10,9 +10,14 @@ description = "Jetstream client for AT Protocol event ingestion in tangled-spind
 [dependencies]
 spindle-models = { workspace = true }
 spindle-db = { workspace = true }
+spindle-rbac = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
+tokio-util = "0.7"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+async-trait = { workspace = true }
+url = "2"
+futures-util = "0.3"
