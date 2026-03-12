@@ -65,7 +65,13 @@ Render mojo-gui panels into 3D XR (extended reality) environments via OpenXR. Ea
 | **XR Blitz shim** | `native/shim/src/lib.rs` | Rust cdylib — multi-panel Blitz BaseDocument, headless mode, raycasting, event ring buffer, DOM serialization, Stylo+Taffy layout, output-pointer FFI variants |
 | **C API header** | `native/shim/mojo_xr.h` | Flat C ABI — ~83 functions: session lifecycle, panel management, mutations, events, frame loop, input, raycasting, debug (incl. 3 `_into()` output-pointer variants) |
 | **Nix derivation** | `native/shim/default.nix` | Rust build with Blitz + OpenXR + GPU deps |
-| **WebXR runtime** | `web/runtime/` | 🔮 Future — WebXR session lifecycle, DOM-to-texture rendering, XR input bridging |
+| **WebXR session** | `web/runtime/xr-session.ts` | `XRSessionManager` — WebXR session lifecycle, feature detection, reference space negotiation, WebGL2 context with `xrCompatible`, frame loop delegation |
+| **WebXR panels** | `web/runtime/xr-panel.ts` | `XRPanel` + `XRPanelManager` — offscreen DOM containers, SVG foreignObject DOM→canvas rasterization, WebGL texture upload, raycasting, spatial layout helpers (`arrangeArc`, `arrangeGrid`, `arrangeStack`) |
+| **WebXR renderer** | `web/runtime/xr-renderer.ts` | `XRQuadRenderer` — WebGL2 GLSL ES 3.0 textured quad shader, per-view stereo rendering, cursor visualization, GL state save/restore |
+| **WebXR input** | `web/runtime/xr-input.ts` | `XRInputHandler` — controller/hand ray extraction, panel raycasting, hover tracking (enter/leave/move with ~30Hz throttle), select→click synthesis, focus management |
+| **WebXR runtime** | `web/runtime/xr-runtime.ts` | `XRRuntime` — main entry point, WASM loading, `createAppPanel()`, inline mutation interpreter (all 18 opcodes), handler map for XR input→WASM dispatch, "Enter VR" button, flat-fallback mode |
+| **WebXR types** | `web/runtime/xr-types.ts` | TypeScript types mirroring native XR panel types: `Vec3`, `Quaternion`, `PanelConfig` (with presets), `RaycastHit`, `XRRuntimeConfig`, WebXR API compat interfaces |
+| **WebXR exports** | `web/runtime/mod.ts` | Module re-exports — single import path for the full WebXR public API |
 
 ## Project Structure
 
@@ -87,9 +93,16 @@ xr/
 │       ├── renderer.mojo        # XRMutationInterpreter (per-panel opcode interpreter)
 │       ├── panel.mojo           # XRPanel, PanelConfig, Vec3, Quaternion, presets
 │       └── scene.mojo           # XRScene, XREvent, RaycastHit, layout helpers
-├── web/                          # WebXR browser renderer (future — Step 5.6)
-│   ├── runtime/                  # (not yet created)
-│   └── src/                      # (not yet created)
+├── web/                          # WebXR browser renderer (Step 5.6 — 🔧 in progress)
+│   ├── runtime/
+│   │   ├── mod.ts                # Module re-exports — single import path
+│   │   ├── xr-types.ts           # Vec3, Quaternion, PanelConfig, RaycastHit, XRRuntimeConfig, compat types
+│   │   ├── xr-session.ts         # XRSessionManager — lifecycle, ref spaces, GL setup, frame loop
+│   │   ├── xr-panel.ts           # XRPanel + XRPanelManager — DOM containers, SVG rasterization, textures
+│   │   ├── xr-renderer.ts        # XRQuadRenderer — WebGL2 textured quad shader, stereo, cursor
+│   │   ├── xr-input.ts           # XRInputHandler — raycasting, hover, select→click, focus
+│   │   └── xr-runtime.ts         # XRRuntime — main entry, WASM loading, inline interpreter, flat fallback
+│   └── src/                      # (future — Mojo WASM exports for WebXR feature flag)
 └── README.md                     # This file
 ```
 
@@ -193,7 +206,7 @@ mojo build examples/counter/main.mojo -D MOJO_TARGET_XR -I core/src -I xr/native
 | 5.3 | Mojo FFI bindings (`xr_blitz.mojo`) | ✅ Complete — `XRBlitz` struct (~70 methods), `XRMutationInterpreter` (all 18 opcodes), `XREvent`/`XRPose`/`XRRaycastHit` types, all constants. `poll_event()`, `raycast_panels()`, `get_pose()` fully functional via `_into()` output-pointer variants |
 | 5.4 | XR scene manager and panel routing | ✅ Complete (single-panel) — `XRScene` provides panel registry, focus management, dirty tracking, raycasting, spatial layout helpers. Multi-panel routing deferred to Step 5.9 |
 | 5.5 | `xr_launch[AppType: GuiApp]()` | ✅ Complete — creates headless/OpenXR session, allocates default panel from AppConfig, applies XR UA stylesheet, mounts app, enters XR frame loop |
-| 5.6 | WebXR JS runtime | 🔲 Future |
+| 5.6 | WebXR JS runtime | 🔧 In progress — `xr/web/runtime/` created: `XRSessionManager`, `XRPanelManager` + `XRPanel` (SVG foreignObject rasterization, WebGL textures, raycasting), `XRQuadRenderer` (WebGL2 stereo rendering), `XRInputHandler` (hover tracking, select→click, focus), `XRRuntime` (WASM loading, inline interpreter, "Enter VR" button, flat fallback). Remaining: E2E testing with real device/emulator |
 | 5.7 | Wire `launch()` for XR targets | ✅ Complete — `launch()` dispatches: WASM → web, `-D MOJO_TARGET_XR` → `xr_launch`, native → `desktop_launch`. Added `is_xr_target()` compile-time detection |
 | 5.8 | Verify shared examples in XR | ✅ Complete — all 4 examples build and run in headless mode (exit code 0). Fixed: `@parameter if` import resolution, cross-platform `performance_now()`, headless frame loop exit |
 | 5.9 | Multi-panel XR API (stretch goal) | 🔮 Future |
@@ -205,7 +218,7 @@ mojo build examples/counter/main.mojo -D MOJO_TARGET_XR -I core/src -I xr/native
 | OpenXR runtime unavailable | XR features fail without runtime | Runtime detection at startup; fall back to desktop Blitz; headless mode for testing | 🔧 Headless mode implemented; runtime detection pending |
 | XR input latency | Raycasting → DOM event adds latency | Keep raycast math in Rust (shim-side); minimize FFI roundtrips | ✅ Rust-side raycasting implemented |
 | Frame timing constraints | OpenXR requires strict frame pacing | Only re-render dirty panels; cache textures; use quad layers for reprojection | 🔧 Dirty tracking per-panel implemented |
-| DOM-to-texture fidelity (WebXR) | Rendering DOM to WebGL texture may lose interactivity | Evaluate OffscreenCanvas, html2canvas, custom 2D renderers | 🔲 Future (Step 5.6) |
+| DOM-to-texture fidelity (WebXR) | Rendering DOM to WebGL texture may lose interactivity | SVG foreignObject rasterization implemented with fallback text renderer; evaluate OffscreenCanvas, html2canvas for higher fidelity | 🔧 In progress — initial approach in `xr/web/runtime/xr-panel.ts`; needs real-device validation |
 | Mojo `@parameter if` import resolution | Dead branches resolve imports; all renderer `-I` paths needed | All native builds include all renderer include paths; documented | ✅ Workaround in place |
 
 ## See Also
