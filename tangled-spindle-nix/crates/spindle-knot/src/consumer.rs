@@ -428,6 +428,7 @@ fn build_events_url(knot: &str, cursor: Option<&str>) -> String {
 }
 
 /// Connect to a knot event stream and process events until disconnection.
+#[allow(clippy::too_many_arguments)]
 async fn stream_events(
     http_client: &reqwest::Client,
     url: &str,
@@ -476,17 +477,17 @@ async fn stream_events(
 
                             if line.is_empty() {
                                 // Empty line = end of event
-                                if !current_event.data.is_empty() {
-                                    if let Err(e) = process_sse_event(
+                                if !current_event.data.is_empty()
+                                    && let Err(e) = process_sse_event(
                                         knot,
                                         &current_event,
                                         cursor,
                                         event_tx,
                                         db,
                                         connections,
-                                    ).await {
-                                        debug!(%e, knot = %knot, "failed to process SSE event");
-                                    }
+                                    ).await
+                                {
+                                    debug!(%e, knot = %knot, "failed to process SSE event");
                                 }
                                 current_event = SseEvent::default();
                             } else if let Some(value) = line.strip_prefix("event:") {

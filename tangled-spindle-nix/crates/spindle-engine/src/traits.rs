@@ -14,21 +14,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use spindle_models::{Pipeline, Workflow, WorkflowId, WorkflowLogger};
-
-/// An unlocked secret ready for injection into a workflow step's environment.
-///
-/// This is a simplified representation of a secret that has been decrypted
-/// and is ready to be passed as an environment variable. The full secret
-/// management types live in `spindle-secrets`; this struct is used here to
-/// avoid a circular dependency.
-#[derive(Debug, Clone)]
-pub struct UnlockedSecret {
-    /// The secret key / environment variable name.
-    pub key: String,
-    /// The decrypted secret value.
-    pub value: String,
-}
+use spindle_models::{Pipeline, UnlockedSecret, Workflow, WorkflowId, WorkflowLogger};
 
 /// Errors that can occur during engine operations.
 #[derive(Debug, thiserror::Error)]
