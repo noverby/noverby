@@ -16,5 +16,6 @@ in {
     ln -sf ${commitlintrc} .commitlintrc.yml
     mkdir -p .zed && cp -f ${./zed/settings.jsonc} .zed/settings.json
     cp -f ${./zed/rules.md} .rules
+    mkdir -p .claude && cp -f ${./claude-settings.json} .claude/settings.json
   '';
 }
