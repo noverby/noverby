@@ -16,3 +16,5 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 tracing = { workspace = true }
+sha2 = "0.10"
+hex = "0.4"

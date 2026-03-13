@@ -286,7 +286,7 @@ pub trait Engine: Send + Sync {
 
 Transform workflow `dependencies` into a Nix environment:
 
-- [ ] Parse the `dependencies` map from the workflow YAML (same format as upstream):
+- [x] Parse the `dependencies` map from the workflow YAML (same format as upstream):
 
   ```yaml
   dependencies:
@@ -299,7 +299,7 @@ Transform workflow `dependencies` into a Nix environment:
       - my_pkg
   ```
 
-- [ ] Generate a Nix expression that produces a combined `PATH` environment:
+- [x] Generate a Nix expression that produces a combined `PATH` environment:
 
   ```nix
   let
@@ -324,25 +324,25 @@ Transform workflow `dependencies` into a Nix environment:
 
   Or, more efficiently, use `nix build --expr` or `nix shell` with flake references.
 
-- [ ] Build the Nix closure: `nix build --no-link --print-out-paths -f /tmp/spindle-env-{wid}.nix`
-- [ ] Cache built closures by content-addressing the dependency set (hash the sorted dependency map)
-- [ ] Handle build failures gracefully, streaming Nix build output to the workflow logger
+- [x] Build the Nix closure: `nix build --no-link --print-out-paths -f /tmp/spindle-env-{wid}.nix`
+- [x] Cache built closures by content-addressing the dependency set (hash the sorted dependency map)
+- [x] Handle build failures gracefully, streaming Nix build output to the workflow logger
 
 #### 4b — Workspace Management (`workspace.rs`)
 
-- [ ] Create per-workflow workspace directories under a configurable root (default `/var/lib/tangled-spindle-{name}/workspaces/{wid}`)
-- [ ] The workspace persists across steps within a single workflow (matching Docker's `/tangled/workspace` bind mount)
-- [ ] Clone step: implement the shared clone logic (matching upstream `models/clone.go`):
+- [x] Create per-workflow workspace directories under a configurable root (default `/var/lib/tangled-spindle-{name}/workspaces/{wid}`)
+- [x] The workspace persists across steps within a single workflow (matching Docker's `/tangled/workspace` bind mount)
+- [x] Clone step: implement the shared clone logic (matching upstream `models/clone.go`):
   - `git clone --depth={depth} --branch={branch} {repo_url} {workspace_dir}`
   - Optionally `--recurse-submodules`
   - Optionally skip clone
-- [ ] Clean up workspace on `destroy_workflow`
+- [x] Clean up workspace on `destroy_workflow`
 
 #### 4c — Step Execution (`nix_engine.rs`)
 
 Each workflow step runs as a **child process** of the runner daemon. The runner's systemd service provides all sandboxing — child processes inherit it automatically, just like `github-runners`.
 
-- [ ] Implement step execution via `tokio::process::Command`:
+- [x] Implement step execution via `tokio::process::Command`:
 
   ```rust
   let child = Command::new("/bin/bash")
@@ -360,15 +360,15 @@ Each workflow step runs as a **child process** of the runner daemon. The runner'
       .spawn()?;
   ```
 
-- [ ] Stream stdout and stderr line-by-line to the `WorkflowLogger`, applying `SecretMask`
-- [ ] Handle exit codes: 0 = success, non-zero = step failure
-- [ ] Handle workflow timeout: wrap execution in `tokio::time::timeout`, kill child on expiry
-- [ ] Implement `destroy_workflow`: kill any still-running child processes, clean workspace
+- [x] Stream stdout and stderr line-by-line to the `WorkflowLogger`, applying `SecretMask`
+- [x] Handle exit codes: 0 = success, non-zero = step failure
+- [x] Handle workflow timeout: wrap execution in `tokio::time::timeout`, kill child on expiry
+- [x] Implement `destroy_workflow`: kill any still-running child processes, clean workspace
 
 #### 4d — Secret Injection
 
-- [ ] Secrets are injected as environment variables into each step's child process
-- [ ] Secret values are masked in log output via `SecretMask`
+- [x] Secrets are injected as environment variables into each step's child process
+- [x] Secret values are masked in log output via `SecretMask`
 
 ### Phase 5 — HTTP Server & WebSocket Streaming
 
