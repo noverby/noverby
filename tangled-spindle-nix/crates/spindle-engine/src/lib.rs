@@ -12,8 +12,12 @@
 //! 3. Executing individual steps as child processes.
 //! 4. Tearing down the execution environment after completion.
 
+pub mod nix_deps;
+pub mod nix_engine;
 pub mod traits;
+pub mod workspace;
 
+pub use nix_engine::NixEngine;
 pub use traits::Engine;
 
 // Re-export `UnlockedSecret` from `spindle-models` for backward compatibility.
