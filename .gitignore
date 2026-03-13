@@ -34,6 +34,7 @@ kgen.trace.json.*
 .rumdl_cache
 
 # Generated configs
+/.claude
 /.commitlintrc.yml
 /.pre-commit-config.yaml
 /.rules

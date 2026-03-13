@@ -37,5 +37,6 @@
   | `.commitlintrc.yml` | `devenv-modules/configs/commitlintrc.nix` | generated (Nix derivation) — scope list is auto-derived from top-level directory names |
   | `.zed/settings.json` | `devenv-modules/configs/zed/settings.jsonc` | copy |
   | `.rules` | `devenv-modules/configs/zed/rules.md` | copy |
+  | `.claude/settings.json` | `devenv-modules/configs/claude-settings.json` | copy |
 
-- **To update a config:** edit the source file in `devenv-modules/configs/`, then run `touch .envrc && direnv export json` to regenerate/re-symlink the root copies. Symlinked files (most configs) point into the Nix store, so changes require a devenv re-evaluation. Copied files (`.rules`, `.zed/settings.json`) are overwritten on each shell entry.
+- **To update a config:** edit the source file in `devenv-modules/configs/`, then run `touch .envrc && direnv export json` to regenerate/re-symlink the root copies. Symlinked files (most configs) point into the Nix store, so changes require a devenv re-evaluation. Copied files (`.rules`, `.zed/settings.json`, `.claude/settings.json`) are overwritten on each shell entry.
