@@ -7,6 +7,9 @@
 //! See PLAN.md for the full architecture and phase plan.
 
 mod config;
+mod notifier;
+mod router;
+mod server;
 
 use std::process::ExitCode;
 
@@ -167,12 +170,13 @@ async fn main() -> ExitCode {
         "spindle bootstrapped — owner registered in RBAC and database"
     );
 
-    // TODO: Phase 2+ — Start Jetstream consumer, knot event consumer,
-    //       engine, job queue, HTTP server, and run concurrently.
-    info!("🚧 Server startup not yet implemented — see PLAN.md Phase 5-6");
-    info!("All Phase 1 subsystems (config, database, RBAC) are operational.");
-
-    let _ = (db, rbac); // Keep alive until shutdown
+    // Start the HTTP server (Phase 5).
+    // TODO: Phase 6 — Also start Jetstream consumer, knot event consumer,
+    //       engine, and job queue concurrently alongside the HTTP server.
+    if let Err(e) = server::run_server(cfg, db, rbac).await {
+        error!(%e, "server exited with error");
+        return ExitCode::FAILURE;
+    }
 
     ExitCode::SUCCESS
 }
