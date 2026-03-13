@@ -2086,6 +2086,7 @@ version = "0.1.0"
 dependencies = [
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
@@ -2217,12 +2218,15 @@ dependencies = [
 name = "tangled-spindle"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
+ "chrono",
  "clap",
  "notify",
  "ring",
  "serde",
  "serde_json",
+ "serde_yaml",
  "spindle-db",
  "spindle-engine",
  "spindle-jetstream",
@@ -2234,6 +2238,7 @@ dependencies = [
  "spindle-xrpc",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2422,6 +2427,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

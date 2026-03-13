@@ -59,6 +59,7 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
+tokio-util = { version = "0.7", features = ["rt"] }
 
 # Workspace crates
 spindle-models = { path = "crates/spindle-models" }

@@ -11,3 +11,4 @@ description = "Bounded job queue with configurable workers for tangled-spindle-n
 tokio = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+tokio-util = { workspace = true }

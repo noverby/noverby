@@ -144,10 +144,7 @@ impl NixDeps {
 /// Resolve a source key into a Nix variable name and import expression.
 fn resolve_source(key: &str, custom_idx: &mut u32) -> (String, String) {
     if key == "nixpkgs" {
-        (
-            "nixpkgs".into(),
-            "import <nixpkgs> {}".into(),
-        )
+        ("nixpkgs".into(), "import <nixpkgs> {}".into())
     } else if let Some(channel) = key.strip_prefix("nixpkgs/") {
         let var_name = channel.replace(['-', '.'], "_");
         let import = format!(
@@ -270,9 +267,7 @@ pub async fn build_nix_env(
         .next()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
-        .ok_or_else(|| {
-            EngineError::SetupFailed("nix build produced no output paths".into())
-        })?;
+        .ok_or_else(|| EngineError::SetupFailed("nix build produced no output paths".into()))?;
 
     let path = PathBuf::from(store_path);
     if !path.exists() {
@@ -303,18 +298,15 @@ pub async fn build_nix_env(
 /// ```
 ///
 /// Returns an empty map if no dependencies are specified.
-pub fn parse_dependencies_from_yaml(
-    raw_yaml: &str,
-) -> EngineResult<HashMap<String, Vec<String>>> {
+pub fn parse_dependencies_from_yaml(raw_yaml: &str) -> EngineResult<HashMap<String, Vec<String>>> {
     #[derive(serde::Deserialize)]
     struct WorkflowYaml {
         #[serde(default)]
         dependencies: HashMap<String, Vec<String>>,
     }
 
-    let parsed: WorkflowYaml = serde_yaml::from_str(raw_yaml).map_err(|e| {
-        EngineError::InvalidWorkflow(format!("failed to parse workflow YAML: {e}"))
-    })?;
+    let parsed: WorkflowYaml = serde_yaml::from_str(raw_yaml)
+        .map_err(|e| EngineError::InvalidWorkflow(format!("failed to parse workflow YAML: {e}")))?;
 
     Ok(parsed.dependencies)
 }
@@ -336,15 +328,10 @@ pub fn parse_steps_from_yaml(raw_yaml: &str) -> EngineResult<Vec<(String, String
         run: String,
     }
 
-    let parsed: WorkflowYaml = serde_yaml::from_str(raw_yaml).map_err(|e| {
-        EngineError::InvalidWorkflow(format!("failed to parse workflow YAML: {e}"))
-    })?;
+    let parsed: WorkflowYaml = serde_yaml::from_str(raw_yaml)
+        .map_err(|e| EngineError::InvalidWorkflow(format!("failed to parse workflow YAML: {e}")))?;
 
-    Ok(parsed
-        .steps
-        .into_iter()
-        .map(|s| (s.name, s.run))
-        .collect())
+    Ok(parsed.steps.into_iter().map(|s| (s.name, s.run)).collect())
 }
 
 /// Parse workflow-level environment variables from YAML.
@@ -355,9 +342,8 @@ pub fn parse_env_from_yaml(raw_yaml: &str) -> EngineResult<HashMap<String, Strin
         env: HashMap<String, String>,
     }
 
-    let parsed: WorkflowYaml = serde_yaml::from_str(raw_yaml).map_err(|e| {
-        EngineError::InvalidWorkflow(format!("failed to parse workflow YAML: {e}"))
-    })?;
+    let parsed: WorkflowYaml = serde_yaml::from_str(raw_yaml)
+        .map_err(|e| EngineError::InvalidWorkflow(format!("failed to parse workflow YAML: {e}")))?;
 
     Ok(parsed.env)
 }
@@ -383,10 +369,7 @@ mod tests {
     #[test]
     fn parse_nixpkgs_unstable() {
         let mut deps = HashMap::new();
-        deps.insert(
-            "nixpkgs/nixpkgs-unstable".into(),
-            vec!["bun".into()],
-        );
+        deps.insert("nixpkgs/nixpkgs-unstable".into(), vec!["bun".into()]);
 
         let nix_deps = NixDeps::parse(&deps).unwrap();
         let expr = nix_deps.to_nix_expr();
@@ -416,10 +399,7 @@ mod tests {
     fn parse_mixed_sources() {
         let mut deps = HashMap::new();
         deps.insert("nixpkgs".into(), vec!["nodejs".into(), "go".into()]);
-        deps.insert(
-            "nixpkgs/nixpkgs-unstable".into(),
-            vec!["bun".into()],
-        );
+        deps.insert("nixpkgs/nixpkgs-unstable".into(), vec!["bun".into()]);
         deps.insert(
             "git+https://tangled.org/@example.com/my_pkg".into(),
             vec!["my_pkg".into()],
@@ -561,10 +541,7 @@ steps:
     #[test]
     fn nix_expr_without_nixpkgs_uses_fallback() {
         let mut deps = HashMap::new();
-        deps.insert(
-            "nixpkgs/nixpkgs-unstable".into(),
-            vec!["bun".into()],
-        );
+        deps.insert("nixpkgs/nixpkgs-unstable".into(), vec!["bun".into()]);
 
         let nix_deps = NixDeps::parse(&deps).unwrap();
         let expr = nix_deps.to_nix_expr();

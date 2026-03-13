@@ -147,7 +147,9 @@ async fn add_member(
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(XrpcError::invalid_request(format!("invalid request body: {e}"))),
+                Json(XrpcError::invalid_request(format!(
+                    "invalid request body: {e}"
+                ))),
             )
                 .into_response();
         }
@@ -164,11 +166,7 @@ async fn add_member(
     }
 
     // Add to RBAC
-    if let Err(e) = ctx
-        .rbac
-        .add_spindle_member(&req.did)
-        .await
-    {
+    if let Err(e) = ctx.rbac.add_spindle_member(&req.did).await {
         warn!(%e, did = %req.did, "failed to add member to RBAC");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -210,7 +208,9 @@ async fn remove_member(
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(XrpcError::invalid_request(format!("invalid request body: {e}"))),
+                Json(XrpcError::invalid_request(format!(
+                    "invalid request body: {e}"
+                ))),
             )
                 .into_response();
         }
@@ -227,11 +227,7 @@ async fn remove_member(
     }
 
     // Remove from RBAC
-    if let Err(e) = ctx
-        .rbac
-        .remove_spindle_member(&req.did)
-        .await
-    {
+    if let Err(e) = ctx.rbac.remove_spindle_member(&req.did).await {
         warn!(%e, did = %req.did, "failed to remove member from RBAC");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -265,13 +261,19 @@ async fn put_secret(
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(XrpcError::invalid_request(format!("invalid request body: {e}"))),
+                Json(XrpcError::invalid_request(format!(
+                    "invalid request body: {e}"
+                ))),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = ctx.secrets.put_secret(&req.repo, &req.key, &req.value).await {
+    if let Err(e) = ctx
+        .secrets
+        .put_secret(&req.repo, &req.key, &req.value)
+        .await
+    {
         warn!(%e, repo = %req.repo, key = %req.key, "failed to store secret");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -295,7 +297,9 @@ async fn list_secrets(
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(XrpcError::invalid_request(format!("invalid request body: {e}"))),
+                Json(XrpcError::invalid_request(format!(
+                    "invalid request body: {e}"
+                ))),
             )
                 .into_response();
         }
@@ -325,7 +329,9 @@ async fn delete_secret(
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(XrpcError::invalid_request(format!("invalid request body: {e}"))),
+                Json(XrpcError::invalid_request(format!(
+                    "invalid request body: {e}"
+                ))),
             )
                 .into_response();
         }
@@ -359,7 +365,9 @@ async fn cancel_pipeline(
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(XrpcError::invalid_request(format!("invalid request body: {e}"))),
+                Json(XrpcError::invalid_request(format!(
+                    "invalid request body: {e}"
+                ))),
             )
                 .into_response();
         }

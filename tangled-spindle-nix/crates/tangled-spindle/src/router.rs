@@ -135,7 +135,10 @@ async fn events_ws(mut socket: WebSocket, state: Arc<AppState>, cursor: i64) {
         }
     }
 
-    debug!(last_sent_id, "events backfill complete, switching to live stream");
+    debug!(
+        last_sent_id,
+        "events backfill complete, switching to live stream"
+    );
 
     // Live stream loop.
     let mut keepalive = tokio::time::interval(Duration::from_secs(30));
@@ -360,10 +363,7 @@ async fn send_log_file(socket: &mut WebSocket, path: &std::path::Path) -> Result
 }
 
 /// Read new lines from the current file position and send them over WebSocket.
-async fn send_lines_from_file(
-    socket: &mut WebSocket,
-    file: &mut std::fs::File,
-) -> Result<(), ()> {
+async fn send_lines_from_file(socket: &mut WebSocket, file: &mut std::fs::File) -> Result<(), ()> {
     let mut reader = std::io::BufReader::new(&*file);
     let mut line = String::new();
     loop {

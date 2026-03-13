@@ -31,3 +31,7 @@ tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
 notify = { workspace = true }
 ring = { workspace = true }
+tokio-util = { workspace = true }
+serde_yaml = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }

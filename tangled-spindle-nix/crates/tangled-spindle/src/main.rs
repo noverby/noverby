@@ -8,6 +8,7 @@
 
 mod config;
 mod notifier;
+mod orchestrator;
 mod router;
 mod server;
 
@@ -170,9 +171,8 @@ async fn main() -> ExitCode {
         "spindle bootstrapped — owner registered in RBAC and database"
     );
 
-    // Start the HTTP server (Phase 5).
-    // TODO: Phase 6 — Also start Jetstream consumer, knot event consumer,
-    //       engine, and job queue concurrently alongside the HTTP server.
+    // Start all subsystems concurrently (HTTP server, Jetstream consumer,
+    // knot consumer, pipeline orchestrator, job queue).
     if let Err(e) = server::run_server(cfg, db, rbac).await {
         error!(%e, "server exited with error");
         return ExitCode::FAILURE;
