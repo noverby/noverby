@@ -37,11 +37,12 @@ impl WorkspaceManager {
     /// Creates all parent directories if they don't exist.
     pub async fn create(&self, wid: &WorkflowId) -> EngineResult<PathBuf> {
         let dir = self.workspace_dir(wid);
-        tokio::fs::create_dir_all(&dir)
-            .await
-            .map_err(|e| EngineError::SetupFailed(format!(
-                "failed to create workspace dir {}: {e}", dir.display()
-            )))?;
+        tokio::fs::create_dir_all(&dir).await.map_err(|e| {
+            EngineError::SetupFailed(format!(
+                "failed to create workspace dir {}: {e}",
+                dir.display()
+            ))
+        })?;
 
         info!(?dir, %wid, "created workspace directory");
         Ok(dir)
@@ -55,11 +56,12 @@ impl WorkspaceManager {
         let dir = self.workspace_dir(wid);
         if dir.exists() {
             debug!(?dir, %wid, "destroying workspace directory");
-            tokio::fs::remove_dir_all(&dir)
-                .await
-                .map_err(|e| EngineError::DestroyFailed(format!(
-                    "failed to remove workspace dir {}: {e}", dir.display()
-                )))?;
+            tokio::fs::remove_dir_all(&dir).await.map_err(|e| {
+                EngineError::DestroyFailed(format!(
+                    "failed to remove workspace dir {}: {e}",
+                    dir.display()
+                ))
+            })?;
             info!(?dir, %wid, "destroyed workspace directory");
         }
         Ok(())

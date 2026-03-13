@@ -81,11 +81,7 @@ impl NixEngine {
 
 #[async_trait]
 impl Engine for NixEngine {
-    fn init_workflow(
-        &self,
-        twf: PipelineWorkflow,
-        pipeline: &Pipeline,
-    ) -> EngineResult<Workflow> {
+    fn init_workflow(&self, twf: PipelineWorkflow, pipeline: &Pipeline) -> EngineResult<Workflow> {
         // Validate engine field.
         let engine = twf.engine.to_lowercase();
         if engine != "nix" && engine != "nixery" {
@@ -114,12 +110,10 @@ impl Engine for NixEngine {
         workflow.environment = env;
 
         // Build the clone step (unless skipped).
-        let clone_opts = twf.clone.as_ref().map(|c| {
-            spindle_models::step::CloneOpts {
-                depth: c.depth,
-                skip: c.skip,
-                submodules: c.submodules,
-            }
+        let clone_opts = twf.clone.as_ref().map(|c| spindle_models::step::CloneOpts {
+            depth: c.depth,
+            skip: c.skip,
+            submodules: c.submodules,
         });
 
         // Build the repo URL from the pipeline's owner/name.
@@ -151,9 +145,7 @@ impl Engine for NixEngine {
         }
 
         if workflow.steps.is_empty() {
-            return Err(EngineError::InvalidWorkflow(
-                "workflow has no steps".into(),
-            ));
+            return Err(EngineError::InvalidWorkflow("workflow has no steps".into()));
         }
 
         Ok(workflow)
@@ -170,19 +162,14 @@ impl Engine for NixEngine {
 
         // Build the Nix environment if dependencies are specified.
         let nix_env_path = if let Some(data) = &workflow.data {
-            let deps: HashMap<String, Vec<String>> = serde_json::from_value(data.clone())
-                .map_err(|e| {
+            let deps: HashMap<String, Vec<String>> =
+                serde_json::from_value(data.clone()).map_err(|e| {
                     EngineError::SetupFailed(format!("failed to deserialize deps: {e}"))
                 })?;
 
             if let Some(nix_deps) = NixDeps::parse(&deps) {
-                let path = build_nix_env(
-                    &nix_deps,
-                    &self.cache_dir,
-                    &self.extra_nix_flags,
-                    logger,
-                )
-                .await?;
+                let path = build_nix_env(&nix_deps, &self.cache_dir, &self.extra_nix_flags, logger)
+                    .await?;
                 Some(path)
             } else {
                 None
@@ -196,10 +183,7 @@ impl Engine for NixEngine {
             nix_env_path,
             workspace_dir,
         };
-        self.states
-            .lock()
-            .await
-            .insert(wid.to_string(), state);
+        self.states.lock().await.insert(wid.to_string(), state);
 
         Ok(())
     }
@@ -226,14 +210,15 @@ impl Engine for NixEngine {
         secrets: &[UnlockedSecret],
         logger: &dyn WorkflowLogger,
     ) -> EngineResult<()> {
-        let step = workflow.steps.get(step_idx).ok_or_else(|| {
-            EngineError::Other(format!("step index {step_idx} out of bounds"))
-        })?;
+        let step = workflow
+            .steps
+            .get(step_idx)
+            .ok_or_else(|| EngineError::Other(format!("step index {step_idx} out of bounds")))?;
 
         let states = self.states.lock().await;
-        let state = states.get(&wid.to_string()).ok_or_else(|| {
-            EngineError::Other(format!("no state for workflow {wid}"))
-        })?;
+        let state = states
+            .get(&wid.to_string())
+            .ok_or_else(|| EngineError::Other(format!("no state for workflow {wid}")))?;
 
         let workspace_dir = &state.workspace_dir;
         let command_str = step.command();
@@ -394,7 +379,12 @@ mod tests {
 
         let result = engine.init_workflow(twf, &pipeline);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unsupported engine"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported engine")
+        );
     }
 
     #[test]
