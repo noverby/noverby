@@ -374,21 +374,21 @@ Each workflow step runs as a **child process** of the runner daemon. The runner'
 
 **Goal**: Expose the same HTTP API as the upstream spindle.
 
-- [ ] Implement HTTP server using `axum`:
+- [x] Implement HTTP server using `axum`:
   - `GET /` — MOTD
   - `GET /events` — WebSocket: pipeline status event stream (with cursor-based backfill)
   - `GET /logs/{knot}/{rkey}/{name}` — WebSocket: real-time log streaming for a workflow
   - `POST /xrpc/*` — XRPC endpoints (service auth, secrets, membership, etc.)
-- [ ] Implement `spindle-xrpc`:
-  - Service auth verification (matching upstream `serviceauth` package)
+- [x] Implement `spindle-xrpc`:
+  - Service auth verification (bearer token for v1; AT Protocol JWT deferred to Phase 8)
   - Member management endpoints
   - Secret CRUD endpoints
   - Pipeline cancel endpoint
-- [ ] WebSocket streaming:
+- [x] WebSocket streaming:
   - `/events`: Backfill from SQLite `events` table, then live-stream via `tokio::sync::broadcast`
   - `/logs/{knot}/{rkey}/{name}`: Tail log file using `notify` (inotify) for live logs, serve complete file for finished workflows
   - Keep-alive pings every 30 seconds
-- [ ] Implement the `Notifier` pattern (broadcast channel for new events)
+- [x] Implement the `Notifier` pattern (broadcast channel for new events)
 - [ ] Write integration tests for the HTTP API
 
 ### Phase 6 — Main Server & Pipeline Orchestration
