@@ -335,5 +335,16 @@ in {
   in
     lib.mkIf (enabledRunners != {}) {
       systemd.services = lib.mkMerge (lib.mapAttrsToList mkRunnerService enabledRunners);
+
+      # Runner users need trusted-user status so CI steps can configure
+      # binary caches (e.g. cachix use) via the Nix daemon.
+      nix.settings.trusted-users =
+        lib.mapAttrsToList (
+          name: runner:
+            if runner.user != null
+            then runner.user
+            else "tangled-spindle-${name}"
+        )
+        enabledRunners;
     };
 }
