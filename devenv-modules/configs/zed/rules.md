@@ -15,6 +15,8 @@
 
 - **Follow `.commitlintrc.yml` for commit message format.** Before committing, read `.commitlintrc.yml` and ensure the commit message conforms to its rules.
 
+- **Do NOT add `Co-Authored-By` lines to commit messages.** Never append co-author trailers (e.g. `Co-Authored-By: Claude ...`) to commits.
+
 - **The `jj` wrapper runs git hooks automatically.** The `jj` binary is wrapped to run `pre-commit` hooks before `jj commit`, `jj new`, and `jj squash`, and `prepare-commit-msg` hooks when `-m`/`--message` is provided. If a hook fails, fix the issue and run the command again — do not try to bypass hooks.
 
 ## Nix flake rules
