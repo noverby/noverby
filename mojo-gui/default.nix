@@ -122,7 +122,7 @@
       src = ./web;
       nativeBuildInputs = [pkgs.deno pkgs.cacert];
 
-      outputHash = "sha256-m9tykPefsuYkKq6nHAYh41ZxQizTXJ+LdpgNyLJnzbk=";
+      outputHash = "sha256-YsA7jpdtIBypy1zUoe3M79NubahNCkdlK3gPPcsbTjw=";
       outputHashMode = "recursive";
       outputHashAlgo = "sha256";
 
@@ -151,7 +151,7 @@
       src = ./xr/web;
       nativeBuildInputs = [pkgs.deno pkgs.cacert];
 
-      outputHash = "sha256-m9tykPefsuYkKq6nHAYh41ZxQizTXJ+LdpgNyLJnzbk=";
+      outputHash = "sha256-YsA7jpdtIBypy1zUoe3M79NubahNCkdlK3gPPcsbTjw=";
       outputHashMode = "recursive";
       outputHashAlgo = "sha256";
 
