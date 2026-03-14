@@ -335,17 +335,25 @@ pub fn parse_steps_from_yaml(raw_yaml: &str) -> EngineResult<Vec<(String, String
 }
 
 /// Parse workflow-level environment variables from YAML.
+///
+/// Supports both `env:` and `environment:` keys for compatibility with
+/// the upstream Go spindle workflow format.
 pub fn parse_env_from_yaml(raw_yaml: &str) -> EngineResult<HashMap<String, String>> {
     #[derive(serde::Deserialize)]
     struct WorkflowYaml {
         #[serde(default)]
         env: HashMap<String, String>,
+        #[serde(default)]
+        environment: HashMap<String, String>,
     }
 
     let parsed: WorkflowYaml = serde_yaml::from_str(raw_yaml)
         .map_err(|e| EngineError::InvalidWorkflow(format!("failed to parse workflow YAML: {e}")))?;
 
-    Ok(parsed.env)
+    // Merge both, with `env` taking precedence over `environment`.
+    let mut result = parsed.environment;
+    result.extend(parsed.env);
+    Ok(result)
 }
 
 #[cfg(test)]

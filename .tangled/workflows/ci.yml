@@ -2,22 +2,24 @@ when:
   - event: ["push", "pull_request"]
     branch: main
 
-engine: nixery
+engine: nix
+
+dependencies:
+  nixpkgs:
+    - cachix
 
 environment:
-  USER: root
   CACHIX_NAME: overby-me
 
 steps:
   - name: "Setup Cachix"
     command: |
-      nix-env -iA cachix -f https://cachix.org/api/v1/install
-      mkdir -p /tangled/home/.config/nix
-      echo -e "experimental-features = nix-command flakes ca-derivations dynamic-derivations recursive-nix\nmax-jobs = auto" > /tangled/home/.config/nix/nix.conf
+      mkdir -p $HOME/.config/nix
+      echo "experimental-features = nix-command flakes ca-derivations dynamic-derivations recursive-nix" > $HOME/.config/nix/nix.conf
+      echo "max-jobs = auto" >> $HOME/.config/nix/nix.conf
       cachix use $CACHIX_NAME
   - name: "Nix flake check"
     command: |
-      rm -rf /homeless-shelter
       ulimit -n 65536
       printf '{"PWD":"%s"}' "$PWD" > .env
       cachix watch-exec $CACHIX_NAME -- nix flake check --max-jobs 1 --override-input env path:$(realpath $PWD/.env)
