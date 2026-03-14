@@ -128,7 +128,7 @@ fn discover_workflows(base: &Path) -> io::Result<Vec<PathBuf>> {
 /// Uses `systemd-run --user --pipe --wait` with:
 /// - `PrivateTmp=yes` — isolated /tmp
 /// - `WorkingDirectory` — run in the repo directory
-/// - Ephemeral home in `.tangled/.home` for $HOME writes
+/// - Ephemeral home in `~/.cache/spindle-run/home` for $HOME writes
 /// - Clean environment with only specified vars
 fn build_systemd_run_cmd(
     workdir: &Path,
@@ -255,7 +255,13 @@ async fn main() -> ExitCode {
 
     // Set up cache and ephemeral home directories.
     let cache_dir = workdir.join(".tangled").join(".cache");
-    let run_home = workdir.join(".tangled").join(".home");
+    let user_cache = std::env::var("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+            PathBuf::from(home).join(".cache")
+        });
+    let run_home = user_cache.join("spindle-run").join("home");
     for dir in [&cache_dir, &run_home] {
         if let Err(e) = std::fs::create_dir_all(dir) {
             eprintln!("error: failed to create {}: {e}", dir.display());
