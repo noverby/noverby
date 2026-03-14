@@ -234,8 +234,11 @@ pub async fn build_nix_env(
     let _ = write!(setup_writer, "Building Nix environment (hash: {hash})...");
 
     // Build the Nix closure.
+    // Set HOME to the cache directory so nix can write to ~/.cache/nix
+    // (under DynamicUser, HOME may be unset or point to a read-only path).
     let mut cmd = Command::new("nix");
-    cmd.arg("build")
+    cmd.env("HOME", cache_dir)
+        .arg("build")
         .arg("--no-link")
         .arg("--print-out-paths")
         .arg("-f")
