@@ -61,6 +61,10 @@ uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
 tokio-util = { version = "0.7", features = ["rt"] }
 
+# Testing
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
 # Workspace crates
 spindle-models = { path = "crates/spindle-models" }
 spindle-engine = { path = "crates/spindle-engine" }

@@ -62,4 +62,10 @@
     };
 
   nixosModules.tangled-spindle-nix = ./nixos-module.nix;
+
+  checks.tangled-spindle-nix-integration = pkgs:
+    import ./nixos-test.nix {
+      inherit pkgs;
+      tangled-spindle-nix = pkgs.tangled-spindle-nix or (throw "tangled-spindle-nix package not found");
+    };
 }

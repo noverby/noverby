@@ -35,3 +35,7 @@ tokio-util = { workspace = true }
 serde_yaml = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }
+http-body-util = { workspace = true }

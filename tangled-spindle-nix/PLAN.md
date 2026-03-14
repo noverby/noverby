@@ -389,7 +389,7 @@ Each workflow step runs as a **child process** of the runner daemon. The runner'
   - `/logs/{knot}/{rkey}/{name}`: Tail log file using `notify` (inotify) for live logs, serve complete file for finished workflows
   - Keep-alive pings every 30 seconds
 - [x] Implement the `Notifier` pattern (broadcast channel for new events)
-- [ ] Write integration tests for the HTTP API
+- [x] Write integration tests for the HTTP API
 
 ### Phase 6 — Main Server & Pipeline Orchestration
 
@@ -520,7 +520,7 @@ For each enabled runner, generate a systemd service `tangled-spindle-{name}`. Th
 
 **Goal**: End-to-end tests and production hardening.
 
-- [ ] NixOS VM integration test (`nixos/tests`-style):
+- [x] NixOS VM integration test (`nixos/tests`-style):
   - Start a VM with the NixOS module configured
   - Simulate a pipeline event
   - Verify the workflow runs and steps execute as child processes
@@ -528,8 +528,8 @@ For each enabled runner, generate a systemd service `tangled-spindle-{name}`. Th
   - Verify workspace cleanup
   - Verify sandboxing is inherited (test that a step cannot read `/etc/shadow`, write to `/`, etc.)
 - [ ] Fuzz testing for YAML workflow parsing
-- [ ] Stress test: queue saturation with many concurrent pipelines
-- [ ] Security review:
+- [x] Stress test: queue saturation with many concurrent pipelines
+- [x] Security review:
   - Verify DynamicUser isolation between different runner services
   - Verify secret masking in logs
   - Verify that step processes inherit the service sandbox
