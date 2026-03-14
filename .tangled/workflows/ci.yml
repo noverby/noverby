@@ -4,15 +4,23 @@ when:
 
 engine: nix
 
+dependencies:
+  nixpkgs:
+    - cachix
+
 environment:
   USER: nobody
+  CACHIX_NAME: overby-me
 
 steps:
-  - name: "Nix flake check"
+  - name: "Setup Cachix"
     command: |
       mkdir -p $HOME/.config/nix
       echo "experimental-features = nix-command flakes ca-derivations dynamic-derivations recursive-nix" > $HOME/.config/nix/nix.conf
       echo "max-jobs = auto" >> $HOME/.config/nix/nix.conf
+      cachix use $CACHIX_NAME
+  - name: "Nix flake check"
+    command: |
       ulimit -n 65536
       printf '{"PWD":"%s"}' "$PWD" > .env
-      nix flake check --max-jobs 1 --override-input env path:$(realpath $PWD/.env)
+      cachix watch-exec $CACHIX_NAME -- nix flake check --max-jobs 1 --override-input env path:$(realpath $PWD/.env)
