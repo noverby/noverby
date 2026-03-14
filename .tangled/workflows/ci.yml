@@ -9,6 +9,7 @@ dependencies:
     - cachix
 
 environment:
+  USER: nobody
   CACHIX_NAME: overby-me
 
 steps:
