@@ -66,54 +66,119 @@ pub struct PipelineEvent {
 
 /// A pipeline record from the `sh.tangled.pipeline` collection.
 ///
-/// This is the record payload carried inside a pipeline event.
-/// It contains the workflow manifests, trigger metadata, and repo info
-/// needed to execute a CI pipeline.
+/// Matches the upstream Go `tangled.Pipeline` struct.
+/// The `event` field from the knot WebSocket message deserializes into this.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineRecord {
     /// The `$type` field (should be `"sh.tangled.pipeline"`).
     #[serde(rename = "$type", default)]
     pub r#type: Option<String>,
 
-    /// The repository DID (owner).
+    /// Trigger metadata (push, PR, manual) including repo info.
+    #[serde(rename = "triggerMetadata", default)]
+    pub trigger_metadata: Option<TriggerMetadata>,
+
+    /// Workflow definitions (array, not a map).
+    #[serde(default)]
+    pub workflows: Option<Vec<WorkflowManifest>>,
+}
+
+impl PipelineRecord {
+    /// Get the repo DID from trigger metadata.
+    pub fn repo_did(&self) -> Option<&str> {
+        self.trigger_metadata
+            .as_ref()?
+            .repo
+            .as_ref()?
+            .did
+            .as_deref()
+    }
+
+    /// Get the repo name from trigger metadata.
+    pub fn repo_name(&self) -> Option<&str> {
+        self.trigger_metadata
+            .as_ref()?
+            .repo
+            .as_ref()?
+            .repo
+            .as_deref()
+    }
+
+    /// Get the knot hostname from trigger metadata.
+    pub fn repo_knot(&self) -> Option<&str> {
+        self.trigger_metadata
+            .as_ref()?
+            .repo
+            .as_ref()?
+            .knot
+            .as_deref()
+    }
+}
+
+/// Trigger metadata for a pipeline event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerMetadata {
+    /// The trigger kind: "push", "pull_request", or "manual".
+    #[serde(default)]
+    pub kind: Option<String>,
+
+    /// Push trigger data.
+    #[serde(default)]
+    pub push: Option<serde_json::Value>,
+
+    /// Pull request trigger data.
+    #[serde(rename = "pullRequest", default)]
+    pub pull_request: Option<serde_json::Value>,
+
+    /// Manual trigger data.
+    #[serde(default)]
+    pub manual: Option<serde_json::Value>,
+
+    /// Repository info for this trigger.
+    #[serde(default)]
+    pub repo: Option<TriggerRepo>,
+}
+
+/// Repository info within trigger metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerRepo {
+    /// The repo owner DID.
     #[serde(default)]
     pub did: Option<String>,
 
-    /// The repository name.
-    #[serde(default)]
-    pub repo: Option<String>,
-
-    /// The knot server hostname.
+    /// The knot hostname.
     #[serde(default)]
     pub knot: Option<String>,
 
-    /// Workflow manifests (raw YAML content, keyed by filename).
+    /// The repo name.
     #[serde(default)]
-    pub workflows: Option<HashMap<String, WorkflowManifest>>,
+    pub repo: Option<String>,
 
-    /// The trigger metadata (push, PR, manual).
-    #[serde(default)]
-    pub trigger: Option<serde_json::Value>,
-
-    /// Clone options.
-    #[serde(default)]
-    pub clone: Option<serde_json::Value>,
+    /// The default branch.
+    #[serde(rename = "defaultBranch", default)]
+    pub default_branch: Option<String>,
 }
 
-/// A single workflow manifest within a pipeline record.
+/// A single workflow definition within a pipeline record.
+///
+/// Matches the upstream Go `Pipeline_Workflow` struct.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowManifest {
-    /// The workflow name (derived from filename).
+    /// The workflow name.
     #[serde(default)]
     pub name: Option<String>,
 
     /// The raw YAML content of the workflow file.
     #[serde(default)]
-    pub content: Option<String>,
+    pub raw: Option<String>,
 
     /// The engine identifier (e.g. `"nix"`, `"nixery"`).
     #[serde(default)]
     pub engine: Option<String>,
+
+    /// Clone options.
+    #[serde(default)]
+    pub clone: Option<serde_json::Value>,
 }
 
 // ---------------------------------------------------------------------------
@@ -461,7 +526,20 @@ async fn stream_events(
     }
 }
 
+/// A raw knot WebSocket message envelope.
+///
+/// The knot sends events as `{"rkey": "...", "nsid": "...", "event": {...}}`.
+#[derive(Debug, Deserialize)]
+struct KnotMessage {
+    rkey: String,
+    nsid: String,
+    event: serde_json::Value,
+}
+
 /// Process a single WebSocket message from a knot stream.
+///
+/// Parses the knot message envelope, filters for `sh.tangled.pipeline` events,
+/// and forwards matching events to the processing channel.
 async fn process_ws_message(
     knot: &str,
     text: &str,
@@ -470,76 +548,63 @@ async fn process_ws_message(
     db: &Arc<spindle_db::Database>,
     connections: &Arc<RwLock<HashMap<String, KnotConnection>>>,
 ) -> Result<(), KnotError> {
-    // Parse the message as JSON
-    let payload: serde_json::Value = serde_json::from_str(text).map_err(|e| {
+    // Parse the knot message envelope
+    let msg: KnotMessage = serde_json::from_str(text).map_err(|e| {
         KnotError::Parse(format!(
             "failed to parse WebSocket message as JSON for {knot}: {e}"
         ))
     })?;
 
-    // Extract cursor/sequence ID if present
-    let msg_cursor = payload
-        .get("seq")
-        .and_then(|v| {
-            v.as_str()
-                .map(|s| s.to_string())
-                .or_else(|| v.as_i64().map(|n| n.to_string()))
-        })
-        .or_else(|| {
-            payload
-                .get("cursor")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        });
+    // Update cursor using current timestamp (matches Go consumer behavior)
+    let now_nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+        .to_string();
+    *cursor = Some(now_nanos.clone());
 
-    if let Some(ref id) = msg_cursor {
-        *cursor = Some(id.clone());
+    if let Err(e) = db.update_knot_cursor(knot, &now_nanos) {
+        warn!(%e, knot = %knot, "failed to persist knot cursor");
+    }
 
-        // Persist cursor to database
-        if let Err(e) = db.update_knot_cursor(knot, id) {
-            warn!(%e, knot = %knot, cursor = %id, "failed to persist knot cursor");
-        }
-
-        // Update the in-memory cursor on the connection record
+    {
         let mut connections = connections.write().await;
         if let Some(conn) = connections.get_mut(knot) {
-            conn.cursor = Some(id.clone());
+            conn.cursor = Some(now_nanos.clone());
         }
     }
 
-    // Extract DID and rkey from the payload if present
-    let did = payload
-        .get("did")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let rkey = payload
-        .get("rkey")
+    // Only process pipeline events
+    if msg.nsid != PIPELINE_NSID {
+        debug!(knot = %knot, nsid = %msg.nsid, "ignoring non-pipeline event");
+        return Ok(());
+    }
+
+    // Extract DID from triggerMetadata.repo.did
+    let did = msg
+        .event
+        .get("triggerMetadata")
+        .and_then(|tm| tm.get("repo"))
+        .and_then(|r| r.get("did"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let event_type = payload
-        .get("type")
-        .or_else(|| payload.get("event"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
-    let pipeline_event = PipelineEvent {
-        knot: knot.to_string(),
-        cursor: msg_cursor,
-        did,
-        rkey,
-        event_type,
-        payload,
-    };
-
-    debug!(
+    info!(
         knot = %knot,
-        event_type = ?pipeline_event.event_type,
-        cursor = ?pipeline_event.cursor,
+        rkey = %msg.rkey,
+        did = ?did,
         "received pipeline event"
     );
 
-    // Send the event to the processing channel
+    let pipeline_event = PipelineEvent {
+        knot: knot.to_string(),
+        cursor: Some(now_nanos),
+        did,
+        rkey: Some(msg.rkey),
+        event_type: Some(msg.nsid),
+        payload: msg.event,
+    };
+
     event_tx.send(pipeline_event).await.map_err(|_| {
         KnotError::Connection(format!("pipeline event channel closed for knot {knot}"))
     })?;
@@ -643,38 +708,41 @@ mod tests {
     fn parse_pipeline_record() {
         let json = serde_json::json!({
             "$type": "sh.tangled.pipeline",
-            "did": "did:plc:alice",
-            "repo": "my-repo",
-            "knot": "knot.example.com",
-            "workflows": {
-                "test.yml": {
-                    "name": "test",
-                    "content": "dependencies:\n  nixpkgs:\n    - nodejs\nsteps:\n  - name: test\n    run: npm test",
-                    "engine": "nix"
+            "triggerMetadata": {
+                "kind": "push",
+                "push": {
+                    "newSha": "abc123",
+                    "oldSha": "def456",
+                    "ref": "refs/heads/main"
+                },
+                "repo": {
+                    "did": "did:plc:alice",
+                    "knot": "knot.example.com",
+                    "repo": "my-repo",
+                    "defaultBranch": "main"
                 }
             },
-            "trigger": {
-                "kind": "push",
-                "repo": {
-                    "knot": "knot.example.com",
-                    "did": "did:plc:alice",
-                    "repo": "my-repo"
+            "workflows": [
+                {
+                    "name": "test",
+                    "raw": "steps:\n  - name: test\n    run: npm test",
+                    "engine": "nix",
+                    "clone": {"depth": 1, "skip": false, "submodules": false}
                 }
-            }
+            ]
         });
 
         let record: PipelineRecord = serde_json::from_value(json).unwrap();
         assert_eq!(record.r#type.as_deref(), Some("sh.tangled.pipeline"));
-        assert_eq!(record.did.as_deref(), Some("did:plc:alice"));
-        assert_eq!(record.repo.as_deref(), Some("my-repo"));
-        assert_eq!(record.knot.as_deref(), Some("knot.example.com"));
+        assert_eq!(record.repo_did(), Some("did:plc:alice"));
+        assert_eq!(record.repo_name(), Some("my-repo"));
+        assert_eq!(record.repo_knot(), Some("knot.example.com"));
 
         let workflows = record.workflows.unwrap();
         assert_eq!(workflows.len(), 1);
-        let wf = workflows.get("test.yml").unwrap();
-        assert_eq!(wf.name.as_deref(), Some("test"));
-        assert_eq!(wf.engine.as_deref(), Some("nix"));
-        assert!(wf.content.as_ref().unwrap().contains("npm test"));
+        assert_eq!(workflows[0].name.as_deref(), Some("test"));
+        assert_eq!(workflows[0].engine.as_deref(), Some("nix"));
+        assert!(workflows[0].raw.as_ref().unwrap().contains("npm test"));
     }
 
     #[test]
@@ -685,26 +753,25 @@ mod tests {
 
         let record: PipelineRecord = serde_json::from_value(json).unwrap();
         assert_eq!(record.r#type.as_deref(), Some("sh.tangled.pipeline"));
-        assert!(record.did.is_none());
-        assert!(record.repo.is_none());
-        assert!(record.knot.is_none());
+        assert!(record.repo_did().is_none());
+        assert!(record.repo_name().is_none());
+        assert!(record.repo_knot().is_none());
         assert!(record.workflows.is_none());
-        assert!(record.trigger.is_none());
-        assert!(record.clone.is_none());
+        assert!(record.trigger_metadata.is_none());
     }
 
     #[test]
     fn parse_workflow_manifest() {
         let json = serde_json::json!({
             "name": "build",
-            "content": "steps:\n  - name: build\n    run: cargo build",
+            "raw": "steps:\n  - name: build\n    run: cargo build",
             "engine": "nix"
         });
 
         let manifest: WorkflowManifest = serde_json::from_value(json).unwrap();
         assert_eq!(manifest.name.as_deref(), Some("build"));
         assert_eq!(manifest.engine.as_deref(), Some("nix"));
-        assert!(manifest.content.as_ref().unwrap().contains("cargo build"));
+        assert!(manifest.raw.as_ref().unwrap().contains("cargo build"));
     }
 
     #[test]
@@ -713,7 +780,7 @@ mod tests {
 
         let manifest: WorkflowManifest = serde_json::from_value(json).unwrap();
         assert!(manifest.name.is_none());
-        assert!(manifest.content.is_none());
+        assert!(manifest.raw.is_none());
         assert!(manifest.engine.is_none());
     }
 
@@ -759,7 +826,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[tokio::test]
-    async fn process_ws_message_basic() {
+    async fn process_ws_message_pipeline_event() {
         let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
         db.add_knot("knot.example.com").unwrap();
 
@@ -781,51 +848,59 @@ mod tests {
             );
         }
 
-        let msg = r#"{"did":"did:plc:alice","rkey":"abc123","type":"pipeline","seq":"cursor-001"}"#;
+        let msg = r#"{"rkey":"abc123","nsid":"sh.tangled.pipeline","event":{"triggerMetadata":{"kind":"push","repo":{"did":"did:plc:alice","knot":"knot.example.com","repo":"my-repo"}},"workflows":[]}}"#;
         let mut cursor = None;
 
         process_ws_message("knot.example.com", msg, &mut cursor, &tx, &db, &connections)
             .await
             .unwrap();
 
-        // Check cursor was updated
-        assert_eq!(cursor.as_deref(), Some("cursor-001"));
+        // Cursor should be set (timestamp-based)
+        assert!(cursor.is_some());
 
-        // Check cursor was persisted to DB
-        let db_cursor = db.get_knot_cursor("knot.example.com").unwrap();
-        assert_eq!(db_cursor.as_deref(), Some("cursor-001"));
-
-        // Check event was sent
+        // Check event was sent (pipeline events are forwarded)
         let event = rx.try_recv().unwrap();
         assert_eq!(event.knot, "knot.example.com");
-        assert_eq!(event.cursor.as_deref(), Some("cursor-001"));
         assert_eq!(event.did.as_deref(), Some("did:plc:alice"));
         assert_eq!(event.rkey.as_deref(), Some("abc123"));
-        assert_eq!(event.event_type.as_deref(), Some("pipeline"));
+        assert_eq!(event.event_type.as_deref(), Some("sh.tangled.pipeline"));
     }
 
     #[tokio::test]
-    async fn process_ws_message_no_cursor() {
+    async fn process_ws_message_filters_non_pipeline() {
         let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
+        db.add_knot("knot.example.com").unwrap();
+
         let (tx, mut rx) = mpsc::channel(16);
         let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
             Arc::new(RwLock::new(HashMap::new()));
 
-        let msg = r#"{"status":"running"}"#;
-        let mut cursor = Some("old-cursor".to_string());
+        {
+            let mut conns = connections.write().await;
+            conns.insert(
+                "knot.example.com".to_string(),
+                KnotConnection {
+                    knot: "knot.example.com".to_string(),
+                    cursor: None,
+                    task: None,
+                    cancel: tokio_util::sync::CancellationToken::new(),
+                },
+            );
+        }
+
+        // This is a git refUpdate event, not a pipeline event
+        let msg = r#"{"rkey":"xyz789","nsid":"sh.tangled.git.refUpdate","event":{"repoDid":"did:plc:alice","repoName":"my-repo","ref":"refs/heads/main"}}"#;
+        let mut cursor = None;
 
         process_ws_message("knot.example.com", msg, &mut cursor, &tx, &db, &connections)
             .await
             .unwrap();
 
-        // Cursor should remain unchanged
-        assert_eq!(cursor.as_deref(), Some("old-cursor"));
+        // Cursor should still be updated
+        assert!(cursor.is_some());
 
-        // Event should still be sent
-        let event = rx.try_recv().unwrap();
-        assert_eq!(event.knot, "knot.example.com");
-        assert!(event.cursor.is_none());
-        assert!(event.did.is_none());
+        // But no event should be forwarded (filtered out)
+        assert!(rx.try_recv().is_err());
     }
 
     #[tokio::test]
@@ -848,41 +923,6 @@ mod tests {
             }
             other => panic!("expected Parse error, got: {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn process_ws_message_updates_connection_cursor() {
-        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
-        db.add_knot("knot.example.com").unwrap();
-
-        let (tx, _rx) = mpsc::channel(16);
-        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-
-        {
-            let mut conns = connections.write().await;
-            conns.insert(
-                "knot.example.com".to_string(),
-                KnotConnection {
-                    knot: "knot.example.com".to_string(),
-                    cursor: None,
-                    task: None,
-                    cancel: tokio_util::sync::CancellationToken::new(),
-                },
-            );
-        }
-
-        let msg = r#"{"seq":42}"#;
-        let mut cursor = None;
-
-        process_ws_message("knot.example.com", msg, &mut cursor, &tx, &db, &connections)
-            .await
-            .unwrap();
-
-        // Check in-memory connection cursor was updated (seq as i64)
-        let conns = connections.read().await;
-        let conn = conns.get("knot.example.com").unwrap();
-        assert_eq!(conn.cursor.as_deref(), Some("42"));
     }
 
     // -----------------------------------------------------------------------

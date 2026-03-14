@@ -95,9 +95,9 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
         rkey: rkey.clone(),
     };
 
-    // Extract repo info from the record.
-    let repo_did = match &record.did {
-        Some(d) => d.clone(),
+    // Extract repo info from the record's trigger metadata.
+    let repo_did = match record.repo_did() {
+        Some(d) => d.to_string(),
         None => {
             // Fall back to event-level DID.
             match &event.did {
@@ -110,8 +110,8 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
         }
     };
 
-    let repo_name = match &record.repo {
-        Some(n) => n.clone(),
+    let repo_name = match record.repo_name() {
+        Some(n) => n.to_string(),
         None => {
             warn!(pipeline = %pipeline_id, "pipeline event missing repo name");
             return;
@@ -134,17 +134,11 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
         }
     };
 
-    // Parse trigger metadata.
-    let trigger: Option<TriggerMetadata> = record
-        .trigger
-        .as_ref()
-        .and_then(|t| serde_json::from_value(t.clone()).ok());
-
-    // Parse clone options.
-    let clone_opts: Option<PipelineCloneOpts> = record
-        .clone
-        .as_ref()
-        .and_then(|c| serde_json::from_value(c.clone()).ok());
+    // Parse trigger metadata by re-serializing the event payload's triggerMetadata.
+    let trigger: Option<TriggerMetadata> = event
+        .payload
+        .get("triggerMetadata")
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
 
     // Build pipeline environment variables.
     let pipeline_env = PipelineEnvVars::build(trigger.as_ref(), &pipeline_id, ctx.dev);
@@ -159,14 +153,11 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
     // Initialize workflows via the engine.
     let mut workflow_entries = Vec::new();
 
-    for (filename, manifest) in &workflow_manifests {
-        let wf_name = manifest
-            .name
-            .as_deref()
-            .unwrap_or(filename.trim_end_matches(".yml").trim_end_matches(".yaml"));
+    for manifest in &workflow_manifests {
+        let wf_name = manifest.name.as_deref().unwrap_or("unnamed");
 
         let engine_name = manifest.engine.as_deref().unwrap_or("nix");
-        let raw_content = match &manifest.content {
+        let raw_content = match &manifest.raw {
             Some(c) => c.clone(),
             None => {
                 warn!(
@@ -178,11 +169,17 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
             }
         };
 
+        // Parse clone options from the workflow manifest.
+        let clone_opts: Option<PipelineCloneOpts> = manifest
+            .clone
+            .as_ref()
+            .and_then(|c| serde_json::from_value(c.clone()).ok());
+
         let pipeline_workflow = PipelineWorkflow {
             name: wf_name.to_string(),
             engine: engine_name.to_string(),
             raw: raw_content,
-            clone: clone_opts.clone(),
+            clone: clone_opts,
         };
 
         match ctx.engine.init_workflow(pipeline_workflow, &pipeline) {
