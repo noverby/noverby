@@ -242,7 +242,8 @@ in {
 
       # Script to copy token file into state directory with correct permissions
       tokenScript = lib.optionalString (runner.tokenFile != null) (pkgs.writeShellScript "tangled-spindle-${name}-token" ''
-        install -m 0600 -o "$(id -u)" -g "$(id -g)" "${runner.tokenFile}" "/var/lib/${stateDir}/token"
+        cp "${runner.tokenFile}" "/var/lib/${stateDir}/token"
+        chmod 0644 "/var/lib/${stateDir}/token"
       '');
     in {
       "tangled-spindle-${name}" =
