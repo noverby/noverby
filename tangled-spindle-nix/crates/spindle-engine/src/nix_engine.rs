@@ -321,7 +321,8 @@ impl Engine for NixEngine {
 /// Build the PATH environment variable.
 ///
 /// Includes the Nix environment's `bin` and `sbin` directories (if present),
-/// plus standard system paths.
+/// the parent process's PATH (which on NixOS contains git, nix, etc. from
+/// the systemd service's `path` attribute), and standard system paths.
 fn build_path(nix_env: Option<&Path>) -> String {
     let mut parts = Vec::new();
 
@@ -330,7 +331,14 @@ fn build_path(nix_env: Option<&Path>) -> String {
         parts.push(format!("{}/sbin", env.display()));
     }
 
-    // Standard system paths.
+    // Include the parent process's PATH. On NixOS, tools like git and nix
+    // live in the Nix store and are only reachable via PATH set by the
+    // systemd service unit.
+    if let Ok(parent_path) = std::env::var("PATH") {
+        parts.push(parent_path);
+    }
+
+    // Standard system paths as fallback.
     parts.extend([
         "/usr/local/bin".into(),
         "/usr/bin".into(),
@@ -382,8 +390,10 @@ mod tests {
     #[test]
     fn build_path_without_nix_env() {
         let path = build_path(None);
-        assert!(path.starts_with("/usr/local/bin:"));
-        assert!(!path.contains("/nix/store"));
+        // PATH should contain standard system paths as fallbacks.
+        assert!(path.contains("/usr/local/bin"));
+        assert!(path.contains("/usr/bin"));
+        assert!(path.contains("/bin"));
     }
 
     #[test]
