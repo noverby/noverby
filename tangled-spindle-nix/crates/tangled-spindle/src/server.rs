@@ -64,12 +64,14 @@ pub async fn run_server(
     let notifier = Arc::new(Notifier::new(1024));
 
     // Create Nix engine.
-    let workspace_root = cfg
-        .log_dir
+    // Derive workspace and cache dirs from the state directory (db_path parent),
+    // which is writable under systemd's StateDirectory sandbox.
+    let state_dir = cfg
+        .db_path
         .parent()
-        .unwrap_or(&cfg.log_dir)
-        .join("workspaces");
-    let cache_dir = cfg.log_dir.parent().unwrap_or(&cfg.log_dir).join("cache");
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let workspace_root = state_dir.join("workspaces");
+    let cache_dir = state_dir.join("cache");
     let engine = Arc::new(spindle_engine::NixEngine::new(
         workspace_root,
         cache_dir,
