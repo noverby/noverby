@@ -55,7 +55,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let xrpc_ctx = Arc::clone(&state.xrpc);
 
     let xrpc_router = Router::new()
-        .route("/{method}", get(spindle_xrpc::dispatch_query).post(spindle_xrpc::dispatch))
+        .route(
+            "/{method}",
+            get(spindle_xrpc::dispatch_query).post(spindle_xrpc::dispatch),
+        )
         .with_state(xrpc_ctx);
 
     Router::new()
@@ -538,10 +541,8 @@ mod tests {
         rbac.add_spindle(&did_web).await.unwrap();
         rbac.add_spindle_owner(&did_web, TEST_OWNER).await.unwrap();
 
-        let secrets_path = std::env::temp_dir().join(format!(
-            "spindle-test-secrets-{}.db",
-            std::process::id()
-        ));
+        let secrets_path =
+            std::env::temp_dir().join(format!("spindle-test-secrets-{}.db", std::process::id()));
         let secrets: Arc<dyn spindle_secrets::Manager + Send + Sync> =
             Arc::new(SqliteManager::new(&secrets_path, &[0u8; 32]).unwrap());
 
@@ -633,10 +634,12 @@ mod tests {
         let json = body_json(resp.into_body()).await;
         assert_eq!(json["id"], format!("did:web:{TEST_HOSTNAME}"));
         assert_eq!(json["service"][0]["type"], "TangledSpindle");
-        assert!(json["service"][0]["serviceEndpoint"]
-            .as_str()
-            .unwrap()
-            .contains(TEST_HOSTNAME));
+        assert!(
+            json["service"][0]["serviceEndpoint"]
+                .as_str()
+                .unwrap()
+                .contains(TEST_HOSTNAME)
+        );
     }
 
     // -----------------------------------------------------------------------

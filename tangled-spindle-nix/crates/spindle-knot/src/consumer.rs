@@ -229,7 +229,6 @@ impl KnotConsumer {
         shutdown: tokio_util::sync::CancellationToken,
     ) -> Self {
         let http_client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(0)) // No timeout for SSE streams
             .connect_timeout(Duration::from_secs(30))
             .build()
             .unwrap_or_default();
