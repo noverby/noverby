@@ -12,6 +12,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
+use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use serde::Deserialize;
@@ -59,6 +60,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/", get(motd_handler))
+        .route("/.well-known/did.json", get(did_json_handler))
         .route("/events", get(events_ws_handler))
         .route("/logs/{knot}/{rkey}/{name}", get(logs_ws_handler))
         .nest("/xrpc", xrpc_router)
@@ -75,6 +77,32 @@ async fn motd_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "tangled-spindle-nix v{} @ {}\n",
         env!("CARGO_PKG_VERSION"),
         state.hostname,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// /.well-known/did.json handler
+// ---------------------------------------------------------------------------
+
+/// `GET /.well-known/did.json` — Return the DID document for `did:web` resolution.
+///
+/// When tangled.org verifies a spindle, it resolves `did:web:{hostname}` by
+/// fetching `https://{hostname}/.well-known/did.json`.
+async fn did_json_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let did_web = format!("did:web:{}", state.hostname);
+    let scheme = if state.xrpc.dev { "http" } else { "https" };
+    let doc = serde_json::json!({
+        "@context": ["https://www.w3.org/ns/did/v1"],
+        "id": did_web,
+        "service": [{
+            "id": "#tangled_spindle",
+            "type": "TangledSpindle",
+            "serviceEndpoint": format!("{scheme}://{}", state.hostname),
+        }],
+    });
+    (
+        [(header::CONTENT_TYPE, "application/did+ld+json")],
+        serde_json::to_string_pretty(&doc).unwrap(),
     )
 }
 
@@ -557,6 +585,37 @@ mod tests {
             version, "test.example.com"
         );
         assert_eq!(result, expected);
+    }
+
+    // -----------------------------------------------------------------------
+    // DID document endpoint
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn get_did_json_returns_valid_document() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::get("/.well-known/did.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers().get("content-type").unwrap(),
+            "application/did+ld+json"
+        );
+
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["id"], format!("did:web:{TEST_HOSTNAME}"));
+        assert_eq!(json["service"][0]["type"], "TangledSpindle");
+        assert!(json["service"][0]["serviceEndpoint"]
+            .as_str()
+            .unwrap()
+            .contains(TEST_HOSTNAME));
     }
 
     // -----------------------------------------------------------------------
