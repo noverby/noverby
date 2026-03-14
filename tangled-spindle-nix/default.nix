@@ -38,16 +38,20 @@
       ];
 
       # Runtime dependencies needed by the nix engine for step execution
-      postInstall = ''
-        wrapProgram $out/bin/tangled-spindle \
-          --prefix PATH : ${lib.makeBinPath [
+      postInstall = let
+        runtimePath = lib.makeBinPath [
           bash
           coreutils
           git
           gnutar
           gzip
           nix
-        ]}
+        ];
+      in ''
+        wrapProgram $out/bin/tangled-spindle \
+          --prefix PATH : ${runtimePath}
+        wrapProgram $out/bin/spindle-run \
+          --prefix PATH : ${runtimePath}
       '';
 
       doCheck = true;
