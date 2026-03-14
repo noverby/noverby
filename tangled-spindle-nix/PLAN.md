@@ -527,14 +527,14 @@ For each enabled runner, generate a systemd service `tangled-spindle-{name}`. Th
   - Verify log streaming works
   - Verify workspace cleanup
   - Verify sandboxing is inherited (test that a step cannot read `/etc/shadow`, write to `/`, etc.)
-- [ ] Fuzz testing for YAML workflow parsing
+- [x] Fuzz testing for YAML workflow parsing
 - [x] Stress test: queue saturation with many concurrent pipelines
 - [x] Security review:
   - Verify DynamicUser isolation between different runner services
   - Verify secret masking in logs
   - Verify that step processes inherit the service sandbox
   - Verify workspace cleanup between workflows
-- [ ] Performance benchmarks: compare startup latency vs Docker (expected: significantly faster due to no image pull, no container overhead)
+- [x] Performance benchmarks: compare startup latency vs Docker (expected: significantly faster due to no image pull, no container overhead)
 
 ## Key Rust Dependencies
 

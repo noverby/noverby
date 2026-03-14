@@ -549,4 +549,240 @@ steps:
         // Should fall back to importing <nixpkgs> for buildEnv
         assert!(expr.contains("(import <nixpkgs> {}).buildEnv {"));
     }
+
+    // -----------------------------------------------------------------------
+    // Fuzz-style robustness tests
+    // -----------------------------------------------------------------------
+
+    /// Ensure the YAML dependency parser never panics on malformed input.
+    #[test]
+    fn fuzz_parse_dependencies_malformed_yaml() {
+        let inputs = [
+            "",
+            "   ",
+            "\n\n\n",
+            "null",
+            "42",
+            "true",
+            "[]",
+            "\"just a string\"",
+            "{",
+            "}",
+            "{{{{",
+            "dependencies:",
+            "dependencies: null",
+            "dependencies: 42",
+            "dependencies: true",
+            "dependencies: []",
+            "dependencies: \"string\"",
+            "dependencies:\n  nixpkgs: null",
+            "dependencies:\n  nixpkgs: 42",
+            "dependencies:\n  nixpkgs: \"not a list\"",
+            "dependencies:\n  nixpkgs:\n    - 42",
+            "dependencies:\n  : \n    - pkg",
+            "dependencies:\n  nixpkgs:\n    - ",
+            // Deeply nested
+            "a:\n  b:\n    c:\n      d:\n        e: f",
+            // Very long key
+            &format!("dependencies:\n  {}: [pkg]", "a".repeat(10000)),
+            // Unicode
+            "dependencies:\n  nixpkgs:\n    - 日本語パッケージ",
+            // Control characters
+            "dependencies:\n  nixpkgs:\n    - \x00\x01\x02",
+            // YAML bomb (alias expansion)
+            "a: &a [*a]",
+            // Tab vs spaces
+            "dependencies:\n\tnixpkgs:\n\t\t- nodejs",
+        ];
+
+        for input in &inputs {
+            // Should never panic — either Ok or Err is fine
+            let _ = parse_dependencies_from_yaml(input);
+        }
+    }
+
+    /// Ensure the YAML steps parser never panics on malformed input.
+    #[test]
+    fn fuzz_parse_steps_malformed_yaml() {
+        let inputs = [
+            "",
+            "null",
+            "steps: null",
+            "steps: 42",
+            "steps: \"string\"",
+            "steps: []",
+            "steps:\n  - name: test",
+            "steps:\n  - run: echo hello",
+            "steps:\n  - {}",
+            "steps:\n  - null",
+            "steps:\n  - 42",
+            "steps:\n  - name: test\n    run: null",
+            "steps:\n  - name: null\n    run: echo hello",
+            // Missing required fields
+            "steps:\n  - other: value",
+            // Extra fields (should be ignored)
+            "steps:\n  - name: test\n    run: echo\n    extra: ignored",
+            // Very long command
+            &format!("steps:\n  - name: test\n    run: {}", "x".repeat(100000)),
+        ];
+
+        for input in &inputs {
+            let _ = parse_steps_from_yaml(input);
+        }
+    }
+
+    /// Ensure the YAML env parser never panics on malformed input.
+    #[test]
+    fn fuzz_parse_env_malformed_yaml() {
+        let inputs = [
+            "",
+            "null",
+            "env: null",
+            "env: 42",
+            "env: []",
+            "env: \"string\"",
+            "env:\n  KEY: null",
+            "env:\n  KEY: 42",
+            "env:\n  KEY: []",
+            "env:\n  KEY: {nested: value}",
+            "env:\n  : empty_key",
+            &format!("env:\n  {}: value", "K".repeat(10000)),
+        ];
+
+        for input in &inputs {
+            let _ = parse_env_from_yaml(input);
+        }
+    }
+
+    /// Benchmark: Nix expression generation from a realistic dependency set.
+    ///
+    /// Measures the time to parse dependencies and generate the Nix expression,
+    /// which is the critical path that replaces Docker/Nixery image pulls.
+    #[test]
+    fn bench_nix_expr_generation() {
+        let mut deps = HashMap::new();
+        deps.insert(
+            "nixpkgs".into(),
+            vec![
+                "nodejs".into(),
+                "go".into(),
+                "python3".into(),
+                "rustc".into(),
+                "cargo".into(),
+                "git".into(),
+                "curl".into(),
+                "jq".into(),
+            ],
+        );
+        deps.insert("nixpkgs/nixpkgs-unstable".into(), vec!["bun".into()]);
+        deps.insert(
+            "git+https://tangled.org/@example.com/my_pkg".into(),
+            vec!["my_pkg".into()],
+        );
+
+        let iterations = 1000;
+        let start = std::time::Instant::now();
+
+        for _ in 0..iterations {
+            let nix_deps = NixDeps::parse(&deps).unwrap();
+            let _expr = nix_deps.to_nix_expr();
+            let _hash = nix_deps.content_hash();
+        }
+
+        let elapsed = start.elapsed();
+        let per_op = elapsed / iterations;
+
+        // Nix expression generation should be sub-millisecond.
+        // Docker image pull + Nixery resolution is typically 5-30 seconds.
+        assert!(
+            per_op.as_millis() < 1,
+            "Nix expression generation took {per_op:?} per operation, expected < 1ms"
+        );
+    }
+
+    /// Benchmark: YAML workflow parsing for a realistic manifest.
+    #[test]
+    fn bench_yaml_workflow_parsing() {
+        let yaml = r#"
+dependencies:
+  nixpkgs:
+    - nodejs
+    - go
+    - python3
+    - rustc
+    - cargo
+    - git
+    - curl
+    - jq
+  nixpkgs/nixpkgs-unstable:
+    - bun
+  git+https://tangled.org/@example.com/my_pkg:
+    - my_pkg
+env:
+  CI: "true"
+  NODE_ENV: production
+  RUST_LOG: info
+steps:
+  - name: Checkout
+    run: git clone --depth=1 https://example.com/repo .
+  - name: Install
+    run: npm install
+  - name: Build
+    run: npm run build
+  - name: Test
+    run: npm test
+  - name: Lint
+    run: npm run lint
+"#;
+
+        let iterations = 1000;
+        let start = std::time::Instant::now();
+
+        for _ in 0..iterations {
+            let _deps = parse_dependencies_from_yaml(yaml).unwrap();
+            let _steps = parse_steps_from_yaml(yaml).unwrap();
+            let _env = parse_env_from_yaml(yaml).unwrap();
+        }
+
+        let elapsed = start.elapsed();
+        let per_op = elapsed / iterations;
+
+        assert!(
+            per_op.as_millis() < 1,
+            "YAML workflow parsing took {per_op:?} per operation, expected < 1ms"
+        );
+    }
+
+    /// Ensure NixDeps::parse handles adversarial source keys safely.
+    #[test]
+    fn fuzz_nix_deps_adversarial_source_keys() {
+        let long_key = "a".repeat(10000);
+        let adversarial_keys = [
+            "",
+            " ",
+            "nixpkgs",
+            "nixpkgs/",
+            "nixpkgs//double",
+            "git+",
+            "git+://invalid",
+            "git+https://example.com/$(rm -rf /)",
+            "nixpkgs/$(whoami)",
+            "../../../etc/passwd",
+            "https://evil.com\"; import /etc/shadow; #",
+            "\n\t\r",
+            long_key.as_str(),
+            "nixpkgs/a/b/c",
+        ];
+
+        for key in &adversarial_keys {
+            let mut deps = HashMap::new();
+            deps.insert(key.to_string(), vec!["pkg".into()]);
+            // Should never panic
+            if let Some(nix_deps) = NixDeps::parse(&deps) {
+                // Generated Nix expression should also not panic
+                let _expr = nix_deps.to_nix_expr();
+                let _hash = nix_deps.content_hash();
+            }
+        }
+    }
 }
