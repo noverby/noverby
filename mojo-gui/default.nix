@@ -122,7 +122,7 @@
       src = ./web;
       nativeBuildInputs = [pkgs.deno pkgs.cacert];
 
-      outputHash = "sha256-YsA7jpdtIBypy1zUoe3M79NubahNCkdlK3gPPcsbTjw=";
+      outputHash = "sha256-kXpX7gbpD/mopmBHPALbPNwrnEoHhwEloS+39VAgWwo=";
       outputHashMode = "recursive";
       outputHashAlgo = "sha256";
 
@@ -148,17 +148,17 @@
     #
     denoXrDeps = pkgs.stdenv.mkDerivation {
       name = "mojo-gui-deno-xr-deps";
-      src = ./xr/web;
+      src = ./.;
       nativeBuildInputs = [pkgs.deno pkgs.cacert];
 
-      outputHash = "sha256-YsA7jpdtIBypy1zUoe3M79NubahNCkdlK3gPPcsbTjw=";
+      outputHash = "sha256-FjQjUa05YI1YSmdTvAWgp+QDNu+R/F7IYWVAq2H69h0=";
       outputHashMode = "recursive";
       outputHashAlgo = "sha256";
 
       buildPhase = ''
         export DENO_DIR=$out
         export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-        deno cache --lock=deno.lock test-js/run.ts
+        deno cache --lock=xr/web/deno.lock xr/web/test-js/run.ts
       '';
       installPhase = "true";
     };
