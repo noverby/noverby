@@ -240,9 +240,11 @@ impl Engine for NixEngine {
         let path = build_path(state.nix_env_path.as_deref());
 
         // Build environment variables.
+        let user = std::env::var("USER").unwrap_or_else(|_| "nobody".into());
         let mut env_vars: Vec<(String, String)> = vec![
             ("PATH".into(), path),
             ("HOME".into(), workspace_dir.to_string_lossy().into_owned()),
+            ("USER".into(), user),
             ("CI".into(), "true".into()),
         ];
 
