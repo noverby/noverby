@@ -12,10 +12,9 @@ spindle-models = { workspace = true }
 spindle-db = { workspace = true }
 tokio = { workspace = true }
 tokio-util = "0.7"
-reqwest = { workspace = true, features = ["stream"] }
+tokio-tungstenite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 futures-util = "0.3"
-tokio-stream = "0.1"
