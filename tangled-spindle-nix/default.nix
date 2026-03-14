@@ -16,6 +16,8 @@
     git,
     gnutar,
     gzip,
+    pkg-config,
+    openssl,
   }:
     rustPlatform.buildRustPackage {
       pname = "tangled-spindle-nix";
@@ -35,6 +37,11 @@
       nativeBuildInputs = [
         git
         makeWrapper
+        pkg-config
+      ];
+
+      buildInputs = [
+        openssl
       ];
 
       # Runtime dependencies needed by the nix engine for step execution
