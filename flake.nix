@@ -199,6 +199,8 @@
         ./slides
 
         ./h264toav1-rs
+
+        ./tangled-spindle-nix
       ];
       nixDirAliases = {
         packages = ["pkgs"];
