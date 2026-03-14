@@ -114,7 +114,7 @@ impl NixDeps {
             .iter()
             .find(|s| s.var_name == "nixpkgs")
             .map(|s| s.var_name.as_str())
-            .unwrap_or("(import <nixpkgs> {})");
+            .unwrap_or("(import (builtins.fetchTarball { url = \"https://github.com/NixOS/nixpkgs/archive/nixpkgs-unstable.tar.gz\"; }) {})");
 
         writeln!(expr, "{build_env_source}.buildEnv {{").unwrap();
         expr.push_str("  name = \"spindle-workflow-env\";\n");
@@ -142,9 +142,16 @@ impl NixDeps {
 }
 
 /// Resolve a source key into a Nix variable name and import expression.
+///
+/// Uses `builtins.fetchTarball` instead of `<nixpkgs>` to avoid depending
+/// on `NIX_PATH`, which may not be set in sandboxed environments
+/// (e.g. systemd DynamicUser).
 fn resolve_source(key: &str, custom_idx: &mut u32) -> (String, String) {
     if key == "nixpkgs" {
-        ("nixpkgs".into(), "import <nixpkgs> {}".into())
+        (
+            "nixpkgs".into(),
+            "import (builtins.fetchTarball { url = \"https://github.com/NixOS/nixpkgs/archive/nixpkgs-unstable.tar.gz\"; }) {}".into(),
+        )
     } else if let Some(channel) = key.strip_prefix("nixpkgs/") {
         let var_name = channel.replace(['-', '.'], "_");
         let import = format!(
@@ -368,7 +375,7 @@ mod tests {
         let nix_deps = NixDeps::parse(&deps).unwrap();
         let expr = nix_deps.to_nix_expr();
 
-        assert!(expr.contains("nixpkgs = import <nixpkgs> {};"));
+        assert!(expr.contains("nixpkgs = import (builtins.fetchTarball"));
         assert!(expr.contains("nixpkgs.nodejs"));
         assert!(expr.contains("nixpkgs.go"));
         assert!(expr.contains("buildEnv"));
@@ -416,7 +423,7 @@ mod tests {
         let nix_deps = NixDeps::parse(&deps).unwrap();
         let expr = nix_deps.to_nix_expr();
 
-        assert!(expr.contains("nixpkgs = import <nixpkgs> {};"));
+        assert!(expr.contains("nixpkgs = import (builtins.fetchTarball"));
         assert!(expr.contains("nixpkgs.nodejs"));
         assert!(expr.contains("nixpkgs.go"));
         assert!(expr.contains("nixpkgs_unstable.bun"));
@@ -554,8 +561,8 @@ steps:
         let nix_deps = NixDeps::parse(&deps).unwrap();
         let expr = nix_deps.to_nix_expr();
 
-        // Should fall back to importing <nixpkgs> for buildEnv
-        assert!(expr.contains("(import <nixpkgs> {}).buildEnv {"));
+        // Should fall back to fetching nixpkgs for buildEnv
+        assert!(expr.contains("(import (builtins.fetchTarball"));
     }
 
     // -----------------------------------------------------------------------
