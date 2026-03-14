@@ -165,9 +165,32 @@ fn build_systemd_run_cmd(
         cmd.arg(format!("{k}={v}"));
     }
 
-    // Set HOME to the ephemeral home dir.
+    // Set HOME and XDG directories to the ephemeral home dir.
+    // Tools like cachix and nix resolve config paths via XDG dirs
+    // or the passwd entry rather than $HOME, so we must set these
+    // explicitly to keep writes inside the ephemeral home.
     cmd.arg("--setenv");
     cmd.arg(format!("HOME={}", home_dir.display()));
+    cmd.arg("--setenv");
+    cmd.arg(format!(
+        "XDG_CONFIG_HOME={}",
+        home_dir.join(".config").display()
+    ));
+    cmd.arg("--setenv");
+    cmd.arg(format!(
+        "XDG_CACHE_HOME={}",
+        home_dir.join(".cache").display()
+    ));
+    cmd.arg("--setenv");
+    cmd.arg(format!(
+        "XDG_DATA_HOME={}",
+        home_dir.join(".local/share").display()
+    ));
+    cmd.arg("--setenv");
+    cmd.arg(format!(
+        "XDG_STATE_HOME={}",
+        home_dir.join(".local/state").display()
+    ));
 
     // The actual command: bash -euo pipefail -c '...'
     cmd.arg("--");
@@ -196,6 +219,10 @@ fn build_direct_cmd(
         cmd.env(k, v);
     }
     cmd.env("HOME", home_dir);
+    cmd.env("XDG_CONFIG_HOME", home_dir.join(".config"));
+    cmd.env("XDG_CACHE_HOME", home_dir.join(".cache"));
+    cmd.env("XDG_DATA_HOME", home_dir.join(".local/share"));
+    cmd.env("XDG_STATE_HOME", home_dir.join(".local/state"));
     cmd.stdout(std::process::Stdio::inherit());
     cmd.stderr(std::process::Stdio::inherit());
     cmd
@@ -369,6 +396,15 @@ async fn main() -> ExitCode {
             // Inherit TERM for colored output.
             if let Ok(term) = std::env::var("TERM") {
                 step_env.push(("TERM".into(), term));
+            }
+
+            // Override USER with the real user running spindle-run.
+            // Workflows may set USER for CI environments (e.g. "nobody"
+            // for DynamicUser), but locally the real user is needed for
+            // Nix daemon trust and other user-dependent tooling.
+            if let Ok(real_user) = std::env::var("USER") {
+                step_env.retain(|(k, _)| k != "USER");
+                step_env.push(("USER".into(), real_user));
             }
 
             let mut child = if isolate {
