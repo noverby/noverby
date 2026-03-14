@@ -64,7 +64,7 @@ impl XrpcError {
     }
 }
 
-/// Dispatch an XRPC request to the appropriate handler.
+/// Dispatch an XRPC procedure (POST) request to the appropriate handler.
 pub async fn dispatch(
     Path(method): Path<String>,
     state: State<Arc<XrpcContext>>,
@@ -85,6 +85,31 @@ pub async fn dispatch(
             (StatusCode::NOT_FOUND, Json(err)).into_response()
         }
     }
+}
+
+/// Dispatch an XRPC query (GET) request to the appropriate handler.
+pub async fn dispatch_query(
+    Path(method): Path<String>,
+    state: State<Arc<XrpcContext>>,
+) -> Response {
+    match method.as_str() {
+        "sh.tangled.owner" => owner(state).await,
+        _ => {
+            let err = XrpcError::not_found(format!("unknown XRPC query: {method}"));
+            (StatusCode::NOT_FOUND, Json(err)).into_response()
+        }
+    }
+}
+
+/// Return the spindle owner's DID. No authentication required.
+///
+/// This is called by the tangled appview to verify spindle ownership.
+async fn owner(State(ctx): State<Arc<XrpcContext>>) -> Response {
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"owner": ctx.owner})),
+    )
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------
