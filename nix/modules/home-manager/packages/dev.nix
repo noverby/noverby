@@ -23,7 +23,8 @@
     flamelens # Flamegraph cli viewer
     #darling
 
-    # CI
+    # Tangled
+    tangled-cli
     tangled-spindle-nix # spindle-run
 
     # Nix dev
