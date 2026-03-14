@@ -12,11 +12,7 @@
 pkgs.nixosTest {
   name = "tangled-spindle-nix-integration";
 
-  nodes.machine = {
-    config,
-    pkgs,
-    ...
-  }: {
+  nodes.machine = {...}: {
     imports = [./nixos-module.nix];
 
     # Create a dummy token file
@@ -30,9 +26,11 @@ pkgs.nixosTest {
       tokenFile = "/etc/spindle-token";
       listenAddr = "0.0.0.0:6555";
       dev = true;
-      engine.maxJobs = 1;
-      engine.queueSize = 10;
-      engine.workflowTimeout = "1m";
+      engine = {
+        maxJobs = 1;
+        queueSize = 10;
+        workflowTimeout = "1m";
+      };
     };
   };
 

@@ -77,7 +77,13 @@
     inputs.self.desktops.cosmic
 
     # ── Machine configuration ─────────────────────────────────────────
-    ({pkgs, ...}: {
+    ({
+      pkgs,
+      inputs,
+      ...
+    }: let
+      inherit (inputs.self.secrets) publicKeys;
+    in {
       nixpkgs.overlays = [
         inputs.self.overlays.default
       ];
@@ -229,9 +235,7 @@
             "video"
             "wheel"
           ];
-          openssh.authorizedKeys.keys = [
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOachAYzBH8Qaorvbck99Fw+v6md3BeVtfL5PJ/byv4Cc"
-          ];
+          openssh.authorizedKeys.keys = [publicKeys.noverby-ssh-ed25519];
         };
       };
 

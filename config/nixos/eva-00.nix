@@ -68,9 +68,12 @@ inputs.nixos-raspberrypi.lib.nixosSystem {
       config,
       pkgs,
       lib,
+      inputs,
       stateVersion,
       ...
-    }: {
+    }: let
+      inherit (inputs.self.secrets) publicKeys;
+    in {
       # ── Identity ────────────────────────────────────────────────────
       networking.hostName = "eva-00";
       system = {
@@ -199,17 +202,13 @@ inputs.nixos-raspberrypi.lib.nixosSystem {
 
       # ── Users ───────────────────────────────────────────────────────
       users.users = {
-        root.openssh.authorizedKeys.keys = [
-          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOachAYzBH8Qaorvbck99Fw+v6md3BeVtfL5PJ/byv4Cc"
-        ];
+        root.openssh.authorizedKeys.keys = [publicKeys.noverby-ssh-ed25519];
 
         noverby = {
           isNormalUser = true;
           description = "Niclas Overby";
           extraGroups = ["wheel"];
-          openssh.authorizedKeys.keys = [
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOachAYzBH8Qaorvbck99Fw+v6md3BeVtfL5PJ/byv4Cc"
-          ];
+          openssh.authorizedKeys.keys = [publicKeys.noverby-ssh-ed25519];
         };
       };
 
