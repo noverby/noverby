@@ -44,8 +44,9 @@
       };
 
       tokenFile = lib.mkOption {
-        type = lib.types.str;
-        description = "Path to the authentication token file.";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Path to the authentication token file. If null, no token is configured.";
       };
 
       listenAddr = lib.mkOption {
@@ -217,13 +218,15 @@ in {
           SPINDLE_SERVER_PLC_URL = runner.plcUrl;
           SPINDLE_SERVER_DB_PATH = dbPath;
           SPINDLE_SERVER_LOG_DIR = logDir;
-          SPINDLE_SERVER_TOKEN_FILE = "/var/lib/${stateDir}/token";
           SPINDLE_ENGINE = "nix";
           SPINDLE_ENGINE_MAX_JOBS = toString runner.engine.maxJobs;
           SPINDLE_ENGINE_QUEUE_SIZE = toString runner.engine.queueSize;
           SPINDLE_ENGINE_WORKFLOW_TIMEOUT = runner.engine.workflowTimeout;
           SPINDLE_SERVER_NIXERY_URL = runner.engine.nixery;
           SPINDLE_SERVER_SECRETS_PROVIDER = runner.secrets.provider;
+        }
+        // lib.optionalAttrs (runner.tokenFile != null) {
+          SPINDLE_SERVER_TOKEN_FILE = "/var/lib/${stateDir}/token";
         }
         // lib.optionalAttrs runner.dev {
           SPINDLE_DEV = "1";
@@ -238,9 +241,9 @@ in {
         // runner.extraEnvironment;
 
       # Script to copy token file into state directory with correct permissions
-      tokenScript = pkgs.writeShellScript "tangled-spindle-${name}-token" ''
+      tokenScript = lib.optionalString (runner.tokenFile != null) (pkgs.writeShellScript "tangled-spindle-${name}-token" ''
         install -m 0600 -o "$(id -u)" -g "$(id -g)" "${runner.tokenFile}" "/var/lib/${stateDir}/token"
-      '';
+      '');
     in {
       "tangled-spindle-${name}" =
         lib.recursiveUpdate {
@@ -254,7 +257,7 @@ in {
           path = [runner.package];
 
           serviceConfig = {
-            ExecStartPre = ["+${tokenScript}"];
+            ExecStartPre = lib.mkIf (runner.tokenFile != null) ["+${tokenScript}"];
             ExecStart = "${runner.package}/bin/tangled-spindle";
 
             StateDirectory = stateDir;
@@ -320,7 +323,7 @@ in {
             RestartSec = 5;
 
             # Make token file inaccessible after copying
-            InaccessiblePaths = ["-${runner.tokenFile}"];
+            InaccessiblePaths = lib.mkIf (runner.tokenFile != null) ["-${runner.tokenFile}"];
 
             # PATH for nix build and step execution
             Environment = ["PATH=${basePath}"];

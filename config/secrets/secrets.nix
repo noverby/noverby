@@ -16,4 +16,7 @@ in {
   "wifi-concero.age" = {
     inherit publicKeys;
   };
+  "spindle-token.age" = {
+    inherit publicKeys;
+  };
 }
