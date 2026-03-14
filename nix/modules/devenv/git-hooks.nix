@@ -2,9 +2,10 @@
 {
   pkgs,
   lib,
+  src,
   ...
 }: let
-  commitlintrc = import ./configs/commitlintrc.nix {inherit pkgs lib;};
+  commitlintrc = import ./configs/commitlintrc.nix {inherit pkgs lib src;};
 in {
   git-hooks = {
     package = pkgs.prek;
@@ -19,7 +20,7 @@ in {
       taplo.enable = true;
       typos = {
         enable = true;
-        settings.configPath = "./devenv-modules/configs/typos.toml";
+        settings.configPath = "./nix/modules/devenv/configs/typos.toml";
       };
       nickel-format = {
         enable = true;

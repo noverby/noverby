@@ -2,9 +2,10 @@
 {
   pkgs,
   lib,
+  src,
   ...
 }: let
-  commitlintrc = import ./commitlintrc.nix {inherit pkgs lib;};
+  commitlintrc = import ./commitlintrc.nix {inherit pkgs lib src;};
 in {
   enterShell = ''
     ln -sf ${./biome-nix.jsonc} biome.jsonc

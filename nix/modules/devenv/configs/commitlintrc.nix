@@ -3,10 +3,10 @@
 {
   pkgs,
   lib,
+  src,
 }: let
-  flakeSrc = ../..;
   files = ["git" "readme" "license"];
-  entries = builtins.readDir flakeSrc;
+  entries = builtins.readDir src;
   ignoreDirs = ["target"];
   allDirs = builtins.attrNames (lib.filterAttrs (_: type: type == "directory") entries);
   dirs = builtins.sort (a: b: a < b) (
