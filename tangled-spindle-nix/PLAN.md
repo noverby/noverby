@@ -1,4 +1,4 @@
-# tangled-spindle-nix — Nix CI Runner
+# tangled-spindle-nix
 
 A Rust reimplementation of the [Tangled Spindle](https://docs.tangled.org/spindles.html) CI runner that replaces Docker-based isolation with **native Nix** for dependency management and **systemd service-level sandboxing** for isolation. Includes a NixOS module (`services.tangled-spindles`) for declarative multi-runner deployment, modeled after [`services.github-runners`](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/continuous-integration/github-runner/options.nix).
 
