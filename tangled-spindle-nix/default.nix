@@ -9,6 +9,7 @@
   packages.tangled-spindle-nix = {
     lib,
     rustPlatform,
+    makeWrapper,
     nix,
     bash,
     coreutils,
@@ -33,6 +34,7 @@
 
       nativeBuildInputs = [
         git
+        makeWrapper
       ];
 
       # Runtime dependencies needed by the nix engine for step execution

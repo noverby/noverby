@@ -395,25 +395,25 @@ Each workflow step runs as a **child process** of the runner daemon. The runner'
 
 **Goal**: Wire everything together into the main `tangled-spindle` binary.
 
-- [ ] Implement `server.rs`:
+- [x] Implement `server.rs`:
   - Load config from environment
   - Initialize DB, RBAC, secrets manager, engine, job queue, jetstream client, knot consumer
   - Configure owner in RBAC
   - Start all subsystems concurrently
   - Graceful shutdown on SIGTERM/SIGINT
-- [ ] Implement pipeline processing (matching upstream `processPipeline`):
+- [x] Implement pipeline processing (matching upstream `processPipeline`):
   - Parse `sh.tangled.pipeline` events
   - Validate trigger metadata and repo ownership
   - Map workflows to engines
   - Build pipeline environment variables
   - Enqueue job to the bounded queue
-- [ ] Implement workflow execution orchestration (matching upstream `engine.go:StartWorkflows`):
+- [x] Implement workflow execution orchestration (matching upstream `engine.go:StartWorkflows`):
   - Run all workflows in parallel (`tokio::spawn`)
   - For each workflow: `setup_workflow` → run steps sequentially → `destroy_workflow`
   - Status transitions: `pending` → `running` → (`success` | `failed` | `timeout` | `cancelled`)
   - Extract secrets from vault for the repo
   - Stream control log lines (step start/end) and data log lines (stdout/stderr)
-- [ ] Implement job queue with configurable concurrency (matching upstream `queue.go`)
+- [x] Implement job queue with configurable concurrency (matching upstream `queue.go`)
 
 ### Phase 7 — NixOS Module
 
@@ -441,8 +441,8 @@ services.tangled-spindles = {
 
 #### Module options (`nixos-module.nix`)
 
-- [ ] `services.tangled-spindles` — `attrsOf (submodule { ... })`, one entry per runner instance
-- [ ] Per-runner options:
+- [x] `services.tangled-spindles` — `attrsOf (submodule { ... })`, one entry per runner instance
+- [x] Per-runner options:
   - `enable` — `bool`, default `false`
   - `package` — `package`, default `tangled-spindle-nix`
   - `hostname` — `str`, **required**. Public hostname of this spindle instance
@@ -474,12 +474,12 @@ services.tangled-spindles = {
 
 For each enabled runner, generate a systemd service `tangled-spindle-{name}`. The runner daemon executes workflow steps as child processes — all sandboxing is inherited automatically, no `systemd-run` or special permissions needed.
 
-- [ ] `ExecStart` — `${package}/bin/tangled-spindle`
-- [ ] `Environment` — Map all config options to `SPINDLE_SERVER_*` env vars
-- [ ] `StateDirectory` — `tangled-spindle/{name}` (SQLite DB, workspace root)
-- [ ] `LogsDirectory` — `tangled-spindle/{name}` (workflow log files)
-- [ ] `RuntimeDirectory` — `tangled-spindle/{name}` (runtime data)
-- [ ] Sandboxing (applied to the service, inherited by all child processes):
+- [x] `ExecStart` — `${package}/bin/tangled-spindle`
+- [x] `Environment` — Map all config options to `SPINDLE_SERVER_*` env vars
+- [x] `StateDirectory` — `tangled-spindle/{name}` (SQLite DB, workspace root)
+- [x] `LogsDirectory` — `tangled-spindle/{name}` (workflow log files)
+- [x] `RuntimeDirectory` — `tangled-spindle/{name}` (runtime data)
+- [x] Sandboxing (applied to the service, inherited by all child processes):
   - `DynamicUser=true` (unless `user` is set)
   - `ProtectSystem=strict`
   - `ProtectHome=yes`
@@ -503,18 +503,18 @@ For each enabled runner, generate a systemd service `tangled-spindle-{name}`. Th
   - `MemoryDenyWriteExecute=false` (needed for Nix/Node)
   - `SystemCallFilter=~@clock ~@cpu-emulation ~@module ~@mount ~@obsolete ~@raw-io ~@reboot ~capset ~setdomainname ~sethostname`
   - `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK`
-- [ ] Resource limits (configurable per runner):
+- [x] Resource limits (configurable per runner):
   - `CPUQuota=` — optional CPU limit
   - `MemoryMax=` — optional memory limit
   - `TasksMax=` — optional process count limit
-- [ ] Token file handling:
+- [x] Token file handling:
   - `ExecStartPre=+` script (runs as root) to copy token file into state directory with appropriate permissions
   - `InaccessiblePaths=-{tokenFile}` after copying
-- [ ] `PATH` includes: `bash`, `coreutils`, `git`, `gnutar`, `gzip`, `nix`, plus `extraPackages`
-- [ ] Restart policy: `on-failure` with rate limiting
-- [ ] `After=network-online.target nix-daemon.service`
-- [ ] `Wants=network-online.target nix-daemon.service`
-- [ ] `PrivateNetwork=false` (default — steps need network for git, API calls, etc.)
+- [x] `PATH` includes: `bash`, `coreutils`, `git`, `gnutar`, `gzip`, `nix`, plus `extraPackages`
+- [x] Restart policy: `on-failure` with rate limiting
+- [x] `After=network-online.target nix-daemon.service`
+- [x] `Wants=network-online.target nix-daemon.service`
+- [x] `PrivateNetwork=false` (default — steps need network for git, API calls, etc.)
 
 ### Phase 8 — Integration Testing & Hardening
 

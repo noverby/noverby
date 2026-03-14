@@ -182,16 +182,154 @@ in {
 
   config = let
     enabledRunners = lib.filterAttrs (_: runner: runner.enable) cfg;
+
+    # Generate a systemd service for a single runner instance
+    mkRunnerService = name: runner: let
+      stateDir = "tangled-spindle/${name}";
+      logsDir = "tangled-spindle/${name}";
+      runtimeDir = "tangled-spindle/${name}";
+
+      dbPath =
+        if runner.dbPath != null
+        then runner.dbPath
+        else "/var/lib/${stateDir}/spindle.db";
+      logDir =
+        if runner.logDir != null
+        then runner.logDir
+        else "/var/log/${logsDir}";
+
+      basePath = lib.makeBinPath ([
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.git
+          pkgs.gnutar
+          pkgs.gzip
+          pkgs.nix
+        ]
+        ++ runner.extraPackages);
+
+      environment =
+        {
+          SPINDLE_SERVER_HOSTNAME = runner.hostname;
+          SPINDLE_SERVER_OWNER = runner.owner;
+          SPINDLE_SERVER_LISTEN_ADDR = runner.listenAddr;
+          SPINDLE_SERVER_JETSTREAM_ENDPOINT = runner.jetstreamEndpoint;
+          SPINDLE_SERVER_PLC_URL = runner.plcUrl;
+          SPINDLE_SERVER_DB_PATH = dbPath;
+          SPINDLE_SERVER_LOG_DIR = logDir;
+          SPINDLE_SERVER_TOKEN_FILE = "/var/lib/${stateDir}/token";
+          SPINDLE_ENGINE = "nix";
+          SPINDLE_ENGINE_MAX_JOBS = toString runner.engine.maxJobs;
+          SPINDLE_ENGINE_QUEUE_SIZE = toString runner.engine.queueSize;
+          SPINDLE_ENGINE_WORKFLOW_TIMEOUT = runner.engine.workflowTimeout;
+          SPINDLE_SERVER_NIXERY_URL = runner.engine.nixery;
+          SPINDLE_SERVER_SECRETS_PROVIDER = runner.secrets.provider;
+        }
+        // lib.optionalAttrs runner.dev {
+          SPINDLE_DEV = "1";
+        }
+        // lib.optionalAttrs (runner.secrets.provider == "openbao") {
+          SPINDLE_SERVER_SECRETS_OPENBAO_PROXY_ADDR = runner.secrets.openbao.proxyAddr;
+          SPINDLE_SERVER_SECRETS_OPENBAO_MOUNT = runner.secrets.openbao.mount;
+        }
+        // lib.optionalAttrs (runner.engine.extraNixFlags != []) {
+          SPINDLE_ENGINE_EXTRA_NIX_FLAGS = lib.concatStringsSep " " runner.engine.extraNixFlags;
+        }
+        // runner.extraEnvironment;
+
+      # Script to copy token file into state directory with correct permissions
+      tokenScript = pkgs.writeShellScript "tangled-spindle-${name}-token" ''
+        install -m 0600 -o "$(id -u)" -g "$(id -g)" "${runner.tokenFile}" "/var/lib/${stateDir}/token"
+      '';
+    in {
+      "tangled-spindle-${name}" =
+        lib.recursiveUpdate {
+          description = "Tangled Spindle CI Runner (${name})";
+          after = ["network-online.target" "nix-daemon.service"];
+          wants = ["network-online.target" "nix-daemon.service"];
+          wantedBy = ["multi-user.target"];
+
+          inherit environment;
+
+          path = [runner.package];
+
+          serviceConfig = {
+            ExecStartPre = ["+${tokenScript}"];
+            ExecStart = "${runner.package}/bin/tangled-spindle";
+
+            StateDirectory = stateDir;
+            LogsDirectory = logsDir;
+            RuntimeDirectory = runtimeDir;
+
+            # User isolation
+            DynamicUser = runner.user == null;
+            User = lib.mkIf (runner.user != null) runner.user;
+            Group = lib.mkIf (runner.group != null) runner.group;
+
+            # Filesystem sandboxing
+            ProtectSystem = "strict";
+            ProtectHome = true;
+            PrivateTmp = true;
+            PrivateMounts = true;
+            PrivateDevices = true;
+            PrivateUsers = true;
+            ReadWritePaths = [
+              "/var/lib/${stateDir}"
+              "/var/log/${logsDir}"
+            ];
+
+            # Kernel hardening
+            ProtectKernelTunables = true;
+            ProtectKernelModules = true;
+            ProtectKernelLogs = true;
+            ProtectControlGroups = true;
+            ProtectClock = true;
+            ProtectHostname = true;
+            ProtectProc = "invisible";
+
+            # Privilege hardening
+            NoNewPrivileges = true;
+            RemoveIPC = true;
+            RestrictSUIDSGID = true;
+            RestrictNamespaces = true;
+            RestrictRealtime = true;
+            RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX" "AF_NETLINK"];
+
+            # Nix/Node need writable memory for JIT
+            MemoryDenyWriteExecute = false;
+
+            # Syscall filtering
+            SystemCallFilter = [
+              "~@clock"
+              "~@cpu-emulation"
+              "~@module"
+              "~@mount"
+              "~@obsolete"
+              "~@raw-io"
+              "~@reboot"
+              "~capset"
+              "~setdomainname"
+              "~sethostname"
+            ];
+
+            # Network — steps need network for git, API calls, etc.
+            PrivateNetwork = false;
+
+            # Restart policy
+            Restart = "on-failure";
+            RestartSec = 5;
+
+            # Make token file inaccessible after copying
+            InaccessiblePaths = ["-${runner.tokenFile}"];
+
+            # PATH for nix build and step execution
+            Environment = ["PATH=${basePath}"];
+          };
+        }
+        runner.serviceOverrides;
+    };
   in
     lib.mkIf (enabledRunners != {}) {
-      # TODO (Phase 7): Generate systemd services for each enabled runner.
-      # See PLAN.md Phase 7 for the full systemd service specification including:
-      # - ExecStart, Environment mapping
-      # - StateDirectory, LogsDirectory, RuntimeDirectory
-      # - Full systemd sandboxing (DynamicUser, ProtectSystem, PrivateTmp, etc.)
-      # - Resource limits (CPUQuota, MemoryMax, TasksMax)
-      # - Token file handling
-      # - PATH with bash, coreutils, git, gnutar, gzip, nix, extraPackages
-      # - Restart policy, After/Wants dependencies
+      systemd.services = lib.mkMerge (lib.mapAttrsToList mkRunnerService enabledRunners);
     };
 }
