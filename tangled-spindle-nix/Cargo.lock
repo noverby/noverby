@@ -1960,6 +1960,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "spindle-run"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde_yaml",
+ "spindle-engine",
+ "spindle-models",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "spindle-secrets"
 version = "0.1.0"
 dependencies = [

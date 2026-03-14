@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/tangled-spindle",
+  "crates/spindle-run",
   "crates/spindle-engine",
   "crates/spindle-jetstream",
   "crates/spindle-knot",
