@@ -14,7 +14,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::get;
 use serde::Deserialize;
 use spindle_db::Database;
 use spindle_models::pipeline::PipelineId;
@@ -55,7 +55,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let xrpc_ctx = Arc::clone(&state.xrpc);
 
     let xrpc_router = Router::new()
-        .route("/{method}", post(spindle_xrpc::dispatch))
+        .route("/{method}", get(spindle_xrpc::dispatch_query).post(spindle_xrpc::dispatch))
         .with_state(xrpc_ctx);
 
     Router::new()
@@ -585,6 +585,27 @@ mod tests {
             version, "test.example.com"
         );
         assert_eq!(result, expected);
+    }
+
+    // -----------------------------------------------------------------------
+    // XRPC: owner query
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn xrpc_owner_returns_owner_did() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::get("/xrpc/sh.tangled.owner")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["owner"], TEST_OWNER);
     }
 
     // -----------------------------------------------------------------------

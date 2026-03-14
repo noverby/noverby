@@ -28,7 +28,7 @@ use spindle_db::Database;
 use spindle_rbac::SpindleEnforcer;
 use spindle_secrets::Manager;
 
-pub use handlers::dispatch;
+pub use handlers::{dispatch, dispatch_query};
 pub use service_auth::ServiceAuth;
 
 /// Shared context for XRPC handlers.
