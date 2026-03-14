@@ -9,7 +9,7 @@
   pkgs,
   tangled-spindle-nix,
 }:
-pkgs.nixosTest {
+pkgs.testers.nixosTest {
   name = "tangled-spindle-nix-integration";
 
   nodes.machine = {...}: {
