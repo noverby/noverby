@@ -1,15 +1,14 @@
 //! Knot event consumer for pipeline events.
 //!
-//! Subscribes to knot HTTP event streams (Server-Sent Events) and filters
-//! for `sh.tangled.pipeline` events. Matches the upstream Go spindle's knot
+//! Subscribes to knot WebSocket event streams and filters for
+//! `sh.tangled.pipeline` events. Matches the upstream Go spindle's knot
 //! event consumer behavior.
 //!
 //! # Protocol
 //!
-//! Each knot server exposes an SSE endpoint at `/events`. The consumer
+//! Each knot server exposes a WebSocket endpoint at `/events`. The consumer
 //! connects with an optional `cursor` query parameter to replay missed events.
-//! Events are newline-delimited JSON objects with `event:` and `data:` fields
-//! following the SSE specification.
+//! Events are JSON objects sent as WebSocket text frames.
 //!
 //! # Connection Management
 //!
@@ -21,6 +20,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
@@ -37,17 +37,6 @@ pub const PIPELINE_NSID: &str = "sh.tangled.pipeline";
 // ---------------------------------------------------------------------------
 // Event types
 // ---------------------------------------------------------------------------
-
-/// A raw Server-Sent Event parsed from the knot stream.
-#[derive(Debug, Clone, Default)]
-struct SseEvent {
-    /// The SSE `event:` field (event type name).
-    event_type: Option<String>,
-    /// The SSE `data:` field (may span multiple lines, joined by newlines).
-    data: String,
-    /// The SSE `id:` field (used as cursor).
-    id: Option<String>,
-}
 
 /// A pipeline event received from a knot server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +56,7 @@ pub struct PipelineEvent {
     #[serde(default)]
     pub rkey: Option<String>,
 
-    /// The event kind / type from the SSE stream.
+    /// The event kind / type from the stream.
     #[serde(default)]
     pub event_type: Option<String>,
 
@@ -197,12 +186,9 @@ struct KnotConnection {
 /// # Dynamic Management
 ///
 /// Knots can be added or removed at runtime. Each knot gets its own
-/// connection task that handles SSE streaming, cursor tracking, and
+/// connection task that handles WebSocket streaming, cursor tracking, and
 /// reconnection with exponential backoff.
 pub struct KnotConsumer {
-    /// HTTP client for SSE connections.
-    http_client: reqwest::Client,
-
     /// Active knot connections, keyed by hostname.
     connections: Arc<RwLock<HashMap<String, KnotConnection>>>,
 
@@ -228,13 +214,7 @@ impl KnotConsumer {
         event_tx: mpsc::Sender<PipelineEvent>,
         shutdown: tokio_util::sync::CancellationToken,
     ) -> Self {
-        let http_client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_default();
-
         Self {
-            http_client,
             connections: Arc::new(RwLock::new(HashMap::new())),
             event_tx,
             db,
@@ -329,33 +309,22 @@ impl KnotConsumer {
         initial_cursor: Option<String>,
         cancel: tokio_util::sync::CancellationToken,
     ) -> tokio::task::JoinHandle<()> {
-        let http_client = self.http_client.clone();
         let event_tx = self.event_tx.clone();
         let db = self.db.clone();
         let connections = self.connections.clone();
 
         tokio::spawn(async move {
-            run_knot_connection(
-                http_client,
-                knot,
-                initial_cursor,
-                event_tx,
-                db,
-                connections,
-                cancel,
-            )
-            .await;
+            run_knot_connection(knot, initial_cursor, event_tx, db, connections, cancel).await;
         })
     }
 }
 
 /// Run the connection loop for a single knot server.
 ///
-/// Connects to the knot's SSE endpoint, processes events, and reconnects
+/// Connects to the knot's WebSocket endpoint, processes events, and reconnects
 /// with exponential backoff on failures. Runs until the cancellation token
 /// is triggered.
 async fn run_knot_connection(
-    http_client: reqwest::Client,
     knot: String,
     initial_cursor: Option<String>,
     event_tx: mpsc::Sender<PipelineEvent>,
@@ -376,7 +345,6 @@ async fn run_knot_connection(
         info!(knot = %knot, url = %url, "connecting to knot event stream");
 
         match stream_events(
-            &http_client,
             &url,
             &knot,
             &mut cursor,
@@ -412,12 +380,16 @@ async fn run_knot_connection(
 
 /// Build the events URL for a knot server.
 ///
-/// Format: `https://{knot}/events[?cursor={cursor}]`
+/// Format: `wss://{knot}/events[?cursor={cursor}]`
 fn build_events_url(knot: &str, cursor: Option<&str>) -> String {
-    let base = if knot.starts_with("http://") || knot.starts_with("https://") {
-        format!("{knot}/events")
+    let base = if knot.starts_with("http://") {
+        let host = knot.strip_prefix("http://").unwrap();
+        format!("ws://{host}/events")
+    } else if knot.starts_with("https://") {
+        let host = knot.strip_prefix("https://").unwrap();
+        format!("wss://{host}/events")
     } else {
-        format!("https://{knot}/events")
+        format!("wss://{knot}/events")
     };
 
     match cursor {
@@ -426,10 +398,9 @@ fn build_events_url(knot: &str, cursor: Option<&str>) -> String {
     }
 }
 
-/// Connect to a knot event stream and process events until disconnection.
+/// Connect to a knot event stream via WebSocket and process events until disconnection.
 #[allow(clippy::too_many_arguments)]
 async fn stream_events(
-    http_client: &reqwest::Client,
     url: &str,
     knot: &str,
     cursor: &mut Option<String>,
@@ -438,76 +409,42 @@ async fn stream_events(
     connections: &Arc<RwLock<HashMap<String, KnotConnection>>>,
     cancel: &tokio_util::sync::CancellationToken,
 ) -> Result<(), KnotError> {
-    let response = http_client
-        .get(url)
-        .header("Accept", "text/event-stream")
-        .header("Cache-Control", "no-cache")
-        .send()
+    let (ws_stream, _response) = tokio_tungstenite::connect_async(url)
         .await
-        .map_err(|e| KnotError::Connection(format!("HTTP request failed for {knot}: {e}")))?;
-
-    if !response.status().is_success() {
-        return Err(KnotError::Connection(format!(
-            "knot {knot} returned HTTP {}",
-            response.status()
-        )));
-    }
+        .map_err(|e| KnotError::Connection(format!("WebSocket connect failed for {knot}: {e}")))?;
 
     info!(knot = %knot, "connected to knot event stream");
 
-    // Process the SSE stream
-    let mut bytes_stream = response.bytes_stream();
-    let mut buffer = String::new();
-    let mut current_event = SseEvent::default();
-
-    use futures_util::StreamExt;
+    let (_write, mut read) = ws_stream.split();
 
     loop {
         tokio::select! {
-            chunk = bytes_stream.next() => {
-                match chunk {
-                    Some(Ok(bytes)) => {
-                        buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                        // Process complete lines from the buffer
-                        while let Some(newline_pos) = buffer.find('\n') {
-                            let line = buffer[..newline_pos].trim_end_matches('\r').to_string();
-                            buffer = buffer[newline_pos + 1..].to_string();
-
-                            if line.is_empty() {
-                                // Empty line = end of event
-                                if !current_event.data.is_empty()
-                                    && let Err(e) = process_sse_event(
-                                        knot,
-                                        &current_event,
-                                        cursor,
-                                        event_tx,
-                                        db,
-                                        connections,
-                                    ).await
-                                {
-                                    debug!(%e, knot = %knot, "failed to process SSE event");
-                                }
-                                current_event = SseEvent::default();
-                            } else if let Some(value) = line.strip_prefix("event:") {
-                                current_event.event_type = Some(value.trim().to_string());
-                            } else if let Some(value) = line.strip_prefix("data:") {
-                                if !current_event.data.is_empty() {
-                                    current_event.data.push('\n');
-                                }
-                                current_event.data.push_str(value.trim());
-                            } else if let Some(value) = line.strip_prefix("id:") {
-                                current_event.id = Some(value.trim().to_string());
-                            } else if line.starts_with(':') {
-                                // SSE comment, ignore
-                            } else {
-                                debug!(knot = %knot, line = %line, "unknown SSE line format");
+            msg = read.next() => {
+                match msg {
+                    Some(Ok(frame)) => {
+                        let text = match frame {
+                            tokio_tungstenite::tungstenite::Message::Text(t) => t,
+                            tokio_tungstenite::tungstenite::Message::Close(_) => {
+                                info!(knot = %knot, "knot sent close frame");
+                                return Ok(());
                             }
+                            _ => continue, // Skip binary, ping, pong frames
+                        };
+
+                        if let Err(e) = process_ws_message(
+                            knot,
+                            &text,
+                            cursor,
+                            event_tx,
+                            db,
+                            connections,
+                        ).await {
+                            debug!(%e, knot = %knot, "failed to process WebSocket message");
                         }
                     }
                     Some(Err(e)) => {
                         return Err(KnotError::Connection(format!(
-                            "stream read error for {knot}: {e}"
+                            "WebSocket read error for {knot}: {e}"
                         )));
                     }
                     None => {
@@ -524,17 +461,38 @@ async fn stream_events(
     }
 }
 
-/// Process a single parsed SSE event from a knot stream.
-async fn process_sse_event(
+/// Process a single WebSocket message from a knot stream.
+async fn process_ws_message(
     knot: &str,
-    sse_event: &SseEvent,
+    text: &str,
     cursor: &mut Option<String>,
     event_tx: &mpsc::Sender<PipelineEvent>,
     db: &Arc<spindle_db::Database>,
     connections: &Arc<RwLock<HashMap<String, KnotConnection>>>,
 ) -> Result<(), KnotError> {
-    // Update cursor if present
-    if let Some(ref id) = sse_event.id {
+    // Parse the message as JSON
+    let payload: serde_json::Value = serde_json::from_str(text).map_err(|e| {
+        KnotError::Parse(format!(
+            "failed to parse WebSocket message as JSON for {knot}: {e}"
+        ))
+    })?;
+
+    // Extract cursor/sequence ID if present
+    let msg_cursor = payload
+        .get("seq")
+        .and_then(|v| {
+            v.as_str()
+                .map(|s| s.to_string())
+                .or_else(|| v.as_i64().map(|n| n.to_string()))
+        })
+        .or_else(|| {
+            payload
+                .get("cursor")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        });
+
+    if let Some(ref id) = msg_cursor {
         *cursor = Some(id.clone());
 
         // Persist cursor to database
@@ -549,13 +507,6 @@ async fn process_sse_event(
         }
     }
 
-    // Parse the event data as JSON
-    let payload: serde_json::Value = serde_json::from_str(&sse_event.data).map_err(|e| {
-        KnotError::Parse(format!(
-            "failed to parse SSE event data as JSON for {knot}: {e}"
-        ))
-    })?;
-
     // Extract DID and rkey from the payload if present
     let did = payload
         .get("did")
@@ -566,19 +517,25 @@ async fn process_sse_event(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
+    let event_type = payload
+        .get("type")
+        .or_else(|| payload.get("event"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     let pipeline_event = PipelineEvent {
         knot: knot.to_string(),
-        cursor: sse_event.id.clone(),
+        cursor: msg_cursor,
         did,
         rkey,
-        event_type: sse_event.event_type.clone(),
+        event_type,
         payload,
     };
 
     debug!(
         knot = %knot,
-        event_type = ?sse_event.event_type,
-        cursor = ?sse_event.id,
+        event_type = ?pipeline_event.event_type,
+        cursor = ?pipeline_event.cursor,
         "received pipeline event"
     );
 
@@ -651,210 +608,31 @@ mod tests {
     #[test]
     fn build_events_url_no_cursor() {
         let url = build_events_url("knot.example.com", None);
-        assert_eq!(url, "https://knot.example.com/events");
+        assert_eq!(url, "wss://knot.example.com/events");
     }
 
     #[test]
     fn build_events_url_with_cursor() {
         let url = build_events_url("knot.example.com", Some("cursor-abc-123"));
-        assert_eq!(url, "https://knot.example.com/events?cursor=cursor-abc-123");
+        assert_eq!(url, "wss://knot.example.com/events?cursor=cursor-abc-123");
     }
 
     #[test]
     fn build_events_url_empty_cursor_treated_as_none() {
         let url = build_events_url("knot.example.com", Some(""));
-        assert_eq!(url, "https://knot.example.com/events");
+        assert_eq!(url, "wss://knot.example.com/events");
     }
 
     #[test]
     fn build_events_url_with_http_prefix() {
         let url = build_events_url("http://localhost:3000", None);
-        assert_eq!(url, "http://localhost:3000/events");
+        assert_eq!(url, "ws://localhost:3000/events");
     }
 
     #[test]
     fn build_events_url_with_https_prefix() {
         let url = build_events_url("https://knot.example.com", None);
-        assert_eq!(url, "https://knot.example.com/events");
-    }
-
-    // -----------------------------------------------------------------------
-    // SSE parsing tests (via process_sse_event)
-    // -----------------------------------------------------------------------
-
-    #[tokio::test]
-    async fn process_sse_event_basic() {
-        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
-        db.add_knot("knot.example.com").unwrap();
-
-        let (tx, mut rx) = mpsc::channel(16);
-        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-
-        // Insert a connection record so cursor update works
-        {
-            let mut conns = connections.write().await;
-            conns.insert(
-                "knot.example.com".to_string(),
-                KnotConnection {
-                    knot: "knot.example.com".to_string(),
-                    cursor: None,
-                    task: None,
-                    cancel: tokio_util::sync::CancellationToken::new(),
-                },
-            );
-        }
-
-        let sse = SseEvent {
-            event_type: Some("pipeline".to_string()),
-            data: r#"{"did":"did:plc:alice","rkey":"abc123","status":"pending"}"#.to_string(),
-            id: Some("cursor-001".to_string()),
-        };
-
-        let mut cursor = None;
-
-        process_sse_event(
-            "knot.example.com",
-            &sse,
-            &mut cursor,
-            &tx,
-            &db,
-            &connections,
-        )
-        .await
-        .unwrap();
-
-        // Check cursor was updated
-        assert_eq!(cursor.as_deref(), Some("cursor-001"));
-
-        // Check cursor was persisted to DB
-        let db_cursor = db.get_knot_cursor("knot.example.com").unwrap();
-        assert_eq!(db_cursor.as_deref(), Some("cursor-001"));
-
-        // Check event was sent
-        let event = rx.try_recv().unwrap();
-        assert_eq!(event.knot, "knot.example.com");
-        assert_eq!(event.cursor.as_deref(), Some("cursor-001"));
-        assert_eq!(event.did.as_deref(), Some("did:plc:alice"));
-        assert_eq!(event.rkey.as_deref(), Some("abc123"));
-        assert_eq!(event.event_type.as_deref(), Some("pipeline"));
-    }
-
-    #[tokio::test]
-    async fn process_sse_event_no_id() {
-        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
-        let (tx, mut rx) = mpsc::channel(16);
-        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-
-        let sse = SseEvent {
-            event_type: None,
-            data: r#"{"status":"running"}"#.to_string(),
-            id: None,
-        };
-
-        let mut cursor = Some("old-cursor".to_string());
-
-        process_sse_event(
-            "knot.example.com",
-            &sse,
-            &mut cursor,
-            &tx,
-            &db,
-            &connections,
-        )
-        .await
-        .unwrap();
-
-        // Cursor should remain unchanged
-        assert_eq!(cursor.as_deref(), Some("old-cursor"));
-
-        // Event should still be sent
-        let event = rx.try_recv().unwrap();
-        assert_eq!(event.knot, "knot.example.com");
-        assert!(event.cursor.is_none());
-        assert!(event.did.is_none());
-    }
-
-    #[tokio::test]
-    async fn process_sse_event_invalid_json() {
-        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
-        let (tx, _rx) = mpsc::channel(16);
-        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-
-        let sse = SseEvent {
-            event_type: None,
-            data: "not valid json{{{".to_string(),
-            id: None,
-        };
-
-        let mut cursor = None;
-
-        let result = process_sse_event(
-            "knot.example.com",
-            &sse,
-            &mut cursor,
-            &tx,
-            &db,
-            &connections,
-        )
-        .await;
-
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            KnotError::Parse(msg) => {
-                assert!(msg.contains("failed to parse SSE event data"));
-            }
-            other => panic!("expected Parse error, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn process_sse_event_updates_connection_cursor() {
-        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
-        db.add_knot("knot.example.com").unwrap();
-
-        let (tx, _rx) = mpsc::channel(16);
-        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-
-        {
-            let mut conns = connections.write().await;
-            conns.insert(
-                "knot.example.com".to_string(),
-                KnotConnection {
-                    knot: "knot.example.com".to_string(),
-                    cursor: None,
-                    task: None,
-                    cancel: tokio_util::sync::CancellationToken::new(),
-                },
-            );
-        }
-
-        let sse = SseEvent {
-            event_type: Some("pipeline".to_string()),
-            data: r#"{"status":"ok"}"#.to_string(),
-            id: Some("cursor-042".to_string()),
-        };
-
-        let mut cursor = None;
-
-        process_sse_event(
-            "knot.example.com",
-            &sse,
-            &mut cursor,
-            &tx,
-            &db,
-            &connections,
-        )
-        .await
-        .unwrap();
-
-        // Check in-memory connection cursor was updated
-        let conns = connections.read().await;
-        let conn = conns.get("knot.example.com").unwrap();
-        assert_eq!(conn.cursor.as_deref(), Some("cursor-042"));
+        assert_eq!(url, "wss://knot.example.com/events");
     }
 
     // -----------------------------------------------------------------------
@@ -977,6 +755,137 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // WebSocket message processing tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn process_ws_message_basic() {
+        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
+        db.add_knot("knot.example.com").unwrap();
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
+            Arc::new(RwLock::new(HashMap::new()));
+
+        // Insert a connection record so cursor update works
+        {
+            let mut conns = connections.write().await;
+            conns.insert(
+                "knot.example.com".to_string(),
+                KnotConnection {
+                    knot: "knot.example.com".to_string(),
+                    cursor: None,
+                    task: None,
+                    cancel: tokio_util::sync::CancellationToken::new(),
+                },
+            );
+        }
+
+        let msg = r#"{"did":"did:plc:alice","rkey":"abc123","type":"pipeline","seq":"cursor-001"}"#;
+        let mut cursor = None;
+
+        process_ws_message("knot.example.com", msg, &mut cursor, &tx, &db, &connections)
+            .await
+            .unwrap();
+
+        // Check cursor was updated
+        assert_eq!(cursor.as_deref(), Some("cursor-001"));
+
+        // Check cursor was persisted to DB
+        let db_cursor = db.get_knot_cursor("knot.example.com").unwrap();
+        assert_eq!(db_cursor.as_deref(), Some("cursor-001"));
+
+        // Check event was sent
+        let event = rx.try_recv().unwrap();
+        assert_eq!(event.knot, "knot.example.com");
+        assert_eq!(event.cursor.as_deref(), Some("cursor-001"));
+        assert_eq!(event.did.as_deref(), Some("did:plc:alice"));
+        assert_eq!(event.rkey.as_deref(), Some("abc123"));
+        assert_eq!(event.event_type.as_deref(), Some("pipeline"));
+    }
+
+    #[tokio::test]
+    async fn process_ws_message_no_cursor() {
+        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
+        let (tx, mut rx) = mpsc::channel(16);
+        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
+            Arc::new(RwLock::new(HashMap::new()));
+
+        let msg = r#"{"status":"running"}"#;
+        let mut cursor = Some("old-cursor".to_string());
+
+        process_ws_message("knot.example.com", msg, &mut cursor, &tx, &db, &connections)
+            .await
+            .unwrap();
+
+        // Cursor should remain unchanged
+        assert_eq!(cursor.as_deref(), Some("old-cursor"));
+
+        // Event should still be sent
+        let event = rx.try_recv().unwrap();
+        assert_eq!(event.knot, "knot.example.com");
+        assert!(event.cursor.is_none());
+        assert!(event.did.is_none());
+    }
+
+    #[tokio::test]
+    async fn process_ws_message_invalid_json() {
+        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
+        let (tx, _rx) = mpsc::channel(16);
+        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
+            Arc::new(RwLock::new(HashMap::new()));
+
+        let msg = "not valid json{{{";
+        let mut cursor = None;
+
+        let result =
+            process_ws_message("knot.example.com", msg, &mut cursor, &tx, &db, &connections).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            KnotError::Parse(msg) => {
+                assert!(msg.contains("failed to parse WebSocket message"));
+            }
+            other => panic!("expected Parse error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn process_ws_message_updates_connection_cursor() {
+        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
+        db.add_knot("knot.example.com").unwrap();
+
+        let (tx, _rx) = mpsc::channel(16);
+        let connections: Arc<RwLock<HashMap<String, KnotConnection>>> =
+            Arc::new(RwLock::new(HashMap::new()));
+
+        {
+            let mut conns = connections.write().await;
+            conns.insert(
+                "knot.example.com".to_string(),
+                KnotConnection {
+                    knot: "knot.example.com".to_string(),
+                    cursor: None,
+                    task: None,
+                    cancel: tokio_util::sync::CancellationToken::new(),
+                },
+            );
+        }
+
+        let msg = r#"{"seq":42}"#;
+        let mut cursor = None;
+
+        process_ws_message("knot.example.com", msg, &mut cursor, &tx, &db, &connections)
+            .await
+            .unwrap();
+
+        // Check in-memory connection cursor was updated (seq as i64)
+        let conns = connections.read().await;
+        let conn = conns.get("knot.example.com").unwrap();
+        assert_eq!(conn.cursor.as_deref(), Some("42"));
+    }
+
+    // -----------------------------------------------------------------------
     // KnotConsumer lifecycle tests
     // -----------------------------------------------------------------------
 
@@ -989,8 +898,6 @@ mod tests {
         let consumer = KnotConsumer::new(db, tx, shutdown.clone());
 
         // Subscribe twice — second should be a no-op
-        // Note: this will spawn a task that tries to connect and fails,
-        // but the subscription tracking should work regardless.
         consumer.subscribe("knot.example.com").await.unwrap();
         consumer.subscribe("knot.example.com").await.unwrap();
 
