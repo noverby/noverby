@@ -85,6 +85,7 @@
 | [Nixpkgs-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixpkgs-rs) | Rust-based C toolchain replacements for Nix package builds |
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | Systemd replacement |
 | [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | pkg-config reimplementation |
+| [Nix-deno 🦕❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-deno) | Nix builder for Deno projects with npm dependencies |
 | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | Nickel-powered workspace manager for Nix flakes |
 | [H264-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h264-decoder-rs) | Pure Rust H.264 decoder library and CLI |
 | [H265-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h265-decoder-rs) | Pure Rust H.265/HEVC decoder library |
