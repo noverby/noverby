@@ -1,9 +1,9 @@
 {
   pkgs,
-  src,
+  inputs,
   ...
 }: let
-  publicKeys = import "${src}/config/secrets/publicKeys.nix";
+  inherit (inputs.self.secrets) publicKeys;
 in {
   environment.profiles = ["$HOME/.local"];
   users.users.noverby = {
