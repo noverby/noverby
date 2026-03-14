@@ -24,8 +24,11 @@ tokio = { version = "1", features = ["full"] }
 
 # HTTP / WebSocket
 axum = { version = "0.8", features = ["ws"] }
-tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
-reqwest = { version = "0.12", features = ["json"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "rustls-tls-webpki-roots",
+] }
 
 # Database
 rusqlite = { version = "0.34", features = ["bundled"] }
