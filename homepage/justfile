@@ -12,3 +12,6 @@ start:
 
 lint:
     deno lint
+
+build-nix:
+    nix build .#homepage-frontend --print-build-logs
