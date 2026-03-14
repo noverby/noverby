@@ -106,62 +106,13 @@
     # ensures both are available. Nix filters to git-tracked files only.
     monoSrc = ../.;
 
-    # ── Deno dependency cache (fixed-output derivation) ─────────────────
+    # ── Deno dependency caches ───────────────────────────────────────────
     #
-    # The JS tests import `npm:linkedom` which Deno fetches from npm.
-    # In the Nix sandbox there is no network access, so we pre-fetch all
-    # Deno dependencies into a fixed-output derivation whose hash is
-    # pinned here. To update after changing JS dependencies:
-    #
-    #   1. Set outputHash to lib.fakeHash
-    #   2. Run: nix build .#checks.x86_64-linux.mojo-gui-test-js 2>&1 | grep 'got:'
-    #   3. Replace outputHash with the printed hash
-    #
-    denoDeps = pkgs.stdenv.mkDerivation {
-      name = "mojo-gui-deno-deps";
-      src = ./web;
-      nativeBuildInputs = [pkgs.deno pkgs.cacert];
-
-      outputHash = "sha256-kXpX7gbpD/mopmBHPALbPNwrnEoHhwEloS+39VAgWwo=";
-      outputHashMode = "recursive";
-      outputHashAlgo = "sha256";
-
-      buildPhase = ''
-        export DENO_DIR=$out
-        export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-        deno cache --lock=deno.lock test-js/run.ts
-      '';
-      installPhase = "true";
-    };
-
-    # ── Deno dependency cache for XR web tests ──────────────────────────
-    #
-    # Same npm:linkedom dependency as the main JS tests, but cached from
-    # the xr/web/deno.lock file. The XR web runtime tests also import
-    # from web/runtime/ (shared Interpreter), but those are local .ts
-    # files that don't require npm fetching.
-    #
-    # To update after changing XR JS dependencies:
-    #   1. Set outputHash to lib.fakeHash
-    #   2. Run: nix build .#checks.x86_64-linux.mojo-gui-test-xr-js 2>&1 | grep 'got:'
-    #   3. Replace outputHash with the printed hash
-    #
-    denoXrDeps = pkgs.stdenv.mkDerivation {
-      name = "mojo-gui-deno-xr-deps";
-      src = ./.;
-      nativeBuildInputs = [pkgs.deno pkgs.cacert];
-
-      outputHash = "sha256-FjQjUa05YI1YSmdTvAWgp+QDNu+R/F7IYWVAq2H69h0=";
-      outputHashMode = "recursive";
-      outputHashAlgo = "sha256";
-
-      buildPhase = ''
-        export DENO_DIR=$out
-        export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-        deno cache --lock=xr/web/deno.lock xr/web/test-js/run.ts
-      '';
-      installPhase = "true";
-    };
+    # Pre-fetched npm dependencies for Deno-based JS tests.
+    # Uses fetchDenoDeps (from nix-deno) which parses deno.lock at eval
+    # time — no manual output hash maintenance needed.
+    denoDeps = lib.fetchDenoDeps {lockFile = ./web/deno.lock;};
+    denoXrDeps = lib.fetchDenoDeps {lockFile = ./xr/web/deno.lock;};
 
     # ── System libraries required by the Mojo native linker ─────────────
     #
