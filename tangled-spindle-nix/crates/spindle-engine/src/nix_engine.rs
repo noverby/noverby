@@ -50,6 +50,8 @@ pub struct NixEngine {
     dev_mode: bool,
     /// Active workflow states, keyed by workflow ID string.
     states: Arc<Mutex<HashMap<String, WorkflowState>>>,
+    /// Resolved path to the bash binary (found from PATH at construction time).
+    bash_path: PathBuf,
 }
 
 impl NixEngine {
@@ -68,6 +70,11 @@ impl NixEngine {
         extra_nix_flags: Vec<String>,
         dev_mode: bool,
     ) -> Self {
+        // Resolve bash from the current process's PATH. On NixOS, /bin/bash
+        // doesn't exist — bash lives in the Nix store and is only reachable
+        // via PATH set by the systemd service.
+        let bash_path = resolve_bash();
+
         Self {
             workspace_mgr: WorkspaceManager::new(workspace_root),
             cache_dir: cache_dir.into(),
@@ -75,6 +82,7 @@ impl NixEngine {
             extra_nix_flags,
             dev_mode,
             states: Arc::new(Mutex::new(HashMap::new())),
+            bash_path,
         }
     }
 }
@@ -251,7 +259,7 @@ impl Engine for NixEngine {
         info!(%wid, step_idx, name = step.name(), "executing step");
 
         // Spawn the child process.
-        let mut child = Command::new("/bin/bash")
+        let mut child = Command::new(&self.bash_path)
             .args(["-euo", "pipefail", "-c", &command_str])
             .current_dir(workspace_dir)
             .env_clear()
@@ -333,6 +341,29 @@ fn build_path(nix_env: Option<&Path>) -> String {
     ]);
 
     parts.join(":")
+}
+
+/// Resolve the path to the `bash` binary from the current process's `PATH`.
+///
+/// On NixOS, `/bin/bash` doesn't exist. Bash lives in the Nix store and is
+/// only reachable via PATH (set by the systemd service unit's `path`
+/// attribute). This function finds bash at construction time so step
+/// execution doesn't depend on hardcoded paths.
+fn resolve_bash() -> PathBuf {
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in path.split(':') {
+            let candidate = PathBuf::from(dir).join("bash");
+            if candidate.exists() {
+                info!(bash = %candidate.display(), "resolved bash binary from PATH");
+                return candidate;
+            }
+        }
+    }
+
+    // Fallback to /bin/bash for non-NixOS systems.
+    let fallback = PathBuf::from("/bin/bash");
+    info!(bash = %fallback.display(), "using fallback bash path");
+    fallback
 }
 
 #[cfg(test)]
