@@ -11,6 +11,7 @@
     inputs.devenv.lib.mkShell {
       inherit inputs pkgs lib;
       modules = [
+        {_module.args.src = inputs.self.outPath;}
         cfg
       ];
     };

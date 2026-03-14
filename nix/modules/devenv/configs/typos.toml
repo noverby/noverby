@@ -37,6 +37,6 @@ extend-ignore-re = [
 [files]
 extend-exclude = [
   "wiki/core/i18n/locales/da/translation.json",
-  "config/secrets/*.age",
+  "nix/config/secrets/*.age",
 ]
 ignore-hidden = false

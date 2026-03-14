@@ -163,23 +163,22 @@
   outputs = inputs:
     inputs.flakelight ./. {
       inherit inputs;
-      nixDir = ./.;
       nixpkgs.config = {
         allowUnfree = true;
       };
       flakelight.builtinFormatters = false;
 
       imports = [
-        ./flakelight-modules/lib.nix
-        ./flakelight-modules/secrets.nix
-        ./flakelight-modules/users.nix
-        ./flakelight-modules/hardware.nix
-        ./flakelight-modules/desktops.nix
-        ./flakelight-modules/devenvModules.nix
-        ./flakelight-modules/devenvConfigurations.nix
-        ./flakelight-modules/colmena.nix
-        ./flakelight-modules/perSystemLib.nix
-        ./flakelight-modules/zedExtensions.nix
+        ./nix/modules/flakelight/lib.nix
+        ./nix/modules/flakelight/secrets.nix
+        ./nix/modules/flakelight/users.nix
+        ./nix/modules/flakelight/hardware.nix
+        ./nix/modules/flakelight/desktops.nix
+        ./nix/modules/flakelight/devenvModules.nix
+        ./nix/modules/flakelight/devenvConfigurations.nix
+        ./nix/modules/flakelight/colmena.nix
+        ./nix/modules/flakelight/perSystemLib.nix
+        ./nix/modules/flakelight/zedExtensions.nix
 
         ./nix-workspace
         ./nix-deno
@@ -206,13 +205,13 @@
       ];
       nixDirAliases = {
         packages = ["pkgs"];
-        flakelightModules = ["flakelight-modules"];
-        nixosConfigurations = inputs.nixpkgs.lib.mkForce ["config/nixos"];
-        nixosModules = ["nixos-modules"];
+        flakelightModules = ["modules/flakelight"];
+        nixosConfigurations = ["config/nixos"];
+        nixosModules = ["modules/nixos"];
         homeConfigurations = ["config/home-manager"];
-        homeModules = ["home-manager-modules"];
+        homeModules = ["modules/home-manager"];
         devenvConfiguration = ["config/devenv"];
-        devenvModules = ["devenv-modules"];
+        devenvModules = ["modules/devenv"];
         secrets = ["config/secrets"];
         users = ["config/users"];
         hardware = ["config/hardware"];
