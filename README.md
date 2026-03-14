@@ -792,7 +792,7 @@
 | ✅ | Diagram Generation | [Layout 🦀](https://github.com/nadavrot/layout) | | 🆗 | [Graphviz 💣](https://graphviz.org) |
 | ✅ | Typesetter | [Typst 🦀](https://github.com/typst) | | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
 | 🚧 | Image Optimizer | | [Cavif-rs 🦀](https://github.com/kornelski/cavif-rs) | 🆗 | [Oxipng 🦀](https://github.com/shssoichiro/oxipng), [Optipng 💣](https://optipng.sourceforge.net) |
-| 🚧 | Image Processing | | [Wondermagick 🦀](https://github.com/Shnatsel/wondermagick) | 🆗 | [ImageMagick 💣](https://github.com/ImageMagick/ImageMagick) |
+| ✅ | Image Processing | [Wondermagick 🦀](https://github.com/Shnatsel/wondermagick) | | 🆗 | [ImageMagick 💣](https://github.com/ImageMagick/ImageMagick) |
 
 </details>
 
