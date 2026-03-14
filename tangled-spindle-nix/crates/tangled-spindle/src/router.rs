@@ -486,6 +486,68 @@ fn check_finished(db: &Database, workflow_id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use spindle_rbac::SpindleEnforcer;
+    use spindle_secrets::SqliteManager;
+    use tower::ServiceExt;
+
+    const TEST_TOKEN: &str = "test-token-abc123";
+    const TEST_OWNER: &str = "did:plc:testowner";
+    const TEST_HOSTNAME: &str = "spindle.test.example.com";
+
+    /// Create a fully wired test app with in-memory DB, RBAC, and secrets.
+    async fn test_app() -> (Router, Arc<AppState>) {
+        let db = Arc::new(spindle_db::Database::open_in_memory().unwrap());
+        let notifier = Arc::new(Notifier::new(64));
+        let log_dir = std::env::temp_dir().join("spindle-test-logs");
+        let _ = std::fs::create_dir_all(&log_dir);
+
+        let rbac = SpindleEnforcer::new().await.unwrap();
+        let did_web = format!("did:web:{TEST_HOSTNAME}");
+        rbac.add_spindle(&did_web).await.unwrap();
+        rbac.add_spindle_owner(&did_web, TEST_OWNER).await.unwrap();
+
+        let secrets_path = std::env::temp_dir().join(format!(
+            "spindle-test-secrets-{}.db",
+            std::process::id()
+        ));
+        let secrets: Arc<dyn spindle_secrets::Manager + Send + Sync> =
+            Arc::new(SqliteManager::new(&secrets_path, &[0u8; 32]).unwrap());
+
+        let xrpc = Arc::new(XrpcContext {
+            db: Arc::clone(&db),
+            rbac,
+            secrets,
+            did_web,
+            owner: TEST_OWNER.into(),
+            token: TEST_TOKEN.into(),
+            dev: true,
+        });
+
+        let state = Arc::new(AppState {
+            db,
+            notifier,
+            xrpc,
+            log_dir,
+            hostname: TEST_HOSTNAME.into(),
+        });
+
+        let router = build_router(Arc::clone(&state));
+        (router, state)
+    }
+
+    fn auth_header() -> String {
+        format!("Bearer {TEST_TOKEN}")
+    }
+
+    async fn body_json(body: Body) -> serde_json::Value {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
     #[test]
     fn motd_format() {
         let version = env!("CARGO_PKG_VERSION");
@@ -495,5 +557,274 @@ mod tests {
             version, "test.example.com"
         );
         assert_eq!(result, expected);
+    }
+
+    // -----------------------------------------------------------------------
+    // MOTD endpoint
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn get_motd_returns_hostname() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(Request::get("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let text = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(text.contains(TEST_HOSTNAME));
+        assert!(text.contains("tangled-spindle-nix"));
+    }
+
+    // -----------------------------------------------------------------------
+    // XRPC: unknown method
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn xrpc_unknown_method_returns_404() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.nonexistent")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // -----------------------------------------------------------------------
+    // XRPC: authentication
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn xrpc_missing_auth_returns_401() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.addMember")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"did":"did:plc:test"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn xrpc_wrong_token_returns_401() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.addMember")
+                    .header("authorization", "Bearer wrong-token")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"did":"did:plc:test"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // -----------------------------------------------------------------------
+    // XRPC: member management
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn xrpc_add_and_remove_member() {
+        let (app, state) = test_app().await;
+
+        // Add member
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.addMember")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"did":"did:plc:newmember"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["success"], true);
+
+        // Verify in DB
+        assert!(state.db.is_member("did:plc:newmember").unwrap());
+
+        // Remove member
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.removeMember")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"did":"did:plc:newmember"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn xrpc_add_member_invalid_body_returns_400() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.addMember")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"wrong_field":"value"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // -----------------------------------------------------------------------
+    // XRPC: secret management
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn xrpc_secret_lifecycle() {
+        let (app, _) = test_app().await;
+
+        // Put secret
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.putSecret")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"repo":"did:plc:alice/myrepo","key":"API_KEY","value":"secret123"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // List secrets
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.listSecrets")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"repo":"did:plc:alice/myrepo"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let keys = json["keys"].as_array().unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0], "API_KEY");
+
+        // Delete secret
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.deleteSecret")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"repo":"did:plc:alice/myrepo","key":"API_KEY"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // -----------------------------------------------------------------------
+    // XRPC: cancel pipeline
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn xrpc_cancel_nonexistent_pipeline_returns_404() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.cancelPipeline")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"workflow_id":"nonexistent-wid"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn xrpc_cancel_running_pipeline() {
+        let (app, state) = test_app().await;
+
+        // Create a running workflow
+        state
+            .db
+            .status_pending("test-wid", "knot", "rkey", "test-workflow")
+            .unwrap();
+        state.db.status_running("test-wid").unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.cancelPipeline")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"workflow_id":"test-wid"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let status = state.db.get_status("test-wid").unwrap().unwrap();
+        assert_eq!(status.status, "cancelled");
+    }
+
+    #[tokio::test]
+    async fn xrpc_cancel_already_finished_returns_400() {
+        let (app, state) = test_app().await;
+
+        // Create a finished workflow
+        state
+            .db
+            .status_pending("done-wid", "knot", "rkey", "done-workflow")
+            .unwrap();
+        state.db.status_running("done-wid").unwrap();
+        state.db.status_success("done-wid").unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::post("/xrpc/sh.tangled.spindle.cancelPipeline")
+                    .header("authorization", auth_header())
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"workflow_id":"done-wid"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }

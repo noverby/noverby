@@ -238,6 +238,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stress_many_concurrent_jobs() {
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let queue = JobQueue::new(4, 100, shutdown.clone());
+
+        let completed = Arc::new(AtomicUsize::new(0));
+        let max_concurrent = Arc::new(AtomicUsize::new(0));
+        let running = Arc::new(AtomicUsize::new(0));
+
+        let total_jobs = 50;
+        for _ in 0..total_jobs {
+            let c = completed.clone();
+            let m = max_concurrent.clone();
+            let r = running.clone();
+            queue
+                .submit(Box::new(move || {
+                    Box::pin(async move {
+                        let current = r.fetch_add(1, Ordering::SeqCst) + 1;
+                        m.fetch_max(current, Ordering::SeqCst);
+                        // Simulate work
+                        tokio::time::sleep(Duration::from_millis(5)).await;
+                        r.fetch_sub(1, Ordering::SeqCst);
+                        c.fetch_add(1, Ordering::SeqCst);
+                    })
+                }))
+                .unwrap();
+        }
+
+        // Wait for all jobs to complete
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(completed.load(Ordering::SeqCst), total_jobs);
+        // Concurrency should never exceed max_jobs=4
+        assert!(max_concurrent.load(Ordering::SeqCst) <= 4);
+        assert_eq!(running.load(Ordering::SeqCst), 0);
+
+        shutdown.cancel();
+    }
+
+    #[tokio::test]
+    async fn stress_queue_saturation_and_recovery() {
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let queue = JobQueue::new(1, 5, shutdown.clone());
+
+        let barrier = Arc::new(tokio::sync::Notify::new());
+        let completed = Arc::new(AtomicUsize::new(0));
+
+        // Block the single worker
+        let b = barrier.clone();
+        queue
+            .submit(Box::new(move || {
+                Box::pin(async move {
+                    b.notified().await;
+                })
+            }))
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        // Fill the queue buffer (capacity=5)
+        for _ in 0..5 {
+            let c = completed.clone();
+            queue
+                .submit(Box::new(move || {
+                    Box::pin(async move {
+                        c.fetch_add(1, Ordering::SeqCst);
+                    })
+                }))
+                .unwrap();
+        }
+
+        // Queue should now be full — next submit should fail
+        let result = queue.submit(Box::new(|| Box::pin(async {})));
+        assert!(matches!(result, Err(QueueError::Full { capacity: 5 })));
+
+        // Unblock the worker — queue should drain
+        barrier.notify_one();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        assert_eq!(completed.load(Ordering::SeqCst), 5);
+
+        // Queue should accept new jobs again
+        let c = completed.clone();
+        queue
+            .submit(Box::new(move || {
+                Box::pin(async move {
+                    c.fetch_add(1, Ordering::SeqCst);
+                })
+            }))
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(completed.load(Ordering::SeqCst), 6);
+
+        shutdown.cancel();
+    }
+
+    #[tokio::test]
     async fn shutdown_stops_dispatcher() {
         let shutdown = tokio_util::sync::CancellationToken::new();
         let queue = JobQueue::new(2, 10, shutdown.clone());
