@@ -384,8 +384,8 @@ async fn list_secrets_impl(ctx: &XrpcContext, repo: &str) -> Response {
                     serde_json::json!({
                         "key": key,
                         "repo": repo,
-                        "createdAt": "",
-                        "createdBy": "",
+                        "createdAt": "1970-01-01T00:00:00Z",
+                        "createdBy": ctx.owner,
                     })
                 })
                 .collect();
