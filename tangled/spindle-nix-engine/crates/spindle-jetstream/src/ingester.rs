@@ -338,39 +338,14 @@ pub async fn ingest_repo<K: KnotSubscriber>(
             );
         }
         CommitOperation::Delete => {
-            info!(
+            // The upstream Go spindle ignores repo deletion events.
+            // Repo records are frequently deleted and re-created during
+            // normal AT Protocol operations, so we should not remove
+            // repos or knot subscriptions on delete events.
+            debug!(
                 did = %author_did,
-                "ingesting repo deletion"
+                "ignoring repo deletion event (matching upstream behavior)"
             );
-
-            // We don't have the record on delete, so we need to find repos
-            // owned by this DID. In practice, the rkey often matches the
-            // repo name. We'll remove all repos by this DID and clean up
-            // knot subscriptions.
-            let repos = ctx.db.get_repos_by_did(author_did).map_err(|e| {
-                JetstreamError::Ingestion(format!("failed to query repos by DID: {e}"))
-            })?;
-
-            for repo in &repos {
-                if let Err(e) = ctx.db.remove_repo(author_did, &repo.name) {
-                    warn!(%e, repo = %repo.name, "failed to remove repo from database");
-                }
-            }
-
-            // Check if any knots are now orphaned (no more repos on them)
-            // and unsubscribe if so.
-            let tracked_knots = ctx.db.get_knot_names().unwrap_or_default();
-            let repo_knots = ctx.db.get_repo_knots().unwrap_or_default();
-
-            for knot in &tracked_knots {
-                if !repo_knots.contains(knot) {
-                    debug!(knot = %knot, "knot has no more repos, unsubscribing");
-                    if let Err(e) = ctx.knot_subscriber.unsubscribe(knot).await {
-                        warn!(%e, knot = %knot, "failed to unsubscribe from knot");
-                    }
-                    let _ = ctx.db.remove_knot(knot);
-                }
-            }
         }
     }
 
