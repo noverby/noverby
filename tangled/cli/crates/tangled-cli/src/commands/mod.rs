@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod browse;
 pub mod issue;
 pub mod knot;
 pub mod pr;
@@ -17,6 +18,7 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
         Command::Pr(cmd) => pr::run(&cli, cmd.clone()).await,
         Command::Knot(cmd) => knot::run(&cli, cmd.clone()).await,
         Command::Spindle(cmd) => spindle::run(&cli, cmd.clone()).await,
+        Command::Browse(args) => browse::run(&cli, args.clone()).await,
     }
 }
 

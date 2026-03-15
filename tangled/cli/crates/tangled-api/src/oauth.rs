@@ -86,7 +86,12 @@ pub struct OAuthLoginResult {
 }
 
 /// Resolve PDS endpoint from a DID via the PLC directory.
-async fn resolve_pds(did: &str) -> Result<String> {
+struct DidInfo {
+    pds: Option<String>,
+    handle: Option<String>,
+}
+
+async fn resolve_did_info(did: &str) -> Result<DidInfo> {
     #[derive(serde::Deserialize)]
     struct Service {
         #[serde(rename = "type")]
@@ -96,6 +101,8 @@ async fn resolve_pds(did: &str) -> Result<String> {
     }
     #[derive(serde::Deserialize)]
     struct DidDocument {
+        #[serde(default, rename = "alsoKnownAs")]
+        also_known_as: Vec<String>,
         service: Option<Vec<Service>>,
     }
 
@@ -108,12 +115,20 @@ async fn resolve_pds(did: &str) -> Result<String> {
         .await
         .context("failed to parse DID document")?;
 
-    doc.service
+    let pds = doc
+        .service
         .unwrap_or_default()
         .into_iter()
         .find(|s| s.service_type == "AtprotoPersonalDataServer")
-        .map(|s| s.service_endpoint)
-        .context("no PDS service in DID document")
+        .map(|s| s.service_endpoint);
+
+    let handle = doc
+        .also_known_as
+        .into_iter()
+        .find(|a| a.starts_with("at://"))
+        .and_then(|a| a.strip_prefix("at://").map(String::from));
+
+    Ok(DidInfo { pds, handle })
 }
 
 macro_rules! oauth_client_config {
@@ -236,19 +251,23 @@ pub async fn login_browser(handle: &str) -> Result<OAuthLoginResult> {
         .context("OAuth session not in store")?;
 
     let did_str = did.to_string();
-    let pds = resolve_pds(&did_str).await.ok();
+    let did_info = resolve_did_info(&did_str).await.unwrap_or(DidInfo {
+        pds: None,
+        handle: None,
+    });
+    let resolved_handle = did_info.handle.unwrap_or_else(|| handle.to_string());
 
     let persisted = PersistedOAuthSession {
         did: did_str.clone(),
-        handle: handle.to_string(),
-        pds: pds.clone(),
+        handle: resolved_handle.clone(),
+        pds: did_info.pds.clone(),
         oauth_session,
     };
 
     Ok(OAuthLoginResult {
         did: did_str,
-        handle: handle.to_string(),
-        pds,
+        handle: resolved_handle,
+        pds: did_info.pds,
         persisted,
     })
 }

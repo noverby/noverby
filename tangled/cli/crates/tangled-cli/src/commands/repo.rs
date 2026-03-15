@@ -4,8 +4,8 @@ use serde_json;
 use std::path::PathBuf;
 
 use crate::cli::{
-    Cli, OutputFormat, RepoCloneArgs, RepoCommand, RepoCreateArgs, RepoDeleteArgs, RepoInfoArgs,
-    RepoListArgs, RepoRefArgs,
+    Cli, OutputFormat, RepoCloneArgs, RepoCommand, RepoCreateArgs, RepoDeleteArgs, RepoEditArgs,
+    RepoInfoArgs, RepoListArgs, RepoRefArgs,
 };
 
 pub async fn run(cli: &Cli, cmd: RepoCommand) -> Result<()> {
@@ -14,6 +14,7 @@ pub async fn run(cli: &Cli, cmd: RepoCommand) -> Result<()> {
         RepoCommand::Create(args) => create(args).await,
         RepoCommand::Clone(args) => clone(args).await,
         RepoCommand::Info(args) => info(args).await,
+        RepoCommand::Edit(args) => edit(args).await,
         RepoCommand::Delete(args) => delete(args).await,
         RepoCommand::Star(args) => star(args).await,
         RepoCommand::Unstar(args) => unstar(args).await,
@@ -216,6 +217,38 @@ async fn info(args: RepoInfoArgs) -> Result<()> {
     if args.contributors {
         println!("Contributors: not implemented yet");
     }
+    Ok(())
+}
+
+async fn edit(args: RepoEditArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (owner, name) = parse_repo_ref(&args.repo, &session.handle);
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let pds_client = crate::util::make_client(&pds);
+    let info = pds_client
+        .get_repo_info(owner, &name, Some(session.access_jwt.as_str()))
+        .await?;
+
+    pds_client
+        .edit_repo(
+            &info.did,
+            &info.rkey,
+            args.description.as_deref(),
+            if args.private {
+                Some(true)
+            } else if args.public {
+                Some(false)
+            } else {
+                None
+            },
+            Some(session.access_jwt.as_str()),
+        )
+        .await?;
+    println!("Updated repo '{}'", name);
     Ok(())
 }
 
