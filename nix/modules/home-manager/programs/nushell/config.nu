@@ -1,7 +1,16 @@
 $env.config = {
   edit_mode: vi
   show_banner: false
-  keybindings: []
+  keybindings: [{
+    name: path_picker
+    modifier: control
+    keycode: char_u
+    mode: [emacs vi_normal vi_insert]
+    event: {
+      send: executehostcommand
+      cmd: "let f = (mktemp); zellij action dump-screen $f; open $f | uf; rm $f"
+    }
+  }]
 }
 
 def zellij-update-tabname [] {
