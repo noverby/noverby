@@ -73,24 +73,46 @@
 
 <details open>
 
+#### Rust
+
 | Project | Description |
 |-|-|
-| [Homepage 🐒➡️🔥](https://tangled.org/@overby.me/overby.me/tree/main/web/homepage) | Personal website and portfolio |
-| [Wiki 🐒➡️🔥🌀](https://tangled.org/@overby.me/overby.me/tree/main/web/wiki) | Political conference and discussion platform |
-| [Mojo-wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/wasm) | WebAssembly interop layer for Mojo |
-| [Mojo-wasmtime 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/wasmtime) | Wasmtime WebAssembly runtime bindings for Mojo |
-| [Zed-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/zed) | Mojo language extension for Zed |
-| [Zed-nickel ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nickel/zed) | Nickel language extension for Zed |
 | [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/rust/nixos) | NixOS distribution with Rust user space |
 | [Nixpkgs-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/rust/nixpkgs) | Rust-based C toolchain replacements for Nix package builds |
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/systemd) | Systemd replacement |
 | [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/pkg-config) | pkg-config reimplementation |
-| [Nix-deno 🦕❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/deno) | Nix builder for Deno projects with npm dependencies |
-| [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nickel/workspace) | Nickel-powered workspace manager for Nix flakes |
 | [H264-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h264-decoder) | Pure Rust H.264 decoder library and CLI |
 | [H265-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h265-decoder) | Pure Rust H.265/HEVC decoder library |
 | [H264toav1-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h264toav1) | CLI tool for transcoding H.264/H.265 video to AV1 |
-| [Nu-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nushell/plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
+
+#### Mojo
+
+| Project | Description |
+|-|-|
+| [Mojo-wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/wasm) | WebAssembly interop layer for Mojo |
+| [Mojo-wasmtime 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/wasmtime) | Wasmtime WebAssembly runtime bindings for Mojo |
+| [Mojo-zed 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/zed) | Mojo language extension for Zed |
+
+#### Web
+
+| Project | Description |
+|-|-|
+| [Homepage 🐒➡️🔥](https://tangled.org/@overby.me/overby.me/tree/main/web/homepage) | Personal website and portfolio |
+| [Wiki 🐒➡️🔥🌀](https://tangled.org/@overby.me/overby.me/tree/main/web/wiki) | Political conference and discussion platform |
+
+#### Nix & Nickel
+
+| Project | Description |
+|-|-|
+| [Nix-deno 🦕❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/lib/deno) | Nix builder for Deno projects with npm dependencies |
+| [Nickel-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nickel/workspace) | Nickel-powered workspace manager for Nix flakes |
+| [Nickel-zed ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nickel/zed) | Nickel language extension for Zed |
+
+#### Nushell
+
+| Project | Description |
+|-|-|
+| [Nushell-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nushell/plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
 
 </details>
 
