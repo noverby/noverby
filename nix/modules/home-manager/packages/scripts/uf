@@ -32,7 +32,7 @@ def main [] {
 
     let selected = $paths ++ $urls | uniq | str join "\n" | sk
 
-    if (($selected | path type) == "file" or ($selected | readlink $in | path type) == "file") {
+    if (($selected | path expand | path type) in ["file", "dir"]) {
       xdg-open $selected | complete
       return "."
     }

@@ -9,14 +9,14 @@ def --wrapped main [...vargs: string] {
     } else if ($arg | str starts-with "-") {
       $args = ($args | append $arg)
     } else {
-      let file = ($arg | path expand)
-      $files = ($files | append $file)
+      $files = ($files | append $arg)
     }
   }
 
   let fileCount = ($files | length)
   for file in $files {
-    match [$fileCount, ($file | path type)] {
+    let type = $file | path expand | path type
+    match [$fileCount, $type] {
       [1, "file"] => (zeditor ...$args $"($file):($line)")
       [_, "file"] => (zeditor ...$args $file)
       [_, "dir"] => (zeditor --new ...$args $file)
