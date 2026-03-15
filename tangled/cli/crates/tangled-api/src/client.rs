@@ -1,0 +1,1541 @@
+use anyhow::{anyhow, Result};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tangled_config::session::Session;
+
+#[derive(Clone, Debug)]
+pub struct TangledClient {
+    base_url: String,
+}
+
+const REPO_CREATE: &str = "sh.tangled.repo.create";
+
+impl Default for TangledClient {
+    fn default() -> Self {
+        Self::new("https://tngl.sh")
+    }
+}
+
+impl TangledClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+
+    fn xrpc_url(&self, method: &str) -> String {
+        let base = self.base_url.trim_end_matches('/');
+        // Add https:// if no protocol is present
+        let base_with_protocol = if base.starts_with("http://") || base.starts_with("https://") {
+            base.to_string()
+        } else {
+            format!("https://{}", base)
+        };
+        format!("{}/xrpc/{}", base_with_protocol, method)
+    }
+
+    async fn post_json<TReq: Serialize, TRes: DeserializeOwned>(
+        &self,
+        method: &str,
+        req: &TReq,
+        bearer: Option<&str>,
+    ) -> Result<TRes> {
+        let url = self.xrpc_url(method);
+        let client = reqwest::Client::new();
+        let mut reqb = client
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json");
+        if let Some(token) = bearer {
+            reqb = reqb.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token));
+        }
+        let res = reqb.json(req).send().await?;
+        let status = res.status();
+        if !status.is_success() {
+            let body = res.text().await.unwrap_or_default();
+            return Err(anyhow!("{}: {}", status, body));
+        }
+        Ok(res.json::<TRes>().await?)
+    }
+
+    async fn post<TReq: Serialize>(
+        &self,
+        method: &str,
+        req: &TReq,
+        bearer: Option<&str>,
+    ) -> Result<()> {
+        let url = self.xrpc_url(method);
+        let client = reqwest::Client::new();
+        let mut reqb = client
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json");
+        if let Some(token) = bearer {
+            reqb = reqb.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token));
+        }
+        let res = reqb.json(req).send().await?;
+        let status = res.status();
+        if !status.is_success() {
+            let body = res.text().await.unwrap_or_default();
+            return Err(anyhow!("{}: {}", status, body));
+        }
+        Ok(())
+    }
+
+    pub async fn get_json<TRes: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: &[(&str, String)],
+        bearer: Option<&str>,
+    ) -> Result<TRes> {
+        let url = self.xrpc_url(method);
+        let client = reqwest::Client::new();
+        let mut reqb = client
+            .get(&url)
+            .query(&params)
+            .header(reqwest::header::ACCEPT, "application/json");
+        if let Some(token) = bearer {
+            reqb = reqb.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token));
+        }
+        let res = reqb.send().await?;
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!("GET {} -> {}: {}", url, status, body));
+        }
+        serde_json::from_str::<TRes>(&body).map_err(|e| {
+            let snippet = body.chars().take(300).collect::<String>();
+            anyhow!(
+                "error decoding response from {}: {}\nBody (first 300 chars): {}",
+                url,
+                e,
+                snippet
+            )
+        })
+    }
+
+    pub async fn login_with_password(
+        &self,
+        handle: &str,
+        password: &str,
+        _pds: &str,
+    ) -> Result<Session> {
+        #[derive(Serialize)]
+        struct Req<'a> {
+            #[serde(rename = "identifier")]
+            identifier: &'a str,
+            #[serde(rename = "password")]
+            password: &'a str,
+        }
+        #[derive(Deserialize)]
+        struct Res {
+            #[serde(rename = "accessJwt")]
+            access_jwt: String,
+            #[serde(rename = "refreshJwt")]
+            refresh_jwt: String,
+            did: String,
+            handle: String,
+        }
+        let body = Req {
+            identifier: handle,
+            password,
+        };
+        let res: Res = self
+            .post_json("com.atproto.server.createSession", &body, None)
+            .await?;
+        Ok(Session {
+            access_jwt: res.access_jwt,
+            refresh_jwt: res.refresh_jwt,
+            did: res.did,
+            handle: res.handle,
+            ..Default::default()
+        })
+    }
+
+    pub async fn refresh_session(&self, refresh_jwt: &str) -> Result<Session> {
+        #[derive(Deserialize)]
+        struct Res {
+            #[serde(rename = "accessJwt")]
+            access_jwt: String,
+            #[serde(rename = "refreshJwt")]
+            refresh_jwt: String,
+            did: String,
+            handle: String,
+        }
+        let url = self.xrpc_url("com.atproto.server.refreshSession");
+        let client = reqwest::Client::new();
+        let res = client
+            .post(url)
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", refresh_jwt),
+            )
+            .send()
+            .await?;
+        let status = res.status();
+        if !status.is_success() {
+            let body = res.text().await.unwrap_or_default();
+            return Err(anyhow!("{}: {}", status, body));
+        }
+        let res_data: Res = res.json().await?;
+        Ok(Session {
+            access_jwt: res_data.access_jwt,
+            refresh_jwt: res_data.refresh_jwt,
+            did: res_data.did,
+            handle: res_data.handle,
+            ..Default::default()
+        })
+    }
+
+    pub async fn list_repos(
+        &self,
+        user: Option<&str>,
+        knot: Option<&str>,
+        starred: bool,
+        bearer: Option<&str>,
+    ) -> Result<Vec<Repository>> {
+        // NOTE: Repo listing is done via the user's PDS using com.atproto.repo.listRecords
+        // for the collection "sh.tangled.repo". This does not go through the Tangled API base.
+        // Here, `self.base_url` must be the PDS base (e.g., https://bsky.social).
+        // Resolve handle to DID if needed
+        let did = match user {
+            Some(u) if u.starts_with("did:") => u.to_string(),
+            Some(handle) => {
+                #[derive(Deserialize)]
+                struct Res {
+                    did: String,
+                }
+                let params = [("handle", handle.to_string())];
+                let res: Res = self
+                    .get_json("com.atproto.identity.resolveHandle", &params, bearer)
+                    .await?;
+                res.did
+            }
+            None => {
+                return Err(anyhow!(
+                    "missing user for list_repos; provide handle or DID"
+                ));
+            }
+        };
+
+        #[derive(Deserialize)]
+        struct RecordItem {
+            uri: String,
+            value: Repository,
+        }
+        #[derive(Deserialize)]
+        struct ListRes {
+            #[serde(default)]
+            records: Vec<RecordItem>,
+        }
+
+        let params = vec![
+            ("repo", did),
+            ("collection", "sh.tangled.repo".to_string()),
+            ("limit", "100".to_string()),
+        ];
+
+        let res: ListRes = self
+            .get_json("com.atproto.repo.listRecords", &params, bearer)
+            .await?;
+        let mut repos: Vec<Repository> = res
+            .records
+            .into_iter()
+            .map(|r| {
+                let mut val = r.value;
+                if val.rkey.is_none() {
+                    if let Some(k) = Self::uri_rkey(&r.uri) {
+                        val.rkey = Some(k);
+                    }
+                }
+                if val.did.is_none() {
+                    if let Some(d) = Self::uri_did(&r.uri) {
+                        val.did = Some(d);
+                    }
+                }
+                val
+            })
+            .collect();
+        // Apply optional filters client-side
+        if let Some(k) = knot {
+            repos.retain(|r| r.knot.as_deref().unwrap_or("") == k);
+        }
+        if starred {
+            // TODO: implement starred filtering when API is available. For now, no-op.
+        }
+        Ok(repos)
+    }
+
+    pub async fn create_repo(&self, opts: CreateRepoOptions<'_>) -> Result<()> {
+        // 1) Create the sh.tangled.repo record on the user's PDS
+        #[derive(Serialize)]
+        struct Record<'a> {
+            name: &'a str,
+            knot: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            description: Option<&'a str>,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Serialize)]
+        struct CreateRecordReq<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            validate: bool,
+            record: Record<'a>,
+        }
+        #[derive(Deserialize)]
+        struct CreateRecordRes {
+            uri: String,
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let rec = Record {
+            name: opts.name,
+            knot: opts.knot,
+            description: opts.description,
+            created_at: now,
+        };
+        let create_req = CreateRecordReq {
+            repo: opts.did,
+            collection: "sh.tangled.repo",
+            validate: true,
+            record: rec,
+        };
+
+        let pds_client = TangledClient::new(opts.pds_base);
+        let created: CreateRecordRes = pds_client
+            .post_json(
+                "com.atproto.repo.createRecord",
+                &create_req,
+                Some(opts.access_jwt),
+            )
+            .await?;
+
+        // Extract rkey from at-uri: at://did/collection/rkey
+        let rkey = created
+            .uri
+            .rsplit('/')
+            .next()
+            .ok_or_else(|| anyhow!("failed to parse rkey from uri"))?;
+
+        // 2) Obtain a service auth token for the Tangled server (aud = did:web:<host>)
+        let host = self
+            .base_url
+            .trim_end_matches('/')
+            .strip_prefix("https://")
+            .or_else(|| self.base_url.trim_end_matches('/').strip_prefix("http://"))
+            .ok_or_else(|| anyhow!("invalid base_url"))?;
+        let audience = format!("did:web:{}", host);
+
+        #[derive(Deserialize)]
+        struct GetSARes {
+            token: String,
+        }
+        // Method-less ServiceAuth tokens must expire within 60 seconds per AT Protocol spec
+        let params = [
+            ("aud", audience),
+            ("exp", (chrono::Utc::now().timestamp() + 60).to_string()),
+        ];
+        let sa: GetSARes = pds_client
+            .get_json(
+                "com.atproto.server.getServiceAuth",
+                &params,
+                Some(opts.access_jwt),
+            )
+            .await?;
+
+        // 3) Call sh.tangled.repo.create with the rkey
+        #[derive(Serialize)]
+        struct CreateRepoReq<'a> {
+            rkey: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            #[serde(rename = "defaultBranch")]
+            default_branch: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            source: Option<&'a str>,
+        }
+        let req = CreateRepoReq {
+            rkey,
+            default_branch: opts.default_branch,
+            source: opts.source,
+        };
+        // No output expected on success
+        let _: serde_json::Value = self.post_json(REPO_CREATE, &req, Some(&sa.token)).await?;
+        Ok(())
+    }
+
+    pub async fn get_repo_info(
+        &self,
+        owner: &str,
+        name: &str,
+        bearer: Option<&str>,
+    ) -> Result<RepoRecord> {
+        let did = if owner.starts_with("did:") {
+            owner.to_string()
+        } else {
+            #[derive(Deserialize)]
+            struct Res {
+                did: String,
+            }
+            let params = [("handle", owner.to_string())];
+            let res: Res = self
+                .get_json("com.atproto.identity.resolveHandle", &params, bearer)
+                .await?;
+            res.did
+        };
+
+        #[derive(Deserialize)]
+        struct RecordItem {
+            uri: String,
+            value: Repository,
+        }
+        #[derive(Deserialize)]
+        struct ListRes {
+            #[serde(default)]
+            records: Vec<RecordItem>,
+        }
+        let params = vec![
+            ("repo", did.clone()),
+            ("collection", "sh.tangled.repo".to_string()),
+            ("limit", "100".to_string()),
+        ];
+        let res: ListRes = self
+            .get_json("com.atproto.repo.listRecords", &params, bearer)
+            .await?;
+        for item in res.records {
+            if item.value.name == name {
+                let rkey =
+                    Self::uri_rkey(&item.uri).ok_or_else(|| anyhow!("missing rkey in uri"))?;
+                let knot = item.value.knot.unwrap_or_default();
+                return Ok(RepoRecord {
+                    did: did.clone(),
+                    name: name.to_string(),
+                    rkey,
+                    knot,
+                    description: item.value.description,
+                    spindle: item.value.spindle,
+                });
+            }
+        }
+        Err(anyhow!("repo not found for owner/name"))
+    }
+
+    pub async fn delete_repo(
+        &self,
+        did: &str,
+        name: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<()> {
+        let pds_client = TangledClient::new(pds_base);
+        let info = pds_client
+            .get_repo_info(did, name, Some(access_jwt))
+            .await?;
+
+        #[derive(Serialize)]
+        struct DeleteRecordReq<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            rkey: &'a str,
+        }
+        let del = DeleteRecordReq {
+            repo: did,
+            collection: "sh.tangled.repo",
+            rkey: &info.rkey,
+        };
+        let _: serde_json::Value = pds_client
+            .post_json("com.atproto.repo.deleteRecord", &del, Some(access_jwt))
+            .await?;
+
+        let host = self
+            .base_url
+            .trim_end_matches('/')
+            .strip_prefix("https://")
+            .or_else(|| self.base_url.trim_end_matches('/').strip_prefix("http://"))
+            .ok_or_else(|| anyhow!("invalid base_url"))?;
+        let audience = format!("did:web:{}", host);
+        #[derive(Deserialize)]
+        struct GetSARes {
+            token: String,
+        }
+        // Method-less ServiceAuth tokens must expire within 60 seconds per AT Protocol spec
+        let params = [
+            ("aud", audience),
+            ("exp", (chrono::Utc::now().timestamp() + 60).to_string()),
+        ];
+        let sa: GetSARes = pds_client
+            .get_json(
+                "com.atproto.server.getServiceAuth",
+                &params,
+                Some(access_jwt),
+            )
+            .await?;
+
+        #[derive(Serialize)]
+        struct DeleteReq<'a> {
+            did: &'a str,
+            name: &'a str,
+            rkey: &'a str,
+        }
+        let body = DeleteReq {
+            did,
+            name,
+            rkey: &info.rkey,
+        };
+        let _: serde_json::Value = self
+            .post_json("sh.tangled.repo.delete", &body, Some(&sa.token))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_repo_knot(
+        &self,
+        did: &str,
+        rkey: &str,
+        new_knot: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<()> {
+        let pds_client = TangledClient::new(pds_base);
+        #[derive(Deserialize, Serialize, Clone)]
+        struct Rec {
+            name: String,
+            knot: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            description: Option<String>,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Deserialize)]
+        struct GetRes {
+            value: Rec,
+        }
+        let params = [
+            ("repo", did.to_string()),
+            ("collection", "sh.tangled.repo".to_string()),
+            ("rkey", rkey.to_string()),
+        ];
+        let got: GetRes = pds_client
+            .get_json("com.atproto.repo.getRecord", &params, Some(access_jwt))
+            .await?;
+        let mut rec = got.value;
+        rec.knot = new_knot.to_string();
+        #[derive(Serialize)]
+        struct PutReq<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            rkey: &'a str,
+            validate: bool,
+            record: Rec,
+        }
+        let req = PutReq {
+            repo: did,
+            collection: "sh.tangled.repo",
+            rkey,
+            validate: true,
+            record: rec,
+        };
+        let _: serde_json::Value = pds_client
+            .post_json("com.atproto.repo.putRecord", &req, Some(access_jwt))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_default_branch(
+        &self,
+        knot_host: &str,
+        did: &str,
+        name: &str,
+    ) -> Result<DefaultBranch> {
+        #[derive(Deserialize)]
+        struct Res {
+            name: String,
+            hash: String,
+            #[serde(rename = "shortHash")]
+            short_hash: Option<String>,
+            when: String,
+            message: Option<String>,
+        }
+        let knot_client = TangledClient::new(knot_host);
+        let repo_param = format!("{}/{}", did, name);
+        let params = [("repo", repo_param)];
+        let res: Res = knot_client
+            .get_json("sh.tangled.repo.getDefaultBranch", &params, None)
+            .await?;
+        Ok(DefaultBranch {
+            name: res.name,
+            hash: res.hash,
+            short_hash: res.short_hash,
+            when: res.when,
+            message: res.message,
+        })
+    }
+
+    pub async fn get_languages(&self, knot_host: &str, did: &str, name: &str) -> Result<Languages> {
+        let knot_client = TangledClient::new(knot_host);
+        let repo_param = format!("{}/{}", did, name);
+        let params = [("repo", repo_param)];
+        let res: serde_json::Value = knot_client
+            .get_json("sh.tangled.repo.languages", &params, None)
+            .await?;
+        let langs = res
+            .get("languages")
+            .cloned()
+            .unwrap_or(serde_json::json!([]));
+        let languages: Vec<Language> = serde_json::from_value(langs)?;
+        let total_size = res.get("totalSize").and_then(|v| v.as_u64());
+        let total_files = res.get("totalFiles").and_then(|v| v.as_u64());
+        Ok(Languages {
+            languages,
+            total_size,
+            total_files,
+        })
+    }
+
+    pub async fn star_repo(
+        &self,
+        pds_base: &str,
+        access_jwt: &str,
+        subject_at_uri: &str,
+        user_did: &str,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct Rec<'a> {
+            subject: &'a str,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            validate: bool,
+            record: Rec<'a>,
+        }
+        #[derive(Deserialize)]
+        struct Res {
+            uri: String,
+        }
+        let now = chrono::Utc::now().to_rfc3339();
+        let rec = Rec {
+            subject: subject_at_uri,
+            created_at: now,
+        };
+        let req = Req {
+            repo: user_did,
+            collection: "sh.tangled.feed.star",
+            validate: true,
+            record: rec,
+        };
+        let pds_client = TangledClient::new(pds_base);
+        let res: Res = pds_client
+            .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
+            .await?;
+        let rkey = Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in star uri"))?;
+        Ok(rkey)
+    }
+
+    pub async fn unstar_repo(
+        &self,
+        pds_base: &str,
+        access_jwt: &str,
+        subject_at_uri: &str,
+        user_did: &str,
+    ) -> Result<()> {
+        #[derive(Deserialize)]
+        struct Item {
+            uri: String,
+            value: StarRecord,
+        }
+        #[derive(Deserialize)]
+        struct ListRes {
+            #[serde(default)]
+            records: Vec<Item>,
+        }
+        let pds_client = TangledClient::new(pds_base);
+        let params = vec![
+            ("repo", user_did.to_string()),
+            ("collection", "sh.tangled.feed.star".to_string()),
+            ("limit", "100".to_string()),
+        ];
+        let res: ListRes = pds_client
+            .get_json("com.atproto.repo.listRecords", &params, Some(access_jwt))
+            .await?;
+        let mut rkey = None;
+        for item in res.records {
+            if item.value.subject == subject_at_uri {
+                rkey = Self::uri_rkey(&item.uri);
+                if rkey.is_some() {
+                    break;
+                }
+            }
+        }
+        let rkey = rkey.ok_or_else(|| anyhow!("star record not found"))?;
+        #[derive(Serialize)]
+        struct Del<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            rkey: &'a str,
+        }
+        let del = Del {
+            repo: user_did,
+            collection: "sh.tangled.feed.star",
+            rkey: &rkey,
+        };
+        let _: serde_json::Value = pds_client
+            .post_json("com.atproto.repo.deleteRecord", &del, Some(access_jwt))
+            .await?;
+        Ok(())
+    }
+
+    fn uri_rkey(uri: &str) -> Option<String> {
+        uri.rsplit('/').next().map(|s| s.to_string())
+    }
+    fn uri_did(uri: &str) -> Option<String> {
+        let parts: Vec<&str> = uri.split('/').collect();
+        if parts.len() >= 3 {
+            Some(parts[2].to_string())
+        } else {
+            None
+        }
+    }
+
+    // ========== Issues ==========
+    pub async fn list_issues(
+        &self,
+        author_did: &str,
+        repo_at_uri: Option<&str>,
+        bearer: Option<&str>,
+    ) -> Result<Vec<IssueRecord>> {
+        #[derive(Deserialize)]
+        struct Item {
+            uri: String,
+            value: Issue,
+        }
+        #[derive(Deserialize)]
+        struct ListRes {
+            #[serde(default)]
+            records: Vec<Item>,
+        }
+        let params = vec![
+            ("repo", author_did.to_string()),
+            ("collection", "sh.tangled.repo.issue".to_string()),
+            ("limit", "100".to_string()),
+        ];
+        let res: ListRes = self
+            .get_json("com.atproto.repo.listRecords", &params, bearer)
+            .await?;
+        let mut out = vec![];
+        for it in res.records {
+            if let Some(filter_repo) = repo_at_uri {
+                if it.value.repo.as_str() != filter_repo {
+                    continue;
+                }
+            }
+            let rkey = Self::uri_rkey(&it.uri).unwrap_or_default();
+            out.push(IssueRecord {
+                author_did: author_did.to_string(),
+                rkey,
+                issue: it.value,
+            });
+        }
+        Ok(out)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_issue(
+        &self,
+        author_did: &str,
+        repo_did: &str,
+        repo_rkey: &str,
+        title: &str,
+        body: Option<&str>,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct Rec<'a> {
+            repo: &'a str,
+            title: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            body: Option<&'a str>,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            validate: bool,
+            record: Rec<'a>,
+        }
+        #[derive(Deserialize)]
+        struct Res {
+            uri: String,
+        }
+        let issue_repo_at = format!("at://{}/sh.tangled.repo/{}", repo_did, repo_rkey);
+        let now = chrono::Utc::now().to_rfc3339();
+        let rec = Rec {
+            repo: &issue_repo_at,
+            title,
+            body,
+            created_at: now,
+        };
+        let req = Req {
+            repo: author_did,
+            collection: "sh.tangled.repo.issue",
+            validate: true,
+            record: rec,
+        };
+        let pds_client = TangledClient::new(pds_base);
+        let res: Res = pds_client
+            .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
+            .await?;
+        Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in issue uri"))
+    }
+
+    pub async fn comment_issue(
+        &self,
+        author_did: &str,
+        issue_at: &str,
+        body: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct Rec<'a> {
+            issue: &'a str,
+            body: &'a str,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            validate: bool,
+            record: Rec<'a>,
+        }
+        #[derive(Deserialize)]
+        struct Res {
+            uri: String,
+        }
+        let now = chrono::Utc::now().to_rfc3339();
+        let rec = Rec {
+            issue: issue_at,
+            body,
+            created_at: now,
+        };
+        let req = Req {
+            repo: author_did,
+            collection: "sh.tangled.repo.issue.comment",
+            validate: true,
+            record: rec,
+        };
+        let pds_client = TangledClient::new(pds_base);
+        let res: Res = pds_client
+            .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
+            .await?;
+        Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in issue comment uri"))
+    }
+
+    pub async fn get_issue_record(
+        &self,
+        author_did: &str,
+        rkey: &str,
+        bearer: Option<&str>,
+    ) -> Result<Issue> {
+        #[derive(Deserialize)]
+        struct GetRes {
+            value: Issue,
+        }
+        let params = [
+            ("repo", author_did.to_string()),
+            ("collection", "sh.tangled.repo.issue".to_string()),
+            ("rkey", rkey.to_string()),
+        ];
+        let res: GetRes = self
+            .get_json("com.atproto.repo.getRecord", &params, bearer)
+            .await?;
+        Ok(res.value)
+    }
+
+    pub async fn put_issue_record(
+        &self,
+        author_did: &str,
+        rkey: &str,
+        record: &Issue,
+        bearer: Option<&str>,
+    ) -> Result<()> {
+        #[derive(Serialize)]
+        struct PutReq<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            rkey: &'a str,
+            validate: bool,
+            record: &'a Issue,
+        }
+        let req = PutReq {
+            repo: author_did,
+            collection: "sh.tangled.repo.issue",
+            rkey,
+            validate: true,
+            record,
+        };
+        let _: serde_json::Value = self
+            .post_json("com.atproto.repo.putRecord", &req, bearer)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_issue_state(
+        &self,
+        author_did: &str,
+        issue_at: &str,
+        state_nsid: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct Rec<'a> {
+            issue: &'a str,
+            state: &'a str,
+        }
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            validate: bool,
+            record: Rec<'a>,
+        }
+        #[derive(Deserialize)]
+        struct Res {
+            uri: String,
+        }
+        let rec = Rec {
+            issue: issue_at,
+            state: state_nsid,
+        };
+        let req = Req {
+            repo: author_did,
+            collection: "sh.tangled.repo.issue.state",
+            validate: true,
+            record: rec,
+        };
+        let pds_client = TangledClient::new(pds_base);
+        let res: Res = pds_client
+            .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
+            .await?;
+        Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in issue state uri"))
+    }
+
+    pub async fn get_pull_record(
+        &self,
+        author_did: &str,
+        rkey: &str,
+        bearer: Option<&str>,
+    ) -> Result<Pull> {
+        #[derive(Deserialize)]
+        struct GetRes {
+            value: Pull,
+        }
+        let params = [
+            ("repo", author_did.to_string()),
+            ("collection", "sh.tangled.repo.pull".to_string()),
+            ("rkey", rkey.to_string()),
+        ];
+        let res: GetRes = self
+            .get_json("com.atproto.repo.getRecord", &params, bearer)
+            .await?;
+        Ok(res.value)
+    }
+
+    // ========== Pull Requests ==========
+    pub async fn list_pulls(
+        &self,
+        author_did: &str,
+        target_repo_at_uri: Option<&str>,
+        bearer: Option<&str>,
+    ) -> Result<Vec<PullRecord>> {
+        #[derive(Deserialize)]
+        struct Item {
+            uri: String,
+            value: Pull,
+        }
+        #[derive(Deserialize)]
+        struct ListRes {
+            #[serde(default)]
+            records: Vec<Item>,
+        }
+        let params = vec![
+            ("repo", author_did.to_string()),
+            ("collection", "sh.tangled.repo.pull".to_string()),
+            ("limit", "100".to_string()),
+        ];
+        let res: ListRes = self
+            .get_json("com.atproto.repo.listRecords", &params, bearer)
+            .await?;
+        let mut out = vec![];
+        for it in res.records {
+            if let Some(target) = target_repo_at_uri {
+                if it.value.target.repo.as_str() != target {
+                    continue;
+                }
+            }
+            let rkey = Self::uri_rkey(&it.uri).unwrap_or_default();
+            out.push(PullRecord {
+                author_did: author_did.to_string(),
+                rkey,
+                pull: it.value,
+            });
+        }
+        Ok(out)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_pull(
+        &self,
+        author_did: &str,
+        repo_did: &str,
+        repo_rkey: &str,
+        target_branch: &str,
+        patch: &str,
+        title: &str,
+        body: Option<&str>,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct Target<'a> {
+            repo: &'a str,
+            branch: &'a str,
+        }
+        #[derive(Serialize)]
+        struct Rec<'a> {
+            target: Target<'a>,
+            title: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            body: Option<&'a str>,
+            patch: &'a str,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            validate: bool,
+            record: Rec<'a>,
+        }
+        #[derive(Deserialize)]
+        struct Res {
+            uri: String,
+        }
+        let repo_at = format!("at://{}/sh.tangled.repo/{}", repo_did, repo_rkey);
+        let now = chrono::Utc::now().to_rfc3339();
+        let rec = Rec {
+            target: Target {
+                repo: &repo_at,
+                branch: target_branch,
+            },
+            title,
+            body,
+            patch,
+            created_at: now,
+        };
+        let req = Req {
+            repo: author_did,
+            collection: "sh.tangled.repo.pull",
+            validate: true,
+            record: rec,
+        };
+        let pds_client = TangledClient::new(pds_base);
+        let res: Res = pds_client
+            .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
+            .await?;
+        Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in pull uri"))
+    }
+
+    // ========== Spindle: Secrets Management ==========
+    pub async fn list_repo_secrets(
+        &self,
+        pds_base: &str,
+        access_jwt: &str,
+        repo_at: &str,
+    ) -> Result<Vec<Secret>> {
+        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+        #[derive(Deserialize)]
+        struct Res {
+            secrets: Vec<Secret>,
+        }
+        let params = [("repo", repo_at.to_string())];
+        let res: Res = self
+            .get_json("sh.tangled.repo.listSecrets", &params, Some(&sa))
+            .await?;
+        Ok(res.secrets)
+    }
+
+    pub async fn add_repo_secret(
+        &self,
+        pds_base: &str,
+        access_jwt: &str,
+        repo_at: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<()> {
+        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            key: &'a str,
+            value: &'a str,
+        }
+        let body = Req {
+            repo: repo_at,
+            key,
+            value,
+        };
+        self.post("sh.tangled.repo.addSecret", &body, Some(&sa))
+            .await
+    }
+
+    pub async fn remove_repo_secret(
+        &self,
+        pds_base: &str,
+        access_jwt: &str,
+        repo_at: &str,
+        key: &str,
+    ) -> Result<()> {
+        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            key: &'a str,
+        }
+        let body = Req { repo: repo_at, key };
+        self.post("sh.tangled.repo.removeSecret", &body, Some(&sa))
+            .await
+    }
+
+    async fn service_auth_token(&self, pds_base: &str, access_jwt: &str) -> Result<String> {
+        let base_trimmed = self.base_url.trim_end_matches('/');
+        let host = base_trimmed
+            .strip_prefix("https://")
+            .or_else(|| base_trimmed.strip_prefix("http://"))
+            .unwrap_or(base_trimmed); // If no protocol, use the URL as-is
+        let audience = format!("did:web:{}", host);
+        #[derive(Deserialize)]
+        struct GetSARes {
+            token: String,
+        }
+        let pds = TangledClient::new(pds_base);
+        // Method-less ServiceAuth tokens must expire within 60 seconds per AT Protocol spec
+        let params = [
+            ("aud", audience),
+            ("exp", (chrono::Utc::now().timestamp() + 60).to_string()),
+        ];
+        let sa: GetSARes = pds
+            .get_json(
+                "com.atproto.server.getServiceAuth",
+                &params,
+                Some(access_jwt),
+            )
+            .await?;
+        Ok(sa.token)
+    }
+
+    pub async fn comment_pull(
+        &self,
+        author_did: &str,
+        pull_at: &str,
+        body: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct Rec<'a> {
+            pull: &'a str,
+            body: &'a str,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            validate: bool,
+            record: Rec<'a>,
+        }
+        #[derive(Deserialize)]
+        struct Res {
+            uri: String,
+        }
+        let now = chrono::Utc::now().to_rfc3339();
+        let rec = Rec {
+            pull: pull_at,
+            body,
+            created_at: now,
+        };
+        let req = Req {
+            repo: author_did,
+            collection: "sh.tangled.repo.pull.comment",
+            validate: true,
+            record: rec,
+        };
+        let pds_client = TangledClient::new(pds_base);
+        let res: Res = pds_client
+            .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
+            .await?;
+        Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in pull comment uri"))
+    }
+
+    pub async fn merge_pull(
+        &self,
+        pull_did: &str,
+        pull_rkey: &str,
+        repo_did: &str,
+        repo_name: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<()> {
+        // Fetch the pull request to get patch and target branch
+        let pds_client = TangledClient::new(pds_base);
+        let pull = pds_client
+            .get_pull_record(pull_did, pull_rkey, Some(access_jwt))
+            .await?;
+
+        // Get service auth token for the knot
+        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+
+        #[derive(Serialize)]
+        struct MergeReq<'a> {
+            did: &'a str,
+            name: &'a str,
+            patch: &'a str,
+            branch: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            #[serde(rename = "commitMessage")]
+            commit_message: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            #[serde(rename = "commitBody")]
+            commit_body: Option<&'a str>,
+        }
+
+        let commit_body = if pull.body.is_empty() {
+            None
+        } else {
+            Some(pull.body.as_str())
+        };
+
+        let req = MergeReq {
+            did: repo_did,
+            name: repo_name,
+            patch: &pull.patch,
+            branch: &pull.target.branch,
+            commit_message: Some(&pull.title),
+            commit_body,
+        };
+
+        let _: serde_json::Value = self
+            .post_json("sh.tangled.repo.merge", &req, Some(&sa))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn merge_check(
+        &self,
+        repo_did: &str,
+        repo_name: &str,
+        branch: &str,
+        patch: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<MergeCheckResponse> {
+        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+
+        let req = MergeCheckRequest {
+            did: repo_did.to_string(),
+            name: repo_name.to_string(),
+            branch: branch.to_string(),
+            patch: patch.to_string(),
+        };
+
+        self.post_json("sh.tangled.repo.mergeCheck", &req, Some(&sa))
+            .await
+    }
+
+    pub async fn update_repo_spindle(
+        &self,
+        did: &str,
+        rkey: &str,
+        new_spindle: Option<&str>,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<()> {
+        let pds_client = TangledClient::new(pds_base);
+        #[derive(Deserialize, Serialize, Clone)]
+        struct Rec {
+            name: String,
+            knot: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            description: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            spindle: Option<String>,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Deserialize)]
+        struct GetRes {
+            value: Rec,
+        }
+        let params = [
+            ("repo", did.to_string()),
+            ("collection", "sh.tangled.repo".to_string()),
+            ("rkey", rkey.to_string()),
+        ];
+        let got: GetRes = pds_client
+            .get_json("com.atproto.repo.getRecord", &params, Some(access_jwt))
+            .await?;
+        let mut rec = got.value;
+        rec.spindle = new_spindle.map(|s| s.to_string());
+        #[derive(Serialize)]
+        struct PutReq<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            rkey: &'a str,
+            validate: bool,
+            record: Rec,
+        }
+        let req = PutReq {
+            repo: did,
+            collection: "sh.tangled.repo",
+            rkey,
+            validate: true,
+            record: rec,
+        };
+        let _: serde_json::Value = pds_client
+            .post_json("com.atproto.repo.putRecord", &req, Some(access_jwt))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn list_pipelines(
+        &self,
+        repo_did: &str,
+        bearer: Option<&str>,
+    ) -> Result<Vec<PipelineRecord>> {
+        #[derive(Deserialize)]
+        struct Item {
+            uri: String,
+            value: Pipeline,
+        }
+        #[derive(Deserialize)]
+        struct ListRes {
+            #[serde(default)]
+            records: Vec<Item>,
+        }
+        let params = vec![
+            ("repo", repo_did.to_string()),
+            ("collection", "sh.tangled.pipeline".to_string()),
+            ("limit", "100".to_string()),
+        ];
+        let res: ListRes = self
+            .get_json("com.atproto.repo.listRecords", &params, bearer)
+            .await?;
+        let mut out = vec![];
+        for it in res.records {
+            let rkey = Self::uri_rkey(&it.uri).unwrap_or_default();
+            out.push(PipelineRecord {
+                rkey,
+                pipeline: it.value,
+            });
+        }
+        Ok(out)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Repository {
+    pub did: Option<String>,
+    pub rkey: Option<String>,
+    pub name: String,
+    pub knot: Option<String>,
+    pub description: Option<String>,
+    pub spindle: Option<String>,
+    #[serde(default)]
+    pub private: bool,
+}
+
+// Issue record value
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Issue {
+    pub repo: String,
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct IssueRecord {
+    pub author_did: String,
+    pub rkey: String,
+    pub issue: Issue,
+}
+
+// Pull record value (subset)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullTarget {
+    pub repo: String,
+    pub branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pull {
+    pub target: PullTarget,
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    pub patch: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    // Stack support fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stack_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_change_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PullRecord {
+    pub author_did: String,
+    pub rkey: String,
+    pub pull: Pull,
+}
+
+// Merge check types for stacked diff conflict detection
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeCheckRequest {
+    pub did: String,
+    pub name: String,
+    pub branch: String,
+    pub patch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeCheckResponse {
+    pub is_conflicted: bool,
+    #[serde(default)]
+    pub conflicts: Vec<ConflictInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictInfo {
+    pub filename: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RepoRecord {
+    pub did: String,
+    pub name: String,
+    pub rkey: String,
+    pub knot: String,
+    pub description: Option<String>,
+    pub spindle: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultBranch {
+    pub name: String,
+    pub hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short_hash: Option<String>,
+    pub when: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Language {
+    pub name: String,
+    pub size: u64,
+    pub percentage: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Languages {
+    pub languages: Vec<Language>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_files: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StarRecord {
+    pub subject: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Secret {
+    pub repo: String,
+    pub key: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "createdBy")]
+    pub created_by: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateRepoOptions<'a> {
+    pub did: &'a str,
+    pub name: &'a str,
+    pub knot: &'a str,
+    pub description: Option<&'a str>,
+    pub default_branch: Option<&'a str>,
+    pub source: Option<&'a str>,
+    pub pds_base: &'a str,
+    pub access_jwt: &'a str,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerMetadata {
+    pub kind: String,
+    pub repo: TriggerRepo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerRepo {
+    pub knot: String,
+    pub did: String,
+    pub repo: String,
+    #[serde(rename = "defaultBranch")]
+    pub default_branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Workflow {
+    pub name: String,
+    pub engine: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pipeline {
+    #[serde(rename = "triggerMetadata")]
+    pub trigger_metadata: TriggerMetadata,
+    pub workflows: Vec<Workflow>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PipelineRecord {
+    pub rkey: String,
+    pub pipeline: Pipeline,
+}

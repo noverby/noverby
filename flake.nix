@@ -215,6 +215,7 @@
 
         ./rust/h264toav1
 
+        ./tangled/cli
         ./tangled/spindle-nix-engine
       ];
       nixDirAliases = {

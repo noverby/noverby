@@ -118,6 +118,7 @@
 
 | Project | Description |
 |-|-|
+| [Tangled-cli 🦀](https://tangled.org/@overby.me/overby.me/tree/main/tangled/cli) | Tangled git collaboration CLI |
 | [Spindle-nix-engine 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/tangled/spindle-nix-engine) | Tangled Spindle CI runner with native Nix engine |
 
 </details>
@@ -145,7 +146,6 @@
 | [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/pkgs/nix-sweep.nix) | [GitHub](https://github.com/jzbor/nix-sweep) | Nix garbage collector |
 | [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/pkgs/rcgen.nix) | [GitHub](https://github.com/rustls/rcgen) | X.509 certificate generator |
 | [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/pkgs/starship-jj.nix) | [GitLab](https://gitlab.com/lanastara_foss/starship-jj) | Starship plugin for jj |
-| [Tangled-cli 🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/nix/pkgs/tangled-cli.nix) | [Tangled](https://tangled.org/vitorpy.com/tangled-cli) | Tangled git collaboration CLI |
 
 #### Desktop
 
