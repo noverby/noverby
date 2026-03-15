@@ -378,20 +378,13 @@ impl TangledClient {
             .next()
             .ok_or_else(|| anyhow!("failed to parse rkey from uri"))?;
 
-        // 2) Obtain a service auth token for the Tangled server (aud = did:web:<host>)
-        let host = self
-            .base_url
-            .trim_end_matches('/')
-            .strip_prefix("https://")
-            .or_else(|| self.base_url.trim_end_matches('/').strip_prefix("http://"))
-            .ok_or_else(|| anyhow!("invalid base_url"))?;
-        let audience = format!("did:web:{}", host);
+        // 2) Obtain a service auth token for the knot server (aud = did:web:<knot>)
+        let audience = format!("did:web:{}", opts.knot);
 
         #[derive(Deserialize)]
         struct GetSARes {
             token: String,
         }
-        // Method-less ServiceAuth tokens must expire within 60 seconds per AT Protocol spec
         let params = [
             ("aud", audience),
             ("exp", (chrono::Utc::now().timestamp() + 60).to_string()),
@@ -404,7 +397,7 @@ impl TangledClient {
             )
             .await?;
 
-        // 3) Call sh.tangled.repo.create with the rkey
+        // 3) Call sh.tangled.repo.create on the knot
         #[derive(Serialize)]
         struct CreateRepoReq<'a> {
             rkey: &'a str,
@@ -420,7 +413,8 @@ impl TangledClient {
             source: opts.source,
         };
         // No output expected on success
-        let _: serde_json::Value = self.post_json(REPO_CREATE, &req, Some(&sa.token)).await?;
+        let knot_client = self.derive(format!("https://{}", opts.knot));
+        knot_client.post(REPO_CREATE, &req, Some(&sa.token)).await?;
         Ok(())
     }
 
@@ -507,18 +501,13 @@ impl TangledClient {
             .post_json("com.atproto.repo.deleteRecord", &del, Some(access_jwt))
             .await?;
 
-        let host = self
-            .base_url
-            .trim_end_matches('/')
-            .strip_prefix("https://")
-            .or_else(|| self.base_url.trim_end_matches('/').strip_prefix("http://"))
-            .ok_or_else(|| anyhow!("invalid base_url"))?;
-        let audience = format!("did:web:{}", host);
+        // Delete the repo on the knot server
+        let knot = &info.knot;
+        let audience = format!("did:web:{}", knot);
         #[derive(Deserialize)]
         struct GetSARes {
             token: String,
         }
-        // Method-less ServiceAuth tokens must expire within 60 seconds per AT Protocol spec
         let params = [
             ("aud", audience),
             ("exp", (chrono::Utc::now().timestamp() + 60).to_string()),
@@ -542,8 +531,9 @@ impl TangledClient {
             name,
             rkey: &info.rkey,
         };
-        let _: serde_json::Value = self
-            .post_json("sh.tangled.repo.delete", &body, Some(&sa.token))
+        let knot_client = self.derive(format!("https://{}", knot));
+        knot_client
+            .post("sh.tangled.repo.delete", &body, Some(&sa.token))
             .await?;
         Ok(())
     }
@@ -1123,7 +1113,9 @@ impl TangledClient {
         access_jwt: &str,
         repo_at: &str,
     ) -> Result<Vec<Secret>> {
-        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+        let sa = self
+            .service_auth_token(self.base_host(), pds_base, access_jwt)
+            .await?;
         #[derive(Deserialize)]
         struct Res {
             secrets: Vec<Secret>,
@@ -1143,7 +1135,9 @@ impl TangledClient {
         key: &str,
         value: &str,
     ) -> Result<()> {
-        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+        let sa = self
+            .service_auth_token(self.base_host(), pds_base, access_jwt)
+            .await?;
         #[derive(Serialize)]
         struct Req<'a> {
             repo: &'a str,
@@ -1166,7 +1160,9 @@ impl TangledClient {
         repo_at: &str,
         key: &str,
     ) -> Result<()> {
-        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+        let sa = self
+            .service_auth_token(self.base_host(), pds_base, access_jwt)
+            .await?;
         #[derive(Serialize)]
         struct Req<'a> {
             repo: &'a str,
@@ -1177,19 +1173,25 @@ impl TangledClient {
             .await
     }
 
-    async fn service_auth_token(&self, pds_base: &str, access_jwt: &str) -> Result<String> {
-        let base_trimmed = self.base_url.trim_end_matches('/');
-        let host = base_trimmed
-            .strip_prefix("https://")
-            .or_else(|| base_trimmed.strip_prefix("http://"))
-            .unwrap_or(base_trimmed); // If no protocol, use the URL as-is
-        let audience = format!("did:web:{}", host);
+    fn base_host(&self) -> &str {
+        let base = self.base_url.trim_end_matches('/');
+        base.strip_prefix("https://")
+            .or_else(|| base.strip_prefix("http://"))
+            .unwrap_or(base)
+    }
+
+    async fn service_auth_token(
+        &self,
+        target_host: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<String> {
+        let audience = format!("did:web:{}", target_host);
         #[derive(Deserialize)]
         struct GetSARes {
             token: String,
         }
         let pds = self.derive(pds_base);
-        // Method-less ServiceAuth tokens must expire within 60 seconds per AT Protocol spec
         let params = [
             ("aud", audience),
             ("exp", (chrono::Utc::now().timestamp() + 60).to_string()),
@@ -1249,12 +1251,14 @@ impl TangledClient {
         Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in pull comment uri"))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn merge_pull(
         &self,
         pull_did: &str,
         pull_rkey: &str,
         repo_did: &str,
         repo_name: &str,
+        knot: &str,
         pds_base: &str,
         access_jwt: &str,
     ) -> Result<()> {
@@ -1265,7 +1269,7 @@ impl TangledClient {
             .await?;
 
         // Get service auth token for the knot
-        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+        let sa = self.service_auth_token(knot, pds_base, access_jwt).await?;
 
         #[derive(Serialize)]
         struct MergeReq<'a> {
@@ -1296,22 +1300,25 @@ impl TangledClient {
             commit_body,
         };
 
-        let _: serde_json::Value = self
-            .post_json("sh.tangled.repo.merge", &req, Some(&sa))
+        let knot_client = self.derive(format!("https://{}", knot));
+        knot_client
+            .post("sh.tangled.repo.merge", &req, Some(&sa))
             .await?;
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn merge_check(
         &self,
         repo_did: &str,
         repo_name: &str,
         branch: &str,
         patch: &str,
+        knot: &str,
         pds_base: &str,
         access_jwt: &str,
     ) -> Result<MergeCheckResponse> {
-        let sa = self.service_auth_token(pds_base, access_jwt).await?;
+        let sa = self.service_auth_token(knot, pds_base, access_jwt).await?;
 
         let req = MergeCheckRequest {
             did: repo_did.to_string(),
@@ -1320,7 +1327,9 @@ impl TangledClient {
             patch: patch.to_string(),
         };
 
-        self.post_json("sh.tangled.repo.mergeCheck", &req, Some(&sa))
+        let knot_client = self.derive(format!("https://{}", knot));
+        knot_client
+            .post_json("sh.tangled.repo.mergeCheck", &req, Some(&sa))
             .await
     }
 

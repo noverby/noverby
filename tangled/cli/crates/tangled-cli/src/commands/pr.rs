@@ -189,7 +189,7 @@ async fn merge(args: PrMergeArgs) -> Result<()> {
         .await?;
 
     // Parse target repo info
-    let (repo_did, repo_name) = parse_target_repo_info(&pull, &pds_client, &session).await?;
+    let (repo_did, repo_name, knot) = parse_target_repo_info(&pull, &pds_client, &session).await?;
 
     // Check if PR is part of a stack
     if let Some(stack_id) = &pull.stack_id {
@@ -201,13 +201,14 @@ async fn merge(args: PrMergeArgs) -> Result<()> {
             &rkey,
             &repo_did,
             &repo_name,
+            &knot,
             stack_id,
             &pds,
         )
         .await?;
     } else {
         // Single PR merge (existing logic)
-        merge_single_pr(&session, &did, &rkey, &repo_did, &repo_name, &pds).await?;
+        merge_single_pr(&session, &did, &rkey, &repo_did, &repo_name, &knot, &pds).await?;
     }
 
     Ok(())
@@ -246,11 +247,20 @@ async fn merge_single_pr(
     rkey: &str,
     repo_did: &str,
     repo_name: &str,
+    knot: &str,
     pds: &str,
 ) -> Result<()> {
     let api = crate::util::make_default_client();
-    api.merge_pull(did, rkey, repo_did, repo_name, pds, &session.access_jwt)
-        .await?;
+    api.merge_pull(
+        did,
+        rkey,
+        repo_did,
+        repo_name,
+        knot,
+        pds,
+        &session.access_jwt,
+    )
+    .await?;
 
     println!("Merged PR {}:{}", did, rkey);
     Ok(())
@@ -265,6 +275,7 @@ async fn merge_stacked_pr(
     current_rkey: &str,
     repo_did: &str,
     repo_name: &str,
+    knot: &str,
     stack_id: &str,
     pds: &str,
 ) -> Result<()> {
@@ -305,6 +316,7 @@ async fn merge_stacked_pr(
         repo_name,
         &current_pull.target.branch,
         &substack,
+        knot,
         pds,
         &session.access_jwt,
     )
@@ -344,6 +356,7 @@ async fn merge_stacked_pr(
         current_rkey,
         repo_did,
         repo_name,
+        knot,
         pds,
         &session.access_jwt,
     )
@@ -458,12 +471,14 @@ fn find_substack<'a>(
     Ok(stack[position..].iter().collect())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn check_stack_conflicts(
     api: &tangled_api::TangledClient,
     repo_did: &str,
     repo_name: &str,
     target_branch: &str,
     substack: &[&tangled_api::PullRecord],
+    knot: &str,
     pds: &str,
     access_jwt: &str,
 ) -> Result<Vec<(String, tangled_api::MergeCheckResponse)>> {
@@ -481,6 +496,7 @@ async fn check_stack_conflicts(
                 repo_name,
                 target_branch,
                 &cumulative_patch,
+                knot,
                 pds,
                 access_jwt,
             )
@@ -510,7 +526,7 @@ async fn parse_target_repo_info(
     pull: &tangled_api::Pull,
     pds_client: &tangled_api::TangledClient,
     session: &tangled_config::session::Session,
-) -> Result<(String, String)> {
+) -> Result<(String, String, String)> {
     let target_repo = &pull.target.repo;
     let parts: Vec<&str> = target_repo
         .strip_prefix("at://")
@@ -525,10 +541,11 @@ async fn parse_target_repo_info(
     let repo_did = parts[0].to_string();
     let repo_rkey = parts[3];
 
-    // Get repo name
+    // Get repo name and knot
     #[derive(serde::Deserialize)]
     struct Rec {
         name: String,
+        knot: String,
     }
     #[derive(serde::Deserialize)]
     struct GetRes {
@@ -549,5 +566,5 @@ async fn parse_target_repo_info(
         )
         .await?;
 
-    Ok((repo_did, repo_rec.value.name))
+    Ok((repo_did, repo_rec.value.name, repo_rec.value.knot))
 }
