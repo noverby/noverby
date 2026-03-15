@@ -12,29 +12,13 @@ run:
     let initrd = $"(^nix build --print-out-paths '.#nixosConfigurations.{{ config }}.config.system.build.initialRamdisk' | str trim)/initrd"
     ^cloud-hypervisor --kernel $kernel --initramfs $initrd --disk $"path={{ config }}.raw" --cmdline "console=ttyS0 quiet root=LABEL=nixos init=/nix/var/nix/profiles/system/init" --cpus boot=2 --memory size=4096M --net "tap=vmtap0,mac=12:34:56:78:90:ab" --serial tty --console off
 
-# Run automated boot test with serial output capture (120s timeout)
+# Run NixOS VM integration test
 test:
-    nu test-boot.nu --verbose --config {{ config }}
+    nix build ..#checks.x86_64-linux.rust-nixos-boot -L
 
-# Run boot test with a custom timeout (in seconds)
-test-timeout seconds="30": build
-    nu test-boot.nu --verbose --timeout {{ seconds }} --config {{ config }}
-
-# Run boot test and save the boot log to a file
-test-log path="boot.log":
-    nu test-boot.nu --verbose --log {{ path }} --config {{ config }}
-
-# Run boot test quietly (no streaming output, just pass/fail)
-test-quiet:
-    nu test-boot.nu --config {{ config }}
-
-# Boot test then keep the VM running for interactive debugging
-test-keep:
-    nu test-boot.nu --verbose --keep --config {{ config }}
-
-# Rebuild disk image and re-run boot test
-test-rebuild: build
-    nu test-boot.nu --verbose --config {{ config }}
+# Run NixOS VM test interactively (drops into a Python REPL with the VM)
+test-interactive:
+    nix build ..#checks.x86_64-linux.rust-nixos-boot.driverInteractive -L && ./result/bin/nixos-test-driver
 
 clean:
     rm -f result

@@ -21,4 +21,6 @@
       # ./coreutils.nix
     ];
   };
+  checks.rust-nixos-boot = pkgs:
+    import ./nixos-test.nix {inherit pkgs;};
 }
