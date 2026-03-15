@@ -185,6 +185,14 @@ Implementation:
 - Seed from source repo URL
 - Depends on Tangled API support for fork metadata
 
+## Known limitations
+
+### Appview indexing for CLI-created repos
+
+Repos created via CLI (`repo create`, `repo fork`) are correctly stored on the PDS and the knot server, but won't immediately appear on `tangled.org`. The tangled appview maintains its own SQLite database and only populates it through its web form handlers — it does not subscribe to `sh.tangled.repo` records via the Jetstream firehose. Git operations (clone, push, pull) work fine for CLI-created repos; only the web UI listing is affected.
+
+Upstream fix needed: the tangled appview should either add `sh.tangled.repo` to its Jetstream subscription or expose an XRPC endpoint for repo registration.
+
 ## Lower priority — nice to have
 
 ### 12. `search`
