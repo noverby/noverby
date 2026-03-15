@@ -1,3 +1,4 @@
+pub mod api;
 pub mod auth;
 pub mod browse;
 pub mod issue;
@@ -5,6 +6,7 @@ pub mod knot;
 pub mod pr;
 pub mod repo;
 pub mod spindle;
+pub mod status;
 
 use anyhow::Result;
 
@@ -19,7 +21,7 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
         Command::Knot(cmd) => knot::run(&cli, cmd.clone()).await,
         Command::Spindle(cmd) => spindle::run(&cli, cmd.clone()).await,
         Command::Browse(args) => browse::run(&cli, args.clone()).await,
+        Command::Api(cmd) => api::run(&cli, cmd.clone()).await,
+        Command::Status => status::run(&cli).await,
     }
 }
-
-// All subcommands are currently implemented with stubs where needed.

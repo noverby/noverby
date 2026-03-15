@@ -1,6 +1,6 @@
 use crate::cli::{
-    Cli, PrCloseArgs, PrCommand, PrCommentArgs, PrCreateArgs, PrDiffArgs, PrListArgs, PrMergeArgs,
-    PrReopenArgs, PrReviewArgs, PrShowArgs,
+    Cli, PrCheckoutArgs, PrCloseArgs, PrCommand, PrCommentArgs, PrCreateArgs, PrDiffArgs,
+    PrListArgs, PrMergeArgs, PrReopenArgs, PrReviewArgs, PrShowArgs,
 };
 use anyhow::{anyhow, Result};
 use std::path::Path;
@@ -17,6 +17,7 @@ pub async fn run(_cli: &Cli, cmd: PrCommand) -> Result<()> {
         PrCommand::Diff(args) => diff(args).await,
         PrCommand::Close(args) => close(args).await,
         PrCommand::Reopen(args) => reopen(args).await,
+        PrCommand::Checkout(args) => checkout(args).await,
     }
 }
 
@@ -271,6 +272,66 @@ async fn reopen(args: PrReopenArgs) -> Result<()> {
         )
         .await?;
     println!("Reopened PR {}:{}", did, rkey);
+    Ok(())
+}
+
+async fn checkout(args: PrCheckoutArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = crate::util::make_client(&pds);
+    let pr = client
+        .get_pull_record(&did, &rkey, Some(session.access_jwt.as_str()))
+        .await?;
+
+    let patch = pr
+        .patch
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| anyhow!("PR has no patch to apply"))?;
+
+    let branch_name = args
+        .branch
+        .unwrap_or_else(|| format!("pr/{}", rkey));
+
+    // Create and checkout the branch from the PR's target branch
+    let target_branch = &pr.target.branch;
+
+    let status = Command::new("git")
+        .args(["checkout", "-b", &branch_name, target_branch])
+        .status()?;
+    if !status.success() {
+        // Branch might already exist, try switching to it
+        let status = Command::new("git")
+            .args(["checkout", &branch_name])
+            .status()?;
+        if !status.success() {
+            return Err(anyhow!("failed to create or switch to branch '{}'", branch_name));
+        }
+    }
+
+    // Apply the patch via git am
+    let mut child = Command::new("git")
+        .args(["am", "--3way"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin.write_all(patch.as_bytes())?;
+    }
+
+    let exit = child.wait()?;
+    if !exit.success() {
+        println!("Patch did not apply cleanly. Resolve conflicts and run 'git am --continue'.");
+    } else {
+        println!("Checked out PR {} on branch '{}'", rkey, branch_name);
+    }
+
     Ok(())
 }
 

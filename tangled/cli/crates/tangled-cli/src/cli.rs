@@ -59,6 +59,11 @@ pub enum Command {
     Spindle(SpindleCommand),
     /// Open in browser
     Browse(BrowseArgs),
+    /// Make raw authenticated XRPC API calls
+    #[command(subcommand)]
+    Api(ApiCommand),
+    /// Show cross-repo dashboard of issues and PRs needing attention
+    Status,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -111,6 +116,8 @@ pub enum RepoCommand {
     Star(RepoRefArgs),
     /// Unstar a repository
     Unstar(RepoRefArgs),
+    /// Fork a repository
+    Fork(RepoForkArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -181,6 +188,18 @@ pub struct RepoEditArgs {
 #[derive(Args, Debug, Clone)]
 pub struct RepoRefArgs {
     pub repo: String,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RepoForkArgs {
+    /// Source repo: <owner>/<name>
+    pub repo: String,
+    /// Name for the forked repo (defaults to source name)
+    #[arg(long)]
+    pub name: Option<String>,
+    /// Target knot hostname
+    #[arg(long)]
+    pub knot: Option<String>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -294,6 +313,8 @@ pub enum PrCommand {
     Close(PrCloseArgs),
     /// Reopen a closed pull request
     Reopen(PrReopenArgs),
+    /// Apply a PR's patch locally for testing
+    Checkout(PrCheckoutArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -380,6 +401,14 @@ pub struct PrReopenArgs {
 }
 
 #[derive(Args, Debug, Clone)]
+pub struct PrCheckoutArgs {
+    pub id: String,
+    /// Branch name to create (default: pr/<rkey>)
+    #[arg(long)]
+    pub branch: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct BrowseArgs {
     /// Repo, issue, or PR reference (e.g. owner/repo, or rkey)
     pub target: Option<String>,
@@ -392,6 +421,41 @@ pub struct BrowseArgs {
     /// Print URL instead of opening browser
     #[arg(long, short = 'n', default_value_t = false)]
     pub no_browser: bool,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ApiCommand {
+    /// Make an authenticated XRPC GET request
+    Get(ApiGetArgs),
+    /// Make an authenticated XRPC POST request
+    Post(ApiPostArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ApiGetArgs {
+    /// XRPC method name (e.g. com.atproto.repo.listRecords)
+    pub method: String,
+    /// Query parameters as key=value pairs
+    #[arg(long = "param", value_name = "KEY=VALUE")]
+    pub params: Vec<String>,
+    /// Target PDS instead of Tangled API
+    #[arg(long)]
+    pub pds: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ApiPostArgs {
+    /// XRPC method name (e.g. sh.tangled.repo.create)
+    pub method: String,
+    /// JSON body from file (use - for stdin)
+    #[arg(long, value_name = "FILE")]
+    pub input: Option<String>,
+    /// Query parameters as key=value pairs
+    #[arg(long = "param", value_name = "KEY=VALUE")]
+    pub params: Vec<String>,
+    /// Target PDS instead of Tangled API
+    #[arg(long)]
+    pub pds: bool,
 }
 
 #[derive(Subcommand, Debug, Clone)]

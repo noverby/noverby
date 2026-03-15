@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::cli::{
     Cli, OutputFormat, RepoCloneArgs, RepoCommand, RepoCreateArgs, RepoDeleteArgs, RepoEditArgs,
-    RepoInfoArgs, RepoListArgs, RepoRefArgs,
+    RepoForkArgs, RepoInfoArgs, RepoListArgs, RepoRefArgs,
 };
 
 pub async fn run(cli: &Cli, cmd: RepoCommand) -> Result<()> {
@@ -18,6 +18,7 @@ pub async fn run(cli: &Cli, cmd: RepoCommand) -> Result<()> {
         RepoCommand::Delete(args) => delete(args).await,
         RepoCommand::Star(args) => star(args).await,
         RepoCommand::Unstar(args) => unstar(args).await,
+        RepoCommand::Fork(args) => fork(args).await,
     }
 }
 
@@ -309,6 +310,60 @@ async fn unstar(args: RepoRefArgs) -> Result<()> {
     api.unstar_repo(&pds, &session.access_jwt, &subject, &session.did)
         .await?;
     println!("Unstarred {}/{}", owner, name);
+    Ok(())
+}
+
+async fn fork(args: RepoForkArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let pds_client = crate::util::make_client(&pds);
+
+    let (owner, source_name) = parse_repo_ref(&args.repo, &session.handle);
+    let info = pds_client
+        .get_repo_info(owner, &source_name, Some(session.access_jwt.as_str()))
+        .await?;
+
+    let fork_name = args.name.unwrap_or_else(|| source_name.clone());
+    let knot = args
+        .knot
+        .unwrap_or_else(|| info.knot.clone());
+
+    // Build HTTPS source URL for seeding
+    let knot_host = if info.knot == "knot1.tangled.sh" {
+        "tangled.org".to_string()
+    } else {
+        info.knot.clone()
+    };
+    let source_url = format!(
+        "https://{}/{}/{}",
+        knot_host,
+        owner.trim_start_matches('@'),
+        source_name
+    );
+
+    let api_base = std::env::var("TANGLED_API_BASE").unwrap_or_else(|_| "https://tngl.sh".into());
+    let api_client = crate::util::make_client(&api_base);
+
+    let opts = tangled_api::client::CreateRepoOptions {
+        did: &session.did,
+        name: &fork_name,
+        knot: &knot,
+        description: info.description.as_deref(),
+        default_branch: None,
+        source: Some(&source_url),
+        pds_base: &pds,
+        access_jwt: &session.access_jwt,
+    };
+    api_client.create_repo(opts).await?;
+
+    println!(
+        "Forked {}/{} -> {}/{} (knot: {})",
+        owner, source_name, session.handle, fork_name, knot
+    );
     Ok(())
 }
 
