@@ -105,13 +105,13 @@ pub async fn dispatch_query(
     method: Path<String>,
     state: State<Arc<XrpcContext>>,
     query: axum::extract::Query<std::collections::HashMap<String, String>>,
-    parts: axum::http::request::Parts,
+    request: axum::extract::Request,
 ) -> Response {
     match method.0.as_str() {
         "sh.tangled.owner" => owner(state).await,
         "sh.tangled.repo.listSecrets" | "sh.tangled.spindle.listSecrets" => {
             // Manually extract auth for authenticated GET queries.
-            let mut parts = parts;
+            let (mut parts, _body) = request.into_parts();
             let auth = match ServiceAuth::from_request_parts(&mut parts, &state).await {
                 Ok(a) => a,
                 Err(e) => return e.into_response(),
