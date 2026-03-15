@@ -1,6 +1,6 @@
 # NixOS module: services.tangled-spindles
 #
-# Declarative multi-runner deployment for nix-tangled-spindle,
+# Declarative multi-runner deployment for tangled-spindle-nix-engine,
 # modeled after services.github-runners.
 #
 # See PLAN.md Phase 7 for the full specification.
@@ -29,8 +29,8 @@
 
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.nix-tangled-spindle or (throw "nix-tangled-spindle package not found in pkgs; add the overlay or pass it explicitly");
-        description = "The nix-tangled-spindle package to use.";
+        default = pkgs.tangled-spindle-nix-engine or (throw "tangled-spindle-nix-engine package not found in pkgs; add the overlay or pass it explicitly");
+        description = "The tangled-spindle-nix-engine package to use.";
       };
 
       hostname = lib.mkOption {
@@ -175,7 +175,7 @@ in {
     type = lib.types.attrsOf (lib.types.submodule runnerOpts);
     default = {};
     description = ''
-      Declarative nix-tangled-spindle runner instances.
+      Declarative tangled-spindle-nix-engine runner instances.
       Each attribute defines an independent runner with its own systemd service,
       state directory, log directory, database, and RBAC configuration.
     '';
