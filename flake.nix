@@ -215,7 +215,7 @@
 
         ./rust/h264toav1
 
-        ./nix/tangled-spindle
+        ./tangled/spindle-nix-engine
       ];
       nixDirAliases = {
         packages = ["pkgs"];
