@@ -8,5 +8,5 @@
     '';
   };
 
-  programs.nu-plugin-tramp.enable = true;
+  programs.nushell-plugin-tramp.enable = true;
 }
