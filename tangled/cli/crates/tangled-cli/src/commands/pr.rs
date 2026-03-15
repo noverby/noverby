@@ -1,0 +1,550 @@
+use crate::cli::{Cli, PrCommand, PrCreateArgs, PrListArgs, PrMergeArgs, PrReviewArgs, PrShowArgs};
+use anyhow::{anyhow, Result};
+use std::path::Path;
+use std::process::Command;
+
+pub async fn run(_cli: &Cli, cmd: PrCommand) -> Result<()> {
+    match cmd {
+        PrCommand::List(args) => list(args).await,
+        PrCommand::Create(args) => create(args).await,
+        PrCommand::Show(args) => show(args).await,
+        PrCommand::Review(args) => review(args).await,
+        PrCommand::Merge(args) => merge(args).await,
+    }
+}
+
+async fn list(args: PrListArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = tangled_api::TangledClient::new(&pds);
+    let target_repo_at = if let Some(repo) = &args.repo {
+        let (owner, name) = parse_repo_ref(repo, &session.handle);
+        let info = client
+            .get_repo_info(owner, name, Some(session.access_jwt.as_str()))
+            .await?;
+        Some(format!("at://{}/sh.tangled.repo/{}", info.did, info.rkey))
+    } else {
+        None
+    };
+    let pulls = client
+        .list_pulls(
+            &session.did,
+            target_repo_at.as_deref(),
+            Some(session.access_jwt.as_str()),
+        )
+        .await?;
+    if pulls.is_empty() {
+        println!("No pull requests found (showing only those you created)");
+    } else {
+        println!("RKEY\tTITLE\tTARGET");
+        for pr in pulls {
+            println!("{}\t{}\t{}", pr.rkey, pr.pull.title, pr.pull.target.repo);
+        }
+    }
+    Ok(())
+}
+
+async fn create(args: PrCreateArgs) -> Result<()> {
+    // Must be run inside the repo checkout; we will use git format-patch to build the patch
+    let session = crate::util::load_session_with_refresh().await?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = tangled_api::TangledClient::new(&pds);
+
+    let repo = args
+        .repo
+        .as_ref()
+        .ok_or_else(|| anyhow!("--repo is required for pr create"))?;
+    let (owner, name) = parse_repo_ref(repo, "");
+    let info = client
+        .get_repo_info(owner, name, Some(session.access_jwt.as_str()))
+        .await?;
+
+    let base = args
+        .base
+        .as_deref()
+        .ok_or_else(|| anyhow!("--base is required (target branch)"))?;
+    let head = args
+        .head
+        .as_deref()
+        .ok_or_else(|| anyhow!("--head is required (source range/branch)"))?;
+
+    // Generate format-patch using external git for fidelity
+    let output = Command::new("git")
+        .arg("format-patch")
+        .arg("--stdout")
+        .arg(format!("{}..{}", base, head))
+        .current_dir(Path::new("."))
+        .output()?;
+    if !output.status.success() {
+        return Err(anyhow!("failed to run git format-patch"));
+    }
+    let patch = String::from_utf8_lossy(&output.stdout).to_string();
+    if patch.trim().is_empty() {
+        return Err(anyhow!("no changes between base and head"));
+    }
+
+    let title_buf;
+    let title = if let Some(t) = args.title.as_deref() {
+        t
+    } else {
+        title_buf = format!("{} -> {}", head, base);
+        &title_buf
+    };
+    let rkey = client
+        .create_pull(
+            &session.did,
+            &info.did,
+            &info.rkey,
+            base,
+            &patch,
+            title,
+            args.body.as_deref(),
+            &pds,
+            &session.access_jwt,
+        )
+        .await?;
+    println!(
+        "Created PR rkey={} targeting {} branch {}",
+        rkey, info.did, base
+    );
+    Ok(())
+}
+
+async fn show(args: PrShowArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = tangled_api::TangledClient::new(&pds);
+    let pr = client
+        .get_pull_record(&did, &rkey, Some(session.access_jwt.as_str()))
+        .await?;
+    println!("TITLE: {}", pr.title);
+    if !pr.body.is_empty() {
+        println!("BODY:\n{}", pr.body);
+    }
+    println!("TARGET: {} @ {}", pr.target.repo, pr.target.branch);
+    if args.diff {
+        println!("PATCH:\n{}", pr.patch);
+    }
+    Ok(())
+}
+
+async fn review(args: PrReviewArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let pr_at = format!("at://{}/sh.tangled.repo.pull/{}", did, rkey);
+    let note = if let Some(c) = args.comment.as_deref() {
+        c
+    } else if args.approve {
+        "LGTM"
+    } else if args.request_changes {
+        "Requesting changes"
+    } else {
+        ""
+    };
+    if note.is_empty() {
+        return Err(anyhow!("provide --comment or --approve/--request-changes"));
+    }
+    let client = tangled_api::TangledClient::new(&pds);
+    client
+        .comment_pull(&session.did, &pr_at, note, &pds, &session.access_jwt)
+        .await?;
+    println!("Review comment posted");
+    Ok(())
+}
+
+async fn merge(args: PrMergeArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+
+    // Get the PR
+    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pull = pds_client
+        .get_pull_record(&did, &rkey, Some(session.access_jwt.as_str()))
+        .await?;
+
+    // Parse target repo info
+    let (repo_did, repo_name) = parse_target_repo_info(&pull, &pds_client, &session).await?;
+
+    // Check if PR is part of a stack
+    if let Some(stack_id) = &pull.stack_id {
+        merge_stacked_pr(
+            &pds_client,
+            &session,
+            &pull,
+            &did,
+            &rkey,
+            &repo_did,
+            &repo_name,
+            stack_id,
+            &pds,
+        )
+        .await?;
+    } else {
+        // Single PR merge (existing logic)
+        merge_single_pr(&session, &did, &rkey, &repo_did, &repo_name, &pds).await?;
+    }
+
+    Ok(())
+}
+
+fn parse_repo_ref<'a>(spec: &'a str, default_owner: &'a str) -> (&'a str, &'a str) {
+    if let Some((owner, name)) = spec.split_once('/') {
+        if !owner.is_empty() {
+            (owner, name)
+        } else {
+            (default_owner, name)
+        }
+    } else {
+        (default_owner, spec)
+    }
+}
+
+fn parse_record_id<'a>(id: &'a str, default_did: &'a str) -> Result<(String, String)> {
+    if let Some(rest) = id.strip_prefix("at://") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 4 {
+            return Ok((parts[0].to_string(), parts[3].to_string()));
+        }
+    }
+    if let Some((did, rkey)) = id.split_once(':') {
+        return Ok((did.to_string(), rkey.to_string()));
+    }
+    Ok((default_did.to_string(), id.to_string()))
+}
+
+// Helper functions for stacked PR merge support
+
+async fn merge_single_pr(
+    session: &tangled_config::session::Session,
+    did: &str,
+    rkey: &str,
+    repo_did: &str,
+    repo_name: &str,
+    pds: &str,
+) -> Result<()> {
+    let api = tangled_api::TangledClient::default();
+    api.merge_pull(did, rkey, repo_did, repo_name, pds, &session.access_jwt)
+        .await?;
+
+    println!("Merged PR {}:{}", did, rkey);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn merge_stacked_pr(
+    pds_client: &tangled_api::TangledClient,
+    session: &tangled_config::session::Session,
+    current_pull: &tangled_api::Pull,
+    current_did: &str,
+    current_rkey: &str,
+    repo_did: &str,
+    repo_name: &str,
+    stack_id: &str,
+    pds: &str,
+) -> Result<()> {
+    // Step 1: Get full stack
+    println!("🔍 Detecting stack...");
+    let stack = get_stack_pulls(pds_client, &session.did, stack_id, &session.access_jwt).await?;
+
+    if stack.is_empty() {
+        return Err(anyhow!("Stack is empty"));
+    }
+
+    // Step 2: Find substack (current PR and all below it)
+    let substack = find_substack(&stack, current_pull.change_id.as_deref())?;
+
+    println!(
+        "✓ Detected PR is part of stack (stack has {} total PRs)",
+        stack.len()
+    );
+    println!();
+    println!("The following {} PR(s) will be merged:", substack.len());
+
+    for (idx, pr) in substack.iter().enumerate() {
+        let marker = if pr.rkey == current_rkey {
+            " (current)"
+        } else {
+            ""
+        };
+        println!("  [{}] {}: {}{}", idx + 1, pr.rkey, pr.pull.title, marker);
+    }
+    println!();
+
+    // Step 3: Check for conflicts
+    println!("✓ Checking for conflicts...");
+    let api = tangled_api::TangledClient::default();
+    let conflicts = check_stack_conflicts(
+        &api,
+        repo_did,
+        repo_name,
+        &current_pull.target.branch,
+        &substack,
+        pds,
+        &session.access_jwt,
+    )
+    .await?;
+
+    if !conflicts.is_empty() {
+        println!("✗ Cannot merge: conflicts detected");
+        println!();
+        for (pr_rkey, conflict_resp) in conflicts {
+            println!(
+                "  PR {}: Conflicts in {} file(s)",
+                pr_rkey,
+                conflict_resp.conflicts.len()
+            );
+            for conflict in conflict_resp.conflicts {
+                println!("    - {}: {}", conflict.filename, conflict.reason);
+            }
+        }
+        return Err(anyhow!("Stack has merge conflicts"));
+    }
+
+    println!("✓ All PRs can be merged cleanly");
+    println!();
+
+    // Step 4: Confirmation prompt
+    if !prompt_confirmation(&format!("Merge {} pull request(s)?", substack.len()))? {
+        println!("Merge cancelled.");
+        return Ok(());
+    }
+
+    // Step 5: Merge the stack (backend handles combined patch)
+    println!("Merging {} PR(s)...", substack.len());
+
+    // Use the current PR's merge endpoint - backend will handle the stack
+    api.merge_pull(
+        current_did,
+        current_rkey,
+        repo_did,
+        repo_name,
+        pds,
+        &session.access_jwt,
+    )
+    .await?;
+
+    println!("✓ Successfully merged {} pull request(s)", substack.len());
+
+    Ok(())
+}
+
+async fn get_stack_pulls(
+    client: &tangled_api::TangledClient,
+    user_did: &str,
+    stack_id: &str,
+    bearer: &str,
+) -> Result<Vec<tangled_api::PullRecord>> {
+    // List all user's PRs and filter by stack_id
+    let all_pulls = client.list_pulls(user_did, None, Some(bearer)).await?;
+
+    let mut stack_pulls: Vec<_> = all_pulls
+        .into_iter()
+        .filter(|p| p.pull.stack_id.as_deref() == Some(stack_id))
+        .collect();
+
+    // Order by parent relationships (top to bottom)
+    order_stack(&mut stack_pulls)?;
+
+    Ok(stack_pulls)
+}
+
+fn order_stack(pulls: &mut Vec<tangled_api::PullRecord>) -> Result<()> {
+    if pulls.is_empty() {
+        return Ok(());
+    }
+
+    // Build parent map: parent_change_id -> pull
+    let mut change_id_map: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut parent_map: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+    for (idx, pr) in pulls.iter().enumerate() {
+        if let Some(cid) = &pr.pull.change_id {
+            change_id_map.insert(cid.clone(), idx);
+        }
+        if let Some(pcid) = &pr.pull.parent_change_id {
+            parent_map.insert(pcid.clone(), idx);
+        }
+    }
+
+    // Find top of stack (not a parent of any other PR)
+    let mut top_idx = None;
+    for (idx, pr) in pulls.iter().enumerate() {
+        if let Some(cid) = &pr.pull.change_id {
+            if !parent_map.contains_key(cid) {
+                top_idx = Some(idx);
+                break;
+            }
+        }
+    }
+
+    let top_idx = top_idx.ok_or_else(|| anyhow!("Could not find top of stack"))?;
+
+    // Walk down the stack to build ordered list
+    let mut ordered = Vec::new();
+    let mut current_idx = top_idx;
+    let mut visited = std::collections::HashSet::new();
+
+    loop {
+        if visited.contains(&current_idx) {
+            return Err(anyhow!("Circular dependency in stack"));
+        }
+        visited.insert(current_idx);
+        ordered.push(current_idx);
+
+        // Find child (PR that has this PR as parent)
+        let current_parent = &pulls[current_idx].pull.parent_change_id;
+        if current_parent.is_none() {
+            break;
+        }
+
+        let next_idx = change_id_map.get(current_parent.as_ref().unwrap());
+
+        if let Some(&next) = next_idx {
+            current_idx = next;
+        } else {
+            break;
+        }
+    }
+
+    // Reorder pulls based on ordered indices
+    let original = pulls.clone();
+    pulls.clear();
+    for idx in ordered {
+        pulls.push(original[idx].clone());
+    }
+
+    Ok(())
+}
+
+fn find_substack<'a>(
+    stack: &'a [tangled_api::PullRecord],
+    current_change_id: Option<&str>,
+) -> Result<Vec<&'a tangled_api::PullRecord>> {
+    let change_id = current_change_id.ok_or_else(|| anyhow!("PR has no change_id"))?;
+
+    let position = stack
+        .iter()
+        .position(|p| p.pull.change_id.as_deref() == Some(change_id))
+        .ok_or_else(|| anyhow!("PR not found in stack"))?;
+
+    // Return from current position to end (including current)
+    Ok(stack[position..].iter().collect())
+}
+
+async fn check_stack_conflicts(
+    api: &tangled_api::TangledClient,
+    repo_did: &str,
+    repo_name: &str,
+    target_branch: &str,
+    substack: &[&tangled_api::PullRecord],
+    pds: &str,
+    access_jwt: &str,
+) -> Result<Vec<(String, tangled_api::MergeCheckResponse)>> {
+    let mut conflicts = Vec::new();
+    let mut cumulative_patch = String::new();
+
+    // Check each PR in order (bottom to top of substack)
+    for pr in substack.iter().rev() {
+        cumulative_patch.push_str(&pr.pull.patch);
+        cumulative_patch.push('\n');
+
+        let check = api
+            .merge_check(
+                repo_did,
+                repo_name,
+                target_branch,
+                &cumulative_patch,
+                pds,
+                access_jwt,
+            )
+            .await?;
+
+        if check.is_conflicted {
+            conflicts.push((pr.rkey.clone(), check));
+        }
+    }
+
+    Ok(conflicts)
+}
+
+fn prompt_confirmation(message: &str) -> Result<bool> {
+    use std::io::{self, Write};
+
+    print!("{} [y/N]: ", message);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    Ok(matches!(input.trim().to_lowercase().as_str(), "y" | "yes"))
+}
+
+async fn parse_target_repo_info(
+    pull: &tangled_api::Pull,
+    pds_client: &tangled_api::TangledClient,
+    session: &tangled_config::session::Session,
+) -> Result<(String, String)> {
+    let target_repo = &pull.target.repo;
+    let parts: Vec<&str> = target_repo
+        .strip_prefix("at://")
+        .unwrap_or(target_repo)
+        .split('/')
+        .collect();
+
+    if parts.len() < 4 {
+        return Err(anyhow!("Invalid target repo AT-URI: {}", target_repo));
+    }
+
+    let repo_did = parts[0].to_string();
+    let repo_rkey = parts[3];
+
+    // Get repo name
+    #[derive(serde::Deserialize)]
+    struct Rec {
+        name: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct GetRes {
+        value: Rec,
+    }
+
+    let params = [
+        ("repo", repo_did.clone()),
+        ("collection", "sh.tangled.repo".to_string()),
+        ("rkey", repo_rkey.to_string()),
+    ];
+
+    let repo_rec: GetRes = pds_client
+        .get_json(
+            "com.atproto.repo.getRecord",
+            &params,
+            Some(&session.access_jwt),
+        )
+        .await?;
+
+    Ok((repo_did, repo_rec.value.name))
+}

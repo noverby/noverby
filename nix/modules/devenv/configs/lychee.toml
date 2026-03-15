@@ -12,4 +12,5 @@ exclude = [
   'https://xcancel.com/',
   'https://smokesignal.events/',
   'https://wiki.multimedia.cx/',
+  'https://spindle.tangled.sh/',
 ]
