@@ -181,7 +181,6 @@
         ./nix/modules/flakelight/zedExtensions.nix
 
         ./nickel/workspace
-        ./nix/deno
 
         ./web/homepage
         ./web/wiki
