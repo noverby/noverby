@@ -9,6 +9,10 @@
 #   - Directories without default.nix are recursed into.
 #   - Files and directories starting with _ are considered private and skipped.
 #
+# Modules that define `perSystemLib` attrs are automatically routed to
+# the perSystemLib option (system-dependent functions taking pkgs).
+# All other attrs are merged into the flake's lib output (system-independent).
+#
 # Also extends lib with commonly needed builtins (fromJSON, toJSON, etc.)
 # via _module.args so all flakelight modules (including devenv) receive them.
 # We use a separate baseLib parameter to avoid a circular dependency:
@@ -67,12 +71,19 @@
   in
     builtins.foldl' (acc: name: acc // (processEntry name)) {} names;
 
-  mergedLib =
+  discovered =
     if hasLibDir
     then importLibDir libDir
     else {};
+
+  # Separate perSystemLib attrs from pure lib attrs.
+  mergedPerSystemLib = discovered.perSystemLib or {};
+  mergedLib = removeAttrs discovered ["perSystemLib"];
+
+  inherit (builtins) removeAttrs;
 in {
   lib = baseLib.mkForce mergedLib;
+  perSystemLib = mergedPerSystemLib;
 
   _module.args = {
     lib = extendedLib;
