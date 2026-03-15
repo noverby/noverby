@@ -114,6 +114,12 @@
 |-|-|
 | [Nushell-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nushell/plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
 
+#### Tangled
+
+| Project | Description |
+|-|-|
+| [Spindle-nix-engine 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/tangled/spindle-nix-engine) | Tangled Spindle CI runner with native Nix engine |
+
 </details>
 
 <a id="-packages"></a>
