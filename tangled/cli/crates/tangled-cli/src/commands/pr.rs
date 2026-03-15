@@ -294,9 +294,7 @@ async fn checkout(args: PrCheckoutArgs) -> Result<()> {
         .filter(|p| !p.is_empty())
         .ok_or_else(|| anyhow!("PR has no patch to apply"))?;
 
-    let branch_name = args
-        .branch
-        .unwrap_or_else(|| format!("pr/{}", rkey));
+    let branch_name = args.branch.unwrap_or_else(|| format!("pr/{}", rkey));
 
     // Create and checkout the branch from the PR's target branch
     let target_branch = &pr.target.branch;
@@ -310,7 +308,10 @@ async fn checkout(args: PrCheckoutArgs) -> Result<()> {
             .args(["checkout", &branch_name])
             .status()?;
         if !status.success() {
-            return Err(anyhow!("failed to create or switch to branch '{}'", branch_name));
+            return Err(anyhow!(
+                "failed to create or switch to branch '{}'",
+                branch_name
+            ));
         }
     }
 

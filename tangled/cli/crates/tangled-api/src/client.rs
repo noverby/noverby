@@ -342,6 +342,8 @@ impl TangledClient {
             knot: &'a str,
             #[serde(skip_serializing_if = "Option::is_none")]
             description: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            source: Option<&'a str>,
             #[serde(rename = "createdAt")]
             created_at: String,
         }
@@ -362,6 +364,7 @@ impl TangledClient {
             name: opts.name,
             knot: opts.knot,
             description: opts.description,
+            source: opts.source_at,
             created_at: now,
         };
         let create_req = CreateRecordReq {
@@ -1719,6 +1722,8 @@ pub struct CreateRepoOptions<'a> {
     pub description: Option<&'a str>,
     pub default_branch: Option<&'a str>,
     pub source: Option<&'a str>,
+    /// AT URI of the source repo record (for forks), stored in the PDS record.
+    pub source_at: Option<&'a str>,
     pub pds_base: &'a str,
     pub access_jwt: &'a str,
 }
