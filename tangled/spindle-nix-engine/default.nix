@@ -58,7 +58,7 @@
 
       meta = {
         description = "Rust reimplementation of the Tangled Spindle CI runner with native Nix engine";
-        homepage = "https://tangled.org/overby.me/overby.me/tree/main/nix/tangled-spindle";
+        homepage = "https://tangled.org/overby.me/overby.me/tree/main/tangled/spindle-nix-engine";
         license = lib.licenses.mit;
         maintainers = with lib.maintainers; [noverby];
         mainProgram = "tangled-spindle";
