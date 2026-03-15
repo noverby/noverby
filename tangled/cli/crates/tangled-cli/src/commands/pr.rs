@@ -20,7 +20,7 @@ async fn list(args: PrListArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
     let target_repo_at = if let Some(repo) = &args.repo {
         let (owner, name) = parse_repo_ref(repo, &session.handle);
         let info = client
@@ -56,7 +56,7 @@ async fn create(args: PrCreateArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
 
     let repo = args
         .repo
@@ -126,7 +126,7 @@ async fn show(args: PrShowArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
     let pr = client
         .get_pull_record(&did, &rkey, Some(session.access_jwt.as_str()))
         .await?;
@@ -136,7 +136,10 @@ async fn show(args: PrShowArgs) -> Result<()> {
     }
     println!("TARGET: {} @ {}", pr.target.repo, pr.target.branch);
     if args.diff {
-        println!("PATCH:\n{}", pr.patch);
+        println!(
+            "PATCH:\n{}",
+            pr.patch.as_deref().unwrap_or("(no inline patch)")
+        );
     }
     Ok(())
 }
@@ -162,7 +165,7 @@ async fn review(args: PrReviewArgs) -> Result<()> {
     if note.is_empty() {
         return Err(anyhow!("provide --comment or --approve/--request-changes"));
     }
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
     client
         .comment_pull(&session.did, &pr_at, note, &pds, &session.access_jwt)
         .await?;
@@ -180,7 +183,7 @@ async fn merge(args: PrMergeArgs) -> Result<()> {
         .unwrap_or_else(|| "https://bsky.social".into());
 
     // Get the PR
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let pull = pds_client
         .get_pull_record(&did, &rkey, Some(session.access_jwt.as_str()))
         .await?;
@@ -245,7 +248,7 @@ async fn merge_single_pr(
     repo_name: &str,
     pds: &str,
 ) -> Result<()> {
-    let api = tangled_api::TangledClient::default();
+    let api = crate::util::make_default_client();
     api.merge_pull(did, rkey, repo_did, repo_name, pds, &session.access_jwt)
         .await?;
 
@@ -295,7 +298,7 @@ async fn merge_stacked_pr(
 
     // Step 3: Check for conflicts
     println!("✓ Checking for conflicts...");
-    let api = tangled_api::TangledClient::default();
+    let api = crate::util::make_default_client();
     let conflicts = check_stack_conflicts(
         &api,
         repo_did,
@@ -469,7 +472,7 @@ async fn check_stack_conflicts(
 
     // Check each PR in order (bottom to top of substack)
     for pr in substack.iter().rev() {
-        cumulative_patch.push_str(&pr.pull.patch);
+        cumulative_patch.push_str(pr.pull.patch.as_deref().unwrap_or(""));
         cumulative_patch.push('\n');
 
         let check = api

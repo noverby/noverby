@@ -2,11 +2,12 @@ use anyhow::Result;
 use dialoguer::{Input, Password};
 use tangled_config::session::SessionManager;
 
-use crate::cli::{AuthCommand, AuthLoginArgs, Cli};
+use crate::cli::{AuthCommand, AuthLoginArgs, AuthLoginBrowserArgs, Cli};
 
 pub async fn run(cli: &Cli, cmd: AuthCommand) -> Result<()> {
     match cmd {
         AuthCommand::Login(args) => login(cli, args).await,
+        AuthCommand::LoginBrowser(args) => login_browser(cli, args).await,
         AuthCommand::Status => status(cli).await,
         AuthCommand::Logout => logout(cli).await,
     }
@@ -36,6 +37,33 @@ async fn login(_cli: &Cli, mut args: AuthLoginArgs) -> Result<()> {
     session.pds = Some(pds.clone());
     SessionManager::default().save(&session)?;
     println!("Logged in as '{}' ({})", session.handle, session.did);
+    Ok(())
+}
+
+async fn login_browser(_cli: &Cli, args: AuthLoginBrowserArgs) -> Result<()> {
+    let input = args
+        .handle
+        .unwrap_or_else(|| "https://bsky.social".to_string());
+
+    println!("Opening browser for authentication...");
+    let result = tangled_api::oauth::login_browser(&input).await?;
+
+    // Save the OAuth session for DPoP-authenticated requests
+    let oauth_json = serde_json::to_string(&result.persisted)?;
+    tangled_config::keychain::Keychain::new("tangled-cli-oauth", "default")
+        .set_password(&oauth_json)?;
+
+    // Also save a basic session for compatibility with existing commands
+    let session = tangled_config::session::Session {
+        access_jwt: String::new(),
+        refresh_jwt: String::new(),
+        did: result.did.clone(),
+        handle: result.handle.clone(),
+        pds: result.pds.clone(),
+        created_at: chrono::Utc::now(),
+    };
+    SessionManager::default().save(&session)?;
+    println!("Logged in as '{}' ({})", result.handle, result.did);
     Ok(())
 }
 

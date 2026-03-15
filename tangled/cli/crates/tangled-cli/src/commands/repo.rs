@@ -29,7 +29,7 @@ async fn list(cli: &Cli, args: RepoListArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(pds);
+    let pds_client = crate::util::make_client(&pds);
     // Default to the logged-in user handle if --user is not provided
     let effective_user = args.user.as_deref().unwrap_or(session.handle.as_str());
     let repos = pds_client
@@ -61,7 +61,7 @@ async fn create(args: RepoCreateArgs) -> Result<()> {
     let session = crate::util::load_session_with_refresh().await?;
 
     let base = std::env::var("TANGLED_API_BASE").unwrap_or_else(|_| "https://tngl.sh".into());
-    let client = tangled_api::TangledClient::new(base);
+    let client = crate::util::make_client(&base);
 
     // Determine PDS base and target knot hostname
     let pds = session
@@ -96,7 +96,7 @@ async fn clone(args: RepoCloneArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let info = pds_client
         .get_repo_info(owner, &name, Some(session.access_jwt.as_str()))
         .await?;
@@ -159,7 +159,7 @@ async fn info(args: RepoInfoArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let info = pds_client
         .get_repo_info(owner, &name, Some(session.access_jwt.as_str()))
         .await?;
@@ -184,7 +184,7 @@ async fn info(args: RepoInfoArgs) -> Result<()> {
         info.knot.clone()
     };
     if args.stats {
-        let client = tangled_api::TangledClient::default();
+        let client = crate::util::make_default_client();
         if let Ok(def) = client
             .get_default_branch(&knot_host, &info.did, &info.name)
             .await
@@ -227,12 +227,12 @@ async fn delete(args: RepoDeleteArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let record = pds_client
         .get_repo_info(owner, &name, Some(session.access_jwt.as_str()))
         .await?;
     let did = record.did;
-    let api = tangled_api::TangledClient::default();
+    let api = crate::util::make_default_client();
     api.delete_repo(&did, &name, &pds, &session.access_jwt)
         .await?;
     println!("Deleted repo '{}'", name);
@@ -247,12 +247,12 @@ async fn star(args: RepoRefArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let info = pds_client
         .get_repo_info(owner, &name, Some(session.access_jwt.as_str()))
         .await?;
     let subject = format!("at://{}/sh.tangled.repo/{}", info.did, info.rkey);
-    let api = tangled_api::TangledClient::default();
+    let api = crate::util::make_default_client();
     api.star_repo(&pds, &session.access_jwt, &subject, &session.did)
         .await?;
     println!("Starred {}/{}", owner, name);
@@ -267,12 +267,12 @@ async fn unstar(args: RepoRefArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let info = pds_client
         .get_repo_info(owner, &name, Some(session.access_jwt.as_str()))
         .await?;
     let subject = format!("at://{}/sh.tangled.repo/{}", info.did, info.rkey);
-    let api = tangled_api::TangledClient::default();
+    let api = crate::util::make_default_client();
     api.unstar_repo(&pds, &session.access_jwt, &subject, &session.did)
         .await?;
     println!("Unstarred {}/{}", owner, name);

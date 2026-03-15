@@ -63,6 +63,8 @@ pub enum Command {
 pub enum AuthCommand {
     /// Login with Bluesky credentials
     Login(AuthLoginArgs),
+    /// Login via browser (OAuth)
+    LoginBrowser(AuthLoginBrowserArgs),
     /// Show authentication status
     Status,
     /// Logout and clear session
@@ -80,6 +82,13 @@ pub struct AuthLoginArgs {
     /// PDS URL (default: https://bsky.social)
     #[arg(long)]
     pub pds: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct AuthLoginBrowserArgs {
+    /// Bluesky handle or PDS URL (defaults to https://bsky.social)
+    #[arg(long)]
+    pub handle: Option<String>,
 }
 
 #[derive(Subcommand, Debug, Clone)]

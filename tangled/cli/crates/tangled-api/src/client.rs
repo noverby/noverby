@@ -2,9 +2,12 @@ use anyhow::{anyhow, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tangled_config::session::Session;
 
+use crate::oauth::PersistedOAuthSession;
+
 #[derive(Clone, Debug)]
 pub struct TangledClient {
     base_url: String,
+    oauth: Option<PersistedOAuthSession>,
 }
 
 const REPO_CREATE: &str = "sh.tangled.repo.create";
@@ -19,6 +22,20 @@ impl TangledClient {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into(),
+            oauth: None,
+        }
+    }
+
+    pub fn with_oauth(mut self, oauth: PersistedOAuthSession) -> Self {
+        self.oauth = Some(oauth);
+        self
+    }
+
+    /// Create a new client with a different base URL but the same OAuth context.
+    fn derive(&self, base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+            oauth: self.oauth.clone(),
         }
     }
 
@@ -33,6 +50,16 @@ impl TangledClient {
         format!("{}/xrpc/{}", base_with_protocol, method)
     }
 
+    /// Use OAuth DPoP auth only when no explicit bearer token is provided.
+    /// When a bearer token is given (e.g. service auth tokens), use it as-is.
+    /// Treats empty bearer strings as absent.
+    fn should_use_oauth(&self, bearer: Option<&str>) -> Option<&PersistedOAuthSession> {
+        if bearer.is_some_and(|b| !b.is_empty()) {
+            return None;
+        }
+        self.oauth.as_ref()
+    }
+
     async fn post_json<TReq: Serialize, TRes: DeserializeOwned>(
         &self,
         method: &str,
@@ -40,6 +67,19 @@ impl TangledClient {
         bearer: Option<&str>,
     ) -> Result<TRes> {
         let url = self.xrpc_url(method);
+        if let Some(oauth) = self.should_use_oauth(bearer) {
+            let json_body = serde_json::to_vec(req)?;
+            let body = crate::oauth::oauth_post(oauth, &url, &json_body).await?;
+            return serde_json::from_slice(&body).map_err(|e| {
+                let snippet: String = String::from_utf8_lossy(&body).chars().take(300).collect();
+                anyhow!(
+                    "error decoding response from {}: {}\nBody: {}",
+                    url,
+                    e,
+                    snippet
+                )
+            });
+        }
         let client = reqwest::Client::new();
         let mut reqb = client
             .post(url)
@@ -63,6 +103,11 @@ impl TangledClient {
         bearer: Option<&str>,
     ) -> Result<()> {
         let url = self.xrpc_url(method);
+        if let Some(oauth) = self.should_use_oauth(bearer) {
+            let json_body = serde_json::to_vec(req)?;
+            crate::oauth::oauth_post(oauth, &url, &json_body).await?;
+            return Ok(());
+        }
         let client = reqwest::Client::new();
         let mut reqb = client
             .post(url)
@@ -86,6 +131,23 @@ impl TangledClient {
         bearer: Option<&str>,
     ) -> Result<TRes> {
         let url = self.xrpc_url(method);
+        if let Some(oauth) = self.should_use_oauth(bearer) {
+            // Build full URL with query params
+            let mut full_url = reqwest::Url::parse(&url)?;
+            for (k, v) in params {
+                full_url.query_pairs_mut().append_pair(k, v);
+            }
+            let body = crate::oauth::oauth_get(oauth, full_url.as_str()).await?;
+            return serde_json::from_slice(&body).map_err(|e| {
+                let snippet: String = String::from_utf8_lossy(&body).chars().take(300).collect();
+                anyhow!(
+                    "error decoding response from {}: {}\nBody (first 300 chars): {}",
+                    url,
+                    e,
+                    snippet
+                )
+            });
+        }
         let client = reqwest::Client::new();
         let mut reqb = client
             .get(&url)
@@ -296,11 +358,11 @@ impl TangledClient {
         let create_req = CreateRecordReq {
             repo: opts.did,
             collection: "sh.tangled.repo",
-            validate: true,
+            validate: false,
             record: rec,
         };
 
-        let pds_client = TangledClient::new(opts.pds_base);
+        let pds_client = self.derive(opts.pds_base);
         let created: CreateRecordRes = pds_client
             .post_json(
                 "com.atproto.repo.createRecord",
@@ -425,7 +487,7 @@ impl TangledClient {
         pds_base: &str,
         access_jwt: &str,
     ) -> Result<()> {
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let info = pds_client
             .get_repo_info(did, name, Some(access_jwt))
             .await?;
@@ -494,7 +556,7 @@ impl TangledClient {
         pds_base: &str,
         access_jwt: &str,
     ) -> Result<()> {
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         #[derive(Deserialize, Serialize, Clone)]
         struct Rec {
             name: String,
@@ -530,7 +592,7 @@ impl TangledClient {
             repo: did,
             collection: "sh.tangled.repo",
             rkey,
-            validate: true,
+            validate: false,
             record: rec,
         };
         let _: serde_json::Value = pds_client
@@ -554,7 +616,7 @@ impl TangledClient {
             when: String,
             message: Option<String>,
         }
-        let knot_client = TangledClient::new(knot_host);
+        let knot_client = self.derive(knot_host);
         let repo_param = format!("{}/{}", did, name);
         let params = [("repo", repo_param)];
         let res: Res = knot_client
@@ -570,7 +632,7 @@ impl TangledClient {
     }
 
     pub async fn get_languages(&self, knot_host: &str, did: &str, name: &str) -> Result<Languages> {
-        let knot_client = TangledClient::new(knot_host);
+        let knot_client = self.derive(knot_host);
         let repo_param = format!("{}/{}", did, name);
         let params = [("repo", repo_param)];
         let res: serde_json::Value = knot_client
@@ -622,10 +684,10 @@ impl TangledClient {
         let req = Req {
             repo: user_did,
             collection: "sh.tangled.feed.star",
-            validate: true,
+            validate: false,
             record: rec,
         };
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let res: Res = pds_client
             .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
             .await?;
@@ -650,7 +712,7 @@ impl TangledClient {
             #[serde(default)]
             records: Vec<Item>,
         }
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let params = vec![
             ("repo", user_did.to_string()),
             ("collection", "sh.tangled.feed.star".to_string()),
@@ -782,10 +844,10 @@ impl TangledClient {
         let req = Req {
             repo: author_did,
             collection: "sh.tangled.repo.issue",
-            validate: true,
+            validate: false,
             record: rec,
         };
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let res: Res = pds_client
             .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
             .await?;
@@ -827,10 +889,10 @@ impl TangledClient {
         let req = Req {
             repo: author_did,
             collection: "sh.tangled.repo.issue.comment",
-            validate: true,
+            validate: false,
             record: rec,
         };
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let res: Res = pds_client
             .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
             .await?;
@@ -877,7 +939,7 @@ impl TangledClient {
             repo: author_did,
             collection: "sh.tangled.repo.issue",
             rkey,
-            validate: true,
+            validate: false,
             record,
         };
         let _: serde_json::Value = self
@@ -917,10 +979,10 @@ impl TangledClient {
         let req = Req {
             repo: author_did,
             collection: "sh.tangled.repo.issue.state",
-            validate: true,
+            validate: false,
             record: rec,
         };
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let res: Res = pds_client
             .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
             .await?;
@@ -1044,10 +1106,10 @@ impl TangledClient {
         let req = Req {
             repo: author_did,
             collection: "sh.tangled.repo.pull",
-            validate: true,
+            validate: false,
             record: rec,
         };
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let res: Res = pds_client
             .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
             .await?;
@@ -1126,7 +1188,7 @@ impl TangledClient {
         struct GetSARes {
             token: String,
         }
-        let pds = TangledClient::new(pds_base);
+        let pds = self.derive(pds_base);
         // Method-less ServiceAuth tokens must expire within 60 seconds per AT Protocol spec
         let params = [
             ("aud", audience),
@@ -1177,10 +1239,10 @@ impl TangledClient {
         let req = Req {
             repo: author_did,
             collection: "sh.tangled.repo.pull.comment",
-            validate: true,
+            validate: false,
             record: rec,
         };
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let res: Res = pds_client
             .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
             .await?;
@@ -1197,7 +1259,7 @@ impl TangledClient {
         access_jwt: &str,
     ) -> Result<()> {
         // Fetch the pull request to get patch and target branch
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         let pull = pds_client
             .get_pull_record(pull_did, pull_rkey, Some(access_jwt))
             .await?;
@@ -1228,7 +1290,7 @@ impl TangledClient {
         let req = MergeReq {
             did: repo_did,
             name: repo_name,
-            patch: &pull.patch,
+            patch: pull.patch.as_deref().unwrap_or(""),
             branch: &pull.target.branch,
             commit_message: Some(&pull.title),
             commit_body,
@@ -1270,7 +1332,7 @@ impl TangledClient {
         pds_base: &str,
         access_jwt: &str,
     ) -> Result<()> {
-        let pds_client = TangledClient::new(pds_base);
+        let pds_client = self.derive(pds_base);
         #[derive(Deserialize, Serialize, Clone)]
         struct Rec {
             name: String,
@@ -1308,7 +1370,7 @@ impl TangledClient {
             repo: did,
             collection: "sh.tangled.repo",
             rkey,
-            validate: true,
+            validate: false,
             record: rec,
         };
         let _: serde_json::Value = pds_client
@@ -1390,12 +1452,22 @@ pub struct PullTarget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullSource {
+    pub sha: Option<String>,
+    pub repo: Option<String>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pull {
     pub target: PullTarget,
     pub title: String,
     #[serde(default)]
     pub body: String,
-    pub patch: String,
+    #[serde(default)]
+    pub patch: Option<String>,
+    #[serde(default)]
+    pub source: Option<PullSource>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     // Stack support fields

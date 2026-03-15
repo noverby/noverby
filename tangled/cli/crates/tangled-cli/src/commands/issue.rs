@@ -22,7 +22,7 @@ async fn list(args: IssueListArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
 
     let repo_filter_at = if let Some(repo) = &args.repo {
         let (owner, name) = parse_repo_ref(repo, &session.handle);
@@ -59,7 +59,7 @@ async fn create(args: IssueCreateArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
 
     let repo = args
         .repo
@@ -98,7 +98,7 @@ async fn show(args: IssueShowArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
     // Fetch all issues by this DID and find rkey
     let items = client
         .list_issues(&did, None, Some(session.access_jwt.as_str()))
@@ -127,7 +127,7 @@ async fn edit(args: IssueEditArgs) -> Result<()> {
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
     // Get existing
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
     let mut rec: Issue = client
         .get_issue_record(&did, &rkey, Some(session.access_jwt.as_str()))
         .await?;
@@ -178,7 +178,7 @@ async fn comment(args: IssueCommentArgs) -> Result<()> {
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
     // Resolve issue AT-URI
-    let client = tangled_api::TangledClient::new(&pds);
+    let client = crate::util::make_client(&pds);
     let issue_at = client
         .get_issue_record(&did, &rkey, Some(session.access_jwt.as_str()))
         .await?
