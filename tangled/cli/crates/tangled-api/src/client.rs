@@ -591,6 +591,67 @@ impl TangledClient {
         Ok(())
     }
 
+    pub async fn edit_repo(
+        &self,
+        did: &str,
+        rkey: &str,
+        description: Option<&str>,
+        private: Option<bool>,
+        bearer: Option<&str>,
+    ) -> Result<()> {
+        #[derive(Deserialize, Serialize, Clone)]
+        struct Rec {
+            name: String,
+            knot: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            description: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            spindle: Option<String>,
+            #[serde(default)]
+            private: bool,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Deserialize)]
+        struct GetRes {
+            value: Rec,
+        }
+        let params = [
+            ("repo", did.to_string()),
+            ("collection", "sh.tangled.repo".to_string()),
+            ("rkey", rkey.to_string()),
+        ];
+        let got: GetRes = self
+            .get_json("com.atproto.repo.getRecord", &params, bearer)
+            .await?;
+        let mut rec = got.value;
+        if let Some(desc) = description {
+            rec.description = Some(desc.to_string());
+        }
+        if let Some(priv_flag) = private {
+            rec.private = priv_flag;
+        }
+        #[derive(Serialize)]
+        struct PutReq<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            rkey: &'a str,
+            validate: bool,
+            record: Rec,
+        }
+        let req = PutReq {
+            repo: did,
+            collection: "sh.tangled.repo",
+            rkey,
+            validate: false,
+            record: rec,
+        };
+        let _: serde_json::Value = self
+            .post_json("com.atproto.repo.putRecord", &req, bearer)
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_default_branch(
         &self,
         knot_host: &str,
@@ -979,6 +1040,31 @@ impl TangledClient {
         Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in issue state uri"))
     }
 
+    pub async fn delete_issue(
+        &self,
+        author_did: &str,
+        rkey: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<()> {
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            rkey: &'a str,
+        }
+        let req = Req {
+            repo: author_did,
+            collection: "sh.tangled.repo.issue",
+            rkey,
+        };
+        let pds_client = self.derive(pds_base);
+        let _: serde_json::Value = pds_client
+            .post_json("com.atproto.repo.deleteRecord", &req, Some(access_jwt))
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_pull_record(
         &self,
         author_did: &str,
@@ -1249,6 +1335,47 @@ impl TangledClient {
             .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
             .await?;
         Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in pull comment uri"))
+    }
+
+    pub async fn set_pull_state(
+        &self,
+        author_did: &str,
+        pull_at: &str,
+        state_nsid: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct Rec<'a> {
+            pull: &'a str,
+            state: &'a str,
+        }
+        #[derive(Serialize)]
+        struct Req<'a> {
+            repo: &'a str,
+            collection: &'a str,
+            validate: bool,
+            record: Rec<'a>,
+        }
+        #[derive(Deserialize)]
+        struct Res {
+            uri: String,
+        }
+        let rec = Rec {
+            pull: pull_at,
+            state: state_nsid,
+        };
+        let req = Req {
+            repo: author_did,
+            collection: "sh.tangled.repo.pull.state",
+            validate: false,
+            record: rec,
+        };
+        let pds_client = self.derive(pds_base);
+        let res: Res = pds_client
+            .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))
+            .await?;
+        Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in pull state uri"))
     }
 
     #[allow(clippy::too_many_arguments)]

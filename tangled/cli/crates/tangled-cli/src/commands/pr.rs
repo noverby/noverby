@@ -1,4 +1,7 @@
-use crate::cli::{Cli, PrCommand, PrCreateArgs, PrListArgs, PrMergeArgs, PrReviewArgs, PrShowArgs};
+use crate::cli::{
+    Cli, PrCloseArgs, PrCommand, PrCommentArgs, PrCreateArgs, PrDiffArgs, PrListArgs, PrMergeArgs,
+    PrReopenArgs, PrReviewArgs, PrShowArgs,
+};
 use anyhow::{anyhow, Result};
 use std::path::Path;
 use std::process::Command;
@@ -10,6 +13,10 @@ pub async fn run(_cli: &Cli, cmd: PrCommand) -> Result<()> {
         PrCommand::Show(args) => show(args).await,
         PrCommand::Review(args) => review(args).await,
         PrCommand::Merge(args) => merge(args).await,
+        PrCommand::Comment(args) => comment(args).await,
+        PrCommand::Diff(args) => diff(args).await,
+        PrCommand::Close(args) => close(args).await,
+        PrCommand::Reopen(args) => reopen(args).await,
     }
 }
 
@@ -170,6 +177,100 @@ async fn review(args: PrReviewArgs) -> Result<()> {
         .comment_pull(&session.did, &pr_at, note, &pds, &session.access_jwt)
         .await?;
     println!("Review comment posted");
+    Ok(())
+}
+
+async fn comment(args: PrCommentArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let pr_at = format!("at://{}/sh.tangled.repo.pull/{}", did, rkey);
+    let client = crate::util::make_client(&pds);
+    client
+        .comment_pull(&session.did, &pr_at, &args.body, &pds, &session.access_jwt)
+        .await?;
+    println!("Comment posted");
+    Ok(())
+}
+
+async fn diff(args: PrDiffArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = crate::util::make_client(&pds);
+    let pr = client
+        .get_pull_record(&did, &rkey, Some(session.access_jwt.as_str()))
+        .await?;
+    match pr.patch.as_deref() {
+        Some(patch) if !patch.is_empty() => print!("{}", patch),
+        _ => println!("(no patch attached to this PR)"),
+    }
+    Ok(())
+}
+
+async fn close(args: PrCloseArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = crate::util::make_client(&pds);
+    let pr_at = format!("at://{}/sh.tangled.repo.pull/{}", did, rkey);
+
+    if let Some(comment) = args.comment.as_deref() {
+        client
+            .comment_pull(&session.did, &pr_at, comment, &pds, &session.access_jwt)
+            .await?;
+    }
+    client
+        .set_pull_state(
+            &session.did,
+            &pr_at,
+            "sh.tangled.repo.pull.state.closed",
+            &pds,
+            &session.access_jwt,
+        )
+        .await?;
+    println!("Closed PR {}:{}", did, rkey);
+    Ok(())
+}
+
+async fn reopen(args: PrReopenArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = crate::util::make_client(&pds);
+    let pr_at = format!("at://{}/sh.tangled.repo.pull/{}", did, rkey);
+
+    if let Some(comment) = args.comment.as_deref() {
+        client
+            .comment_pull(&session.did, &pr_at, comment, &pds, &session.access_jwt)
+            .await?;
+    }
+    client
+        .set_pull_state(
+            &session.did,
+            &pr_at,
+            "sh.tangled.repo.pull.state.open",
+            &pds,
+            &session.access_jwt,
+        )
+        .await?;
+    println!("Reopened PR {}:{}", did, rkey);
     Ok(())
 }
 

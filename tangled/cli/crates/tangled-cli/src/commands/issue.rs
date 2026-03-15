@@ -1,6 +1,6 @@
 use crate::cli::{
-    Cli, IssueCommand, IssueCommentArgs, IssueCreateArgs, IssueEditArgs, IssueListArgs,
-    IssueShowArgs,
+    Cli, IssueCloseArgs, IssueCommand, IssueCommentArgs, IssueCreateArgs, IssueDeleteArgs,
+    IssueEditArgs, IssueListArgs, IssueReopenArgs, IssueShowArgs,
 };
 use anyhow::{anyhow, Result};
 use tangled_api::Issue;
@@ -12,6 +12,9 @@ pub async fn run(_cli: &Cli, cmd: IssueCommand) -> Result<()> {
         IssueCommand::Show(args) => show(args).await,
         IssueCommand::Edit(args) => edit(args).await,
         IssueCommand::Comment(args) => comment(args).await,
+        IssueCommand::Close(args) => close(args).await,
+        IssueCommand::Reopen(args) => reopen(args).await,
+        IssueCommand::Delete(args) => delete(args).await,
     }
 }
 
@@ -201,6 +204,99 @@ async fn comment(args: IssueCommentArgs) -> Result<()> {
             .await?;
         println!("Issue closed");
     }
+    Ok(())
+}
+
+async fn close(args: IssueCloseArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = crate::util::make_client(&pds);
+    let issue = client
+        .get_issue_record(&did, &rkey, Some(session.access_jwt.as_str()))
+        .await?;
+    let issue_at = &issue.repo;
+
+    if let Some(comment) = args.comment.as_deref() {
+        client
+            .comment_issue(&session.did, issue_at, comment, &pds, &session.access_jwt)
+            .await?;
+    }
+    client
+        .set_issue_state(
+            &session.did,
+            issue_at,
+            "sh.tangled.repo.issue.state.closed",
+            &pds,
+            &session.access_jwt,
+        )
+        .await?;
+    println!("Closed issue {}:{}", did, rkey);
+    Ok(())
+}
+
+async fn reopen(args: IssueReopenArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = crate::util::make_client(&pds);
+    let issue = client
+        .get_issue_record(&did, &rkey, Some(session.access_jwt.as_str()))
+        .await?;
+    let issue_at = &issue.repo;
+
+    if let Some(comment) = args.comment.as_deref() {
+        client
+            .comment_issue(&session.did, issue_at, comment, &pds, &session.access_jwt)
+            .await?;
+    }
+    client
+        .set_issue_state(
+            &session.did,
+            issue_at,
+            "sh.tangled.repo.issue.state.open",
+            &pds,
+            &session.access_jwt,
+        )
+        .await?;
+    println!("Reopened issue {}:{}", did, rkey);
+    Ok(())
+}
+
+async fn delete(args: IssueDeleteArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+    let (did, rkey) = parse_record_id(&args.id, &session.did)?;
+
+    if !args.force {
+        use std::io::{self, Write};
+        print!("Delete issue {}:{}? [y/N]: ", did, rkey);
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+            println!("Cancelled");
+            return Ok(());
+        }
+    }
+
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let client = crate::util::make_client(&pds);
+    client
+        .delete_issue(&did, &rkey, &pds, &session.access_jwt)
+        .await?;
+    println!("Deleted issue {}:{}", did, rkey);
     Ok(())
 }
 

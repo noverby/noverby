@@ -57,6 +57,8 @@ pub enum Command {
     /// Spindle integration commands
     #[command(subcommand)]
     Spindle(SpindleCommand),
+    /// Open in browser
+    Browse(BrowseArgs),
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -101,6 +103,8 @@ pub enum RepoCommand {
     Clone(RepoCloneArgs),
     /// Show repository information
     Info(RepoInfoArgs),
+    /// Edit repository settings
+    Edit(RepoEditArgs),
     /// Delete a repository
     Delete(RepoDeleteArgs),
     /// Star a repository
@@ -161,6 +165,20 @@ pub struct RepoDeleteArgs {
 }
 
 #[derive(Args, Debug, Clone)]
+pub struct RepoEditArgs {
+    pub repo: String,
+    /// New description
+    #[arg(long)]
+    pub description: Option<String>,
+    /// Make repository private
+    #[arg(long, conflicts_with = "public")]
+    pub private: bool,
+    /// Make repository public
+    #[arg(long, conflicts_with = "private")]
+    pub public: bool,
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct RepoRefArgs {
     pub repo: String,
 }
@@ -172,6 +190,12 @@ pub enum IssueCommand {
     Show(IssueShowArgs),
     Edit(IssueEditArgs),
     Comment(IssueCommentArgs),
+    /// Close an issue
+    Close(IssueCloseArgs),
+    /// Reopen an issue
+    Reopen(IssueReopenArgs),
+    /// Delete an issue
+    Delete(IssueDeleteArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -231,6 +255,30 @@ pub struct IssueCommentArgs {
     pub close: bool,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct IssueCloseArgs {
+    pub id: String,
+    /// Add a comment when closing
+    #[arg(long)]
+    pub comment: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct IssueReopenArgs {
+    pub id: String,
+    /// Add a comment when reopening
+    #[arg(long)]
+    pub comment: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct IssueDeleteArgs {
+    pub id: String,
+    /// Skip confirmation prompt
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum PrCommand {
     List(PrListArgs),
@@ -238,6 +286,14 @@ pub enum PrCommand {
     Show(PrShowArgs),
     Review(PrReviewArgs),
     Merge(PrMergeArgs),
+    /// Add a comment to a pull request
+    Comment(PrCommentArgs),
+    /// View pull request diff
+    Diff(PrDiffArgs),
+    /// Close a pull request without merging
+    Close(PrCloseArgs),
+    /// Reopen a closed pull request
+    Reopen(PrReopenArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -293,6 +349,49 @@ pub struct PrReviewArgs {
 #[derive(Args, Debug, Clone)]
 pub struct PrMergeArgs {
     pub id: String,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PrCommentArgs {
+    pub id: String,
+    #[arg(long)]
+    pub body: String,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PrDiffArgs {
+    pub id: String,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PrCloseArgs {
+    pub id: String,
+    /// Add a comment when closing
+    #[arg(long)]
+    pub comment: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PrReopenArgs {
+    pub id: String,
+    /// Add a comment when reopening
+    #[arg(long)]
+    pub comment: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct BrowseArgs {
+    /// Repo, issue, or PR reference (e.g. owner/repo, or rkey)
+    pub target: Option<String>,
+    /// Open issues tab
+    #[arg(long, default_value_t = false)]
+    pub issues: bool,
+    /// Open pull requests tab
+    #[arg(long, default_value_t = false)]
+    pub prs: bool,
+    /// Print URL instead of opening browser
+    #[arg(long, short = 'n', default_value_t = false)]
+    pub no_browser: bool,
 }
 
 #[derive(Subcommand, Debug, Clone)]
