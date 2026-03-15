@@ -63,11 +63,11 @@
         mkdir -p "$dev_ext_dir"
 
         rm -rf "$dev_ext_dir/mojo"
-        cp -rL ${inputs.self.zedExtensions.zed-mojo} "$dev_ext_dir/mojo"
+        cp -rL ${inputs.self.zedExtensions.mojo-zed} "$dev_ext_dir/mojo"
         chmod -R u+w "$dev_ext_dir/mojo"
 
         rm -rf "$dev_ext_dir/nickel"
-        cp -rL ${inputs.self.zedExtensions.zed-nickel} "$dev_ext_dir/nickel"
+        cp -rL ${inputs.self.zedExtensions.nickel-zed} "$dev_ext_dir/nickel"
         chmod -R u+w "$dev_ext_dir/nickel"
       '';
     };

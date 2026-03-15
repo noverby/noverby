@@ -2,7 +2,7 @@
   lib,
   rustPlatform,
   fetchFromGitHub,
-  pkg-config-rs,
+  rust-pkg-config,
   fontconfig,
   python3,
   runCommand,
@@ -21,7 +21,7 @@
     cargoHash = "sha256-ZqTleo/ql8KY2UV8/xglRbO1KJhfXtdyvksguT2xOaM=";
 
     nativeBuildInputs = [
-      pkg-config-rs
+      rust-pkg-config
     ];
 
     buildInputs = [

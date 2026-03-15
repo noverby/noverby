@@ -75,22 +75,22 @@
 
 | Project | Description |
 |-|-|
-| [Homepage 🐒➡️🔥](https://tangled.org/@overby.me/overby.me/tree/main/homepage) | Personal website and portfolio |
-| [Wiki 🐒➡️🔥🌀](https://tangled.org/@overby.me/overby.me/tree/main/wiki) | Political conference and discussion platform |
-| [Mojo-wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo-wasm) | WebAssembly interop layer for Mojo |
-| [Mojo-wasmtime 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo-wasmtime) | Wasmtime WebAssembly runtime bindings for Mojo |
-| [Zed-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/zed-mojo) | Mojo language extension for Zed |
-| [Zed-nickel ❄️](https://tangled.org/@overby.me/overby.me/tree/main/zed-nickel) | Nickel language extension for Zed |
-| [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-rs) | NixOS distribution with Rust user space |
-| [Nixpkgs-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixpkgs-rs) | Rust-based C toolchain replacements for Nix package builds |
-| [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | Systemd replacement |
-| [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | pkg-config reimplementation |
-| [Nix-deno 🦕❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-deno) | Nix builder for Deno projects with npm dependencies |
-| [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | Nickel-powered workspace manager for Nix flakes |
-| [H264-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h264-decoder-rs) | Pure Rust H.264 decoder library and CLI |
-| [H265-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h265-decoder-rs) | Pure Rust H.265/HEVC decoder library |
-| [H264toav1-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h264toav1-rs) | CLI tool for transcoding H.264/H.265 video to AV1 |
-| [Nu-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nu-plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
+| [Homepage 🐒➡️🔥](https://tangled.org/@overby.me/overby.me/tree/main/web/homepage) | Personal website and portfolio |
+| [Wiki 🐒➡️🔥🌀](https://tangled.org/@overby.me/overby.me/tree/main/web/wiki) | Political conference and discussion platform |
+| [Mojo-wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/wasm) | WebAssembly interop layer for Mojo |
+| [Mojo-wasmtime 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/wasmtime) | Wasmtime WebAssembly runtime bindings for Mojo |
+| [Zed-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/zed) | Mojo language extension for Zed |
+| [Zed-nickel ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nickel/zed) | Nickel language extension for Zed |
+| [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/rust/nixos) | NixOS distribution with Rust user space |
+| [Nixpkgs-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/rust/nixpkgs) | Rust-based C toolchain replacements for Nix package builds |
+| [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/systemd) | Systemd replacement |
+| [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/pkg-config) | pkg-config reimplementation |
+| [Nix-deno 🦕❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/deno) | Nix builder for Deno projects with npm dependencies |
+| [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nickel/workspace) | Nickel-powered workspace manager for Nix flakes |
+| [H264-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h264-decoder) | Pure Rust H.264 decoder library and CLI |
+| [H265-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h265-decoder) | Pure Rust H.265/HEVC decoder library |
+| [H264toav1-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h264toav1) | CLI tool for transcoding H.264/H.265 video to AV1 |
+| [Nu-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nushell/plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
 
 </details>
 
@@ -273,7 +273,7 @@
 | ✅ | Image Codec (Lossless) | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics) | [AVIF (lossless) 📖](https://en.wikipedia.org/wiki/AVIF) | [cavif 🦀](https://github.com/kornelski/cavif-rs) | |
 | ✅ | Media Container | [Matroska/WebM 📖](https://www.matroska.org) | | 🆗 | [MP4 📖](https://en.wikipedia.org/wiki/MPEG-4_Part_14) |
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [Symphonia 🦀](https://github.com/pdeljanov/Symphonia) | [MP3 📖](https://en.wikipedia.org/wiki/MP3) |
-| ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [rav1d 🦀](https://github.com/memorysafety/rav1d), [h264toav1-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/h264toav1-rs) | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
+| ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [rav1d 🦀](https://github.com/memorysafety/rav1d), [h264toav1-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h264toav1) | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
 | 🚧 | 3D Model Format | [glTF 📖](https://www.khronos.org/gltf/) | [OpenUSD](https://openusd.org) | 🆗 | |
 
 #### Text & Object Notation
@@ -360,13 +360,13 @@
 | ✅ | Distro | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | [Spectrum OS ❄️](https://spectrum-os.org) | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue) |
 | ✅ | Kernel | [Zen Linux Kernel 🌐💣🦀](https://github.com/zen-kernel/zen-kernel) | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Wine 💣](https://www.winehq.org), [Darling 💣](https://www.darlinghq.org) | [Microsoft NT 🔒🇺🇸](https://en.wikipedia.org/wiki/Architecture_of_Windows_NT), [Apple XNU 💣🇺🇸](https://github.com/apple-oss-distributions/xnu) |
 | 🚧 | Libc | [Glibc 💣](https://en.wikipedia.org/wiki/Glibc) | [Musl 💣](https://www.musl-libc.org), [Relibc 🦀](https://github.com/redox-os/relibc) | [Gcompat 💣](https://git.adelielinux.org/adelie/gcompat) | |
-| 🚧 | Init System | [Systemd 💣](https://github.com/systemd/systemd) | [Redox Init 🦀](https://gitlab.redox-os.org/redox-os/init), [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | ⬅️ | |
+| 🚧 | Init System | [Systemd 💣](https://github.com/systemd/systemd) | [Redox Init 🦀](https://gitlab.redox-os.org/redox-os/init), [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/systemd) | ⬅️ | |
 | 🚧 | Inter-process Communication | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | [Zlink 🦀](https://github.com/z-galaxy/zlink) | [Busd 🦀](https://github.com/dbus2/busd) | |
 | 🚫 | Multimedia Server | [Pipewire 💣](https://gitlab.freedesktop.org/pipewire/pipewire) | [Pipewire-native-rs 🦀](https://gitlab.freedesktop.org/pipewire/pipewire-native-rs) | ⬅️ | [Pulseaudio 💣](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) |
 | 🚫 | XR Runtime | [Monado 💣](https://gitlab.freedesktop.org/monado/monado) | | [OpenXR 📖](https://www.khronos.org/openxr) | [Arcan 💣](https://github.com/letoram/arcan) |
 | ✅ | Filesystem | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | [Fxfs 🦀](https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/src/storage/fxfs), [Redoxfs 🦀](https://gitlab.redox-os.org/redox-os/redoxfs) | 🆗 | [Ext4 📖💣](https://docs.kernel.org/filesystems/ext4/) |
 | ✅ | Sandboxing | [Hakoniwa 🦀](https://github.com/souk4711/hakoniwa) | | 🆗 | [Bubblewrap 💣](https://github.com/containers/bubblewrap) |
-| 🚧 | Bootloader | [systemd-boot 💣](https://www.freedesktop.org/wiki/Software/systemd/systemd-boot/) | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | 🆗 | [GRUB 💣](https://www.gnu.org/software/grub/) |
+| 🚧 | Bootloader | [systemd-boot 💣](https://www.freedesktop.org/wiki/Software/systemd/systemd-boot/) | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/systemd) | 🆗 | [GRUB 💣](https://www.gnu.org/software/grub/) |
 | ✅ | Display Manager | [cosmic-greeter 🦀](https://github.com/pop-os/cosmic-greeter) | | 🆗 | [GDM 💣](https://wiki.gnome.org/Projects/GDM) |
 | 🚧 | Security Framework | [SELinux 💣](https://github.com/SELinuxProject/selinux) | | 🆗 | [AppArmor 💣](https://apparmor.net) |
 
@@ -389,7 +389,7 @@
 | ✅ | Font Rendering | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | | 🆗 | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) |
 | ✅ | Graphics Renderer | [Wgpu 🦀](https://github.com/gfx-rs/wgpu) | | 🆗 | [Skia 💣](https://github.com/google/skia), [Cairo 💣](https://en.wikipedia.org/wiki/Cairo_(graphics)) |
 | ✅ | Compositor Framework | [Smithay 🦀](https://github.com/Smithay/smithay) | | 🆗 | [Mutter 💣](https://gitlab.gnome.org/GNOME/mutter) |
-| 🚧 | UI Toolkit | [React 🐒](https://react.dev) | [Mojo WASM Toolkit 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo-wasm), [Dioxus 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
+| 🚧 | UI Toolkit | [React 🐒](https://react.dev) | [Mojo WASM Toolkit 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo/wasm), [Dioxus 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
 | 🚧 | UI Components | [MUI 🐒](https://mui.com) | [Dioxus Components 🦀](https://github.com/DioxusLabs/components) | 🆗 | |
 | 🚫 | XR Toolkit | [Stereokit 💣](https://github.com/StereoKit/StereoKit) | | 🆗 | |
 | 🚧 | Browser Engine | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | [Servo 🦀](https://github.com/servo/servo) | ⬅️ | |
@@ -478,7 +478,7 @@
 | ✅ | Secret Manager | [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | [SPIRE ❄️🐹](https://github.com/NixOS/nixpkgs/tree/master/nixos/modules/services/security/spire) | [SPIFFE 📖](https://github.com/spiffe/spiffe) | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
 | ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | [Navi 🦀❄️](https://github.com/cafkafk/navi) | 🆗 | |
 | ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
-| 🚧 | Project Organization | [Flakelight ❄️](https://github.com/nix-community/flakelight) | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace) | 🆗 | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
+| 🚧 | Project Organization | [Flakelight ❄️](https://github.com/nix-community/flakelight) | [Nix-workspace ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nickel/workspace) | 🆗 | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
 | ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | 🆗 | |
 | ✅ | Rust Integration | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | 🆗 | [Crane ❄️](https://github.com/ipetkov/crane) |
 | ✅ | Python Integration | [Uv2nix ❄️](https://github.com/pyproject-nix/uv2nix) | | 🆗 | |
