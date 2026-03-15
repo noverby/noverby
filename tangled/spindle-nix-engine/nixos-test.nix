@@ -7,10 +7,10 @@
 # Run with: nix build .#checks.x86_64-linux.nix-tangled-spindle-integration
 {
   pkgs,
-  nix-tangled-spindle,
+  tangled-spindle-nix-engine,
 }:
 pkgs.testers.nixosTest {
-  name = "nix-tangled-spindle-integration";
+  name = "tangled-spindle-nix-engine-integration";
 
   nodes.machine = {...}: {
     imports = [./nixos-module.nix];
@@ -20,7 +20,7 @@ pkgs.testers.nixosTest {
 
     services.tangled-spindles.runner1 = {
       enable = true;
-      package = nix-tangled-spindle;
+      package = tangled-spindle-nix-engine;
       hostname = "spindle.test.local";
       owner = "did:plc:testowner123";
       tokenFile = "/etc/spindle-token";
