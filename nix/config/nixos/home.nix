@@ -26,7 +26,7 @@
     catppuccin
     home-manager
     cloud-hypervisor
-    tangled-spindle-nix
+    nix-tangled-spindle
     {
       age.secrets.spindle-token = {
         file = inputs.self.secrets.spindle-token;
