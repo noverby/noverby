@@ -27,6 +27,50 @@ use tracing::{info, warn};
 use crate::XrpcContext;
 use crate::service_auth::ServiceAuth;
 
+/// Resolve an AT URI repo reference to a `did/name` path.
+///
+/// The upstream Go spindle resolves the AT URI to get the repo record, then
+/// builds `securejoin(did, repo.Name)`. We look up the repo in our database
+/// by DID to find the matching name. If the repo string is not an AT URI,
+/// it is returned as-is for backwards compatibility.
+fn resolve_repo_path(ctx: &XrpcContext, repo: &str) -> Result<String, String> {
+    // Parse AT URI: at://did:plc:xxx/sh.tangled.repo/rkey
+    if !repo.starts_with("at://") {
+        return Ok(repo.to_string());
+    }
+
+    let without_scheme = &repo[5..]; // strip "at://"
+    let did = without_scheme
+        .split('/')
+        .next()
+        .ok_or_else(|| "invalid AT URI: missing DID".to_string())?;
+
+    // Look up repos for this DID in our database
+    let repos = ctx
+        .db
+        .get_repos_by_did(did)
+        .map_err(|e| format!("failed to query repos: {e}"))?;
+
+    if repos.is_empty() {
+        return Err(format!("no repos found for DID {did}"));
+    }
+
+    // If there's only one repo, use it. Otherwise, try to match by rkey.
+    let repo_name = if repos.len() == 1 {
+        repos[0].name.clone()
+    } else {
+        // Try matching by name — the rkey in the AT URI might be the repo name
+        let rkey = without_scheme.rsplit('/').next().unwrap_or("");
+        repos
+            .iter()
+            .find(|r| r.name == rkey)
+            .map(|r| r.name.clone())
+            .unwrap_or_else(|| repos[0].name.clone())
+    };
+
+    Ok(format!("{did}/{repo_name}"))
+}
+
 /// Standard XRPC error response body.
 #[derive(Debug, Serialize)]
 pub struct XrpcError {
@@ -319,12 +363,25 @@ async fn put_secret(
         }
     };
 
+    let repo_path = match resolve_repo_path(&ctx, &req.repo) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(XrpcError::invalid_request(format!(
+                    "failed to resolve repo: {e}"
+                ))),
+            )
+                .into_response();
+        }
+    };
+
     if let Err(e) = ctx
         .secrets
-        .put_secret(&req.repo, &req.key, &req.value)
+        .put_secret(&repo_path, &req.key, &req.value)
         .await
     {
-        warn!(%e, repo = %req.repo, key = %req.key, "failed to store secret");
+        warn!(%e, repo = %repo_path, key = %req.key, "failed to store secret");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(XrpcError::internal("failed to store secret")),
@@ -332,7 +389,7 @@ async fn put_secret(
             .into_response();
     }
 
-    info!(repo = %req.repo, key = %req.key, "stored secret");
+    info!(repo = %repo_path, key = %req.key, "stored secret");
     (StatusCode::OK, Json(serde_json::json!({"success": true}))).into_response()
 }
 
@@ -355,7 +412,20 @@ async fn list_secrets(
         }
     };
 
-    list_secrets_impl(&ctx, &req.repo).await
+    let repo_path = match resolve_repo_path(&ctx, &req.repo) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(XrpcError::invalid_request(format!(
+                    "failed to resolve repo: {e}"
+                ))),
+            )
+                .into_response();
+        }
+    };
+
+    list_secrets_impl(&ctx, &repo_path).await
 }
 
 /// List secret names for a repo (GET query param variant). Requires member authorization.
@@ -371,7 +441,19 @@ async fn list_secrets_query(
         )
             .into_response();
     }
-    list_secrets_impl(&ctx, repo).await
+    let repo_path = match resolve_repo_path(&ctx, repo) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(XrpcError::invalid_request(format!(
+                    "failed to resolve repo: {e}"
+                ))),
+            )
+                .into_response();
+        }
+    };
+    list_secrets_impl(&ctx, &repo_path).await
 }
 
 /// Shared implementation for listing secrets.
@@ -425,8 +507,21 @@ async fn delete_secret(
         }
     };
 
-    if let Err(e) = ctx.secrets.delete_secret(&req.repo, &req.key).await {
-        warn!(%e, repo = %req.repo, key = %req.key, "failed to delete secret");
+    let repo_path = match resolve_repo_path(&ctx, &req.repo) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(XrpcError::invalid_request(format!(
+                    "failed to resolve repo: {e}"
+                ))),
+            )
+                .into_response();
+        }
+    };
+
+    if let Err(e) = ctx.secrets.delete_secret(&repo_path, &req.key).await {
+        warn!(%e, repo = %repo_path, key = %req.key, "failed to delete secret");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(XrpcError::internal("failed to delete secret")),
@@ -434,7 +529,7 @@ async fn delete_secret(
             .into_response();
     }
 
-    info!(repo = %req.repo, key = %req.key, "deleted secret");
+    info!(repo = %repo_path, key = %req.key, "deleted secret");
     (StatusCode::OK, Json(serde_json::json!({"success": true}))).into_response()
 }
 
