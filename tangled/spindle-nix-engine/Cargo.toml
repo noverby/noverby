@@ -55,6 +55,9 @@ notify = "7"
 # Crypto / encoding
 aes-gcm = "0.10"
 base64 = "0.22"
+bs58 = "0.5"
+k256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
 ring = "0.17"
 
 # Utilities
