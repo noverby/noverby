@@ -10,14 +10,14 @@
 #   pkgs        - nixpkgs package set
 #
 # Returns: a derivation producing an ext4 filesystem image.
-{
+lib: {
   mkRootfsImageWithHomeManager = nixosConfig: pkgs: let
     # Get all users that have home-manager configurations.
-    hmUsers = builtins.attrNames (nixosConfig.config.home-manager.users or {});
+    hmUsers = lib.attrNames (nixosConfig.config.home-manager.users or {});
 
     # Collect all home-manager activation packages.
     hmActivationPackages =
-      builtins.map
+      map
       (user: nixosConfig.config.home-manager.users.${user}.home.activationPackage)
       hmUsers;
   in
@@ -45,7 +45,7 @@
         ln -s /nix/var/nix/profiles/system/init ./files/init
 
         # Create home-manager profiles for each user.
-        ${builtins.concatStringsSep "\n" (builtins.map (user: ''
+        ${lib.concatStringsSep "\n" (map (user: ''
             # Create profile directory for ${user}.
             mkdir -p ./files/nix/var/nix/profiles/per-user/${user}
 

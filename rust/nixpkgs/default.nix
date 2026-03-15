@@ -7,6 +7,7 @@
   };
 
   overlays.rust-nixpkgs = final: prev: let
+    inherit (final) lib;
     components = import ./components {pkgs = final;};
 
     # Brush provides /bin/brush, but stdenv expects /bin/bash.
@@ -18,7 +19,7 @@
     '';
 
     # Collect only components that have a replacement ready
-    available = builtins.filter (c: c.replacement != null) (builtins.attrValues components);
+    available = lib.filter (c: c.replacement != null) (lib.attrValues components);
 
     # Build the replacement initialPath by swapping available components.
     # The shell component is special-cased: we use brush-as-bash instead
@@ -26,10 +27,10 @@
     replacedInitialPath =
       map (
         pkg: let
-          match = builtins.filter (c: c.original == pkg) available;
+          match = lib.filter (c: c.original == pkg) available;
           component =
             if match != []
-            then builtins.head match
+            then lib.head match
             else null;
         in
           if component != null && component.name == "shell"

@@ -11,12 +11,12 @@
       name: let
         dir = config.nixDir + "/${name}";
       in
-        if builtins.pathExists dir
+        if lib.pathExists dir
         then
           mapAttrs' (file: _: {
             name = removeSuffix ".age" file;
             value = dir + "/${file}";
-          }) (filterAttrs (file: _: hasSuffix ".age" file) (builtins.readDir dir))
+          }) (filterAttrs (file: _: hasSuffix ".age" file) (lib.readDir dir))
         else {}
     )
     aliasNames);

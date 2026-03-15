@@ -5,7 +5,7 @@
 }: let
   real-jj = pkgs.jujutsu;
   jj-hooks-wrapper = pkgs.writeScriptBin "jj" (
-    builtins.replaceStrings ["@JJ_BIN@"] ["${real-jj}/bin/jj"]
+    lib.replaceStrings ["@JJ_BIN@"] ["${real-jj}/bin/jj"]
     (lib.readFile ../packages/scripts/jj-hooks-wrapper)
   );
 in {
