@@ -819,9 +819,9 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let json = body_json(resp.into_body()).await;
-        let keys = json["keys"].as_array().unwrap();
-        assert_eq!(keys.len(), 1);
-        assert_eq!(keys[0], "API_KEY");
+        let secrets = json["secrets"].as_array().unwrap();
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0]["key"], "API_KEY");
 
         // Delete secret
         let resp = app

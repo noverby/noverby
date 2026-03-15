@@ -18,7 +18,7 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{FromRequestParts, Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
@@ -76,10 +76,18 @@ pub async fn dispatch(
     match method.as_str() {
         "sh.tangled.spindle.addMember" => add_member(state, auth, body).await,
         "sh.tangled.spindle.removeMember" => remove_member(state, auth, body).await,
-        "sh.tangled.spindle.putSecret" => put_secret(state, auth, body).await,
-        "sh.tangled.spindle.listSecrets" => list_secrets(state, auth, body).await,
-        "sh.tangled.spindle.deleteSecret" => delete_secret(state, auth, body).await,
-        "sh.tangled.spindle.cancelPipeline" => cancel_pipeline(state, auth, body).await,
+        "sh.tangled.repo.addSecret" | "sh.tangled.spindle.putSecret" => {
+            put_secret(state, auth, body).await
+        }
+        "sh.tangled.repo.listSecrets" | "sh.tangled.spindle.listSecrets" => {
+            list_secrets(state, auth, body).await
+        }
+        "sh.tangled.repo.removeSecret" | "sh.tangled.spindle.deleteSecret" => {
+            delete_secret(state, auth, body).await
+        }
+        "sh.tangled.pipeline.cancelPipeline" | "sh.tangled.spindle.cancelPipeline" => {
+            cancel_pipeline(state, auth, body).await
+        }
         _ => {
             let err = XrpcError::not_found(format!("unknown XRPC method: {method}"));
             (StatusCode::NOT_FOUND, Json(err)).into_response()
@@ -88,14 +96,31 @@ pub async fn dispatch(
 }
 
 /// Dispatch an XRPC query (GET) request to the appropriate handler.
+///
+/// Handles both unauthenticated queries (e.g. `sh.tangled.owner`) and
+/// authenticated queries (e.g. `sh.tangled.repo.listSecrets`). For
+/// authenticated queries, the `ServiceAuth` extractor is invoked manually
+/// so that unauthenticated queries don't require a bearer token.
 pub async fn dispatch_query(
-    Path(method): Path<String>,
+    method: Path<String>,
     state: State<Arc<XrpcContext>>,
+    query: axum::extract::Query<std::collections::HashMap<String, String>>,
+    parts: axum::http::request::Parts,
 ) -> Response {
-    match method.as_str() {
+    match method.0.as_str() {
         "sh.tangled.owner" => owner(state).await,
+        "sh.tangled.repo.listSecrets" | "sh.tangled.spindle.listSecrets" => {
+            // Manually extract auth for authenticated GET queries.
+            let mut parts = parts;
+            let auth = match ServiceAuth::from_request_parts(&mut parts, &state).await {
+                Ok(a) => a,
+                Err(e) => return e.into_response(),
+            };
+            let repo = query.get("repo").cloned().unwrap_or_default();
+            list_secrets_query(state, auth, &repo).await
+        }
         _ => {
-            let err = XrpcError::not_found(format!("unknown XRPC query: {method}"));
+            let err = XrpcError::not_found(format!("unknown XRPC query: {}", method.0));
             (StatusCode::NOT_FOUND, Json(err)).into_response()
         }
     }
@@ -311,7 +336,7 @@ async fn put_secret(
     (StatusCode::OK, Json(serde_json::json!({"success": true}))).into_response()
 }
 
-/// List secret names for a repo. Requires member authorization.
+/// List secret names for a repo (POST body variant). Requires member authorization.
 async fn list_secrets(
     State(ctx): State<Arc<XrpcContext>>,
     _auth: ServiceAuth,
@@ -330,10 +355,48 @@ async fn list_secrets(
         }
     };
 
-    match ctx.secrets.list_secrets(&req.repo).await {
-        Ok(keys) => (StatusCode::OK, Json(serde_json::json!({"keys": keys}))).into_response(),
+    list_secrets_impl(&ctx, &req.repo).await
+}
+
+/// List secret names for a repo (GET query param variant). Requires member authorization.
+async fn list_secrets_query(
+    State(ctx): State<Arc<XrpcContext>>,
+    _auth: ServiceAuth,
+    repo: &str,
+) -> Response {
+    if repo.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(XrpcError::invalid_request("missing repo parameter")),
+        )
+            .into_response();
+    }
+    list_secrets_impl(&ctx, repo).await
+}
+
+/// Shared implementation for listing secrets.
+async fn list_secrets_impl(ctx: &XrpcContext, repo: &str) -> Response {
+    match ctx.secrets.list_secrets(repo).await {
+        Ok(keys) => {
+            let secrets: Vec<serde_json::Value> = keys
+                .into_iter()
+                .map(|key| {
+                    serde_json::json!({
+                        "key": key,
+                        "repo": repo,
+                        "createdAt": "",
+                        "createdBy": "",
+                    })
+                })
+                .collect();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"secrets": secrets})),
+            )
+                .into_response()
+        }
         Err(e) => {
-            warn!(%e, repo = %req.repo, "failed to list secrets");
+            warn!(%e, repo = %repo, "failed to list secrets");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(XrpcError::internal("failed to list secrets")),
