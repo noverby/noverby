@@ -8,7 +8,7 @@ $env.config = {
     mode: [emacs vi_normal vi_insert]
     event: {
       send: executehostcommand
-      cmd: "let f = (mktemp); zellij action dump-screen $f; open $f | uf; rm $f"
+      cmd: "zellij action dump-screen /tmp/uf-screen; open /tmp/uf-screen | uf"
     }
   }]
 }
