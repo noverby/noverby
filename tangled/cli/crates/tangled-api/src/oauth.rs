@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use atrium_api::agent::SessionManager as _;
-use atrium_api::types::string::Did;
 use atrium_common::store::Store;
 use atrium_identity::{
     did::{CommonDidResolver, CommonDidResolverConfig, DEFAULT_PLC_DIRECTORY_URL},
@@ -176,7 +175,6 @@ pub async fn login_browser(handle: &str) -> Result<OAuthLoginResult> {
         )
         .await
         .context("failed to get authorization URL")?;
-
     open::that(&auth_url).context("failed to open browser")?;
 
     // Wait for the OAuth callback redirect
@@ -255,9 +253,23 @@ pub async fn login_browser(handle: &str) -> Result<OAuthLoginResult> {
     })
 }
 
+/// Create a DPoP HTTP client from persisted session data.
+fn make_dpop_client(
+    persisted: &PersistedOAuthSession,
+) -> Result<atrium_oauth::DpopClient<DefaultHttpClient>> {
+    let http_client = Arc::new(DefaultHttpClient::default());
+    atrium_oauth::DpopClient::new(
+        persisted.oauth_session.dpop_key.clone(),
+        http_client,
+        false,
+        &None,
+    )
+    .map_err(|e| anyhow::anyhow!("failed to create DPoP client: {e}"))
+}
+
 /// Make an authenticated XRPC GET request using a persisted OAuth session.
 pub async fn oauth_get(persisted: &PersistedOAuthSession, url: &str) -> Result<Vec<u8>> {
-    let session = restore_oauth_session(persisted).await?;
+    let dpop_client = make_dpop_client(persisted)?;
     let auth_value = format!("DPoP {}", persisted.oauth_session.token_set.access_token);
     let request = atrium_xrpc::http::Request::builder()
         .method("GET")
@@ -265,7 +277,7 @@ pub async fn oauth_get(persisted: &PersistedOAuthSession, url: &str) -> Result<V
         .header("Authorization", &auth_value)
         .body(Vec::new())
         .context("failed to build request")?;
-    let response = session
+    let response = dpop_client
         .send_http(request)
         .await
         .map_err(|e| anyhow::anyhow!("request failed: {e}"))?;
@@ -284,7 +296,7 @@ pub async fn oauth_post(
     url: &str,
     json_body: &[u8],
 ) -> Result<Vec<u8>> {
-    let session = restore_oauth_session(persisted).await?;
+    let dpop_client = make_dpop_client(persisted)?;
     let auth_value = format!("DPoP {}", persisted.oauth_session.token_set.access_token);
     let request = atrium_xrpc::http::Request::builder()
         .method("POST")
@@ -293,7 +305,7 @@ pub async fn oauth_post(
         .header("Authorization", &auth_value)
         .body(json_body.to_vec())
         .context("failed to build request")?;
-    let response = session
+    let response = dpop_client
         .send_http(request)
         .await
         .map_err(|e| anyhow::anyhow!("request failed: {e}"))?;
@@ -304,27 +316,4 @@ pub async fn oauth_post(
         return Err(anyhow::anyhow!("{status}: {text}"));
     }
     Ok(body)
-}
-
-/// Restore an OAuthSession from persisted data.
-async fn restore_oauth_session(persisted: &PersistedOAuthSession) -> Result<impl HttpClient + '_> {
-    let http_client = Arc::new(DefaultHttpClient::default());
-    let session_store = MemorySessionStore::default();
-
-    let did: Did = persisted
-        .did
-        .parse()
-        .map_err(|e| anyhow::anyhow!("invalid DID: {e}"))?;
-    session_store
-        .set(did.clone(), persisted.oauth_session.clone())
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to seed session store: {e}"))?;
-
-    let config = oauth_client_config!(http_client, session_store, None);
-    let client = atrium_oauth::OAuthClient::new(config).context("failed to create OAuth client")?;
-
-    client
-        .restore(&did)
-        .await
-        .context("failed to restore OAuth session")
 }
