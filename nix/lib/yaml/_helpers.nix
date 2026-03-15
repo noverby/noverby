@@ -1,8 +1,8 @@
 # Shared helper functions for YAML parsing and serialization.
 # This module is imported by both fromYAML.nix and toYAML.nix.
-let
+lib: let
   inherit
-    (builtins)
+    (lib)
     substring
     stringLength
     elemAt

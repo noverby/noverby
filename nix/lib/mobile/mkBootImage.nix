@@ -24,7 +24,7 @@
 #   pkgs        - nixpkgs package set
 #
 # Returns: a derivation producing a single boot.img file.
-{
+lib: {
   mkBootImage = deviceConfig: nixosConfig: pkgs: let
     cfg =
       {
@@ -44,10 +44,10 @@
       # Get paths from NixOS configuration.
       kernelPath="${nixosConfig.config.system.build.kernel}"
       initrdPath="${nixosConfig.config.system.build.initialRamdisk}/initrd"
-      initPath="${builtins.unsafeDiscardStringContext nixosConfig.config.system.build.toplevel}/init"
+      initPath="${lib.unsafeDiscardStringContext nixosConfig.config.system.build.toplevel}/init"
 
       # Build kernel command line from NixOS config parameters.
-      kernelParams="${builtins.toString nixosConfig.config.boot.kernelParams}"
+      kernelParams="${lib.toString nixosConfig.config.boot.kernelParams}"
       cmdline="$kernelParams init=$initPath"
 
       # Concatenate kernel (Image.gz) with device tree blob.
@@ -59,7 +59,7 @@
       echo "Building boot image with mkbootimg..."
       echo "Using cmdline: $cmdline"
       mkbootimg \
-        --header_version ${builtins.toString cfg.headerVersion} \
+        --header_version ${lib.toString cfg.headerVersion} \
         --kernel Image-with-dtb.gz \
         --ramdisk "$initrdPath" \
         --cmdline "$cmdline" \
@@ -68,7 +68,7 @@
         --ramdisk_offset ${cfg.ramdiskOffset} \
         --dtb_offset ${cfg.dtbOffset} \
         --tags_offset ${cfg.tagsOffset} \
-        --pagesize ${builtins.toString cfg.pagesize} \
+        --pagesize ${lib.toString cfg.pagesize} \
         --dtb "$kernelPath/dtbs/${cfg.dtb}" \
         -o "$out"
 

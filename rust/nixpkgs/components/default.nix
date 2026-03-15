@@ -38,4 +38,4 @@
   importComponent = _name: path:
     import path {inherit pkgs mkComponent status source;};
 in
-  builtins.mapAttrs importComponent componentFiles
+  lib.mapAttrs importComponent componentFiles

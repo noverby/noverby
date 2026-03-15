@@ -100,7 +100,7 @@
   # For Darwin targets, we use the native pkgs for that system (cross
   # from Linux to macOS is not practical without the Apple SDK).
   getCrossPkgs = buildSystem: targetSystem:
-    if builtins.match ".*-linux" targetSystem != null
+    if lib.match ".*-linux" targetSystem != null
     then
       # Use pkgsStatic for musl-based static builds.
       (import nixpkgs {

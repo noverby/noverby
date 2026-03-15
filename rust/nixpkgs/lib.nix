@@ -78,7 +78,7 @@
   # with `pkgs`, returning an attrset keyed by component name.
   loadComponents = pkgs: let
     dir = ./components;
-    entries = builtins.readDir dir;
+    entries = lib.readDir dir;
     nixFiles =
       lib.filterAttrs
       (n: t: t == "regular" && lib.hasSuffix ".nix" n)
@@ -90,7 +90,7 @@
       value = component;
     };
   in
-    builtins.listToAttrs (lib.mapAttrsToList load nixFiles);
+    lib.listToAttrs (lib.mapAttrsToList load nixFiles);
 
   # availableComponents — filter to only components with a non-null
   # replacement.
@@ -109,7 +109,7 @@
       )
       phaseNums;
   in
-    builtins.listToAttrs grouped;
+    lib.listToAttrs grouped;
 
   # mkReplacements — produce a list of { original, replacement } attrsets
   # suitable for `system.replaceDependencies.replacements` or for
@@ -131,13 +131,13 @@
     replacementMap = lib.listToAttrs (
       lib.mapAttrsToList
       (_: c: {
-        name = builtins.unsafeDiscardStringContext (toString c.original);
+        name = lib.unsafeDiscardStringContext (toString c.original);
         value = c.replacement;
       })
       available
     );
     swapPkg = pkg: let
-      key = builtins.unsafeDiscardStringContext (toString pkg);
+      key = lib.unsafeDiscardStringContext (toString pkg);
     in
       replacementMap.${key} or pkg;
   in
@@ -176,7 +176,7 @@
       _: c: "| ${c.name} | ${toString c.phase} | ${c.status} | ${c.source} | ${c.notes} |"
     ) (lib.attrsets.mergeAttrsList (lib.mapAttrsToList (_: phase: phase) (componentsByPhase components)));
   in
-    header + (builtins.concatStringsSep "\n" rows);
+    header + (lib.concatStringsSep "\n" rows);
 in {
   inherit
     status

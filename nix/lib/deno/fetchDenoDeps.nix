@@ -1,7 +1,7 @@
 # Fetches npm dependencies from a deno.lock file using dynamic derivations.
 #
 # Instead of a single fixed-output derivation with a manually-maintained hash,
-# this parses the lock file at Nix evaluation time (builtins.fromJSON) and
+# this parses the lock file at Nix evaluation time (lib.fromJSON) and
 # creates individual fetchurl derivations for each npm package using the
 # integrity hashes already present in the lock file.
 #
@@ -15,20 +15,20 @@
   jq,
   writeText,
 }: {lockFile}: let
-  lockData = builtins.fromJSON (builtins.readFile lockFile);
+  lockData = lib.fromJSON (lib.readFile lockFile);
   npmPackages = lockData.npm or {};
 
   # Parse npm key "name@version[_peerinfo]" into { name, version }
   parseNpmKey = key: let
-    scopedMatch = builtins.match "(@[^@]+)@([^_]+)(_.*)?" key;
-    unscopedMatch = builtins.match "([^@]+)@([^_]+)(_.*)?" key;
+    scopedMatch = lib.match "(@[^@]+)@([^_]+)(_.*)?" key;
+    unscopedMatch = lib.match "([^@]+)@([^_]+)(_.*)?" key;
     m =
       if scopedMatch != null
       then scopedMatch
       else unscopedMatch;
   in {
-    name = builtins.elemAt m 0;
-    version = builtins.elemAt m 1;
+    name = lib.elemAt m 0;
+    version = lib.elemAt m 1;
   };
 
   tarballBasename = name:
@@ -52,7 +52,7 @@
       })
       npmPackages;
   in
-    builtins.listToAttrs entries;
+    lib.listToAttrs entries;
 
   fetchedPackages =
     lib.mapAttrsToList (_: {
@@ -72,7 +72,7 @@
   # Generate a manifest file mapping package info to tarball store paths.
   # This avoids inlining huge bash scripts that exceed argument length limits
   # for projects with many dependencies (e.g. wiki has 500+ packages).
-  manifest = builtins.toJSON (map (pkg: {
+  manifest = lib.toJSON (map (pkg: {
       inherit (pkg) name version integrity url;
       tarballPath = "${pkg.tarball}";
     })

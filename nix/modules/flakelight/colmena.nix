@@ -26,13 +26,13 @@ in {
           system = "x86_64-linux";
           config.allowUnfree = true;
         });
-        nodeNixpkgs = builtins.mapAttrs (_: cfg:
+        nodeNixpkgs = lib.mapAttrs (_: cfg:
           suppressSystemWarning (import inputs.nixpkgs {
             inherit (cfg) system;
             config.allowUnfree = true;
           }))
         standardConfigs;
-        nodeSpecialArgs = builtins.mapAttrs (name: cfg:
+        nodeSpecialArgs = lib.mapAttrs (name: cfg:
           {
             inherit inputs;
             hostname = name;
@@ -41,7 +41,7 @@ in {
         standardConfigs;
       };
     }
-    // builtins.mapAttrs (name: cfg: {
+    // lib.mapAttrs (name: cfg: {
       deployment = {
         targetHost = "${name}.overby.me";
         targetUser = "noverby";

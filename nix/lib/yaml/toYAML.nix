@@ -1,11 +1,11 @@
 # toYAML — Pure Nix YAML serializer.
 # Converts Nix values to idiomatic block-style YAML strings.
 # Supports mappings, sequences, scalars, multi-line block scalars, and proper quoting.
-let
-  h = import ./_helpers.nix;
+lib: let
+  h = import ./_helpers.nix lib;
 
   inherit
-    (builtins)
+    (lib)
     substring
     stringLength
     head
@@ -94,10 +94,10 @@ let
       then "true"
       else "false"
     else if isInt val
-    then builtins.toString val
+    then lib.toString val
     else if isFloat val
     then let
-      s = builtins.toString val;
+      s = lib.toString val;
     in
       # Ensure floats have a decimal point
       if hasInfix "." s || hasInfix "e" s || hasInfix "E" s

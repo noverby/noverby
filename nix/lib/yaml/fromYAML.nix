@@ -2,10 +2,10 @@
 # Supports block mappings/sequences, flow style, quoted strings,
 # block scalars (| and >), and standard YAML scalar types.
 lib: let
-  h = import ./_helpers.nix;
+  h = import ./_helpers.nix lib;
 
   inherit
-    (builtins)
+    (lib)
     substring
     stringLength
     elemAt
@@ -310,7 +310,7 @@ lib: let
           then keyParsed.value
           else if (keyParsed.value == null)
           then "null"
-          else builtins.toString keyParsed.value;
+          else lib.toString keyParsed.value;
         entry = {
           name = key;
           inherit (valParsed) value;
@@ -468,7 +468,7 @@ lib: let
     in
       if digits == []
       then null
-      else builtins.fromJSON (head digits);
+      else lib.fromJSON (head digits);
 
     # Find lines belonging to this block scalar
     # Starting from the line after the indicator

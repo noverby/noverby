@@ -87,9 +87,9 @@
   # Parse kernel version from Makefile.
   kernelVersion = rec {
     file = "${kernelSrc}/Makefile";
-    version = lib.head (builtins.match ".*VERSION = ([0-9]+).*" (builtins.readFile file));
-    patchlevel = lib.head (builtins.match ".*PATCHLEVEL = ([0-9]+).*" (builtins.readFile file));
-    sublevel = lib.head (builtins.match ".*SUBLEVEL = ([0-9]+).*" (builtins.readFile file));
+    version = lib.head (lib.match ".*VERSION = ([0-9]+).*" (lib.readFile file));
+    patchlevel = lib.head (lib.match ".*PATCHLEVEL = ([0-9]+).*" (lib.readFile file));
+    sublevel = lib.head (lib.match ".*SUBLEVEL = ([0-9]+).*" (lib.readFile file));
     string = "${version}.${patchlevel}.${sublevel}";
   };
   modDirVersion = kernelVersion.string;
