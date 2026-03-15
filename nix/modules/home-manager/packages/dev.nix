@@ -25,7 +25,7 @@
 
     # Tangled
     tangled-cli
-    tangled-spindle-nix # spindle-run
+    tangled-spindle-nix-engine # spindle-run
 
     # Nix dev
     nix-du

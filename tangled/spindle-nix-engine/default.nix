@@ -1,12 +1,12 @@
 {
-  devShells.nix-tangled-spindle = pkgs: {
+  devShells.tangled-spindle-nix-engine = pkgs: {
     packages = with pkgs; [
       just
       nix
     ];
   };
 
-  packages.nix-tangled-spindle = {
+  packages.tangled-spindle-nix-engine = {
     lib,
     rustPlatform,
     makeWrapper,
@@ -18,7 +18,7 @@
     gzip,
   }:
     rustPlatform.buildRustPackage {
-      pname = "nix-tangled-spindle";
+      pname = "tangled-spindle-nix-engine";
       version = "unstable";
 
       src = lib.fileset.toSource {
@@ -65,11 +65,11 @@
       };
     };
 
-  nixosModules.nix-tangled-spindle = ./nixos-module.nix;
+  nixosModules.tangled-spindle-nix-engine = ./nixos-module.nix;
 
-  checks.nix-tangled-spindle-integration = pkgs:
+  checks.tangled-spindle-nix-engine-integration = pkgs:
     import ./nixos-test.nix {
       inherit pkgs;
-      nix-tangled-spindle = pkgs.nix-tangled-spindle or (throw "nix-tangled-spindle package not found");
+      tangled-spindle-nix-engine = pkgs.tangled-spindle-nix-engine or (throw "tangled-spindle-nix-engine package not found");
     };
 }
