@@ -40,7 +40,7 @@ pkgs.testers.nixosTest {
 
     # Test MOTD endpoint
     result = machine.succeed("curl -sf http://localhost:6555/")
-    assert "nix-tangled-spindle" in result, f"MOTD should contain 'nix-tangled-spindle', got: {result}"
+    assert "tangled-spindle-nix" in result, f"MOTD should contain 'tangled-spindle-nix', got: {result}"
     assert "spindle.test.local" in result, f"MOTD should contain hostname, got: {result}"
 
     # Test XRPC unknown method returns JSON error
