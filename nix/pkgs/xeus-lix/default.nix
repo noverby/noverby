@@ -4,7 +4,7 @@
   fetchFromGitHub,
   cmake,
   python3,
-  pkg-config-rs,
+  rust-pkg-config,
   xeus,
   xeus-zmq,
   cppzmq,
@@ -33,7 +33,7 @@ python3.pkgs.toPythonModule (stdenv.mkDerivation {
 
   nativeBuildInputs = [
     cmake
-    pkg-config-rs
+    rust-pkg-config
   ];
 
   buildInputs = [

@@ -180,28 +180,28 @@
         ./nix/modules/flakelight/perSystemLib.nix
         ./nix/modules/flakelight/zedExtensions.nix
 
-        ./nix-workspace
-        ./nix-deno
+        ./nickel/workspace
+        ./nix/deno
 
-        ./homepage
-        ./wiki
+        ./web/homepage
+        ./web/wiki
 
-        ./mojo-wasm
-        ./mojo-gui
-        ./zed-mojo
-        ./zed-nickel
+        ./mojo/wasm
+        ./mojo/gui
+        ./mojo/zed
+        ./nickel/zed
 
-        ./nixos-rs
-        ./nixpkgs-rs
-        ./systemd-rs
-        ./pkg-config-rs
-        ./nu-plugin-tramp
+        ./rust/nixos
+        ./rust/nixpkgs
+        ./rust/systemd
+        ./rust/pkg-config
+        ./nushell/plugin-tramp
 
         ./slides
 
-        ./h264toav1-rs
+        ./rust/h264toav1
 
-        ./tangled-spindle-nix
+        ./nix/tangled-spindle
       ];
       nixDirAliases = {
         packages = ["pkgs"];

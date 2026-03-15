@@ -1,7 +1,7 @@
 {
   lib,
   fetchFromGitHub,
-  pkg-config-rs,
+  rust-pkg-config,
   sqlite,
   makeRustPlatform,
   rust-bin,
@@ -25,7 +25,7 @@ in
     cargoHash = "sha256-HxVZ5YWEPMPLXHJZfIfIbVAdkEzCsK5AJIQnqfZVVSg=";
 
     nativeBuildInputs = [
-      pkg-config-rs
+      rust-pkg-config
     ];
 
     buildInputs = [

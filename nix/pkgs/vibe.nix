@@ -2,7 +2,7 @@
   lib,
   rustPlatform,
   fetchFromGitHub,
-  pkg-config-rs,
+  rust-pkg-config,
   libxkbcommon,
   vulkan-loader,
   libGL,
@@ -27,7 +27,7 @@ rustPlatform.buildRustPackage rec {
   cargoHash = "sha256-WxOAmSEnhxJFyfUGHbSGF+UmPKCvWRn2OVfay8aHhzI=";
 
   nativeBuildInputs = [
-    pkg-config-rs
+    rust-pkg-config
     makeWrapper
   ];
 

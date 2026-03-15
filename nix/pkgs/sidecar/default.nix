@@ -2,7 +2,7 @@
   lib,
   rustPlatform,
   fetchFromGitHub,
-  pkg-config-rs,
+  rust-pkg-config,
   webkitgtk_4_1,
 }:
 rustPlatform.buildRustPackage rec {
@@ -29,7 +29,7 @@ rustPlatform.buildRustPackage rec {
   cargoBuildFlags = ["-p" pname];
 
   nativeBuildInputs = [
-    pkg-config-rs
+    rust-pkg-config
   ];
 
   buildInputs = [
