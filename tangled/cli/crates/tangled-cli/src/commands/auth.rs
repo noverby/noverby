@@ -41,9 +41,10 @@ async fn login(_cli: &Cli, mut args: AuthLoginArgs) -> Result<()> {
 }
 
 async fn login_browser(_cli: &Cli, args: AuthLoginBrowserArgs) -> Result<()> {
-    let input = args
-        .handle
-        .unwrap_or_else(|| "https://bsky.social".to_string());
+    let input: String = match args.handle {
+        Some(h) => h,
+        None => Input::new().with_prompt("Handle").interact_text()?,
+    };
 
     println!("Opening browser for authentication...");
     let result = tangled_api::oauth::login_browser(&input).await?;
@@ -70,7 +71,12 @@ async fn login_browser(_cli: &Cli, args: AuthLoginBrowserArgs) -> Result<()> {
 async fn status(_cli: &Cli) -> Result<()> {
     let mgr = SessionManager::default();
     match mgr.load()? {
-        Some(s) => println!("Logged in as '{}' ({})", s.handle, s.did),
+        Some(s) => {
+            println!("Logged in as '{}' ({})", s.handle, s.did);
+            if let Some(pds) = &s.pds {
+                println!("PDS: {}", pds);
+            }
+        }
         None => println!("Not logged in. Run: tangled auth login"),
     }
     Ok(())

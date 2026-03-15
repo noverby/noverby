@@ -93,8 +93,7 @@ pub struct AuthLoginArgs {
 
 #[derive(Args, Debug, Clone)]
 pub struct AuthLoginBrowserArgs {
-    /// Bluesky handle or PDS URL (defaults to https://bsky.social)
-    #[arg(long)]
+    /// Bluesky handle or PDS URL
     pub handle: Option<String>,
 }
 
