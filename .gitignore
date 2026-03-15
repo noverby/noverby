@@ -3,6 +3,9 @@
 .direnv
 result*
 
+# Caches
+.cache
+
 # Environment
 .env
 tmp
