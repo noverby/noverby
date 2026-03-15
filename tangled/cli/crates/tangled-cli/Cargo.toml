@@ -25,6 +25,9 @@ tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 chrono = { workspace = true }
 
+open = { workspace = true }
+reqwest = { workspace = true }
+
 # Internal crates
 tangled-config = { path = "../tangled-config" }
 tangled-api = { path = "../tangled-api" }

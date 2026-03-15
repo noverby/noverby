@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use tangled_api::oauth::PersistedOAuthSession;
 use tangled_config::session::{Session, SessionManager};
 
 /// Load session and automatically refresh if expired
@@ -9,6 +10,31 @@ pub async fn load_session() -> Result<Session> {
         .ok_or_else(|| anyhow!("Please login first: tangled auth login"))?;
 
     Ok(session)
+}
+
+/// Load the persisted OAuth session from keychain, if available.
+pub fn load_oauth_session() -> Option<PersistedOAuthSession> {
+    let keychain = tangled_config::keychain::Keychain::new("tangled-cli-oauth", "default");
+    let json = keychain.get_password().ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+/// Create a TangledClient for the given base URL, with OAuth if available.
+pub fn make_client(base_url: &str) -> tangled_api::TangledClient {
+    let client = tangled_api::TangledClient::new(base_url);
+    match load_oauth_session() {
+        Some(oauth) => client.with_oauth(oauth),
+        None => client,
+    }
+}
+
+/// Create a default TangledClient (tngl.sh), with OAuth if available.
+pub fn make_default_client() -> tangled_api::TangledClient {
+    let client = tangled_api::TangledClient::default();
+    match load_oauth_session() {
+        Some(oauth) => client.with_oauth(oauth),
+        None => client,
+    }
 }
 
 /// Refresh the session using the refresh token
@@ -34,6 +60,11 @@ pub async fn refresh_session(session: &Session) -> Result<Session> {
 /// Load session with automatic refresh on ExpiredToken
 pub async fn load_session_with_refresh() -> Result<Session> {
     let session = load_session().await?;
+
+    // If we have an OAuth session, skip JWT refresh (OAuth handles its own tokens)
+    if load_oauth_session().is_some() {
+        return Ok(session);
+    }
 
     // Check if session is older than 30 minutes - if so, proactively refresh
     let age = chrono::Utc::now()

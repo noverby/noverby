@@ -13,4 +13,5 @@ exclude = [
   'https://smokesignal.events/',
   'https://wiki.multimedia.cx/',
   'https://spindle.tangled.sh/',
+  'https://cloudflare-dns.com/',
 ]

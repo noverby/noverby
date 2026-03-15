@@ -24,7 +24,7 @@ async fn list(args: SpindleListArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
 
     let (owner, name) = parse_repo_ref(
         args.repo.as_deref().unwrap_or(&session.handle),
@@ -78,7 +78,7 @@ async fn config(args: SpindleConfigArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
 
     let (owner, name) = parse_repo_ref(
         args.repo.as_deref().unwrap_or(&session.handle),
@@ -147,7 +147,7 @@ async fn logs(args: SpindleLogsArgs) -> Result<()> {
             .clone()
             .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
             .unwrap_or_else(|| "https://bsky.social".into());
-        let pds_client = tangled_api::TangledClient::new(&pds);
+        let pds_client = crate::util::make_client(&pds);
         // Get repo info from current directory context or default to user's handle
         let info = pds_client
             .get_repo_info(
@@ -221,7 +221,7 @@ async fn secret_list(args: SpindleSecretListArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let (owner, name) = parse_repo_ref(&args.repo, &session.handle);
     let info = pds_client
         .get_repo_info(owner, name, Some(session.access_jwt.as_str()))
@@ -234,7 +234,7 @@ async fn secret_list(args: SpindleSecretListArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_SPINDLE_BASE").ok())
         .unwrap_or_else(|| "https://spindle.tangled.sh".to_string());
-    let api = tangled_api::TangledClient::new(&spindle_base);
+    let api = crate::util::make_client(&spindle_base);
 
     let secrets = api
         .list_repo_secrets(&pds, &session.access_jwt, &repo_at)
@@ -257,7 +257,7 @@ async fn secret_add(args: SpindleSecretAddArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let (owner, name) = parse_repo_ref(&args.repo, &session.handle);
     let info = pds_client
         .get_repo_info(owner, name, Some(session.access_jwt.as_str()))
@@ -270,7 +270,7 @@ async fn secret_add(args: SpindleSecretAddArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_SPINDLE_BASE").ok())
         .unwrap_or_else(|| "https://spindle.tangled.sh".to_string());
-    let api = tangled_api::TangledClient::new(&spindle_base);
+    let api = crate::util::make_client(&spindle_base);
 
     // Handle special value patterns: @file or - (stdin)
     let value = if args.value == "-" {
@@ -310,7 +310,7 @@ async fn secret_remove(args: SpindleSecretRemoveArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let (owner, name) = parse_repo_ref(&args.repo, &session.handle);
     let info = pds_client
         .get_repo_info(owner, name, Some(session.access_jwt.as_str()))
@@ -323,7 +323,7 @@ async fn secret_remove(args: SpindleSecretRemoveArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_SPINDLE_BASE").ok())
         .unwrap_or_else(|| "https://spindle.tangled.sh".to_string());
-    let api = tangled_api::TangledClient::new(&spindle_base);
+    let api = crate::util::make_client(&spindle_base);
 
     api.remove_repo_secret(&pds, &session.access_jwt, &repo_at, &args.key)
         .await?;

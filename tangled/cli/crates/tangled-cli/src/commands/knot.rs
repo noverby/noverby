@@ -97,7 +97,7 @@ async fn migrate(args: KnotMigrateArgs) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
         .unwrap_or_else(|| "https://bsky.social".into());
-    let pds_client = tangled_api::TangledClient::new(&pds);
+    let pds_client = crate::util::make_client(&pds);
     let info = pds_client
         .get_repo_info(owner, &name, Some(session.access_jwt.as_str()))
         .await?;
@@ -120,7 +120,7 @@ async fn migrate(args: KnotMigrateArgs) -> Result<()> {
     };
 
     // Create the repo on the target knot, seeding from source
-    let client = tangled_api::TangledClient::default();
+    let client = crate::util::make_default_client();
     let opts = tangled_api::client::CreateRepoOptions {
         did: &session.did,
         name: &name,

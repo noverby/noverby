@@ -1,0 +1,330 @@
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use atrium_api::agent::SessionManager as _;
+use atrium_api::types::string::Did;
+use atrium_common::store::Store;
+use atrium_identity::{
+    did::{CommonDidResolver, CommonDidResolverConfig, DEFAULT_PLC_DIRECTORY_URL},
+    handle::{AtprotoHandleResolver, AtprotoHandleResolverConfig, DnsTxtResolver},
+};
+use atrium_oauth::{
+    store::{
+        session::{MemorySessionStore, Session as OAuthSession},
+        state::MemoryStateStore,
+    },
+    AtprotoLocalhostClientMetadata, AuthorizeOptions, CallbackParams, DefaultHttpClient,
+    KnownScope, OAuthClientConfig, OAuthResolverConfig, Scope,
+};
+use atrium_xrpc::HttpClient;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener;
+use url::Url;
+
+/// DNS TXT resolver using Cloudflare's DNS-over-HTTPS JSON API.
+struct DohJsonDnsTxtResolver {
+    client: reqwest::Client,
+}
+
+impl Default for DohJsonDnsTxtResolver {
+    fn default() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct DohAnswer {
+    data: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct DohResponse {
+    #[serde(rename = "Answer")]
+    answer: Option<Vec<DohAnswer>>,
+}
+
+impl DnsTxtResolver for DohJsonDnsTxtResolver {
+    async fn resolve(
+        &self,
+        query: &str,
+    ) -> core::result::Result<Vec<String>, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let resp: DohResponse = self
+            .client
+            .get("https://cloudflare-dns.com/dns-query")
+            .query(&[("name", query), ("type", "TXT")])
+            .header("Accept", "application/dns-json")
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        Ok(resp
+            .answer
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|a| a.data.map(|d| d.trim_matches('"').to_string()))
+            .collect())
+    }
+}
+
+/// Persisted OAuth session data (serializable to keychain).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PersistedOAuthSession {
+    pub did: String,
+    pub handle: String,
+    pub pds: Option<String>,
+    pub oauth_session: OAuthSession,
+}
+
+/// Result of a successful browser-based OAuth login.
+pub struct OAuthLoginResult {
+    pub did: String,
+    pub handle: String,
+    pub pds: Option<String>,
+    pub persisted: PersistedOAuthSession,
+}
+
+/// Resolve PDS endpoint from a DID via the PLC directory.
+async fn resolve_pds(did: &str) -> Result<String> {
+    #[derive(serde::Deserialize)]
+    struct Service {
+        #[serde(rename = "type")]
+        service_type: String,
+        #[serde(rename = "serviceEndpoint")]
+        service_endpoint: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct DidDocument {
+        service: Option<Vec<Service>>,
+    }
+
+    let base = DEFAULT_PLC_DIRECTORY_URL.trim_end_matches('/');
+    let url = format!("{base}/{did}");
+    let doc: DidDocument = reqwest::get(&url)
+        .await
+        .context("failed to fetch DID document")?
+        .json()
+        .await
+        .context("failed to parse DID document")?;
+
+    doc.service
+        .unwrap_or_default()
+        .into_iter()
+        .find(|s| s.service_type == "AtprotoPersonalDataServer")
+        .map(|s| s.service_endpoint)
+        .context("no PDS service in DID document")
+}
+
+macro_rules! oauth_client_config {
+    ($http_client:expr, $session_store:expr, $redirect_uris:expr) => {
+        OAuthClientConfig {
+            client_metadata: AtprotoLocalhostClientMetadata {
+                redirect_uris: $redirect_uris,
+                scopes: Some(vec![
+                    Scope::Known(KnownScope::Atproto),
+                    Scope::Known(KnownScope::TransitionGeneric),
+                ]),
+            },
+            keys: None,
+            resolver: OAuthResolverConfig {
+                did_resolver: CommonDidResolver::new(CommonDidResolverConfig {
+                    plc_directory_url: DEFAULT_PLC_DIRECTORY_URL.to_string(),
+                    http_client: Arc::clone(&$http_client),
+                }),
+                handle_resolver: AtprotoHandleResolver::new(AtprotoHandleResolverConfig {
+                    dns_txt_resolver: DohJsonDnsTxtResolver::default(),
+                    http_client: Arc::clone(&$http_client),
+                }),
+                authorization_server_metadata: Default::default(),
+                protected_resource_metadata: Default::default(),
+            },
+            state_store: MemoryStateStore::default(),
+            session_store: $session_store,
+        }
+    };
+}
+
+/// Run the full browser-based OAuth login flow.
+pub async fn login_browser(handle: &str) -> Result<OAuthLoginResult> {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .context("failed to bind local server")?;
+    let port = listener.local_addr()?.port();
+
+    let http_client = Arc::new(DefaultHttpClient::default());
+    let session_store = MemorySessionStore::default();
+
+    let config = oauth_client_config!(
+        http_client,
+        session_store.clone(),
+        Some(vec![format!("http://127.0.0.1:{port}/callback")])
+    );
+    let client = atrium_oauth::OAuthClient::new(config).context("failed to create OAuth client")?;
+
+    let auth_url = client
+        .authorize(
+            handle,
+            AuthorizeOptions {
+                scopes: vec![
+                    Scope::Known(KnownScope::Atproto),
+                    Scope::Known(KnownScope::TransitionGeneric),
+                ],
+                ..Default::default()
+            },
+        )
+        .await
+        .context("failed to get authorization URL")?;
+
+    open::that(&auth_url).context("failed to open browser")?;
+
+    // Wait for the OAuth callback redirect
+    let (stream, _) = listener
+        .accept()
+        .await
+        .context("failed to accept callback connection")?;
+    let mut stream = BufReader::new(stream);
+
+    let mut request_line = String::new();
+    stream
+        .read_line(&mut request_line)
+        .await
+        .context("failed to read request")?;
+
+    let path = request_line
+        .split_whitespace()
+        .nth(1)
+        .context("malformed HTTP request")?;
+
+    let url = Url::parse(&format!("http://127.0.0.1:{port}{path}"))
+        .context("failed to parse callback URL")?;
+
+    let params: std::collections::HashMap<String, String> =
+        url.query_pairs().into_owned().collect();
+
+    let callback_params = CallbackParams {
+        code: params
+            .get("code")
+            .context("missing 'code' parameter")?
+            .clone(),
+        state: params.get("state").cloned(),
+        iss: params.get("iss").cloned(),
+    };
+
+    // Send response to the browser
+    let body = "<html><body><h1>Login successful!</h1><p>You can close this tab.</p></body></html>";
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    stream.get_mut().write_all(response.as_bytes()).await.ok();
+    stream.get_mut().shutdown().await.ok();
+
+    // Exchange code for tokens
+    let (session, _) = client
+        .callback(callback_params)
+        .await
+        .context("OAuth callback failed")?;
+
+    let did = session.did().await.context("no DID in OAuth session")?;
+
+    // Read the OAuth session data from the memory store for persistence
+    let oauth_session = session_store
+        .get(&did)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to read session store: {e}"))?
+        .context("OAuth session not in store")?;
+
+    let did_str = did.to_string();
+    let pds = resolve_pds(&did_str).await.ok();
+
+    let persisted = PersistedOAuthSession {
+        did: did_str.clone(),
+        handle: handle.to_string(),
+        pds: pds.clone(),
+        oauth_session,
+    };
+
+    Ok(OAuthLoginResult {
+        did: did_str,
+        handle: handle.to_string(),
+        pds,
+        persisted,
+    })
+}
+
+/// Make an authenticated XRPC GET request using a persisted OAuth session.
+pub async fn oauth_get(persisted: &PersistedOAuthSession, url: &str) -> Result<Vec<u8>> {
+    let session = restore_oauth_session(persisted).await?;
+    let auth_value = format!("DPoP {}", persisted.oauth_session.token_set.access_token);
+    let request = atrium_xrpc::http::Request::builder()
+        .method("GET")
+        .uri(url)
+        .header("Authorization", &auth_value)
+        .body(Vec::new())
+        .context("failed to build request")?;
+    let response = session
+        .send_http(request)
+        .await
+        .map_err(|e| anyhow::anyhow!("request failed: {e}"))?;
+    let status = response.status();
+    let body = response.into_body();
+    if !status.is_success() {
+        let text = String::from_utf8_lossy(&body);
+        return Err(anyhow::anyhow!("{status}: {text}"));
+    }
+    Ok(body)
+}
+
+/// Make an authenticated XRPC POST request using a persisted OAuth session.
+pub async fn oauth_post(
+    persisted: &PersistedOAuthSession,
+    url: &str,
+    json_body: &[u8],
+) -> Result<Vec<u8>> {
+    let session = restore_oauth_session(persisted).await?;
+    let auth_value = format!("DPoP {}", persisted.oauth_session.token_set.access_token);
+    let request = atrium_xrpc::http::Request::builder()
+        .method("POST")
+        .uri(url)
+        .header("content-type", "application/json")
+        .header("Authorization", &auth_value)
+        .body(json_body.to_vec())
+        .context("failed to build request")?;
+    let response = session
+        .send_http(request)
+        .await
+        .map_err(|e| anyhow::anyhow!("request failed: {e}"))?;
+    let status = response.status();
+    let body = response.into_body();
+    if !status.is_success() {
+        let text = String::from_utf8_lossy(&body);
+        return Err(anyhow::anyhow!("{status}: {text}"));
+    }
+    Ok(body)
+}
+
+/// Restore an OAuthSession from persisted data.
+async fn restore_oauth_session(persisted: &PersistedOAuthSession) -> Result<impl HttpClient + '_> {
+    let http_client = Arc::new(DefaultHttpClient::default());
+    let session_store = MemorySessionStore::default();
+
+    let did: Did = persisted
+        .did
+        .parse()
+        .map_err(|e| anyhow::anyhow!("invalid DID: {e}"))?;
+    session_store
+        .set(did.clone(), persisted.oauth_session.clone())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to seed session store: {e}"))?;
+
+    let config = oauth_client_config!(http_client, session_store, None);
+    let client = atrium_oauth::OAuthClient::new(config).context("failed to create OAuth client")?;
+
+    client
+        .restore(&did)
+        .await
+        .context("failed to restore OAuth session")
+}

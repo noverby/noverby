@@ -1,4 +1,5 @@
 pub mod client;
+pub mod oauth;
 
 pub use client::TangledClient;
 pub use client::{

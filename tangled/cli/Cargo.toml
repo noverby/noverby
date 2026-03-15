@@ -7,7 +7,9 @@ edition = "2021"
 
 [workspace.dependencies]
 # AT Protocol
-atrium-api = "0.24"
+atrium-api = { version = "0.25", features = ["agent"] }
+atrium-common = "0.1"
+atrium-xrpc = "0.12"
 atrium-xrpc-client = "0.5"
 atrium-identity = "0.1"
 atrium-oauth = "0.1"
@@ -47,6 +49,7 @@ thiserror = "2.0"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
+open = "5"
 url = "2.5"
 base64 = "0.22"
 regex = "1.10"

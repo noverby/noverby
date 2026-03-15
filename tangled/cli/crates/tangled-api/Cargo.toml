@@ -13,12 +13,21 @@ reqwest = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 chrono = { workspace = true }
 
-# Optionally depend on ATrium (wired later as endpoints solidify)
-atrium-api = { workspace = true, optional = true }
+# AT Protocol OAuth
+atrium-oauth = { workspace = true }
+atrium-identity = { workspace = true }
+atrium-api = { workspace = true }
+atrium-common = { workspace = true }
+atrium-xrpc = { workspace = true }
+open = { workspace = true }
+
+# Optionally depend on ATrium XRPC client (wired later as endpoints solidify)
 atrium-xrpc-client = { workspace = true, optional = true }
+
+url = { workspace = true }
 
 tangled-config = { path = "../tangled-config" }
 
 [features]
 default = []
-atrium = ["dep:atrium-api", "dep:atrium-xrpc-client"]
+atrium = ["dep:atrium-xrpc-client"]
