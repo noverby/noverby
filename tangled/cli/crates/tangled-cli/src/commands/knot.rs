@@ -128,6 +128,7 @@ async fn migrate(args: KnotMigrateArgs) -> Result<()> {
         description: info.description.as_deref(),
         default_branch: None,
         source: Some(&source),
+        source_at: None,
         pds_base: &pds,
         access_jwt: &session.access_jwt,
     };

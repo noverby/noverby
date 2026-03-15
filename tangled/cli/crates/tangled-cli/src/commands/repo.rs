@@ -80,6 +80,7 @@ async fn create(args: RepoCreateArgs) -> Result<()> {
         description: args.description.as_deref(),
         default_branch: None,
         source: None,
+        source_at: None,
         pds_base: &pds,
         access_jwt: &session.access_jwt,
     };
@@ -328,25 +329,15 @@ async fn fork(args: RepoForkArgs) -> Result<()> {
         .await?;
 
     let fork_name = args.name.unwrap_or_else(|| source_name.clone());
-    let knot = args
-        .knot
-        .unwrap_or_else(|| info.knot.clone());
+    let knot = args.knot.unwrap_or_else(|| info.knot.clone());
 
-    // Build HTTPS source URL for seeding
-    let knot_host = if info.knot == "knot1.tangled.sh" {
-        "tangled.org".to_string()
-    } else {
-        info.knot.clone()
-    };
-    let source_url = format!(
-        "https://{}/{}/{}",
-        knot_host,
-        owner.trim_start_matches('@'),
-        source_name
-    );
+    // Build HTTPS source URL for the knot to clone (knot uses DID-based paths)
+    let source_url = format!("https://{}/{}/{}", info.knot, info.did, source_name);
 
-    let api_base = std::env::var("TANGLED_API_BASE").unwrap_or_else(|_| "https://tngl.sh".into());
-    let api_client = crate::util::make_client(&api_base);
+    // AT URI of the source repo record (marks this as a fork in the PDS)
+    let source_at = format!("at://{}/sh.tangled.repo/{}", info.did, info.rkey);
+
+    let api_client = crate::util::make_default_client();
 
     let opts = tangled_api::client::CreateRepoOptions {
         did: &session.did,
@@ -355,6 +346,7 @@ async fn fork(args: RepoForkArgs) -> Result<()> {
         description: info.description.as_deref(),
         default_branch: None,
         source: Some(&source_url),
+        source_at: Some(&source_at),
         pds_base: &pds,
         access_jwt: &session.access_jwt,
     };
