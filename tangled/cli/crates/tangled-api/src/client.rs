@@ -173,6 +173,15 @@ impl TangledClient {
         })
     }
 
+    pub async fn post_json_pub<TReq: Serialize, TRes: DeserializeOwned>(
+        &self,
+        method: &str,
+        req: &TReq,
+        bearer: Option<&str>,
+    ) -> Result<TRes> {
+        self.post_json(method, req, bearer).await
+    }
+
     pub async fn login_with_password(
         &self,
         handle: &str,
