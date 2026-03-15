@@ -136,6 +136,11 @@ pub async fn run_server(
         did_web: cfg.did_web.clone(),
         owner: cfg.owner.clone(),
         token: cfg.token.clone(),
+        plc_url: cfg.plc_url.clone(),
+        http_client: reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("failed to build HTTP client"),
         dev: cfg.dev,
     });
 

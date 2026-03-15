@@ -49,6 +49,10 @@ pub struct XrpcContext {
     pub owner: String,
     /// The configured authentication token.
     pub token: String,
+    /// PLC directory URL for DID resolution (e.g. `https://plc.directory`).
+    pub plc_url: String,
+    /// Shared HTTP client for PLC directory requests.
+    pub http_client: reqwest::Client,
     /// Whether dev mode is enabled.
     pub dev: bool,
 }
@@ -58,6 +62,7 @@ impl std::fmt::Debug for XrpcContext {
         f.debug_struct("XrpcContext")
             .field("did_web", &self.did_web)
             .field("owner", &self.owner)
+            .field("plc_url", &self.plc_url)
             .field("dev", &self.dev)
             .finish_non_exhaustive()
     }

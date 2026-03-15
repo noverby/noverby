@@ -553,6 +553,8 @@ mod tests {
             did_web,
             owner: TEST_OWNER.into(),
             token: TEST_TOKEN.into(),
+            plc_url: "https://plc.directory".into(),
+            http_client: reqwest::Client::new(),
             dev: true,
         });
 
