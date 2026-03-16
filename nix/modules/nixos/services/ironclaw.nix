@@ -20,6 +20,27 @@
   # Double the % signs so systemd doesn't interpret them as specifiers.
   urlEncodeHost = host:
     builtins.replaceStrings ["/"] ["%%2F"] host;
+
+  # Build a channels-src directory with patched Matrix capabilities config.
+  matrixConfigJson = builtins.toJSON {
+    inherit (cfg.matrix) homeserver;
+    dm_policy = cfg.matrix.dmPolicy;
+    allow_from = cfg.matrix.allowFrom;
+    room_ids = cfg.matrix.roomIds;
+    require_mention = cfg.matrix.requireMention;
+  };
+
+  channelsSrc = let
+    baseSrc = "${cfg.package}/share/ironclaw/channels-src";
+  in
+    pkgs.runCommand "ironclaw-channels-src" {
+      nativeBuildInputs = [pkgs.jq];
+    } ''
+      cp -r --no-preserve=mode ${baseSrc} $out
+      jq --argjson cfg '${matrixConfigJson}' '.config = $cfg' \
+        ${baseSrc}/matrix/matrix.capabilities.json \
+        > $out/matrix/matrix.capabilities.json
+    '';
 in {
   options.services.ironclaw = {
     enable = lib.mkEnableOption "IronClaw AI assistant";
@@ -94,6 +115,43 @@ in {
       type = lib.types.listOf lib.types.str;
       default = [];
       description = "Extra command-line arguments passed to the ironclaw binary.";
+    };
+
+    matrix = {
+      homeserver = lib.mkOption {
+        type = lib.types.str;
+        default = "https://matrix.org";
+        description = "Matrix homeserver base URL.";
+      };
+
+      dmPolicy = lib.mkOption {
+        type = lib.types.enum ["pairing" "allowlist" "open"];
+        default = "pairing";
+        description = ''
+          DM access control policy.
+          - pairing: require mutual pairing approval
+          - allowlist: only allow users in allowFrom
+          - open: accept DMs from anyone
+        '';
+      };
+
+      allowFrom = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Matrix user IDs allowed to message the bot (used with allowlist/pairing policies).";
+      };
+
+      roomIds = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Matrix room IDs to join and monitor. Empty means DM-only.";
+      };
+
+      requireMention = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether the bot requires an @-mention in rooms to respond.";
+      };
     };
   };
 
@@ -176,7 +234,7 @@ in {
         DATABASE_URL = "postgres://${cfg.user}@${urlEncodeHost cfg.database.host}/${cfg.database.name}";
         DATABASE_SSLMODE = "disable";
         IRONCLAW_HOME = cfg.dataDir;
-        IRONCLAW_CHANNELS_SRC = "${cfg.package}/share/ironclaw/channels-src";
+        IRONCLAW_CHANNELS_SRC = "${channelsSrc}";
         ONBOARD_COMPLETED = "true";
       };
 

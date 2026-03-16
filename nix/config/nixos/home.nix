@@ -44,6 +44,11 @@
           enable = true;
           logLevel = "ironclaw=info";
           environmentFile = "/run/agenix/ironclaw-env";
+          matrix = {
+            homeserver = "https://matrix.overby.me";
+            dmPolicy = "allowlist";
+            allowFrom = ["@noverby:overby.me"];
+          };
         };
 
         tangled-spindles.default = {
