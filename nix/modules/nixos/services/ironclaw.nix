@@ -15,6 +15,11 @@
   ...
 }: let
   cfg = config.services.ironclaw;
+  # URL-encode the database host so Unix socket paths (/run/postgresql)
+  # become valid URL components (%2Frun%2Fpostgresql).
+  # Double the % signs so systemd doesn't interpret them as specifiers.
+  urlEncodeHost = host:
+    builtins.replaceStrings ["/"] ["%%2F"] host;
 in {
   options.services.ironclaw = {
     enable = lib.mkEnableOption "IronClaw AI assistant";
@@ -126,6 +131,11 @@ in {
         RemainAfterExit = true;
       };
       script = ''
+        # Wait for ensureDatabases (runs in postgresql postStart) to create the DB
+        while ! ${config.services.postgresql.package}/bin/psql \
+          -d ${lib.escapeShellArg cfg.database.name} -c "SELECT 1" &>/dev/null; do
+          sleep 1
+        done
         ${config.services.postgresql.package}/bin/psql \
           -d ${lib.escapeShellArg cfg.database.name} \
           -c "CREATE EXTENSION IF NOT EXISTS vector;"
@@ -163,9 +173,11 @@ in {
 
       environment = {
         RUST_LOG = cfg.logLevel;
-        DATABASE_URL = "postgres://${cfg.user}@${cfg.database.host}/${cfg.database.name}";
+        DATABASE_URL = "postgres://${cfg.user}@${urlEncodeHost cfg.database.host}/${cfg.database.name}";
+        DATABASE_SSLMODE = "disable";
         IRONCLAW_HOME = cfg.dataDir;
         IRONCLAW_CHANNELS_SRC = "${cfg.package}/share/ironclaw/channels-src";
+        ONBOARD_COMPLETED = "true";
       };
 
       serviceConfig = {
@@ -175,7 +187,7 @@ in {
         WorkingDirectory = cfg.dataDir;
         StateDirectory = "ironclaw";
         ExecStart = let
-          args = lib.concatStringsSep " " cfg.extraArgs;
+          args = lib.concatStringsSep " " (["--no-onboard"] ++ cfg.extraArgs);
         in "${cfg.package}/bin/ironclaw ${args}";
 
         Restart = "on-failure";

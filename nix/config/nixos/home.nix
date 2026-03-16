@@ -33,24 +33,43 @@
         mode = "600";
       };
 
-      services.tangled-spindles.default = {
-        enable = true;
-        hostname = "spindle.overby.me";
-        owner = "did:plc:eukcx4amfqmhfrnkix7zwm34";
-        tokenFile = "/run/agenix/spindle-token";
-        engine = {
-          maxJobs = 2;
-          queueSize = 100;
-          workflowTimeout = "2h";
-        };
+      age.secrets.ironclaw-env = {
+        file = inputs.self.secrets.ironclaw-env;
+        owner = "ironclaw";
+        mode = "600";
       };
 
-      services.caddy = {
-        enable = true;
-        virtualHosts."spindle.overby.me" = {
-          extraConfig = ''
-            reverse_proxy localhost:6555
-          '';
+      services = {
+        ironclaw = {
+          enable = true;
+          logLevel = "ironclaw=info";
+          environmentFile = "/run/agenix/ironclaw-env";
+        };
+
+        tangled-spindles.default = {
+          enable = true;
+          hostname = "spindle.overby.me";
+          owner = "did:plc:eukcx4amfqmhfrnkix7zwm34";
+          tokenFile = "/run/agenix/spindle-token";
+          engine = {
+            maxJobs = 2;
+            queueSize = 100;
+            workflowTimeout = "2h";
+          };
+        };
+
+        caddy = {
+          enable = true;
+          virtualHosts."spindle.overby.me" = {
+            extraConfig = ''
+              reverse_proxy localhost:6555
+            '';
+          };
+          virtualHosts."ironclaw.overby.me" = {
+            extraConfig = ''
+              reverse_proxy localhost:3000
+            '';
+          };
         };
       };
 

@@ -19,4 +19,7 @@ in {
   "spindle-token.age" = {
     inherit publicKeys;
   };
+  "ironclaw-env.age" = {
+    inherit publicKeys;
+  };
 }

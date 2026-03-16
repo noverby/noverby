@@ -9,13 +9,13 @@
   wasm-tools,
   stdenv,
 }: let
-  version = "0.9.0";
+  version = "0.18.0";
 
   src = fetchFromGitHub {
     owner = "nearai";
     repo = "ironclaw";
     rev = "v${version}";
-    hash = "sha256-bpF/9rsa/5kzSNMW0YnbfqVKSnKL1Q+yBNUhEnrzn7g=";
+    hash = "sha256-XFvrhu8MBQhTpK3lQxVLJ83C10Rh18cWrzkiWeOde1k=";
   };
 
   # Rust toolchain with wasm32-wasip2 target for building WASM channels
@@ -50,7 +50,7 @@
   # Vendored cargo dependencies for the telegram channel workspace
   telegramChannelDeps = rustPlatform.fetchCargoVendor {
     src = telegramChannelSrc + "/channels-src/telegram";
-    hash = "sha256-wN3NfkNLmk2W4NpSCuQeoDm524gVb5FtKCbD6+XiFKE=";
+    hash = "sha256-IDT/7DLItLRs2biE04qyb7OkizClObZs3+R6Xjc2LbQ=";
   };
 
   # Pre-built telegram WASM channel component
@@ -95,7 +95,7 @@ in
     pname = "ironclaw";
     inherit version src;
 
-    cargoHash = "sha256-0I0SgSsS9GatE9JMfInHhlUu9VVEoSqf2KwAo5atz+M=";
+    cargoHash = "sha256-0Fdj9+UVKrNi3X77MOxA5Az87Rw8wKnTp2W42eTD4TI=";
 
     nativeBuildInputs = [
       pkg-config
@@ -117,8 +117,60 @@ in
       cp ${telegramChannelWasm}/telegram.capabilities.json \
          channels-src/telegram/telegram.capabilities.json
 
-      # Neuter build.rs so it doesn't try to re-compile the channel
-      echo 'fn main() {}' > build.rs
+      # Replace build.rs with one that only embeds the registry catalog
+      # (skipping the WASM channel build since we pre-build it above)
+      cat > build.rs << 'BUILDRS'
+      use std::env;
+      use std::fs;
+      use std::path::{Path, PathBuf};
+
+      fn main() {
+          let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+          let registry_dir = root.join("registry");
+          let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+          let out_path = out_dir.join("embedded_catalog.json");
+
+          if !registry_dir.is_dir() {
+              fs::write(&out_path, r#"{"tools":[],"channels":[],"bundles":{"bundles":{}}}"#).unwrap();
+              return;
+          }
+
+          let mut tools = Vec::new();
+          let mut channels = Vec::new();
+
+          let tools_dir = registry_dir.join("tools");
+          if tools_dir.is_dir() { collect_json_files(&tools_dir, &mut tools); }
+
+          let channels_dir = registry_dir.join("channels");
+          if channels_dir.is_dir() { collect_json_files(&channels_dir, &mut channels); }
+
+          let bundles_path = registry_dir.join("_bundles.json");
+          let bundles_raw = if bundles_path.is_file() {
+              fs::read_to_string(&bundles_path).unwrap_or_else(|_| r#"{"bundles":{}}"#.to_string())
+          } else {
+              r#"{"bundles":{}}"#.to_string()
+          };
+
+          let catalog = format!(
+              r#"{{"tools":[{}],"channels":[{}],"bundles":{}}}"#,
+              tools.join(","), channels.join(","), bundles_raw,
+          );
+          fs::write(&out_path, catalog).unwrap();
+      }
+
+      fn collect_json_files(dir: &Path, out: &mut Vec<String>) {
+          let mut entries: Vec<_> = fs::read_dir(dir).unwrap()
+              .filter_map(|e| e.ok())
+              .filter(|e| e.path().is_file() && e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+              .collect();
+          entries.sort_by_key(|e| e.file_name());
+          for entry in entries {
+              if let Ok(content) = fs::read_to_string(entry.path()) {
+                  out.push(content);
+              }
+          }
+      }
+      BUILDRS
     '';
 
     postInstall = ''
