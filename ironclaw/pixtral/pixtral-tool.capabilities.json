@@ -14,10 +14,14 @@
 				}
 			],
 			"credentials": {
-				"secret_name": "mistral_api_key",
-				"inject": {
-					"header": "Authorization",
-					"prefix": "Bearer "
+				"mistral_token": {
+					"secret_name": "mistral_api_key",
+					"location": {
+						"type": "header",
+						"name": "Authorization",
+						"prefix": "Bearer "
+					},
+					"host_patterns": ["api.mistral.ai"]
 				}
 			},
 			"rate_limit": {
