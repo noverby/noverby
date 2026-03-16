@@ -44,10 +44,11 @@
           enable = true;
           logLevel = "ironclaw=info";
           environmentFile = "/run/agenix/ironclaw-env";
+          activatedChannels = ["matrix"];
           matrix = {
             homeserver = "https://matrix.overby.me";
             dmPolicy = "allowlist";
-            allowFrom = ["@noverby:overby.me"];
+            allowFrom = ["@niclas:overby.me"];
           };
         };
 

@@ -109,6 +109,7 @@ const CHANNEL_NAME: &str = "matrix";
 /// Metadata stored with emitted messages for response routing.
 #[derive(Debug, Serialize, Deserialize)]
 struct MatrixMessageMetadata {
+    homeserver: String,
     room_id: String,
     event_id: String,
     sender: String,
@@ -377,6 +378,7 @@ impl Guest for MatrixChannel {
                         }
 
                         let metadata = MatrixMessageMetadata {
+                            homeserver: homeserver.clone(),
                             room_id: room_id.clone(),
                             event_id: event_id.clone(),
                             sender: sender.clone(),
@@ -421,6 +423,7 @@ impl Guest for MatrixChannel {
             .map_err(|e| format!("Failed to parse metadata: {}", e))?;
 
         send_room_message(
+            &metadata.homeserver,
             &metadata.room_id,
             &response.content,
             Some(&metadata.event_id),
@@ -429,8 +432,16 @@ impl Guest for MatrixChannel {
     }
 
     fn on_broadcast(user_id: String, response: AgentResponse) -> Result<(), String> {
+        let homeserver =
+            channel_host::workspace_read("state/homeserver").ok_or("No homeserver URL")?;
         // user_id is expected to be a room_id for Matrix
-        send_room_message(&user_id, &response.content, None, &response.attachments)
+        send_room_message(
+            &homeserver,
+            &user_id,
+            &response.content,
+            None,
+            &response.attachments,
+        )
     }
 
     fn on_status(update: StatusUpdate) {
@@ -441,10 +452,10 @@ impl Guest for MatrixChannel {
 
         match update.status {
             StatusType::Thinking => {
-                send_typing(&metadata.room_id, true);
+                send_typing(&metadata.homeserver, &metadata.room_id, true);
             }
             StatusType::Done | StatusType::Interrupted => {
-                send_typing(&metadata.room_id, false);
+                send_typing(&metadata.homeserver, &metadata.room_id, false);
             }
             StatusType::ApprovalNeeded
             | StatusType::JobStarted
@@ -452,7 +463,8 @@ impl Guest for MatrixChannel {
             | StatusType::AuthCompleted => {
                 let msg = update.message.trim();
                 if !msg.is_empty() {
-                    let _ = send_room_message(&metadata.room_id, msg, None, &[]);
+                    let _ =
+                        send_room_message(&metadata.homeserver, &metadata.room_id, msg, None, &[]);
                 }
             }
             _ => {}
@@ -576,16 +588,15 @@ fn create_sync_filter(homeserver: &str, user_id: &str, room_ids: &[String]) -> O
 }
 
 fn send_room_message(
+    homeserver: &str,
     room_id: &str,
     text: &str,
     reply_to_event_id: Option<&str>,
     attachments: &[exports::near::agent::channel::Attachment],
 ) -> Result<(), String> {
-    let homeserver = channel_host::workspace_read("state/homeserver").ok_or("No homeserver URL")?;
-
     // Upload and send any attachments first
     for attachment in attachments {
-        upload_and_send_attachment(&homeserver, room_id, attachment, reply_to_event_id)?;
+        upload_and_send_attachment(homeserver, room_id, attachment, reply_to_event_id)?;
     }
 
     // Send text message
@@ -727,15 +738,8 @@ fn upload_and_send_attachment(
     }
 }
 
-fn send_typing(room_id: &str, typing: bool) {
-    let homeserver = match channel_host::workspace_read("state/homeserver") {
-        Some(hs) => hs,
-        None => return,
-    };
-    let bot_user_id = match channel_host::workspace_read(BOT_USER_ID_PATH) {
-        Some(id) => id,
-        None => return,
-    };
+fn send_typing(homeserver: &str, room_id: &str, typing: bool) {
+    let bot_user_id = channel_host::workspace_read(BOT_USER_ID_PATH).unwrap_or_default();
 
     let url = format!(
         "{}/_matrix/client/v3/rooms/{}/typing/{}",

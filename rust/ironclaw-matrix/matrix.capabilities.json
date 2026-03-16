@@ -29,7 +29,8 @@
 					"secret_name": "matrix_access_token",
 					"location": {
 						"type": "header",
-						"placeholder": "{MATRIX_ACCESS_TOKEN}"
+						"name": "Authorization",
+						"prefix": "Bearer "
 					},
 					"host_patterns": ["*"]
 				}

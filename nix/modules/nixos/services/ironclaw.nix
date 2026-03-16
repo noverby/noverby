@@ -21,7 +21,9 @@
   urlEncodeHost = host:
     builtins.replaceStrings ["/"] ["%%2F"] host;
 
-  # Build a channels-src directory with patched capabilities configs.
+  # Build a flat WASM channels directory with patched capabilities configs.
+  # IronClaw v0.18.0 loads WASM channels from WASM_CHANNELS_DIR as a flat
+  # directory: <name>.wasm + <name>.capabilities.json per channel.
   matrixConfigJson = builtins.toJSON {
     inherit (cfg.matrix) homeserver;
     dm_policy = cfg.matrix.dmPolicy;
@@ -37,20 +39,59 @@
     respond_to_mentions = cfg.bluesky.respondToMentions;
   };
 
-  channelsSrc = let
-    baseSrc = "${cfg.package}/share/ironclaw/channels-src";
-  in
-    pkgs.runCommand "ironclaw-channels-src" {
+  baseSrc = "${cfg.package}/share/ironclaw/channels-src";
+
+  # Extract hostname from a URL like "https://matrix.overby.me" -> "matrix.overby.me"
+  extractHost = url:
+    builtins.head (builtins.match "https?://([^/:]+).*" url);
+
+  matrixAllowlistJson = builtins.toJSON [
+    {
+      host = extractHost cfg.matrix.homeserver;
+      path_prefix = "/_matrix/";
+    }
+  ];
+
+  blueskyAllowlistJson = builtins.toJSON [
+    {
+      host = extractHost cfg.bluesky.pdsUrl;
+      path_prefix = "/xrpc/";
+    }
+  ];
+
+  wasmChannelsDir =
+    pkgs.runCommand "ironclaw-wasm-channels" {
       nativeBuildInputs = [pkgs.jq];
     } ''
-      cp -r --no-preserve=mode ${baseSrc} $out
-      jq --argjson cfg '${matrixConfigJson}' '.config = $cfg' \
+      mkdir -p $out
+
+      # Matrix channel
+      cp ${baseSrc}/matrix/target/wasm32-wasip2/release/matrix_channel.wasm \
+         $out/matrix.wasm
+      jq --argjson cfg '${matrixConfigJson}' \
+         --argjson allowlist '${matrixAllowlistJson}' \
+         '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
         ${baseSrc}/matrix/matrix.capabilities.json \
-        > $out/matrix/matrix.capabilities.json
-      jq --argjson cfg '${blueskyConfigJson}' '.config = $cfg' \
+        > $out/matrix.capabilities.json
+
+      # Bluesky channel
+      cp ${baseSrc}/bluesky/target/wasm32-wasip2/release/bluesky_channel.wasm \
+         $out/bluesky.wasm
+      jq --argjson cfg '${blueskyConfigJson}' \
+         --argjson allowlist '${blueskyAllowlistJson}' \
+         '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
         ${baseSrc}/bluesky/bluesky.capabilities.json \
-        > $out/bluesky/bluesky.capabilities.json
+        > $out/bluesky.capabilities.json
+
+      # Telegram channel
+      cp ${baseSrc}/telegram/target/wasm32-wasip2/release/telegram_channel.wasm \
+         $out/telegram.wasm
+      cp ${baseSrc}/telegram/telegram.capabilities.json \
+         $out/telegram.capabilities.json
     '';
+
+  # List of channel names to auto-activate on startup.
+  activatedChannelsJson = builtins.toJSON cfg.activatedChannels;
 in {
   options.services.ironclaw = {
     enable = lib.mkEnableOption "IronClaw AI assistant";
@@ -86,10 +127,15 @@ in {
       description = ''
         Path to an environment file loaded by the systemd unit.
         Use this to supply secrets such as API keys without putting
-        them in the Nix store.  Expected variables include at minimum:
+        them in the Nix store.  Expected variables:
 
           LLM_BACKEND=nearai
           NEARAI_API_KEY=<your-key>
+          SECRETS_MASTER_KEY=<hex-encoded-32-byte-key>
+          HTTP_WEBHOOK_SECRET=<random-secret>
+
+        Channel-specific tokens (e.g. MATRIX_ACCESS_TOKEN) are
+        auto-persisted to the encrypted secrets store on startup.
 
         When using agenix, point this at the decrypted secret path.
       '';
@@ -125,6 +171,27 @@ in {
       type = lib.types.listOf lib.types.str;
       default = [];
       description = "Extra command-line arguments passed to the ironclaw binary.";
+    };
+
+    http = {
+      host = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1";
+        description = "HTTP host for the WASM channel runtime webhook server.";
+      };
+
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 8080;
+        description = "HTTP port for the WASM channel runtime webhook server.";
+      };
+    };
+
+    activatedChannels = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      example = ["matrix" "bluesky"];
+      description = "Channel names to auto-activate on startup.";
     };
 
     matrix = {
@@ -216,31 +283,6 @@ in {
       };
     };
 
-    # Create the pgvector extension in the ironclaw database after PG starts.
-    systemd.services.ironclaw-db-setup = lib.mkIf cfg.database.createLocally {
-      description = "IronClaw database schema bootstrap (pgvector)";
-      after = ["postgresql.service"];
-      requires = ["postgresql.service"];
-      wantedBy = ["ironclaw.service"];
-      before = ["ironclaw.service"];
-      serviceConfig = {
-        Type = "oneshot";
-        User = "postgres";
-        Group = "postgres";
-        RemainAfterExit = true;
-      };
-      script = ''
-        # Wait for ensureDatabases (runs in postgresql postStart) to create the DB
-        while ! ${config.services.postgresql.package}/bin/psql \
-          -d ${lib.escapeShellArg cfg.database.name} -c "SELECT 1" &>/dev/null; do
-          sleep 1
-        done
-        ${config.services.postgresql.package}/bin/psql \
-          -d ${lib.escapeShellArg cfg.database.name} \
-          -c "CREATE EXTENSION IF NOT EXISTS vector;"
-      '';
-    };
-
     # ── System user / group ──────────────────────────────────────────────
     users.users.${cfg.user} = {
       isSystemUser = true;
@@ -252,60 +294,114 @@ in {
 
     users.groups.${cfg.group} = {};
 
-    # ── Systemd service ──────────────────────────────────────────────────
-    systemd.services.ironclaw = {
-      description = "IronClaw AI Assistant";
-      documentation = ["https://github.com/nearai/ironclaw"];
+    # ── Systemd services ────────────────────────────────────────────────
+    systemd.services = {
+      # Create the pgvector extension in the ironclaw database after PG starts.
+      ironclaw-db-setup = lib.mkIf cfg.database.createLocally {
+        description = "IronClaw database schema bootstrap (pgvector)";
+        after = ["postgresql.service"];
+        requires = ["postgresql.service"];
+        wantedBy = ["ironclaw.service"];
+        before = ["ironclaw.service"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = "postgres";
+          Group = "postgres";
+          RemainAfterExit = true;
+        };
+        script = ''
+          # Wait for ensureDatabases (runs in postgresql postStart) to create the DB
+          while ! ${config.services.postgresql.package}/bin/psql \
+            -d ${lib.escapeShellArg cfg.database.name} -c "SELECT 1" &>/dev/null; do
+            sleep 1
+          done
+          ${config.services.postgresql.package}/bin/psql \
+            -d ${lib.escapeShellArg cfg.database.name} \
+            -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        '';
+      };
 
-      after =
-        ["network-online.target"]
-        ++ lib.optionals cfg.database.createLocally [
+      # Pre-set activated_channels in the database so WASM channels auto-activate.
+      ironclaw-channels-setup = lib.mkIf (cfg.database.createLocally && cfg.activatedChannels != []) {
+        description = "IronClaw activated channels bootstrap";
+        after = ["postgresql.service" "ironclaw-db-setup.service"];
+        requires = ["postgresql.service" "ironclaw-db-setup.service"];
+        wantedBy = ["ironclaw.service"];
+        before = ["ironclaw.service"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = "postgres";
+          Group = "postgres";
+          RemainAfterExit = true;
+        };
+        script = let
+          psql = "${config.services.postgresql.package}/bin/psql";
+          db = lib.escapeShellArg cfg.database.name;
+        in ''
+          ${psql} -d ${db} \
+            -v activated_channels=${lib.escapeShellArg activatedChannelsJson} \
+            -c "INSERT INTO settings (user_id, key, value) VALUES ('default', 'activated_channels', :'activated_channels'::jsonb) ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value;"
+        '';
+      };
+
+      ironclaw = {
+        description = "IronClaw AI Assistant";
+        documentation = ["https://github.com/nearai/ironclaw"];
+
+        after =
+          ["network-online.target"]
+          ++ lib.optionals cfg.database.createLocally [
+            "postgresql.service"
+            "ironclaw-db-setup.service"
+          ];
+        requires = lib.optionals cfg.database.createLocally [
           "postgresql.service"
           "ironclaw-db-setup.service"
         ];
-      requires = lib.optionals cfg.database.createLocally [
-        "postgresql.service"
-        "ironclaw-db-setup.service"
-      ];
-      wants = ["network-online.target"];
-      wantedBy = ["multi-user.target"];
+        wants = ["network-online.target"];
+        wantedBy = ["multi-user.target"];
 
-      environment = {
-        RUST_LOG = cfg.logLevel;
-        DATABASE_URL = "postgres://${cfg.user}@${urlEncodeHost cfg.database.host}/${cfg.database.name}";
-        DATABASE_SSLMODE = "disable";
-        IRONCLAW_HOME = cfg.dataDir;
-        IRONCLAW_CHANNELS_SRC = "${channelsSrc}";
-        ONBOARD_COMPLETED = "true";
-      };
+        environment = {
+          RUST_LOG = cfg.logLevel;
+          DATABASE_URL = "postgres://${cfg.user}@${urlEncodeHost cfg.database.host}/${cfg.database.name}";
+          DATABASE_SSLMODE = "disable";
+          IRONCLAW_HOME = cfg.dataDir;
+          WASM_CHANNELS_DIR = "${wasmChannelsDir}";
+          ONBOARD_COMPLETED = "true";
+          # HTTP channel enables the WASM channel runtime
+          HTTP_HOST = cfg.http.host;
+          HTTP_PORT = toString cfg.http.port;
+          # HTTP_WEBHOOK_SECRET and SECRETS_MASTER_KEY must be in environmentFile
+        };
 
-      serviceConfig = {
-        Type = "simple";
-        User = cfg.user;
-        Group = cfg.group;
-        WorkingDirectory = cfg.dataDir;
-        StateDirectory = "ironclaw";
-        ExecStart = let
-          args = lib.concatStringsSep " " (["--no-onboard"] ++ cfg.extraArgs);
-        in "${cfg.package}/bin/ironclaw ${args}";
+        serviceConfig = {
+          Type = "simple";
+          User = cfg.user;
+          Group = cfg.group;
+          WorkingDirectory = cfg.dataDir;
+          StateDirectory = "ironclaw";
+          ExecStart = let
+            args = lib.concatStringsSep " " (["--no-onboard"] ++ cfg.extraArgs);
+          in "${cfg.package}/bin/ironclaw ${args}";
 
-        Restart = "on-failure";
-        RestartSec = 10;
+          Restart = "on-failure";
+          RestartSec = 10;
 
-        # Load secrets from the environment file
-        EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
+          # Load secrets from the environment file
+          EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
 
-        # Hardening
-        NoNewPrivileges = true;
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        PrivateTmp = true;
-        ReadWritePaths = [cfg.dataDir];
-        ProtectKernelTunables = true;
-        ProtectKernelModules = true;
-        ProtectControlGroups = true;
-        RestrictSUIDSGID = true;
-        MemoryDenyWriteExecute = false; # WASM JIT needs W^X
+          # Hardening
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          ReadWritePaths = [cfg.dataDir];
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          RestrictSUIDSGID = true;
+          MemoryDenyWriteExecute = false; # WASM JIT needs W^X
+        };
       };
     };
 
