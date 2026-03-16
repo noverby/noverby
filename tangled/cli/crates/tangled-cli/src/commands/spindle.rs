@@ -1,6 +1,7 @@
 use crate::cli::{
     Cli, SpindleCommand, SpindleConfigArgs, SpindleListArgs, SpindleLogsArgs, SpindleRunArgs,
-    SpindleSecretAddArgs, SpindleSecretCommand, SpindleSecretListArgs, SpindleSecretRemoveArgs,
+    SpindleRunsArgs, SpindleSecretAddArgs, SpindleSecretCommand, SpindleSecretListArgs,
+    SpindleSecretRemoveArgs,
 };
 use anyhow::{anyhow, Result};
 use futures_util::StreamExt;
@@ -9,6 +10,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 pub async fn run(_cli: &Cli, cmd: SpindleCommand) -> Result<()> {
     match cmd {
         SpindleCommand::List(args) => list(args).await,
+        SpindleCommand::Runs(args) => runs(args).await,
         SpindleCommand::Config(args) => config(args).await,
         SpindleCommand::Run(args) => run_pipeline(args).await,
         SpindleCommand::Logs(args) => logs(args).await,
@@ -56,6 +58,56 @@ async fn list(args: SpindleListArgs) -> Result<()> {
                 p.pipeline.trigger_metadata.kind,
                 p.pipeline.trigger_metadata.repo.repo,
                 workflows
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn runs(args: SpindleRunsArgs) -> Result<()> {
+    let session = crate::util::load_session_with_refresh().await?;
+
+    let pds = session
+        .pds
+        .clone()
+        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
+        .unwrap_or_else(|| "https://bsky.social".into());
+    let pds_client = crate::util::make_client(&pds);
+
+    let (owner, name) = parse_repo_ref(
+        args.repo.as_deref().unwrap_or(&session.handle),
+        &session.handle,
+    );
+    let info = pds_client
+        .get_repo_info(owner, name, Some(session.access_jwt.as_str()))
+        .await?;
+
+    let spindle_base = info
+        .spindle
+        .clone()
+        .or_else(|| std::env::var("TANGLED_SPINDLE_BASE").ok())
+        .unwrap_or_else(|| "https://spindle.tangled.sh".to_string());
+    let api = crate::util::make_client(&spindle_base);
+
+    let mut params: Vec<(&str, String)> = vec![("limit", args.limit.to_string())];
+    if let Some(ref status) = args.status {
+        params.push(("status", status.clone()));
+    }
+
+    let runs = api.list_runs(&pds, &session.access_jwt, &params).await?;
+
+    if runs.is_empty() {
+        println!("No pipeline runs found");
+    } else {
+        println!("WORKFLOW_ID\tNAME\tSTATUS\tSTARTED\tFINISHED");
+        for r in runs {
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                r.workflow_id,
+                r.workflow_name,
+                r.status,
+                r.started_at.as_deref().unwrap_or("-"),
+                r.finished_at.as_deref().unwrap_or("-"),
             );
         }
     }

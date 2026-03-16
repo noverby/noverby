@@ -887,6 +887,107 @@ mod tests {
         assert_eq!(status.status, "cancelled");
     }
 
+    // -----------------------------------------------------------------------
+    // XRPC: list runs
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn xrpc_list_runs_empty() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::get("/xrpc/sh.tangled.spindle.listRuns")
+                    .header("authorization", auth_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["runs"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn xrpc_list_runs_returns_workflows() {
+        let (app, state) = test_app().await;
+
+        state
+            .db
+            .status_pending("wid-1", "knot.example.com", "rkey1", "build")
+            .unwrap();
+        state.db.status_running("wid-1").unwrap();
+        state
+            .db
+            .status_pending("wid-2", "knot.example.com", "rkey1", "test")
+            .unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::get("/xrpc/sh.tangled.spindle.listRuns")
+                    .header("authorization", auth_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let runs = json["runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 2);
+        // Most recent first
+        assert_eq!(runs[0]["workflow_id"], "wid-2");
+        assert_eq!(runs[1]["workflow_id"], "wid-1");
+    }
+
+    #[tokio::test]
+    async fn xrpc_list_runs_filter_by_status() {
+        let (app, state) = test_app().await;
+
+        state
+            .db
+            .status_pending("wid-1", "knot", "rkey1", "build")
+            .unwrap();
+        state.db.status_running("wid-1").unwrap();
+        state
+            .db
+            .status_pending("wid-2", "knot", "rkey2", "test")
+            .unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::get("/xrpc/sh.tangled.spindle.listRuns?status=running")
+                    .header("authorization", auth_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let runs = json["runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["status"], "running");
+    }
+
+    #[tokio::test]
+    async fn xrpc_list_runs_requires_auth() {
+        let (app, _) = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::get("/xrpc/sh.tangled.spindle.listRuns")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
     #[tokio::test]
     async fn xrpc_cancel_already_finished_returns_400() {
         let (app, state) = test_app().await;

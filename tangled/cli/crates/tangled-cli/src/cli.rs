@@ -481,7 +481,10 @@ pub struct KnotMigrateArgs {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum SpindleCommand {
+    /// List pipeline configurations
     List(SpindleListArgs),
+    /// List pipeline runs (workflow executions)
+    Runs(SpindleRunsArgs),
     Config(SpindleConfigArgs),
     Run(SpindleRunArgs),
     Logs(SpindleLogsArgs),
@@ -494,6 +497,19 @@ pub enum SpindleCommand {
 pub struct SpindleListArgs {
     #[arg(long)]
     pub repo: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct SpindleRunsArgs {
+    /// Repo: <owner>/<name>
+    #[arg(long)]
+    pub repo: Option<String>,
+    /// Filter by status (pending, running, success, failed, timeout, cancelled)
+    #[arg(long)]
+    pub status: Option<String>,
+    /// Maximum number of runs to show
+    #[arg(long, default_value_t = 20)]
+    pub limit: usize,
 }
 
 #[derive(Args, Debug, Clone)]

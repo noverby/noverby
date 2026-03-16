@@ -1560,6 +1560,37 @@ impl TangledClient {
         }
         Ok(out)
     }
+
+    pub async fn list_runs(
+        &self,
+        pds_base: &str,
+        access_jwt: &str,
+        params: &[(&str, String)],
+    ) -> Result<Vec<WorkflowRun>> {
+        let sa = self
+            .service_auth_token(self.base_host(), pds_base, access_jwt)
+            .await?;
+        #[derive(Deserialize)]
+        struct Res {
+            runs: Vec<WorkflowRun>,
+        }
+        let res: Res = self
+            .get_json("sh.tangled.spindle.listRuns", params, Some(&sa))
+            .await?;
+        Ok(res.runs)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowRun {
+    pub workflow_id: String,
+    pub pipeline_knot: String,
+    pub pipeline_rkey: String,
+    pub workflow_name: String,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

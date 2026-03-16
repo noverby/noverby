@@ -163,6 +163,14 @@ pub async fn dispatch_query(
             let repo = query.get("repo").cloned().unwrap_or_default();
             list_secrets_query(state, auth, &repo).await
         }
+        "sh.tangled.spindle.listRuns" => {
+            let (mut parts, _body) = request.into_parts();
+            let auth = match ServiceAuth::from_request_parts(&mut parts, &state).await {
+                Ok(a) => a,
+                Err(e) => return e.into_response(),
+            };
+            list_runs(state, auth, &query).await
+        }
         _ => {
             let err = XrpcError::not_found(format!("unknown XRPC query: {}", method.0));
             (StatusCode::NOT_FOUND, Json(err)).into_response()
@@ -602,4 +610,63 @@ async fn cancel_pipeline(
 
     info!(workflow_id = %req.workflow_id, "cancelled workflow");
     (StatusCode::OK, Json(serde_json::json!({"success": true}))).into_response()
+}
+
+/// List workflow runs. Requires member authorization.
+///
+/// Optional query parameters:
+/// - `pipeline_knot` + `pipeline_rkey`: filter by pipeline
+/// - `status`: filter by status (pending, running, success, failed, timeout, cancelled)
+/// - `limit`: max results (default 50)
+async fn list_runs(
+    State(ctx): State<Arc<XrpcContext>>,
+    _auth: ServiceAuth,
+    query: &std::collections::HashMap<String, String>,
+) -> Response {
+    let limit: usize = query
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50);
+
+    let rows = if let (Some(knot), Some(rkey)) =
+        (query.get("pipeline_knot"), query.get("pipeline_rkey"))
+    {
+        ctx.db.get_statuses_for_pipeline(knot, rkey)
+    } else if let Some(status) = query.get("status") {
+        ctx.db.get_statuses_by_status(status)
+    } else {
+        ctx.db.get_all_statuses()
+    };
+
+    match rows {
+        Ok(rows) => {
+            // Return most recent first, limited
+            let runs: Vec<serde_json::Value> = rows
+                .into_iter()
+                .rev()
+                .take(limit)
+                .map(|r| {
+                    serde_json::json!({
+                        "workflow_id": r.workflow_id,
+                        "pipeline_knot": r.pipeline_knot,
+                        "pipeline_rkey": r.pipeline_rkey,
+                        "workflow_name": r.workflow_name,
+                        "status": r.status,
+                        "started_at": r.started_at,
+                        "finished_at": r.finished_at,
+                        "created_at": r.created_at,
+                    })
+                })
+                .collect();
+            (StatusCode::OK, Json(serde_json::json!({"runs": runs}))).into_response()
+        }
+        Err(e) => {
+            warn!(%e, "failed to list workflow runs");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(XrpcError::internal("failed to list runs")),
+            )
+                .into_response()
+        }
+    }
 }
