@@ -91,6 +91,18 @@ struct ConversationResponse {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 enum OutputEntry {
+    #[serde(rename = "message.output")]
+    MessageOutput {
+        #[serde(default)]
+        content: Vec<ContentPart>,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+enum ContentPart {
     #[serde(rename = "tool_file")]
     ToolFile {
         file_id: String,
@@ -236,8 +248,12 @@ fn generate_image(agent_id: &str, prompt: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to parse conversation response: {e}"))?;
 
     for output in &conversation.outputs {
-        if let OutputEntry::ToolFile { file_id, .. } = output {
-            return Ok(file_id.clone());
+        if let OutputEntry::MessageOutput { content } = output {
+            for part in content {
+                if let ContentPart::ToolFile { file_id, .. } = part {
+                    return Ok(file_id.clone());
+                }
+            }
         }
     }
 

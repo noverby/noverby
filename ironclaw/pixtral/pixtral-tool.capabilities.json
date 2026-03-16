@@ -20,6 +20,17 @@
 			}
 		]
 	},
+	"parameters": {
+		"type": "object",
+		"properties": {
+			"prompt": {
+				"type": "string",
+				"description": "A detailed text description of the image to generate. Be specific about style, subject, composition, lighting, etc."
+			}
+		},
+		"required": ["prompt"],
+		"additionalProperties": false
+	},
 	"capabilities": {
 		"http": {
 			"allowlist": [
