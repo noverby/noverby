@@ -1,0 +1,29 @@
+{
+	"version": "0.1.0",
+	"wit_version": "0.3.0",
+	"type": "tool",
+	"name": "pixtral",
+	"description": "Generate images using the Mistral AI image generation API",
+	"capabilities": {
+		"http": {
+			"allowlist": [
+				{
+					"host": "api.mistral.ai",
+					"path_prefix": "/v1/",
+					"methods": ["POST", "GET"]
+				}
+			],
+			"credentials": {
+				"secret_name": "mistral_api_key",
+				"inject": {
+					"header": "Authorization",
+					"prefix": "Bearer "
+				}
+			},
+			"rate_limit": {
+				"requests_per_minute": 10,
+				"requests_per_hour": 100
+			}
+		}
+	}
+}

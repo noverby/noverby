@@ -221,6 +221,7 @@
         ./ironclaw/mail
         ./ironclaw/calendar
         ./ironclaw/contacts
+        ./ironclaw/pixtral
 
         ./tangled/cli
         ./tangled/spindle-nix-engine

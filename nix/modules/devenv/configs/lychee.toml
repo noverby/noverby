@@ -15,4 +15,5 @@ exclude = [
   'https://spindle.tangled.sh/',
   'https://cloudflare-dns.com/',
   'https://mail.overby.me/',
+  'https://api.mistral.ai/',
 ]

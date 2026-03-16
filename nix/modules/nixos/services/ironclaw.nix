@@ -203,6 +203,11 @@
          '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
         ${pkgs.ironclaw-searxng-tool}/searxng-tool.capabilities.json \
         > $out/searxng.capabilities.json
+
+      # Pixtral image generation tool
+      cp ${pkgs.ironclaw-pixtral-tool}/pixtral.wasm $out/pixtral.wasm
+      cp ${pkgs.ironclaw-pixtral-tool}/pixtral-tool.capabilities.json \
+         $out/pixtral.capabilities.json
     '';
 
   # List of channel names to auto-activate on startup.
