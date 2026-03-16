@@ -114,6 +114,13 @@
 |-|-|
 | [Nushell-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nushell/plugin-tramp) | TRAMP-inspired remote filesystem plugin for Nushell |
 
+#### IronClaw
+
+| Project | Description |
+|-|-|
+| [IronClaw Matrix Channel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/ironclaw/matrix) | Matrix channel for IronClaw AI assistant |
+| [IronClaw Bluesky Channel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/ironclaw/bluesky) | Bluesky/AT Protocol channel for IronClaw AI assistant |
+
 #### Tangled
 
 | Project | Description |

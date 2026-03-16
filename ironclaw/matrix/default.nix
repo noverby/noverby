@@ -1,5 +1,5 @@
 {
-  packages.ironclaw-bluesky-channel = {
+  packages.ironclaw-matrix-channel = {
     lib,
     rust-bin,
     makeRustPlatform,
@@ -23,11 +23,11 @@
           ./wit
         ];
       };
-      hash = "sha256-50FUEbkktLbxlgCXqRU6nQmNtSQIYWL2VAq9cBAF3dg=";
+      hash = "sha256-Ht6AQ1c1KsUMu/VNzs8z/nJ4W/wsu6ZqIPxFdoMIHeE=";
     };
   in
     stdenv.mkDerivation {
-      pname = "ironclaw-bluesky-channel";
+      pname = "ironclaw-matrix-channel";
       version = "0.1.0";
 
       src = lib.fileset.toSource {
@@ -37,7 +37,7 @@
           ./Cargo.lock
           ./src
           ./wit
-          ./bluesky.capabilities.json
+          ./matrix.capabilities.json
         ];
       };
 
@@ -55,22 +55,22 @@
         cargo build --release --target wasm32-wasip2 --offline
 
         wasm-tools component new \
-          target/wasm32-wasip2/release/bluesky_channel.wasm \
-          -o bluesky.wasm \
-          2>/dev/null || cp target/wasm32-wasip2/release/bluesky_channel.wasm bluesky.wasm
+          target/wasm32-wasip2/release/matrix_channel.wasm \
+          -o matrix.wasm \
+          2>/dev/null || cp target/wasm32-wasip2/release/matrix_channel.wasm matrix.wasm
 
-        wasm-tools strip bluesky.wasm -o bluesky.stripped.wasm && mv bluesky.stripped.wasm bluesky.wasm || true
+        wasm-tools strip matrix.wasm -o matrix.stripped.wasm && mv matrix.stripped.wasm matrix.wasm || true
       '';
 
       installPhase = ''
         mkdir -p $out
-        cp bluesky.wasm $out/bluesky.wasm
-        cp bluesky.capabilities.json $out/bluesky.capabilities.json
+        cp matrix.wasm $out/matrix.wasm
+        cp matrix.capabilities.json $out/matrix.capabilities.json
       '';
 
       meta = {
-        description = "Bluesky/AT Protocol channel for IronClaw AI assistant";
-        homepage = "https://tangled.org/overby.me/overby.me/tree/main/rust/ironclaw-bluesky";
+        description = "Matrix channel for IronClaw AI assistant";
+        homepage = "https://tangled.org/overby.me/overby.me/tree/main/ironclaw/matrix";
         license = lib.licenses.mit;
         maintainers = with lib.maintainers; [noverby];
       };

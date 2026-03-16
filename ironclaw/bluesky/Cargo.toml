@@ -1,10 +1,10 @@
 [package]
-name = "matrix-channel"
+name = "bluesky-channel"
 version = "0.1.0"
 edition = "2021"
-description = "Matrix channel for IronClaw AI assistant"
+description = "Bluesky/AT Protocol channel for IronClaw AI assistant"
 license = "MIT"
-repository = "https://tangled.org/overby.me/overby.me/tree/main/rust/ironclaw-matrix"
+repository = "https://tangled.org/overby.me/overby.me/tree/main/ironclaw/bluesky"
 
 [lib]
 crate-type = ["cdylib"]
