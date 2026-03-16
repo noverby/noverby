@@ -143,10 +143,19 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
     // Build pipeline environment variables.
     let pipeline_env = PipelineEnvVars::build(trigger.as_ref(), &pipeline_id, ctx.dev);
 
+    // Extract commit SHA from trigger metadata for the clone step.
+    let commit_sha = trigger.as_ref().and_then(|t| {
+        t.push
+            .as_ref()
+            .map(|p| p.new_sha.clone())
+            .or_else(|| t.pull_request.as_ref().map(|pr| pr.source_sha.clone()))
+    });
+
     // Create the Pipeline struct.
     let pipeline = Pipeline {
         repo_owner: repo_did.clone(),
         repo_name: repo_name.clone(),
+        commit_sha,
         workflows: Vec::new(), // Workflows are processed individually below.
     };
 

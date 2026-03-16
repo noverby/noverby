@@ -137,11 +137,11 @@ impl Engine for NixEngine {
             )
         };
 
-        // For push triggers, the commit SHA would come from the pipeline env vars.
-        // The clone step uses FETCH_HEAD after fetching, so we pass None here
-        // and let the clone step fetch the default branch. The actual SHA is
-        // injected via environment variables in run_step.
-        let clone_step = CloneStep::build(&repo_url, None, clone_opts.as_ref());
+        let clone_step = CloneStep::build(
+            &repo_url,
+            pipeline.commit_sha.as_deref(),
+            clone_opts.as_ref(),
+        );
 
         if !clone_step.is_empty() {
             workflow.add_step(clone_step);
@@ -417,6 +417,7 @@ mod tests {
         let pipeline = Pipeline {
             repo_owner: "did:plc:test".into(),
             repo_name: "my-repo".into(),
+            commit_sha: None,
             workflows: vec![],
         };
 
@@ -462,6 +463,7 @@ env:
         let pipeline = Pipeline {
             repo_owner: "did:plc:test".into(),
             repo_name: "my-repo".into(),
+            commit_sha: None,
             workflows: vec![],
         };
 
@@ -501,6 +503,7 @@ env:
         let pipeline = Pipeline {
             repo_owner: "did:plc:test".into(),
             repo_name: "repo".into(),
+            commit_sha: None,
             workflows: vec![],
         };
 
@@ -531,6 +534,7 @@ env:
         let pipeline = Pipeline {
             repo_owner: "did:plc:test".into(),
             repo_name: "repo".into(),
+            commit_sha: None,
             workflows: vec![],
         };
 
@@ -563,6 +567,7 @@ env:
         let pipeline = Pipeline {
             repo_owner: "did:plc:test".into(),
             repo_name: "repo".into(),
+            commit_sha: None,
             workflows: vec![],
         };
 

@@ -47,6 +47,12 @@ pub struct Pipeline {
     pub repo_owner: String,
     /// Name of the repository.
     pub repo_name: String,
+    /// Commit SHA to checkout (from the trigger event).
+    ///
+    /// For push triggers this is `new_sha`, for PR triggers this is `source_sha`.
+    /// When `None`, the clone step fetches without a specific ref (fallback).
+    #[serde(default)]
+    pub commit_sha: Option<String>,
     /// Workflows grouped by this pipeline, to be executed in parallel.
     pub workflows: Vec<Workflow>,
 }
