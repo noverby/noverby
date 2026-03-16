@@ -606,6 +606,13 @@ in {
           RemainAfterExit = true;
         };
         script = ''
+          # Ensure local tools dir mirrors the Nix-built WASM_TOOLS_DIR so
+          # `ironclaw tool setup` can find capabilities files.
+          mkdir -p "${cfg.dataDir}/.ironclaw/tools"
+          for f in ${wasmToolsDir}/*; do
+            ln -sf "$f" "${cfg.dataDir}/.ironclaw/tools/$(basename "$f")"
+          done
+
           ${cfg.package}/bin/ironclaw tool setup pixtral --no-onboard || true
         '';
       };
