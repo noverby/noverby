@@ -127,6 +127,14 @@
         ${baseSrc}/signal/signal.capabilities.json \
         > $out/signal.capabilities.json
 
+    '';
+
+  wasmToolsDir =
+    pkgs.runCommand "ironclaw-wasm-tools" {
+      nativeBuildInputs = [pkgs.jq];
+    } ''
+      mkdir -p $out
+
       # SearXNG tool
       cp ${cfg.package}/share/ironclaw/tools-src/searxng/searxng.wasm \
          $out/searxng.wasm
@@ -459,6 +467,7 @@ in {
           DATABASE_SSLMODE = "disable";
           IRONCLAW_HOME = cfg.dataDir;
           WASM_CHANNELS_DIR = "${wasmChannelsDir}";
+          WASM_TOOLS_DIR = "${wasmToolsDir}";
           ONBOARD_COMPLETED = "true";
           # HTTP channel enables the WASM channel runtime
           HTTP_HOST = cfg.http.host;
