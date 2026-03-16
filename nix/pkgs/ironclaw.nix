@@ -13,13 +13,13 @@
   ironclaw-signal-channel,
   ironclaw-searxng-tool,
 }: let
-  version = "0.18.0";
+  version = "0.18.0-mistral-fix";
 
   src = fetchFromGitHub {
-    owner = "nearai";
+    owner = "noverby";
     repo = "ironclaw";
-    rev = "v${version}";
-    hash = "sha256-XFvrhu8MBQhTpK3lQxVLJ83C10Rh18cWrzkiWeOde1k=";
+    rev = "67c8043274f82e3cf01efe0176080c588c9e9b56";
+    hash = "sha256-4xDQ1WXPdHsYrEKkpC32+NUjge4k4T/Hx5Z47hOQ4LM=";
   };
 
   # Rust toolchain with wasm32-wasip2 target for building WASM channels
@@ -99,7 +99,7 @@ in
     pname = "ironclaw";
     inherit version src;
 
-    cargoHash = "sha256-0Fdj9+UVKrNi3X77MOxA5Az87Rw8wKnTp2W42eTD4TI=";
+    cargoHash = "sha256-spvRGrNxFFxmAoKEK5hSA7wo90Cr2AAOmTqD6tNs9Nw=";
 
     nativeBuildInputs = [
       pkg-config
