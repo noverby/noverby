@@ -9,13 +9,13 @@
   wasm-tools,
   stdenv,
 }: let
-  version = "0.18.0-mistral-fix";
+  version = "0.18.0-mistral-fix2";
 
   src = fetchFromGitHub {
     owner = "noverby";
     repo = "ironclaw";
-    rev = "67c8043274f82e3cf01efe0176080c588c9e9b56";
-    hash = "sha256-4xDQ1WXPdHsYrEKkpC32+NUjge4k4T/Hx5Z47hOQ4LM=";
+    rev = "aeb6d57181e8163c4c23ada9e310cb545418a757";
+    hash = "sha256-hdN+errcdbIl9BRRO/rxoiyTjyXiwwgDiMGkHqG2/1I=";
   };
 
   # Rust toolchain with wasm32-wasip2 target for building WASM channels
