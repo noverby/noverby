@@ -8,7 +8,7 @@
       #bitwarden
       fragments
       evince
-      bitwarden-desktop
+      #bitwarden-desktop
       mpv
       dconf-editor
       rclone
