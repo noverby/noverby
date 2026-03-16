@@ -581,6 +581,35 @@ in {
         '';
       };
 
+      # Seed WASM tool secrets from environment variables declaratively.
+      # Each tool with an auth.env_var in its capabilities.json gets its
+      # secret auto-imported from the environment file.
+      ironclaw-tool-secrets-setup = lib.mkIf (cfg.database.createLocally && cfg.environmentFile != null) {
+        description = "IronClaw WASM tool secrets bootstrap";
+        after = ["postgresql.service" "ironclaw-db-setup.service"];
+        requires = ["postgresql.service" "ironclaw-db-setup.service"];
+        wantedBy = ["ironclaw.service"];
+        before = ["ironclaw.service"];
+        environment = {
+          DATABASE_URL = "postgres://${cfg.user}@${urlEncodeHost cfg.database.host}/${cfg.database.name}";
+          DATABASE_SSLMODE = "disable";
+          IRONCLAW_HOME = cfg.dataDir;
+          WASM_TOOLS_DIR = "${wasmToolsDir}";
+          ONBOARD_COMPLETED = "true";
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.user;
+          Group = cfg.group;
+          WorkingDirectory = cfg.dataDir;
+          EnvironmentFile = cfg.environmentFile;
+          RemainAfterExit = true;
+        };
+        script = ''
+          ${cfg.package}/bin/ironclaw tool setup pixtral --no-onboard || true
+        '';
+      };
+
       ironclaw = {
         description = "IronClaw AI Assistant";
         documentation = ["https://github.com/nearai/ironclaw"];

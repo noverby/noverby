@@ -4,6 +4,22 @@
 	"type": "tool",
 	"name": "pixtral",
 	"description": "Generate images using the Mistral AI image generation API",
+	"auth": {
+		"secret_name": "mistral_api_key",
+		"display_name": "Mistral AI",
+		"instructions": "Get your API key from https://console.mistral.ai/api-keys",
+		"token_hint": "Looks like a long alphanumeric string",
+		"env_var": "MISTRAL_API_KEY"
+	},
+	"setup": {
+		"required_secrets": [
+			{
+				"name": "mistral_api_key",
+				"prompt": "Enter your Mistral AI API key",
+				"optional": false
+			}
+		]
+	},
 	"capabilities": {
 		"http": {
 			"allowlist": [
