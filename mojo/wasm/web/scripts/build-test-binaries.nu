@@ -32,7 +32,7 @@ def main [
     let web_src_dir = ($project_dir | path join "src")
     let examples_dir = ($root_dir | path join "examples")
     let out_dir = ($project_dir | path join "build" "test-bin")
-    let wasmtime_mojo = ($root_dir | path dirname | path join "mojo-wasmtime" "src")
+    let wasmtime_mojo = ($root_dir | path dirname | path join "wasmtime" "src")
 
     let num_jobs = if $jobs != null {
         $jobs
