@@ -218,6 +218,7 @@
         ./ironclaw/bluesky
         ./ironclaw/signal
         ./ironclaw/searxng
+        ./ironclaw/mail
 
         ./tangled/cli
         ./tangled/spindle-nix-engine

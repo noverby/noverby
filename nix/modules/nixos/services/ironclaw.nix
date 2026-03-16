@@ -47,11 +47,17 @@
     require_mention = cfg.signal.requireMention;
   };
 
+  mailConfigJson = builtins.toJSON {
+    jmap_url = cfg.mail.jmapUrl;
+    dm_policy = cfg.mail.dmPolicy;
+    allow_from = cfg.mail.allowFrom;
+    mailbox_name = cfg.mail.mailboxName;
+    send_from_name = cfg.mail.sendFromName;
+  };
+
   searxngConfigJson = builtins.toJSON {
     instance_url = cfg.searxng.instanceUrl;
   };
-
-  baseSrc = "${cfg.package}/share/ironclaw/channels-src";
 
   # Extract hostname from a URL like "https://matrix.overby.me" -> "matrix.overby.me"
   extractHost = url:
@@ -79,6 +85,14 @@
     }
   ];
 
+  mailJmapHost = extractHost cfg.mail.jmapUrl;
+  mailAllowlistJson = builtins.toJSON [
+    {
+      host = mailJmapHost;
+      path_prefix = "/";
+    }
+  ];
+
   searxngHost = extractHost cfg.searxng.instanceUrl;
   searxngAllowlistJson = builtins.toJSON [
     {
@@ -95,37 +109,41 @@
       mkdir -p $out
 
       # Matrix channel
-      cp ${baseSrc}/matrix/target/wasm32-wasip2/release/matrix_channel.wasm \
-         $out/matrix.wasm
+      cp ${pkgs.ironclaw-matrix-channel}/matrix.wasm $out/matrix.wasm
       jq --argjson cfg '${matrixConfigJson}' \
          --argjson allowlist '${matrixAllowlistJson}' \
          '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
-        ${baseSrc}/matrix/matrix.capabilities.json \
+        ${pkgs.ironclaw-matrix-channel}/matrix.capabilities.json \
         > $out/matrix.capabilities.json
 
       # Bluesky channel
-      cp ${baseSrc}/bluesky/target/wasm32-wasip2/release/bluesky_channel.wasm \
-         $out/bluesky.wasm
+      cp ${pkgs.ironclaw-bluesky-channel}/bluesky.wasm $out/bluesky.wasm
       jq --argjson cfg '${blueskyConfigJson}' \
          --argjson allowlist '${blueskyAllowlistJson}' \
          '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
-        ${baseSrc}/bluesky/bluesky.capabilities.json \
+        ${pkgs.ironclaw-bluesky-channel}/bluesky.capabilities.json \
         > $out/bluesky.capabilities.json
 
-      # Telegram channel
-      cp ${baseSrc}/telegram/target/wasm32-wasip2/release/telegram_channel.wasm \
-         $out/telegram.wasm
-      cp ${baseSrc}/telegram/telegram.capabilities.json \
+      # Telegram channel (built from upstream ironclaw source)
+      cp ${cfg.package.telegramChannelWasm}/telegram.wasm $out/telegram.wasm
+      cp ${cfg.package.telegramChannelWasm}/telegram.capabilities.json \
          $out/telegram.capabilities.json
 
       # Signal channel
-      cp ${baseSrc}/signal/target/wasm32-wasip2/release/signal_channel.wasm \
-         $out/signal.wasm
+      cp ${pkgs.ironclaw-signal-channel}/signal.wasm $out/signal.wasm
       jq --argjson cfg '${signalConfigJson}' \
          --argjson allowlist '${signalAllowlistJson}' \
          '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
-        ${baseSrc}/signal/signal.capabilities.json \
+        ${pkgs.ironclaw-signal-channel}/signal.capabilities.json \
         > $out/signal.capabilities.json
+
+      # Mail channel
+      cp ${pkgs.ironclaw-mail-channel}/mail.wasm $out/mail.wasm
+      jq --argjson cfg '${mailConfigJson}' \
+         --argjson allowlist '${mailAllowlistJson}' \
+         '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
+        ${pkgs.ironclaw-mail-channel}/mail.capabilities.json \
+        > $out/mail.capabilities.json
 
     '';
 
@@ -136,12 +154,11 @@
       mkdir -p $out
 
       # SearXNG tool
-      cp ${cfg.package}/share/ironclaw/tools-src/searxng/searxng.wasm \
-         $out/searxng.wasm
+      cp ${pkgs.ironclaw-searxng-tool}/searxng.wasm $out/searxng.wasm
       jq --argjson cfg '${searxngConfigJson}' \
          --argjson allowlist '${searxngAllowlistJson}' \
          '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
-        ${cfg.package}/share/ironclaw/tools-src/searxng/searxng-tool.capabilities.json \
+        ${pkgs.ironclaw-searxng-tool}/searxng-tool.capabilities.json \
         > $out/searxng.capabilities.json
     '';
 
@@ -320,6 +337,42 @@ in {
         type = lib.types.bool;
         default = false;
         description = "Whether the bot requires a mention in groups to respond.";
+      };
+    };
+
+    mail = {
+      jmapUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "https://api.fastmail.com";
+        description = "JMAP server URL.";
+      };
+
+      dmPolicy = lib.mkOption {
+        type = lib.types.enum ["allowlist" "open"];
+        default = "allowlist";
+        description = ''
+          Email access control policy.
+          - allowlist: only process emails from addresses in allowFrom
+          - open: process emails from anyone
+        '';
+      };
+
+      allowFrom = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Email addresses allowed to message the bot.";
+      };
+
+      mailboxName = lib.mkOption {
+        type = lib.types.str;
+        default = "Inbox";
+        description = "JMAP mailbox name to monitor for incoming emails.";
+      };
+
+      sendFromName = lib.mkOption {
+        type = lib.types.str;
+        default = "IronClaw";
+        description = "Display name for outgoing email replies.";
       };
     };
 

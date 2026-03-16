@@ -8,10 +8,6 @@
   cacert,
   wasm-tools,
   stdenv,
-  ironclaw-matrix-channel,
-  ironclaw-bluesky-channel,
-  ironclaw-signal-channel,
-  ironclaw-searxng-tool,
 }: let
   version = "0.18.0-mistral-fix";
 
@@ -177,43 +173,13 @@ in
       BUILDRS
     '';
 
-    postInstall = ''
-      # Install channel artifacts alongside the binary so they are
-      # discoverable at runtime via IRONCLAW_CHANNELS_SRC
-      mkdir -p $out/share/ironclaw/channels-src/telegram/target/wasm32-wasip2/release
-      cp ${telegramChannelWasm}/telegram.wasm \
-         $out/share/ironclaw/channels-src/telegram/target/wasm32-wasip2/release/telegram_channel.wasm
-      cp ${telegramChannelWasm}/telegram.capabilities.json \
-         $out/share/ironclaw/channels-src/telegram/telegram.capabilities.json
+    # Extension WASM artifacts are assembled in the NixOS module
+    # (wasmChannelsDir / wasmToolsDir) to avoid rebuilding ironclaw
+    # when only a channel or tool changes.
 
-      # Matrix channel (built separately)
-      mkdir -p $out/share/ironclaw/channels-src/matrix/target/wasm32-wasip2/release
-      cp ${ironclaw-matrix-channel}/matrix.wasm \
-         $out/share/ironclaw/channels-src/matrix/target/wasm32-wasip2/release/matrix_channel.wasm
-      cp ${ironclaw-matrix-channel}/matrix.capabilities.json \
-         $out/share/ironclaw/channels-src/matrix/matrix.capabilities.json
-
-      # Bluesky channel (built separately)
-      mkdir -p $out/share/ironclaw/channels-src/bluesky/target/wasm32-wasip2/release
-      cp ${ironclaw-bluesky-channel}/bluesky.wasm \
-         $out/share/ironclaw/channels-src/bluesky/target/wasm32-wasip2/release/bluesky_channel.wasm
-      cp ${ironclaw-bluesky-channel}/bluesky.capabilities.json \
-         $out/share/ironclaw/channels-src/bluesky/bluesky.capabilities.json
-
-      # Signal channel (built separately)
-      mkdir -p $out/share/ironclaw/channels-src/signal/target/wasm32-wasip2/release
-      cp ${ironclaw-signal-channel}/signal.wasm \
-         $out/share/ironclaw/channels-src/signal/target/wasm32-wasip2/release/signal_channel.wasm
-      cp ${ironclaw-signal-channel}/signal.capabilities.json \
-         $out/share/ironclaw/channels-src/signal/signal.capabilities.json
-
-      # SearXNG tool (built separately)
-      mkdir -p $out/share/ironclaw/tools-src/searxng
-      cp ${ironclaw-searxng-tool}/searxng.wasm \
-         $out/share/ironclaw/tools-src/searxng/searxng.wasm
-      cp ${ironclaw-searxng-tool}/searxng-tool.capabilities.json \
-         $out/share/ironclaw/tools-src/searxng/searxng-tool.capabilities.json
-    '';
+    passthru = {
+      inherit telegramChannelWasm;
+    };
 
     # Some integration tests require a running PostgreSQL instance
     doCheck = false;
