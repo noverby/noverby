@@ -11,6 +11,7 @@
   ironclaw-matrix-channel,
   ironclaw-bluesky-channel,
   ironclaw-signal-channel,
+  ironclaw-searxng-tool,
 }: let
   version = "0.18.0";
 
@@ -205,6 +206,13 @@ in
          $out/share/ironclaw/channels-src/signal/target/wasm32-wasip2/release/signal_channel.wasm
       cp ${ironclaw-signal-channel}/signal.capabilities.json \
          $out/share/ironclaw/channels-src/signal/signal.capabilities.json
+
+      # SearXNG tool (built separately)
+      mkdir -p $out/share/ironclaw/tools-src/searxng
+      cp ${ironclaw-searxng-tool}/searxng.wasm \
+         $out/share/ironclaw/tools-src/searxng/searxng.wasm
+      cp ${ironclaw-searxng-tool}/searxng-tool.capabilities.json \
+         $out/share/ironclaw/tools-src/searxng/searxng-tool.capabilities.json
     '';
 
     # Some integration tests require a running PostgreSQL instance

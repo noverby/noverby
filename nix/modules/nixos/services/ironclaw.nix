@@ -39,6 +39,18 @@
     respond_to_mentions = cfg.bluesky.respondToMentions;
   };
 
+  signalConfigJson = builtins.toJSON {
+    api_url = cfg.signal.apiUrl;
+    dm_policy = cfg.signal.dmPolicy;
+    allow_from = cfg.signal.allowFrom;
+    group_ids = cfg.signal.groupIds;
+    require_mention = cfg.signal.requireMention;
+  };
+
+  searxngConfigJson = builtins.toJSON {
+    instance_url = cfg.searxng.instanceUrl;
+  };
+
   baseSrc = "${cfg.package}/share/ironclaw/channels-src";
 
   # Extract hostname from a URL like "https://matrix.overby.me" -> "matrix.overby.me"
@@ -56,6 +68,23 @@
     {
       host = extractHost cfg.bluesky.pdsUrl;
       path_prefix = "/xrpc/";
+    }
+  ];
+
+  signalApiHost = extractHost cfg.signal.apiUrl;
+  signalAllowlistJson = builtins.toJSON [
+    {
+      host = signalApiHost;
+      path_prefix = "/";
+    }
+  ];
+
+  searxngHost = extractHost cfg.searxng.instanceUrl;
+  searxngAllowlistJson = builtins.toJSON [
+    {
+      host = searxngHost;
+      path_prefix = "/search";
+      methods = ["GET"];
     }
   ];
 
@@ -88,6 +117,24 @@
          $out/telegram.wasm
       cp ${baseSrc}/telegram/telegram.capabilities.json \
          $out/telegram.capabilities.json
+
+      # Signal channel
+      cp ${baseSrc}/signal/target/wasm32-wasip2/release/signal_channel.wasm \
+         $out/signal.wasm
+      jq --argjson cfg '${signalConfigJson}' \
+         --argjson allowlist '${signalAllowlistJson}' \
+         '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
+        ${baseSrc}/signal/signal.capabilities.json \
+        > $out/signal.capabilities.json
+
+      # SearXNG tool
+      cp ${cfg.package}/share/ironclaw/tools-src/searxng/searxng.wasm \
+         $out/searxng.wasm
+      jq --argjson cfg '${searxngConfigJson}' \
+         --argjson allowlist '${searxngAllowlistJson}' \
+         '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
+        ${cfg.package}/share/ironclaw/tools-src/searxng/searxng-tool.capabilities.json \
+        > $out/searxng.capabilities.json
     '';
 
   # List of channel names to auto-activate on startup.
@@ -228,6 +275,51 @@ in {
         type = lib.types.bool;
         default = false;
         description = "Whether the bot requires an @-mention in rooms to respond.";
+      };
+    };
+
+    signal = {
+      apiUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "http://localhost:8080";
+        description = "signal-cli REST API base URL.";
+      };
+
+      dmPolicy = lib.mkOption {
+        type = lib.types.enum ["pairing" "allowlist" "open"];
+        default = "pairing";
+        description = ''
+          DM access control policy.
+          - pairing: require mutual pairing approval
+          - allowlist: only allow numbers in allowFrom
+          - open: accept DMs from anyone
+        '';
+      };
+
+      allowFrom = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Phone numbers allowed to message the bot (used with allowlist/pairing policies).";
+      };
+
+      groupIds = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Signal group IDs to monitor. Empty means DM-only.";
+      };
+
+      requireMention = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether the bot requires a mention in groups to respond.";
+      };
+    };
+
+    searxng = {
+      instanceUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "http://localhost:8888";
+        description = "SearXNG instance URL for web search tool.";
       };
     };
 
