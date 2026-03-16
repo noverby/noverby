@@ -226,7 +226,7 @@ impl Guest for MatrixChannel {
                 require_secret: false,
             }],
             poll: Some(PollConfig {
-                interval_ms: 30000,
+                interval_ms: 5000,
                 enabled: true,
             }),
         })
@@ -255,7 +255,7 @@ impl Guest for MatrixChannel {
         let bot_user_id = channel_host::workspace_read(BOT_USER_ID_PATH).unwrap_or_default();
 
         // Build /sync URL
-        let mut sync_url = format!("{}/_matrix/client/v3/sync?timeout=25000", homeserver);
+        let mut sync_url = format!("{}/_matrix/client/v3/sync?timeout=5000", homeserver);
         if let Some(ref token) = since {
             sync_url.push_str(&format!("&since={}", url_encode(token)));
         }
@@ -267,7 +267,7 @@ impl Guest for MatrixChannel {
             sync_url.push_str("&full_state=false");
         }
 
-        let result = matrix_get(&sync_url, Some(30_000));
+        let result = matrix_get(&sync_url, Some(10_000));
 
         match result {
             Ok(response) => {

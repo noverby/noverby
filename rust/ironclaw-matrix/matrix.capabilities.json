@@ -47,7 +47,7 @@
 		"channel": {
 			"allowed_paths": ["/webhook/matrix"],
 			"allow_polling": true,
-			"min_poll_interval_ms": 30000,
+			"min_poll_interval_ms": 5000,
 			"workspace_prefix": "channels/matrix/",
 			"emit_rate_limit": {
 				"messages_per_minute": 100,
