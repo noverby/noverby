@@ -55,6 +55,17 @@
     send_from_name = cfg.mail.sendFromName;
   };
 
+  calendarConfigJson = builtins.toJSON {
+    caldav_url = cfg.calendar.caldavUrl;
+    calendar_name = cfg.calendar.calendarName;
+    poll_interval_ms = cfg.calendar.pollIntervalMs;
+  };
+
+  contactsConfigJson = builtins.toJSON {
+    carddav_url = cfg.contacts.carddavUrl;
+    addressbook_name = cfg.contacts.addressbookName;
+  };
+
   searxngConfigJson = builtins.toJSON {
     instance_url = cfg.searxng.instanceUrl;
   };
@@ -89,6 +100,22 @@
   mailAllowlistJson = builtins.toJSON [
     {
       host = mailJmapHost;
+      path_prefix = "/";
+    }
+  ];
+
+  calendarHost = extractHost cfg.calendar.caldavUrl;
+  calendarAllowlistJson = builtins.toJSON [
+    {
+      host = calendarHost;
+      path_prefix = "/";
+    }
+  ];
+
+  contactsHost = extractHost cfg.contacts.carddavUrl;
+  contactsAllowlistJson = builtins.toJSON [
+    {
+      host = contactsHost;
       path_prefix = "/";
     }
   ];
@@ -144,6 +171,22 @@
          '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
         ${pkgs.ironclaw-mail-channel}/mail.capabilities.json \
         > $out/mail.capabilities.json
+
+      # Calendar channel
+      cp ${pkgs.ironclaw-calendar-channel}/calendar.wasm $out/calendar.wasm
+      jq --argjson cfg '${calendarConfigJson}' \
+         --argjson allowlist '${calendarAllowlistJson}' \
+         '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
+        ${pkgs.ironclaw-calendar-channel}/calendar.capabilities.json \
+        > $out/calendar.capabilities.json
+
+      # Contacts channel
+      cp ${pkgs.ironclaw-contacts-channel}/contacts.wasm $out/contacts.wasm
+      jq --argjson cfg '${contactsConfigJson}' \
+         --argjson allowlist '${contactsAllowlistJson}' \
+         '.config = $cfg | .capabilities.http.allowlist = $allowlist' \
+        ${pkgs.ironclaw-contacts-channel}/contacts.capabilities.json \
+        > $out/contacts.capabilities.json
 
     '';
 
@@ -373,6 +416,40 @@ in {
         type = lib.types.str;
         default = "IronClaw";
         description = "Display name for outgoing email replies.";
+      };
+    };
+
+    calendar = {
+      caldavUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "http://localhost:8080";
+        description = "CalDAV server URL.";
+      };
+
+      calendarName = lib.mkOption {
+        type = lib.types.str;
+        default = "default";
+        description = "Calendar name to monitor.";
+      };
+
+      pollIntervalMs = lib.mkOption {
+        type = lib.types.int;
+        default = 60000;
+        description = "Polling interval in milliseconds for calendar changes.";
+      };
+    };
+
+    contacts = {
+      carddavUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "http://localhost:8080";
+        description = "CardDAV server URL.";
+      };
+
+      addressbookName = lib.mkOption {
+        type = lib.types.str;
+        default = "default";
+        description = "Address book name to monitor.";
       };
     };
 

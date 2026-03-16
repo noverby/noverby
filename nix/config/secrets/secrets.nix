@@ -25,4 +25,7 @@ in {
   "searxng-env.age" = {
     inherit publicKeys;
   };
+  "stalwart-admin-password.age" = {
+    inherit publicKeys;
+  };
 }

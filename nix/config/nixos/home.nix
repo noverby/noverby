@@ -42,6 +42,10 @@
           file = inputs.self.secrets.searxng-env;
           mode = "600";
         };
+        stalwart-admin-password = {
+          file = inputs.self.secrets.stalwart-admin-password;
+          mode = "600";
+        };
       };
 
       services = {
@@ -49,11 +53,70 @@
           enable = true;
           logLevel = "ironclaw=info";
           environmentFile = "/run/agenix/ironclaw-env";
-          activatedChannels = ["matrix"];
+          activatedChannels = ["matrix" "mail" "calendar" "contacts"];
           matrix = {
             homeserver = "https://matrix.overby.me";
             dmPolicy = "allowlist";
             allowFrom = ["@niclas:overby.me"];
+          };
+          mail = {
+            jmapUrl = "https://mail.overby.me";
+            dmPolicy = "allowlist";
+            allowFrom = ["niclas@overby.me"];
+            sendFromName = "IronClaw";
+          };
+          calendar = {
+            caldavUrl = "https://mail.overby.me";
+            calendarName = "default";
+          };
+          contacts = {
+            carddavUrl = "https://mail.overby.me";
+            addressbookName = "default";
+          };
+        };
+
+        stalwart-mail = {
+          enable = true;
+          settings = {
+            server.hostname = "mail.overby.me";
+
+            server.listener = {
+              "http" = {
+                bind = ["[::]:8443"];
+                protocol = "http";
+              };
+              "smtp" = {
+                bind = ["[::]:25"];
+                protocol = "smtp";
+              };
+              "submissions" = {
+                bind = ["[::]:465"];
+                protocol = "smtp";
+                tls.implicit = true;
+              };
+              "imaps" = {
+                bind = ["[::]:993"];
+                protocol = "imap";
+                tls.implicit = true;
+              };
+            };
+
+            lookup.default.hostname = "mail.overby.me";
+            lookup.default.domain = "overby.me";
+
+            session = {
+              auth.mechanisms = "[plain]";
+              auth.directory = "'internal'";
+              rcpt.directory = "'internal'";
+            };
+
+            authentication.fallback-admin = {
+              user = "admin";
+              secret = "%{file:/run/agenix/stalwart-admin-password}%";
+            };
+          };
+          credentials = {
+            stalwart-admin-password = "/run/agenix/stalwart-admin-password";
           };
         };
 
@@ -108,6 +171,11 @@
                 reverse_proxy localhost:8888
               '';
             };
+            "mail.overby.me" = {
+              extraConfig = ''
+                reverse_proxy localhost:8443
+              '';
+            };
           };
         };
       };
@@ -127,7 +195,7 @@
         };
         defaultGateway = "10.0.0.1";
         nameservers = ["194.242.2.2"];
-        firewall.allowedTCPPorts = [22 80 443];
+        firewall.allowedTCPPorts = [22 25 80 443 465 993];
       };
     }
   ];
