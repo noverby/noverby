@@ -216,6 +216,7 @@
         ./rust/h264toav1
         ./ironclaw/matrix
         ./ironclaw/bluesky
+        ./ironclaw/searxng
 
         ./tangled/cli
         ./tangled/spindle-nix-engine

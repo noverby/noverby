@@ -120,6 +120,7 @@
 |-|-|
 | [IronClaw Matrix Channel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/ironclaw/matrix) | Matrix channel for IronClaw AI assistant |
 | [IronClaw Bluesky Channel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/ironclaw/bluesky) | Bluesky/AT Protocol channel for IronClaw AI assistant |
+| [IronClaw SearXNG Tool 🦀](https://tangled.org/@overby.me/overby.me/tree/main/ironclaw/searxng) | SearXNG web search tool for IronClaw AI assistant |
 
 #### Tangled
 
