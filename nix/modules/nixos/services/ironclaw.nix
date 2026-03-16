@@ -21,13 +21,20 @@
   urlEncodeHost = host:
     builtins.replaceStrings ["/"] ["%%2F"] host;
 
-  # Build a channels-src directory with patched Matrix capabilities config.
+  # Build a channels-src directory with patched capabilities configs.
   matrixConfigJson = builtins.toJSON {
     inherit (cfg.matrix) homeserver;
     dm_policy = cfg.matrix.dmPolicy;
     allow_from = cfg.matrix.allowFrom;
     room_ids = cfg.matrix.roomIds;
     require_mention = cfg.matrix.requireMention;
+  };
+
+  blueskyConfigJson = builtins.toJSON {
+    pds_url = cfg.bluesky.pdsUrl;
+    dm_policy = cfg.bluesky.dmPolicy;
+    allow_from = cfg.bluesky.allowFrom;
+    respond_to_mentions = cfg.bluesky.respondToMentions;
   };
 
   channelsSrc = let
@@ -40,6 +47,9 @@
       jq --argjson cfg '${matrixConfigJson}' '.config = $cfg' \
         ${baseSrc}/matrix/matrix.capabilities.json \
         > $out/matrix/matrix.capabilities.json
+      jq --argjson cfg '${blueskyConfigJson}' '.config = $cfg' \
+        ${baseSrc}/bluesky/bluesky.capabilities.json \
+        > $out/bluesky/bluesky.capabilities.json
     '';
 in {
   options.services.ironclaw = {
@@ -151,6 +161,37 @@ in {
         type = lib.types.bool;
         default = false;
         description = "Whether the bot requires an @-mention in rooms to respond.";
+      };
+    };
+
+    bluesky = {
+      pdsUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "https://bsky.social";
+        description = "AT Protocol PDS URL.";
+      };
+
+      dmPolicy = lib.mkOption {
+        type = lib.types.enum ["pairing" "allowlist" "open"];
+        default = "pairing";
+        description = ''
+          DM access control policy.
+          - pairing: require mutual pairing approval
+          - allowlist: only allow DIDs in allowFrom
+          - open: accept DMs from anyone
+        '';
+      };
+
+      allowFrom = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "DIDs or handles allowed to message the bot (used with allowlist/pairing policies).";
+      };
+
+      respondToMentions = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Whether the bot responds to @-mentions on Bluesky posts.";
       };
     };
   };
