@@ -23,7 +23,7 @@
           ./wit
         ];
       };
-      hash = lib.fakeHash;
+      hash = "sha256-9Tvlx4PhTWTc9jX4PZpk7ki99z4cpI6MGP3Ghmj9Tks=";
     };
   in
     stdenv.mkDerivation {
