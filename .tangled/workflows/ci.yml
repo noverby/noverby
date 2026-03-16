@@ -22,4 +22,7 @@ steps:
     command: |
       ulimit -n 65536
       printf '{"PWD":"%s"}' "$PWD" > .env
-      cachix watch-exec $CACHIX_NAME -- nix flake check --max-jobs 1 --override-input env path:$(realpath $PWD/.env)
+      nix flake check --max-jobs 1 --override-input env path:$(realpath $PWD/.env)
+  - name: "Push to Cachix"
+    command: |
+      nix flake archive --json --override-input env path:$(realpath $PWD/.env) | nix run nixpkgs#jq -- -r '.path,(.inputs|to_entries[].value.path)' | cachix push $CACHIX_NAME
