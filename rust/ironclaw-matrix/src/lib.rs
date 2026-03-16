@@ -114,6 +114,8 @@ struct MatrixMessageMetadata {
     event_id: String,
     sender: String,
     is_direct: bool,
+    #[serde(default)]
+    bot_user_id: Option<String>,
 }
 
 /// Channel configuration from capabilities file.
@@ -383,6 +385,7 @@ impl Guest for MatrixChannel {
                             event_id: event_id.clone(),
                             sender: sender.clone(),
                             is_direct,
+                            bot_user_id: Some(bot_user_id.clone()),
                         };
 
                         // Collect attachments
@@ -450,12 +453,14 @@ impl Guest for MatrixChannel {
             Err(_) => return,
         };
 
+        let bot_user_id = metadata.bot_user_id.as_deref().unwrap_or("");
+
         match update.status {
             StatusType::Thinking => {
-                send_typing(&metadata.homeserver, &metadata.room_id, true);
+                send_typing(&metadata.homeserver, &metadata.room_id, bot_user_id, true);
             }
             StatusType::Done | StatusType::Interrupted => {
-                send_typing(&metadata.homeserver, &metadata.room_id, false);
+                send_typing(&metadata.homeserver, &metadata.room_id, bot_user_id, false);
             }
             StatusType::ApprovalNeeded
             | StatusType::JobStarted
@@ -738,14 +743,16 @@ fn upload_and_send_attachment(
     }
 }
 
-fn send_typing(homeserver: &str, room_id: &str, typing: bool) {
-    let bot_user_id = channel_host::workspace_read(BOT_USER_ID_PATH).unwrap_or_default();
+fn send_typing(homeserver: &str, room_id: &str, bot_user_id: &str, typing: bool) {
+    if bot_user_id.is_empty() {
+        return;
+    }
 
     let url = format!(
         "{}/_matrix/client/v3/rooms/{}/typing/{}",
         homeserver,
         url_encode(room_id),
-        url_encode(&bot_user_id)
+        url_encode(bot_user_id)
     );
 
     let body = serde_json::json!({
