@@ -10,6 +10,7 @@
   stdenv,
   ironclaw-matrix-channel,
   ironclaw-bluesky-channel,
+  ironclaw-signal-channel,
 }: let
   version = "0.18.0";
 
@@ -197,6 +198,13 @@ in
          $out/share/ironclaw/channels-src/bluesky/target/wasm32-wasip2/release/bluesky_channel.wasm
       cp ${ironclaw-bluesky-channel}/bluesky.capabilities.json \
          $out/share/ironclaw/channels-src/bluesky/bluesky.capabilities.json
+
+      # Signal channel (built separately)
+      mkdir -p $out/share/ironclaw/channels-src/signal/target/wasm32-wasip2/release
+      cp ${ironclaw-signal-channel}/signal.wasm \
+         $out/share/ironclaw/channels-src/signal/target/wasm32-wasip2/release/signal_channel.wasm
+      cp ${ironclaw-signal-channel}/signal.capabilities.json \
+         $out/share/ironclaw/channels-src/signal/signal.capabilities.json
     '';
 
     # Some integration tests require a running PostgreSQL instance
