@@ -28,15 +28,20 @@
     cloud-hypervisor
     tangled-spindle-nix-engine
     {
-      age.secrets.spindle-token = {
-        file = inputs.self.secrets.spindle-token;
-        mode = "600";
-      };
-
-      age.secrets.ironclaw-env = {
-        file = inputs.self.secrets.ironclaw-env;
-        owner = "ironclaw";
-        mode = "600";
+      age.secrets = {
+        spindle-token = {
+          file = inputs.self.secrets.spindle-token;
+          mode = "600";
+        };
+        ironclaw-env = {
+          file = inputs.self.secrets.ironclaw-env;
+          owner = "ironclaw";
+          mode = "600";
+        };
+        searxng-env = {
+          file = inputs.self.secrets.searxng-env;
+          mode = "600";
+        };
       };
 
       services = {
@@ -64,17 +69,45 @@
           };
         };
 
+        searx = {
+          enable = true;
+          settings = {
+            server = {
+              port = 8888;
+              bind_address = "127.0.0.1";
+              secret_key = "@SEARX_SECRET_KEY@";
+            };
+            search = {
+              safe_search = 0;
+              autocomplete = "duckduckgo";
+              default_lang = "en";
+            };
+            engines = lib.singleton {
+              name = "bing";
+              disabled = true;
+            };
+          };
+          environmentFile = "/run/agenix/searxng-env";
+        };
+
         caddy = {
           enable = true;
-          virtualHosts."spindle.overby.me" = {
-            extraConfig = ''
-              reverse_proxy localhost:6555
-            '';
-          };
-          virtualHosts."ironclaw.overby.me" = {
-            extraConfig = ''
-              reverse_proxy localhost:3000
-            '';
+          virtualHosts = {
+            "spindle.overby.me" = {
+              extraConfig = ''
+                reverse_proxy localhost:6555
+              '';
+            };
+            "ironclaw.overby.me" = {
+              extraConfig = ''
+                reverse_proxy localhost:3000
+              '';
+            };
+            "search.overby.me" = {
+              extraConfig = ''
+                reverse_proxy localhost:8888
+              '';
+            };
           };
         };
       };

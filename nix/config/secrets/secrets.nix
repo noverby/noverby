@@ -22,4 +22,7 @@ in {
   "ironclaw-env.age" = {
     inherit publicKeys;
   };
+  "searxng-env.age" = {
+    inherit publicKeys;
+  };
 }
