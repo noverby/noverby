@@ -219,6 +219,8 @@
         ./ironclaw/signal
         ./ironclaw/searxng
         ./ironclaw/mail
+        ./ironclaw/calendar
+        ./ironclaw/contacts
 
         ./tangled/cli
         ./tangled/spindle-nix-engine
