@@ -572,10 +572,12 @@ in {
         script = let
           psql = "${config.services.postgresql.package}/bin/psql";
           db = lib.escapeShellArg cfg.database.name;
-          channels = lib.escapeShellArg activatedChannelsJson;
         in ''
-          ${psql} -d ${db} \
-            -c "INSERT INTO settings (user_id, key, value) VALUES ('default', 'activated_channels', ${channels}::jsonb) ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value;"
+          ${psql} -d ${db} <<'EOSQL'
+          INSERT INTO settings (user_id, key, value)
+          VALUES ('default', 'activated_channels', '${activatedChannelsJson}'::jsonb)
+          ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value;
+          EOSQL
         '';
       };
 
