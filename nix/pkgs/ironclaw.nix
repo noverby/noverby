@@ -8,6 +8,7 @@
   cacert,
   wasm-tools,
   stdenv,
+  ironclaw-matrix-channel,
 }: let
   version = "0.18.0";
 
@@ -181,6 +182,13 @@ in
          $out/share/ironclaw/channels-src/telegram/target/wasm32-wasip2/release/telegram_channel.wasm
       cp ${telegramChannelWasm}/telegram.capabilities.json \
          $out/share/ironclaw/channels-src/telegram/telegram.capabilities.json
+
+      # Matrix channel (built separately)
+      mkdir -p $out/share/ironclaw/channels-src/matrix/target/wasm32-wasip2/release
+      cp ${ironclaw-matrix-channel}/matrix.wasm \
+         $out/share/ironclaw/channels-src/matrix/target/wasm32-wasip2/release/matrix_channel.wasm
+      cp ${ironclaw-matrix-channel}/matrix.capabilities.json \
+         $out/share/ironclaw/channels-src/matrix/matrix.capabilities.json
     '';
 
     # Some integration tests require a running PostgreSQL instance

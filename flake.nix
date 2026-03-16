@@ -214,6 +214,7 @@
         ./slides
 
         ./rust/h264toav1
+        ./rust/ironclaw-matrix
 
         ./tangled/cli
         ./tangled/spindle-nix-engine
