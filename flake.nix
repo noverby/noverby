@@ -199,6 +199,7 @@
         ./nickel/workspace
 
         ./web/homepage
+        ./web/homepage-dioxus
         ./web/wiki
 
         ./mojo/wasm
