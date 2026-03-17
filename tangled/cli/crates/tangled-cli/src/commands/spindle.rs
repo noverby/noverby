@@ -99,13 +99,14 @@ async fn runs(args: SpindleRunsArgs) -> Result<()> {
     if runs.is_empty() {
         println!("No pipeline runs found");
     } else {
-        println!("WORKFLOW_ID\tNAME\tSTATUS\tSTARTED\tFINISHED");
+        println!("WORKFLOW_ID\tNAME\tSTATUS\tCREATED\tSTARTED\tFINISHED");
         for r in runs {
             println!(
-                "{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}",
                 r.workflow_id,
                 r.workflow_name,
                 r.status,
+                r.created_at,
                 r.started_at.as_deref().unwrap_or("-"),
                 r.finished_at.as_deref().unwrap_or("-"),
             );
