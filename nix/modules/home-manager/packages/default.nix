@@ -1,5 +1,6 @@
 {
   imports = [
+    ./ai.nix
     ./container.nix
     ./dev.nix
     ./file.nix
