@@ -106,8 +106,8 @@ No Three.js. No npm. No JS runtime.
 
 **Files**: `main.rs`, `pages/*.rs`, `Cargo.toml`, `Dioxus.toml`
 
-- [ ] `dx new` scaffold or manual Dioxus web project setup
-- [ ] Define `#[derive(Routable)]` enum with 4 routes:
+- [x] `dx new` scaffold or manual Dioxus web project setup
+- [x] Define `#[derive(Routable)]` enum with 4 routes:
 
   ```rust
   #[derive(Routable, Clone)]
@@ -123,24 +123,24 @@ No Three.js. No npm. No JS runtime.
   }
   ```
 
-- [ ] Implement `Search` page: parse `?url=` query param, extract `q=` value
+- [x] Implement `Search` page: parse `?url=` query param, extract `q=` value
   via regex, redirect to `https://startpage.com/search?q={match}` using
   `web_sys::window().location().set_href()`
-- [ ] Implement `X` page: parse `?url=`, extract path after `(x|twitter).com`,
+- [x] Implement `X` page: parse `?url=`, extract path after `(x|twitter).com`,
   redirect to `https://xcancel.com{path}`
-- [ ] Implement `Yt` page: parse `?url=`, extract 11-char video ID via regex,
+- [x] Implement `Yt` page: parse `?url=`, extract 11-char video ID via regex,
   render full-screen `iframe` via `rsx!`
-- [ ] `Index` page: placeholder `<canvas>` element, wired up in Phase 2
-- [ ] `Dioxus.toml`: set title to `"Niclas Overby Ⓝ"`, configure
+- [x] `Index` page: placeholder `<canvas>` element, wired up in Phase 2
+- [x] `Dioxus.toml`: set title to `"Niclas Overby Ⓝ"`, configure
   `web.app.base_path`, asset dir → `public/`
-- [ ] `justfile` with `dev`, `build`, `serve` targets using `dx`
-- [ ] Verify the 3 redirect pages work in `dx serve`
+- [x] `justfile` with `dev`, `build`, `serve` targets using `dx`
+- [x] Verify the 3 redirect pages work in `dx serve`
 
 ### Phase 2 — Graph Data & Force Simulation (Day 2)
 
 **Files**: `graph/data.rs`, `graph/simulation.rs`
 
-- [ ] `data.rs` — define structs and static data:
+- [x] `data.rs` — define structs and static data:
 
   ```rust
   struct GraphNode {
@@ -159,7 +159,7 @@ No Three.js. No npm. No JS runtime.
 
   Port all 28 nodes and 43 links verbatim from `Graph.tsx`.
 
-- [ ] `simulation.rs` — force-directed layout using velocity Verlet integration:
+- [x] `simulation.rs` — force-directed layout using velocity Verlet integration:
   - **Link force**: Hooke's law spring between connected nodes
     (`strength ~0.03`, `distance ~100`)
   - **Charge force**: repulsive N-body (Barnes-Hut optional for 28 nodes;
@@ -179,11 +179,11 @@ This is the core effort. All rendering via `web_sys::WebGlRenderingContext`.
 
 #### 3a — Canvas & GL Context Setup
 
-- [ ] Create/acquire `<canvas>` from Dioxus `onmounted` event
-- [ ] Get `WebGlRenderingContext` (WebGL 1 for max compatibility)
-- [ ] Enable `BLEND` (for transparency), `DEPTH_TEST`
-- [ ] Set clear color `#222222` (matches current `backgroundColor`)
-- [ ] Handle canvas resize → update viewport + projection matrix
+- [x] Create/acquire `<canvas>` from Dioxus `onmounted` event
+- [x] Get `WebGlRenderingContext` (WebGL 1 for max compatibility)
+- [x] Enable `BLEND` (for transparency), `DEPTH_TEST`
+- [x] Set clear color `#222222` (matches current `backgroundColor`)
+- [x] Handle canvas resize → update viewport + projection matrix
 
 #### 3b — Shader Programs
 
@@ -208,29 +208,29 @@ Three shader programs:
 
 #### 3c — Geometry Generation
 
-- [ ] **Quad geometry**: unit quad `[-0.5, -0.5] → [0.5, 0.5]`, 4 verts,
+- [x] **Quad geometry**: unit quad `[-0.5, -0.5] → [0.5, 0.5]`, 4 verts,
   6 indices (2 triangles). Reused for all sprites.
-- [ ] **Sphere geometry**: generate UV-sphere (16 segments × 12 rings),
+- [x] **Sphere geometry**: generate UV-sphere (16 segments × 12 rings),
   `radius = 15` (matching Three.js `SphereGeometry(15)`). Upload once as
   VBO/IBO, draw instanced per category node.
-- [ ] **Line geometry**: dynamic VBO updated each frame from simulation
+- [x] **Line geometry**: dynamic VBO updated each frame from simulation
   positions.
 
 #### 3d — Camera
 
-- [ ] **Perspective projection**: `fov = 75°`, `near = 0.1`, `far = 10000`,
+- [x] **Perspective projection**: `fov = 75°`, `near = 0.1`, `far = 10000`,
   aspect from canvas size. Use `glam::Mat4::perspective_rh_gl`.
-- [ ] **Orbit controls**: track `theta`, `phi`, `distance` (initial ~300).
+- [x] **Orbit controls**: track `theta`, `phi`, `distance` (initial ~300).
   Mouse drag rotates, scroll zooms. Convert spherical → cartesian for
   eye position, build view matrix with `Mat4::look_at_rh`.
-- [ ] Wire mouse events from `<canvas>` (via Dioxus `onmousedown`,
+- [x] Wire mouse events from `<canvas>` (via Dioxus `onmousedown`,
   `onmousemove`, `onmouseup`, `onwheel`) to camera state.
 
 #### 3e — Render Loop
 
-- [ ] `requestAnimationFrame` loop via `gloo_timers` or manual
+- [x] `requestAnimationFrame` loop via `gloo_timers` or manual
   `web_sys::window().request_animation_frame()`
-- [ ] Each frame:
+- [x] Each frame:
   1. `simulation.tick()` (if alpha > threshold)
   2. Update line VBO with new positions
   3. Update particle positions (advance `t += speed` along each link)
@@ -245,7 +245,7 @@ Three shader programs:
 
 **Files**: `graph/texture.rs`
 
-- [ ] For each node icon (`.avif`), load via `HtmlImageElement`:
+- [x] For each node icon (`.avif`), load via `HtmlImageElement`:
 
   ```rust
   let img = HtmlImageElement::new()?;
@@ -253,11 +253,11 @@ Three shader programs:
   // onload callback → upload to WebGL texture
   ```
 
-- [ ] On load: `gl.tex_image_2d_with_html_image_element(...)`,
+- [x] On load: `gl.tex_image_2d_with_html_image_element(...)`,
   set `TEXTURE_WRAP_S/T = CLAMP_TO_EDGE`, `MIN/MAG_FILTER = LINEAR`
-- [ ] Store `WebGlTexture` handles in a `HashMap<&str, WebGlTexture>`
-- [ ] Before textures are loaded, render nodes as colored fallback circles
-- [ ] AVIF support: modern browsers handle it natively via `<img>`.
+- [x] Store `WebGlTexture` handles in a `HashMap<&str, WebGlTexture>`
+- [x] Before textures are loaded, render nodes as colored fallback circles
+- [x] AVIF support: modern browsers handle it natively via `<img>`.
   If worried about fallback, convert icons to `.webp` or `.png` as well.
 
 ### Phase 5 — Interaction (Day 5–6)
@@ -266,22 +266,22 @@ Three shader programs:
 
 #### 5a — Raycasting (click & hover)
 
-- [ ] On mouse click/move: unproject screen coords `(x, y)` through
+- [x] On mouse click/move: unproject screen coords `(x, y)` through
   inverse `proj * view` to get a ray in world space
-- [ ] For each node, test ray–sphere intersection
+- [x] For each node, test ray–sphere intersection
   (radius = `20` for "Niclas Overby", `9` for regular icons, `15` for
   category spheres)
-- [ ] Return nearest hit node (if any)
+- [x] Return nearest hit node (if any)
 
 #### 5b — Click Navigation
 
-- [ ] On click hit: if node has `url`, call
+- [x] On click hit: if node has `url`, call
   `web_sys::window().location().set_href(url)`
-- [ ] Set `cursor: pointer` on canvas when hovering a clickable node
+- [x] Set `cursor: pointer` on canvas when hovering a clickable node
 
 #### 5c — Tooltip on Hover
 
-- [ ] On hover hit: render an HTML overlay `<div>` positioned at the
+- [x] On hover hit: render an HTML overlay `<div>` positioned at the
   projected 2D screen coords of the node. Style matching current:
 
   ```text
@@ -291,27 +291,27 @@ Three shader programs:
 
   Content = `node.desc` (with `\n` → actual newlines via `white-space: pre`)
 
-- [ ] This is an HTML element overlaid on the canvas, managed by Dioxus
+- [x] This is an HTML element overlaid on the canvas, managed by Dioxus
   `rsx!`, positioned absolutely using projected coordinates
 
 ### Phase 6 — Particles & Visual Polish (Day 6)
 
 **Files**: `graph/particles.rs`
 
-- [ ] Each link gets 2 directional particles (matching
+- [x] Each link gets 2 directional particles (matching
   `linkDirectionalParticles={2}`)
-- [ ] Particles are small billboarded quads (size ~1px, matching
+- [x] Particles are small billboarded quads (size ~1px, matching
   `linkDirectionalParticleWidth={1}`)
-- [ ] Animate along link: `pos = lerp(source, target, t)`,
+- [x] Animate along link: `pos = lerp(source, target, t)`,
   `t` wraps `0.0 → 1.0`, 2 particles offset by `0.5`
-- [ ] Color: white with slight alpha
-- [ ] Subtle glow optional (additive blend)
+- [x] Color: white with slight alpha
+- [x] Subtle glow optional (additive blend)
 
 ### Phase 7 — Build & Deploy Config (Day 7)
 
 **Files**: `Dioxus.toml`, `justfile`, `default.nix`
 
-- [ ] `Dioxus.toml`:
+- [x] `Dioxus.toml`:
 
   ```toml
   [application]
@@ -328,7 +328,7 @@ Three shader programs:
   watch_path = ["src"]
   ```
 
-- [ ] `justfile`:
+- [x] `justfile`:
 
   ```just
   dev:
@@ -344,19 +344,19 @@ Three shader programs:
       dx clean
   ```
 
-- [ ] `default.nix`: Nix derivation using `wasm-pack` or `trunk` or `dx`
+- [x] `default.nix`: Nix derivation using `wasm-pack` or `trunk` or `dx`
   to build the WASM output. Provide `devShells.homepage-dioxus` with
   `rustup`, `wasm32-unknown-unknown` target, `dx` CLI, `just`.
-- [ ] Copy/symlink `public/icons/`, `public/favicon.ico`, `public/_redirects`
+- [x] Copy/symlink `public/icons/`, `public/favicon.ico`, `public/_redirects`
   into the Dioxus asset output directory
-- [ ] Verify `_redirects` SPA fallback still works for deployment target
+- [x] Verify `_redirects` SPA fallback still works for deployment target
   (Vercel/Netlify/Cloudflare)
 
 ### Phase 8 — Backend Integration (Day 7)
 
-- [ ] Backend `handle.rs` is **unchanged** — it's already Rust/Axum and
+- [x] Backend `handle.rs` is **unchanged** — it's already Rust/Axum and
   independent of the frontend framework
-- [ ] Verify the backend Nix build still works via `imports = [./backend/...]`
+- [x] Verify the backend Nix build still works via `imports = [./backend/...]`
 
 ---
 
@@ -416,23 +416,23 @@ Three shader programs:
 
 ## 8. Acceptance Criteria
 
-- [ ] `dx serve` launches the app, all 4 routes work
-- [ ] `/` renders a 3D force-directed graph with all 28 nodes and 43 links
-- [ ] Nodes display their `.avif` icons as textured sprites
-- [ ] Category nodes (Commerce, Improve, Connect, Immerse, Give, Fediverse,
+- [x] `dx serve` launches the app, all 4 routes work
+- [x] `/` renders a 3D force-directed graph with all 28 nodes and 43 links
+- [x] Nodes display their `.avif` icons as textured sprites
+- [x] Category nodes (Commerce, Improve, Connect, Immerse, Give, Fediverse,
       Atmosphere, Bridgy) render a colored semi-transparent sphere behind icon
-- [ ] "Niclas Overby" node is visually larger (40 vs 18 units)
-- [ ] Mouse drag orbits the camera, scroll zooms
-- [ ] Hovering a node shows its `desc` as a styled HTML tooltip
-- [ ] Clicking a node with a `url` navigates to that URL
-- [ ] Animated particles flow along links (2 per link)
-- [ ] Background color is `#222222`
-- [ ] `/search?url=...q=rust` redirects to `startpage.com/search?q=rust`
-- [ ] `/x?url=https://x.com/user/status/123` redirects to `xcancel.com/user/status/123`
-- [ ] `/yt?url=https://youtube.com/watch?v=dQw4w9WgXcQ` shows embedded player
-- [ ] `<a rel="me" href="https://mas.to/@niclasoverby">` present in index page HTML
-- [ ] `_redirects` file preserved for deployment
-- [ ] Zero JavaScript in the output (only WASM + HTML + CSS)
-- [ ] Backend `handle.rs` unchanged and functional
-- [ ] `dx build --release` produces optimized WASM bundle
-- [ ] Nix build works via `default.nix`
+- [x] "Niclas Overby" node is visually larger (40 vs 18 units)
+- [x] Mouse drag orbits the camera, scroll zooms
+- [x] Hovering a node shows its `desc` as a styled HTML tooltip
+- [x] Clicking a node with a `url` navigates to that URL
+- [x] Animated particles flow along links (2 per link)
+- [x] Background color is `#222222`
+- [x] `/search?url=...q=rust` redirects to `startpage.com/search?q=rust`
+- [x] `/x?url=https://x.com/user/status/123` redirects to `xcancel.com/user/status/123`
+- [x] `/yt?url=https://youtube.com/watch?v=dQw4w9WgXcQ` shows embedded player
+- [x] `<a rel="me" href="https://mas.to/@niclasoverby">` present in index page HTML
+- [x] `_redirects` file preserved for deployment
+- [x] Zero JavaScript in the output (only WASM + HTML + CSS)
+- [x] Backend `handle.rs` unchanged and functional
+- [x] `dx build --release` produces optimized WASM bundle
+- [x] Nix build works via `default.nix`
