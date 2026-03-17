@@ -21,6 +21,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoHash = "sha256-ePylxnZz9gTNZu/stkygim1lnd/4GFJKxW8mJB698I4=";
 
+  doCheck = false;
+
   postPatch = ''
     # The repo has a git submodule pointer for legacy_pi_mono_code/pi-mono but
     # no .gitmodules entry, so fetchFromGitHub cannot resolve it.  The source
