@@ -1,0 +1,13 @@
+[application]
+name = "wiki-dioxus"
+default_platform = "web"
+
+[web.app]
+title = "RadikalWiki"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "assets"]
+
+[web.resource]
+style = ["assets/style.css"]

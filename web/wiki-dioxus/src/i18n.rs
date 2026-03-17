@@ -1,0 +1,306 @@
+use std::collections::HashMap;
+
+use dioxus::prelude::*;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Lang {
+    En,
+    Da,
+}
+
+impl Lang {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Lang::En => "en",
+            Lang::Da => "da",
+        }
+    }
+}
+
+pub static LANG: GlobalSignal<Lang> = Signal::global(|| Lang::En);
+
+pub fn use_lang() -> Signal<Lang> {
+    LANG.signal()
+}
+
+/// Translation function — looks up key in nested translation map
+pub fn t(key: &str) -> String {
+    let lang = LANG.read();
+    let translations = match *lang {
+        Lang::En => en_translations(),
+        Lang::Da => da_translations(),
+    };
+
+    lookup_key(&translations, key).unwrap_or_else(|| key.to_string())
+}
+
+/// Translation with interpolation: t_with("layout.greeting", &[("name", "Niclas")])
+pub fn t_with(key: &str, params: &[(&str, &str)]) -> String {
+    let mut result = t(key);
+    for (k, v) in params {
+        result = result.replace(&format!("{{{{{k}}}}}"), v);
+    }
+    result
+}
+
+fn lookup_key(map: &HashMap<String, serde_json::Value>, key: &str) -> Option<String> {
+    let parts: Vec<&str> = key.splitn(2, '.').collect();
+    if parts.len() == 2 {
+        if let Some(serde_json::Value::Object(inner)) = map.get(parts[0]) {
+            if let Some(serde_json::Value::String(s)) = inner.get(parts[1]) {
+                return Some(s.clone());
+            }
+        }
+    }
+    None
+}
+
+fn en_translations() -> HashMap<String, serde_json::Value> {
+    serde_json::from_str(EN_JSON).unwrap_or_default()
+}
+
+fn da_translations() -> HashMap<String, serde_json::Value> {
+    serde_json::from_str(DA_JSON).unwrap_or_default()
+}
+
+const EN_JSON: &str = r#"{
+    "common": {
+        "add": "Add",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "edit": "Edit",
+        "save": "Save",
+        "search": "Search",
+        "close": "Close",
+        "home": "Home",
+        "noContent": "No content",
+        "noMatch": "No match",
+        "noResult": "No result",
+        "loading": "Loading...",
+        "title": "Title",
+        "type": "Type",
+        "paste": "Paste",
+        "members": "Members",
+        "stop": "Stop",
+        "logIn": "Log in",
+        "register": "Register",
+        "unknown": "Unknown",
+        "download": "Download"
+    },
+    "auth": {
+        "login": "Log In",
+        "register": "Register",
+        "resetPassword": "Reset Password",
+        "setPassword": "Set Password",
+        "missingName": "Name required",
+        "missingEmail": "Email required",
+        "missingPassword": "Password required",
+        "repeatPassword": "Repeat Password",
+        "fullName": "Full name",
+        "email": "Email",
+        "password": "Password",
+        "newPassword": "New password",
+        "emailNotVerified": "Email not verified. Check your inbox. Also check spam.",
+        "invalidEmail": "Invalid email",
+        "wrongCredentials": "Wrong email or password",
+        "passwordMismatch": "Passwords do not match",
+        "emailAlreadyInUse": "Email is already in use",
+        "userNotFound": "No user exists with this email",
+        "logout": "Log out",
+        "verifyEmail": "Verify your email",
+        "verificationEmailSent": "You should have received a verification email.",
+        "useToActivate": "Use it to activate your account.",
+        "checkSpam": "Check if the email ended up in spam.",
+        "checkEmail": "Check your email",
+        "passwordResetSent": "You should have received an email.",
+        "useToResetPassword": "Use it to reset your password."
+    },
+    "content": {
+        "addContent": "Add content",
+        "addType": "Add {{type}}",
+        "confirmDelete": "Confirm Deletion",
+        "confirmSubmit": "Confirm Submission",
+        "submitWarning": "Once you have submitted, it is no longer possible to edit.",
+        "submit": "Submit",
+        "authors": "Authors",
+        "addAuthor": "Add Author",
+        "addAtLeastOneAuthor": "Add at least 1 author",
+        "uploadImage": "Upload Image",
+        "uploadFile": "Upload File",
+        "contentNameExists": "Content with this name already exists",
+        "imageAlt": "Content image"
+    },
+    "layout": {
+        "welcomeTitle": "Welcome to RadikalWiki",
+        "loginOrRegister": "Log in or register.",
+        "rememberEmail": "Remember to use the email you registered with at RU.",
+        "greeting": "Hello {{name}}!",
+        "acceptInvitations": "Please accept your invitations to groups and events.",
+        "noInvitationsHint": "If no invitations appear, you most likely used a different email than the one registered with Radikal Ungdom.",
+        "groups": "Groups",
+        "events": "Events",
+        "memberships": "Memberships",
+        "content": "Content",
+        "noGroups": "No groups",
+        "noEvents": "No events",
+        "noMemberships": "No memberships",
+        "currentItem": "Current Item",
+        "exitSearch": "Exit Search Field",
+        "notSubmitted": "Not submitted",
+        "dark": "Dark",
+        "light": "Light"
+    },
+    "error": {
+        "somethingWentWrong": "Something went wrong!",
+        "sendMessage": "Please send the following message to"
+    },
+    "folder": {
+        "manageFolder": "Manage folder",
+        "proposedBy": "Proposed by",
+        "export": "Export",
+        "copy": "Copy"
+    },
+    "node": {
+        "documentUnavailable": "The document is not available",
+        "notFoundOrNoAccess": "This may be because the document does not exist, or you do not have access to it.",
+        "maybeLoginForAccess": "You may be able to access the document by logging in:"
+    },
+    "mime": {
+        "group": "Group",
+        "event": "Event",
+        "folder": "Folder",
+        "document": "Document",
+        "file": "File",
+        "person": "Person",
+        "policy": "Policy",
+        "position": "Position",
+        "amendment": "Amendment",
+        "candidate": "Candidacy",
+        "speakerList": "Speaker List",
+        "editor": "Edit",
+        "sort": "Sort",
+        "speak": "Speak",
+        "vote": "Vote",
+        "members": "Members",
+        "map": "Map",
+        "unknown": "Unknown"
+    }
+}"#;
+
+const DA_JSON: &str = r#"{
+    "common": {
+        "add": "Tilf\u00f8j",
+        "cancel": "Annuller",
+        "delete": "Slet",
+        "edit": "Rediger",
+        "save": "Gem",
+        "search": "S\u00f8g",
+        "close": "Luk",
+        "home": "Hjem",
+        "noContent": "Intet indhold",
+        "noMatch": "Intet match",
+        "noResult": "Intet resultat",
+        "loading": "Indl\u00e6ser...",
+        "title": "Titel",
+        "type": "Type",
+        "paste": "Inds\u00e6t",
+        "members": "Medlemmer",
+        "stop": "Stop",
+        "logIn": "Log ind",
+        "register": "Registrer",
+        "unknown": "Ukendt",
+        "download": "Download"
+    },
+    "auth": {
+        "login": "Log Ind",
+        "register": "Registrer",
+        "resetPassword": "Nulstil adgangskode",
+        "setPassword": "Indstil adgangskode",
+        "missingName": "Navn p\u00e5kr\u00e6vet",
+        "missingEmail": "Email p\u00e5kr\u00e6vet",
+        "missingPassword": "Adgangskode p\u00e5kr\u00e6vet",
+        "repeatPassword": "Gentag adgangskode",
+        "fullName": "Fulde navn",
+        "email": "Email",
+        "password": "Adgangskode",
+        "newPassword": "Ny adgangskode",
+        "emailNotVerified": "Email ikke verificeret. Tjek din indbakke. Tjek ogs\u00e5 spam.",
+        "invalidEmail": "Ugyldig email",
+        "wrongCredentials": "Forkert email eller adgangskode",
+        "passwordMismatch": "Adgangskoderne matcher ikke",
+        "emailAlreadyInUse": "Email er allerede i brug",
+        "userNotFound": "Ingen bruger med denne email",
+        "logout": "Log ud",
+        "verifyEmail": "Verificer din email",
+        "verificationEmailSent": "Du burde have modtaget en verifikationsemail.",
+        "useToActivate": "Brug den til at aktivere din konto.",
+        "checkSpam": "Tjek om emailen er havnet i spam.",
+        "checkEmail": "Tjek din email",
+        "passwordResetSent": "Du burde have modtaget en email.",
+        "useToResetPassword": "Brug den til at nulstille din adgangskode."
+    },
+    "content": {
+        "addContent": "Tilf\u00f8j indhold",
+        "confirmDelete": "Bekr\u00e6ft sletning",
+        "confirmSubmit": "Bekr\u00e6ft indsendelse",
+        "submitWarning": "N\u00e5r du har indsendt, er det ikke l\u00e6ngere muligt at redigere.",
+        "submit": "Indsend",
+        "authors": "Forfattere",
+        "addAuthor": "Tilf\u00f8j forfatter",
+        "imageAlt": "Indholdsbillede"
+    },
+    "layout": {
+        "welcomeTitle": "Velkommen til RadikalWiki",
+        "loginOrRegister": "Log ind eller registrer dig.",
+        "rememberEmail": "Husk at bruge den email du er registreret med i RU.",
+        "greeting": "Hej {{name}}!",
+        "acceptInvitations": "Accepter venligst dine invitationer til grupper og begivenheder.",
+        "noInvitationsHint": "Hvis ingen invitationer dukker op, har du sandsynligvis brugt en anden email end den der er registreret hos Radikal Ungdom.",
+        "groups": "Grupper",
+        "events": "Begivenheder",
+        "memberships": "Medlemskaber",
+        "content": "Indhold",
+        "noGroups": "Ingen grupper",
+        "noEvents": "Ingen begivenheder",
+        "noMemberships": "Ingen medlemskaber",
+        "currentItem": "Nuv\u00e6rende punkt",
+        "exitSearch": "Forlad s\u00f8gefeltet",
+        "dark": "M\u00f8rk",
+        "light": "Lys"
+    },
+    "error": {
+        "somethingWentWrong": "Noget gik galt!",
+        "sendMessage": "Send venligst f\u00f8lgende besked til"
+    },
+    "folder": {
+        "manageFolder": "Administrer mappe",
+        "proposedBy": "Foresl\u00e5et af",
+        "export": "Eksporter",
+        "copy": "Kopier"
+    },
+    "node": {
+        "documentUnavailable": "Dokumentet er ikke tilg\u00e6ngeligt",
+        "notFoundOrNoAccess": "Dette kan v\u00e6re fordi dokumentet ikke eksisterer, eller du ikke har adgang til det.",
+        "maybeLoginForAccess": "Du kan muligvis f\u00e5 adgang til dokumentet ved at logge ind:"
+    },
+    "mime": {
+        "group": "Gruppe",
+        "event": "Begivenhed",
+        "folder": "Mappe",
+        "document": "Dokument",
+        "file": "Fil",
+        "person": "Person",
+        "policy": "Politik",
+        "position": "Position",
+        "amendment": "\u00c6ndringsforslag",
+        "candidate": "Kandidatur",
+        "speakerList": "Talerliste",
+        "editor": "Rediger",
+        "sort": "Sorter",
+        "speak": "Tal",
+        "vote": "Afstemning",
+        "members": "Medlemmer",
+        "map": "Kort",
+        "unknown": "Ukendt"
+    }
+}"#;

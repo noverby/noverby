@@ -1,0 +1,11 @@
+dev:
+    dx serve
+
+build:
+    dx build --release
+
+check:
+    cargo check --target wasm32-unknown-unknown
+
+fmt:
+    cargo fmt
