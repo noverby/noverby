@@ -294,6 +294,30 @@ where
     body.data.ok_or_else(|| "No data returned".to_string())
 }
 
+/// Execute a raw GraphQL query/mutation string (for operations not covered by cynic types)
+pub async fn execute_raw(
+    access_token: Option<&str>,
+    query: &str,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let mut req = client.post(graphql_url());
+
+    if let Some(token) = access_token {
+        req = req.bearer_auth(token);
+    }
+
+    let body = serde_json::json!({ "query": query });
+    let resp = req.json(&body).send().await.map_err(|e| e.to_string())?;
+
+    let result: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    if let Some(errors) = result.get("errors") {
+        return Err(errors.to_string());
+    }
+
+    Ok(result.get("data").cloned().unwrap_or_default())
+}
+
 // --- High-level query functions ---
 
 pub async fn query_node_by_key(

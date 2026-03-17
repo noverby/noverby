@@ -9,3 +9,6 @@ check:
 
 fmt:
     cargo fmt
+
+clippy:
+    cargo clippy --target wasm32-unknown-unknown -- -D warnings

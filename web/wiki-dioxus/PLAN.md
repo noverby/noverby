@@ -61,11 +61,11 @@ Port of `web/wiki` (React/TypeScript) to Rust using [Dioxus](https://github.com/
 
 ### Phase 6: Interactive Features
 
-- [ ] EditorApp — rich text editing (requires JS interop with Slate)
+- [x] EditorApp — contenteditable rich text editor with save/publish
 - [x] VoteApp / PolicyApp / PollApp — voting UI with poll options display
 - [x] SpeakApp — speaker queue with join/remove actions via GraphQL mutations
 - [x] MemberApp — member management with invite input
-- [ ] SortApp — drag-and-drop reordering (requires JS interop)
+- [x] SortApp — HTML5 drag-and-drop reordering with save
 
 ### Phase 7: Polish
 
@@ -85,8 +85,8 @@ Port of `web/wiki` (React/TypeScript) to Rust using [Dioxus](https://github.com/
 ### Phase 8: Build & Deploy
 
 - [x] Nix package derivation
-- [ ] Optimized WASM build (wasm-opt)
-- [ ] Asset hashing and cache busting
+- [x] Optimized WASM build (dx build --release runs wasm-opt)
+- [x] Asset hashing (handled by Dioxus CLI manganis)
 
 ## File Structure
 
@@ -122,12 +122,15 @@ web/wiki-dioxus/
         ├── loader.rs        # PathPage, MimeLoader, ?app= routing
         ├── vote.rs          # VoteApp, PolicyApp, PollApp
         ├── speak.rs         # SpeakApp (join/remove via mutations)
-        └── member.rs        # MemberApp (member list + invite)
+        ├── member.rs        # MemberApp (member list + invite)
+        ├── editor.rs        # EditorApp (contenteditable + save)
+        └── sort.rs          # SortApp (HTML5 drag-and-drop)
 ```
 
 ## Notes
 
-- EditorApp and SortApp require JS interop (Slate.js and drag-and-drop) — deferred
+- EditorApp uses `contenteditable` for editing — a full Slate.js port would need deeper JS interop
+- SortApp uses native HTML5 drag-and-drop events
 - Slate.js read-only rendering is fully implemented in pure Rust
 - GraphQL mutations are implemented for node insert/delete (used by SpeakApp)
 - The NHost GraphQL endpoint is at `https://{subdomain}.hasura.{region}.nhost.run/v1/graphql`

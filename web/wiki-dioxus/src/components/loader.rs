@@ -6,11 +6,13 @@ use crate::route::Route;
 use crate::session::use_session;
 
 use super::content::ContentApp;
+use super::editor::EditorApp;
 use super::file::FileApp;
 use super::folder::FolderApp;
 use super::home::HomeApp;
 use super::member::MemberApp;
 use super::node::NodeApp;
+use super::sort::SortApp;
 use super::speak::SpeakApp;
 use super::vote::{PolicyApp, PollApp, VoteApp};
 
@@ -48,6 +50,8 @@ pub fn PathPage(segments: Vec<String>) -> Element {
                 Some("vote") => rsx! { VoteApp { node } },
                 Some("speak") => rsx! { SpeakApp { node } },
                 Some("member") => rsx! { MemberApp { node } },
+                Some("editor") => rsx! { EditorApp { node } },
+                Some("sort") => rsx! { SortApp { node } },
                 _ => rsx! { MimeLoader { node, path: segments.clone() } },
             }
         }
