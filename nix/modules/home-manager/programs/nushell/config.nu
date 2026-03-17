@@ -4,7 +4,7 @@ $env.config = {
   keybindings: [{
     name: path_picker
     modifier: control
-    keycode: char_u
+    keycode: char_y
     mode: [emacs vi_normal vi_insert]
     event: {
       send: executehostcommand
