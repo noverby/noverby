@@ -80,7 +80,7 @@ Port of `web/wiki` (React/TypeScript) to Rust using [Dioxus](https://github.com/
 - [x] App rail sidebar for large screens
 - [x] ?app= query parameter routing
 - [x] Full-path folder navigation
-- [ ] Snackbar notifications
+- [x] Snackbar notifications
 
 ### Phase 8: Build & Deploy
 
@@ -98,41 +98,37 @@ web/wiki-dioxus/
 ├── justfile
 ├── default.nix
 ├── assets/
-│   └── style.css
+│   └── style.css            # M3-inspired theme (light/dark CSS vars)
+├── graphql/
+│   └── schema.graphql       # Hasura schema (from wiki/core/gql/schema.gql)
 └── src/
-    ├── main.rs              # Entry point, router setup
-    ├── route.rs             # Route enum definition
-    ├── nhost.rs             # NHost auth client
-    ├── graphql.rs           # GraphQL client + operations
-    ├── session.rs           # Session context (signals)
-    ├── i18n.rs              # Internationalization
-    ├── theme.rs             # Theme context (light/dark)
-    ├── components/
-    │   ├── mod.rs
-    │   ├── layout.rs        # Layout, Bar, BottomBar, Drawer
-    │   ├── search.rs        # SearchField
-    │   ├── breadcrumbs.rs   # BreadCrumbs
-    │   ├── home.rs          # HomeApp
-    │   ├── auth.rs          # Login, Register, etc.
-    │   ├── folder.rs        # FolderApp
-    │   ├── content.rs       # ContentApp (read-only Slate renderer)
-    │   ├── file.rs          # FileApp (image, video, audio, PDF)
-    │   ├── node.rs          # NodeApp, UnknownApp
-    │   ├── loader.rs        # Loader, MimeLoader, PathLoader, AppLoader
-    │   ├── vote.rs          # VoteApp, PolicyApp, PollApp
-    │   ├── speak.rs         # SpeakApp
-    │   ├── member.rs        # MemberApp
-    │   ├── editor.rs        # EditorApp
-    │   └── sort.rs          # SortApp
-    └── graphql/
+    ├── main.rs              # Entry point, router setup, snackbar
+    ├── route.rs             # Route enum definition (#[derive(Routable)])
+    ├── nhost.rs             # NHost auth client (REST API)
+    ├── graphql.rs           # cynic GraphQL client + queries + mutations
+    ├── session.rs           # Session context (global signals + localStorage)
+    ├── i18n.rs              # Internationalization (Da/En inline translations)
+    ├── theme.rs             # Theme context (light/dark toggle)
+    ├── snackbar.rs          # Snackbar notification system
+    └── components/
         ├── mod.rs
-        ├── schema.gql       # Copied from wiki/core/gql/schema.gql
-        └── queries.graphql   # Hand-written queries
+        ├── layout.rs        # Layout, Breadcrumbs, SearchBar, UserMenu, AppRail, Drawer
+        ├── home.rs          # HomeApp (welcome screen)
+        ├── auth.rs          # Login, Register, ResetPassword, SetPassword, Unverified
+        ├── folder.rs        # FolderApp (child list with full-path navigation)
+        ├── content.rs       # ContentApp (Slate.js JSON read-only renderer)
+        ├── file.rs          # FileApp (image, video, audio, PDF, download)
+        ├── node.rs          # NodeApp (generic node viewer)
+        ├── loader.rs        # PathPage, MimeLoader, ?app= routing
+        ├── vote.rs          # VoteApp, PolicyApp, PollApp
+        ├── speak.rs         # SpeakApp (join/remove via mutations)
+        └── member.rs        # MemberApp (member list + invite)
 ```
 
 ## Notes
 
-- Phase 6 (interactive features) deferred — focus on read-only browsing first
-- Slate.js editor may require JS interop for full editing; read-only rendering is pure Rust
+- EditorApp and SortApp require JS interop (Slate.js and drag-and-drop) — deferred
+- Slate.js read-only rendering is fully implemented in pure Rust
+- GraphQL mutations are implemented for node insert/delete (used by SpeakApp)
 - The NHost GraphQL endpoint is at `https://{subdomain}.hasura.{region}.nhost.run/v1/graphql`
 - Auth endpoint is at `https://{subdomain}.auth.{region}.nhost.run/v1`

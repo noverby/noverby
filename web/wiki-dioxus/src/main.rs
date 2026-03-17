@@ -8,6 +8,7 @@ mod nhost;
 mod route;
 #[allow(dead_code)]
 mod session;
+pub mod snackbar;
 #[allow(dead_code)]
 mod theme;
 
@@ -37,5 +38,6 @@ fn main() {
 fn App() -> Element {
     rsx! {
         Router::<Route> {}
+        snackbar::Snackbar {}
     }
 }

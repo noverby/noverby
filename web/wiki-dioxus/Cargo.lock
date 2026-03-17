@@ -3706,6 +3706,7 @@ version = "0.1.0"
 dependencies = [
  "cynic",
  "dioxus",
+ "gloo-timers",
  "log",
  "reqwest 0.12.28",
  "serde",
