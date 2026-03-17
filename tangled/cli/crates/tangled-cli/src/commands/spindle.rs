@@ -102,16 +102,42 @@ async fn runs(args: SpindleRunsArgs) -> Result<()> {
     if runs.is_empty() {
         println!("No pipeline runs found");
     } else {
-        println!("WORKFLOW_ID\tNAME\tSTATUS\tCREATED\tSTARTED\tFINISHED");
-        for r in runs {
+        let headers = ["WORKFLOW_ID", "NAME", "STATUS", "CREATED", "STARTED", "FINISHED"];
+        let rows: Vec<[String; 6]> = runs
+            .iter()
+            .map(|r| {
+                [
+                    r.workflow_id.clone(),
+                    r.workflow_name.clone(),
+                    r.status.clone(),
+                    r.created_at.clone(),
+                    r.started_at.clone().unwrap_or_else(|| "-".into()),
+                    r.finished_at.clone().unwrap_or_else(|| "-".into()),
+                ]
+            })
+            .collect();
+        let widths: [usize; 6] = std::array::from_fn(|i| {
+            headers[i]
+                .len()
+                .max(rows.iter().map(|r| r[i].len()).max().unwrap_or(0))
+        });
+        println!(
+            "{}",
+            headers
+                .iter()
+                .enumerate()
+                .map(|(i, h)| format!("{:<w$}", h, w = widths[i]))
+                .collect::<Vec<_>>()
+                .join("  ")
+        );
+        for row in &rows {
             println!(
-                "{}\t{}\t{}\t{}\t{}\t{}",
-                r.workflow_id,
-                r.workflow_name,
-                r.status,
-                r.created_at,
-                r.started_at.as_deref().unwrap_or("-"),
-                r.finished_at.as_deref().unwrap_or("-"),
+                "{}",
+                row.iter()
+                    .enumerate()
+                    .map(|(i, v)| format!("{:<w$}", v, w = widths[i]))
+                    .collect::<Vec<_>>()
+                    .join("  ")
             );
         }
     }
