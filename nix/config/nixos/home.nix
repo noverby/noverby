@@ -44,6 +44,7 @@
         };
         stalwart-admin-password = {
           file = inputs.self.secrets.stalwart-admin-password;
+          owner = "stalwart-mail";
           mode = "600";
         };
       };
