@@ -8,6 +8,8 @@ mod nhost;
 mod route;
 #[allow(dead_code)]
 mod session;
+#[allow(dead_code)]
+mod theme;
 
 use dioxus::prelude::*;
 use route::Route;

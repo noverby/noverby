@@ -10,6 +10,7 @@ use super::file::FileApp;
 use super::folder::FolderApp;
 use super::home::HomeApp;
 use super::node::NodeApp;
+use super::vote::{PolicyApp, PollApp};
 
 /// The catch-all path page — resolves URL segments to a node
 #[component]
@@ -66,7 +67,7 @@ fn MimeLoader(node: NodeWithChildren) -> Element {
             rsx! { NodeApp { node: node.clone(), title: mime_name(mime_id) } }
         }
         "vote/policy" | "vote/change" => {
-            rsx! { NodeApp { node: node.clone(), title: t("mime.policy") } }
+            rsx! { PolicyApp { node: node.clone() } }
         }
         "vote/position" => {
             rsx! { NodeApp { node: node.clone(), title: t("mime.position") } }
@@ -74,7 +75,7 @@ fn MimeLoader(node: NodeWithChildren) -> Element {
         "vote/candidate" => {
             rsx! { NodeApp { node: node.clone(), title: t("mime.candidate") } }
         }
-        "vote/poll" => rsx! { NodeApp { node: node.clone(), title: t("mime.vote") } },
+        "vote/poll" => rsx! { PollApp { node: node.clone() } },
         _ => rsx! { NodeApp { node: node.clone(), title: t("mime.unknown") } },
     }
 }

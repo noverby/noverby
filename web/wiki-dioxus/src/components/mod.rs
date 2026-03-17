@@ -5,4 +5,7 @@ pub mod folder;
 pub mod home;
 pub mod layout;
 pub mod loader;
+pub mod member;
 pub mod node;
+pub mod speak;
+pub mod vote;

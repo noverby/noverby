@@ -718,3 +718,35 @@ h6, .title-small {
 .mb-1 { margin-bottom: 8px; }
 .mb-2 { margin-bottom: 16px; }
 .w-full { width: 100%; }
+
+/* Mobile-only elements */
+.mobile-only {
+    display: inline-flex;
+}
+
+@media (min-width: 1200px) {
+    .mobile-only {
+        display: none;
+    }
+}
+
+/* Folder item as link */
+a.folder-item {
+    text-decoration: none;
+    color: inherit;
+}
+
+a.folder-item:hover {
+    text-decoration: none;
+}
+
+/* Link as list-item */
+a.list-item {
+    text-decoration: none;
+    color: inherit;
+}
+
+a.list-item:hover {
+    text-decoration: none;
+    background-color: var(--md-surface-variant);
+}
