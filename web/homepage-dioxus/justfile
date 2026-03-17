@@ -1,11 +1,13 @@
+dx := `which -a dx | grep dioxus | head -1`
+
 dev:
-    dx serve
+    {{dx}} serve
 
 build:
-    dx build --release
+    {{dx}} build --release
 
 serve:
-    dx serve --release
+    {{dx}} serve --release
 
 clean:
-    dx clean
+    {{dx}} clean
