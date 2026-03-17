@@ -34,6 +34,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
     zstd
   ];
 
+  # Upstream tests have OnceLock poisoning bug in distribution detection
+  doCheck = false;
+
   env = {
     ZSTD_SYS_USE_PKG_CONFIG = true;
   };
