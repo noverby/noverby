@@ -18,4 +18,6 @@ exclude = [
   'https://mail.overby.me/',
   'https://api.mistral.ai/',
   'https://console.mistral.ai/',
+  'https://startpage.com/',
+  'https://x.com/',
 ]
