@@ -1302,6 +1302,7 @@ dependencies = [
  "glam",
  "js-sys",
  "log",
+ "manganis",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-logger",

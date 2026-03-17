@@ -4,6 +4,45 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::{HtmlImageElement, WebGlRenderingContext as GL, WebGlTexture};
 
+use manganis::asset;
+
+fn icon_url(icon: &str) -> String {
+    match icon {
+        "me.avif" => asset!("/assets/icons/me.avif").to_string(),
+        "commerce.avif" => asset!("/assets/icons/commerce.avif").to_string(),
+        "improve.avif" => asset!("/assets/icons/improve.avif").to_string(),
+        "connect.avif" => asset!("/assets/icons/connect.avif").to_string(),
+        "immerse.avif" => asset!("/assets/icons/immerse.avif").to_string(),
+        "give.avif" => asset!("/assets/icons/give.avif").to_string(),
+        "fediverse.avif" => asset!("/assets/icons/fediverse.avif").to_string(),
+        "linkedin.avif" => asset!("/assets/icons/linkedin.avif").to_string(),
+        "pixelfed.avif" => asset!("/assets/icons/pixelfed.avif").to_string(),
+        "mail.avif" => asset!("/assets/icons/mail.avif").to_string(),
+        "matrix.avif" => asset!("/assets/icons/matrix.avif").to_string(),
+        "signal.avif" => asset!("/assets/icons/signal.avif").to_string(),
+        "rocksky.avif" => asset!("/assets/icons/rocksky.avif").to_string(),
+        "atmosphere.avif" => asset!("/assets/icons/atmosphere.avif").to_string(),
+        "bridgy.avif" => asset!("/assets/icons/bridgy.avif").to_string(),
+        "github.avif" => asset!("/assets/icons/github.avif").to_string(),
+        "codeberg.avif" => asset!("/assets/icons/codeberg.avif").to_string(),
+        "tangled.avif" => asset!("/assets/icons/tangled.avif").to_string(),
+        "mastodon.avif" => asset!("/assets/icons/mastodon.avif").to_string(),
+        "bluesky.avif" => asset!("/assets/icons/bluesky.avif").to_string(),
+        "radikale.avif" => asset!("/assets/icons/radikale.avif").to_string(),
+        "aivero.avif" => asset!("/assets/icons/aivero.avif").to_string(),
+        "factbird.avif" => asset!("/assets/icons/factbird.avif").to_string(),
+        "veo.avif" => asset!("/assets/icons/veo.avif").to_string(),
+        "wikipedia.avif" => asset!("/assets/icons/wikipedia.avif").to_string(),
+        "happycow.avif" => asset!("/assets/icons/happycow.avif").to_string(),
+        "lemmy.avif" => asset!("/assets/icons/lemmy.avif").to_string(),
+        "neodb.avif" => asset!("/assets/icons/neodb.avif").to_string(),
+        other => {
+            log::warn!("Unknown icon: {other}");
+            String::new()
+        }
+    }
+}
+
 pub struct TextureManager {
     gl: GL,
     pub textures: Rc<RefCell<HashMap<String, WebGlTexture>>>,
@@ -21,7 +60,11 @@ impl TextureManager {
         let gl = self.gl.clone();
         let textures = Rc::clone(&self.textures);
         let icon_name = icon.to_string();
-        let src = format!("icons/{icon}");
+        let src = icon_url(icon);
+
+        if src.is_empty() {
+            return;
+        }
 
         // Create a placeholder texture immediately
         if let Some(tex) = gl.create_texture() {

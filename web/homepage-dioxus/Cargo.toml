@@ -31,6 +31,7 @@ web-sys = { version = "0.3", features = [
 wasm-bindgen = "=0.2.108"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
+manganis = "0.7"
 glam = "0.29"
 log = "0.4"
 wasm-logger = "0.2"
