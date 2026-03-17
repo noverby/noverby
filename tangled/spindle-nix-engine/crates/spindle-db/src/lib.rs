@@ -243,11 +243,11 @@ impl Database {
     // -----------------------------------------------------------------------
 
     /// Insert a new pipeline event.
-    pub fn insert_event(&self, kind: &str, payload: &str) -> Result<i64, DbError> {
-        Ok(events::insert_event(&*self.conn()?, kind, payload)?)
+    pub fn insert_event(&self, params: &events::InsertEventParams) -> Result<i64, DbError> {
+        Ok(events::insert_event(&*self.conn()?, params)?)
     }
 
-    /// Get all events after the given cursor ID.
+    /// Get all events after the given cursor (unix nanos).
     pub fn get_events_after(&self, cursor: i64) -> Result<Vec<events::Event>, DbError> {
         Ok(events::get_events_after(&*self.conn()?, cursor)?)
     }
@@ -462,10 +462,15 @@ mod tests {
 
         // Events
         let eid = db
-            .insert_event("pipeline_status", r#"{"test":true}"#)
+            .insert_event(&events::InsertEventParams {
+                rkey: "test-rkey",
+                nsid: "sh.tangled.pipeline.status",
+                payload: r#"{"test":true}"#,
+                created: 1000,
+            })
             .unwrap();
         let event = db.get_event(eid).unwrap().unwrap();
-        assert_eq!(event.kind, "pipeline_status");
+        assert_eq!(event.nsid, "sh.tangled.pipeline.status");
         assert_eq!(db.event_count().unwrap(), 1);
 
         // Jetstream cursor

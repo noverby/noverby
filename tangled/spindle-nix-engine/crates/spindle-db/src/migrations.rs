@@ -17,6 +17,11 @@ const MIGRATIONS: &[(u32, &str, &str)] = &[
         "add_repo_did",
         include_str!("migrations/002_add_repo_did.sql"),
     ),
+    (
+        3,
+        "events_appview_compat",
+        include_str!("migrations/003_events_appview_compat.sql"),
+    ),
 ];
 
 /// Errors that can occur during migration.

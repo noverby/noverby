@@ -221,13 +221,19 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
             &pipeline_id.rkey,
             &repo_did,
             &wid.name,
-        )
-        {
+        ) {
             error!(%e, workflow_id = %wid_str, "failed to create pending status");
         }
 
         // Emit a status event.
-        emit_status_event(&ctx, &wid_str, StatusKind::Pending);
+        emit_status_event(
+            &ctx,
+            &pipeline_id,
+            &wid.name,
+            StatusKind::Pending,
+            None,
+            None,
+        );
     }
 
     // Collect workflow IDs before moving entries into the closure.
@@ -264,7 +270,14 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
             for wid in &workflow_ids {
                 let wid_str = wid.to_string();
                 let _ = ctx.db.status_failed(&wid_str);
-                emit_status_event(&ctx, &wid_str, StatusKind::Failed);
+                emit_status_event(
+                    &ctx,
+                    &wid.pipeline_id,
+                    &wid.name,
+                    StatusKind::Failed,
+                    None,
+                    None,
+                );
             }
         }
     }
@@ -341,7 +354,14 @@ async fn execute_workflow(
     if let Err(e) = ctx.db.status_running(&wid_str) {
         error!(%e, workflow_id = %wid_str, "failed to set running status");
     }
-    emit_status_event(&ctx, &wid_str, StatusKind::Running);
+    emit_status_event(
+        &ctx,
+        &wid.pipeline_id,
+        &wid.name,
+        StatusKind::Running,
+        None,
+        None,
+    );
 
     // Create the workflow logger.
     let secret_values: Vec<String> = secrets.iter().map(|s| s.value.clone()).collect();
@@ -351,7 +371,14 @@ async fn execute_workflow(
             Err(e) => {
                 error!(%e, workflow_id = %wid_str, "failed to create workflow logger");
                 let _ = ctx.db.status_failed(&wid_str);
-                emit_status_event(&ctx, &wid_str, StatusKind::Failed);
+                emit_status_event(
+                    &ctx,
+                    &wid.pipeline_id,
+                    &wid.name,
+                    StatusKind::Failed,
+                    None,
+                    None,
+                );
                 return;
             }
         };
@@ -368,7 +395,14 @@ async fn execute_workflow(
             if let Err(e) = ctx.db.status_success(&wid_str) {
                 error!(%e, workflow_id = %wid_str, "failed to set success status");
             }
-            emit_status_event(&ctx, &wid_str, StatusKind::Success);
+            emit_status_event(
+                &ctx,
+                &wid.pipeline_id,
+                &wid.name,
+                StatusKind::Success,
+                None,
+                None,
+            );
             info!(workflow_id = %wid_str, "workflow completed successfully");
         }
         Ok(Err(e)) => {
@@ -377,7 +411,14 @@ async fn execute_workflow(
             if let Err(e) = ctx.db.status_failed(&wid_str) {
                 error!(%e, workflow_id = %wid_str, "failed to set failed status");
             }
-            emit_status_event(&ctx, &wid_str, StatusKind::Failed);
+            emit_status_event(
+                &ctx,
+                &wid.pipeline_id,
+                &wid.name,
+                StatusKind::Failed,
+                Some(&e.to_string()),
+                None,
+            );
         }
         Err(_) => {
             // Timed out.
@@ -385,7 +426,14 @@ async fn execute_workflow(
             if let Err(e) = ctx.db.status_timeout(&wid_str) {
                 error!(%e, workflow_id = %wid_str, "failed to set timeout status");
             }
-            emit_status_event(&ctx, &wid_str, StatusKind::Timeout);
+            emit_status_event(
+                &ctx,
+                &wid.pipeline_id,
+                &wid.name,
+                StatusKind::Timeout,
+                None,
+                None,
+            );
         }
     }
 
@@ -451,30 +499,86 @@ async fn run_workflow_steps(
     Ok(())
 }
 
-/// Emit a pipeline status event to the notifier and database.
-fn emit_status_event(ctx: &OrchestratorContext, workflow_id: &str, status: StatusKind) {
-    let payload = serde_json::json!({
-        "type": "workflow_status",
-        "workflowId": workflow_id,
+/// The AT Protocol NSID for pipeline status events.
+const PIPELINE_STATUS_NSID: &str = "sh.tangled.pipeline.status";
+
+/// The AT Protocol NSID for the pipeline collection.
+const PIPELINE_NSID: &str = "sh.tangled.pipeline";
+
+/// Emit a pipeline status event in the format expected by the tangled appview.
+///
+/// The appview expects events with:
+/// - `nsid`: `"sh.tangled.pipeline.status"`
+/// - `rkey`: a unique event identifier
+/// - `event`: a `PipelineStatus` record with `$type`, `createdAt`, `pipeline` (AT-URI),
+///   `workflow`, `status`, and optional `error`/`exitCode` fields.
+fn emit_status_event(
+    ctx: &OrchestratorContext,
+    pipeline_id: &PipelineId,
+    workflow_name: &str,
+    status: StatusKind,
+    error: Option<&str>,
+    exit_code: Option<i64>,
+) {
+    let now = chrono::Utc::now();
+    let created_nanos = now.timestamp_nanos_opt().unwrap_or(0);
+
+    // Build the AT-URI for the pipeline: at://did:web:{knot}/sh.tangled.pipeline/{rkey}
+    let pipeline_at_uri = format!(
+        "at://did:web:{}/{}/{}",
+        pipeline_id.knot, PIPELINE_NSID, pipeline_id.rkey
+    );
+
+    // Generate a simple rkey from the nanosecond timestamp.
+    let rkey = created_nanos.to_string();
+
+    // Build the PipelineStatus record matching the AT Protocol schema.
+    let mut payload = serde_json::json!({
+        "$type": PIPELINE_STATUS_NSID,
+        "createdAt": now.to_rfc3339(),
+        "pipeline": pipeline_at_uri,
+        "workflow": workflow_name,
         "status": status,
     });
 
+    if let Some(err) = error {
+        payload["error"] = serde_json::Value::String(err.to_string());
+    }
+    if let Some(code) = exit_code {
+        payload["exitCode"] = serde_json::Value::Number(code.into());
+    }
+
     let payload_str = payload.to_string();
 
+    let params = spindle_db::events::InsertEventParams {
+        rkey: &rkey,
+        nsid: PIPELINE_STATUS_NSID,
+        payload: &payload_str,
+        created: created_nanos,
+    };
+
     // Insert into the events table.
-    match ctx.db.insert_event("workflow_status", &payload_str) {
+    match ctx.db.insert_event(&params) {
         Ok(event_id) => {
             // Broadcast to WebSocket clients.
             let event = spindle_db::events::Event {
                 id: event_id,
-                kind: "workflow_status".into(),
+                kind: PIPELINE_STATUS_NSID.into(),
                 payload: payload_str,
-                created_at: chrono::Utc::now().to_rfc3339(),
+                created_at: now.to_rfc3339(),
+                rkey,
+                nsid: PIPELINE_STATUS_NSID.into(),
+                created: created_nanos,
             };
             ctx.notifier.notify(event);
         }
         Err(e) => {
-            warn!(%e, workflow_id, "failed to insert status event");
+            warn!(
+                %e,
+                workflow = workflow_name,
+                pipeline = %pipeline_id,
+                "failed to insert status event"
+            );
         }
     }
 }

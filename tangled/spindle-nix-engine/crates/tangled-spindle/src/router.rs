@@ -131,29 +131,47 @@ async fn events_ws_handler(
     ws.on_upgrade(move |socket| events_ws(socket, state, query.cursor.unwrap_or(0)))
 }
 
+/// Serialize an event into the envelope format expected by the tangled appview:
+/// `{"rkey": "...", "nsid": "...", "event": {...}}`
+fn event_to_envelope(event: &spindle_db::events::Event) -> Result<String, serde_json::Error> {
+    // Parse the payload back into a JSON value so it's nested (not double-escaped).
+    let event_json: serde_json::Value = serde_json::from_str(&event.payload)
+        .unwrap_or_else(|_| serde_json::Value::String(event.payload.clone()));
+
+    let envelope = serde_json::json!({
+        "rkey": event.rkey,
+        "nsid": event.nsid,
+        "event": event_json,
+    });
+
+    serde_json::to_string(&envelope)
+}
+
 /// Handle the `/events` WebSocket connection.
 ///
 /// Protocol:
 /// 1. Subscribe to the broadcast channel **before** backfilling (avoids race).
-/// 2. Backfill events from the database with `id > cursor`.
-/// 3. Stream live events from the broadcast channel, deduplicating by ID.
+/// 2. Backfill events from the database with `created > cursor`.
+/// 3. Stream live events from the broadcast channel, deduplicating by created timestamp.
 /// 4. Send keepalive pings every 30 seconds.
+///
+/// Events are sent in the envelope format: `{"rkey":"...","nsid":"...","event":{...}}`
 async fn events_ws(mut socket: WebSocket, state: Arc<AppState>, cursor: i64) {
     // Subscribe first to avoid missing events between backfill and live.
     let mut rx = state.notifier.subscribe();
-    let mut last_sent_id = cursor;
+    let mut last_sent_cursor = cursor;
 
     // Backfill from database.
     match state.db.get_events_after(cursor) {
         Ok(events) => {
             for event in events {
-                let id = event.id;
-                match serde_json::to_string(&event) {
+                let created = event.created;
+                match event_to_envelope(&event) {
                     Ok(json) => {
                         if socket.send(Message::Text(json.into())).await.is_err() {
                             return;
                         }
-                        last_sent_id = id;
+                        last_sent_cursor = created;
                     }
                     Err(e) => {
                         warn!(%e, "failed to serialize event for backfill");
@@ -167,7 +185,7 @@ async fn events_ws(mut socket: WebSocket, state: Arc<AppState>, cursor: i64) {
     }
 
     debug!(
-        last_sent_id,
+        last_sent_cursor,
         "events backfill complete, switching to live stream"
     );
 
@@ -180,11 +198,11 @@ async fn events_ws(mut socket: WebSocket, state: Arc<AppState>, cursor: i64) {
             result = rx.recv() => {
                 match result {
                     Ok(event) => {
-                        if event.id <= last_sent_id {
+                        if event.created <= last_sent_cursor {
                             continue; // Deduplicate.
                         }
-                        last_sent_id = event.id;
-                        match serde_json::to_string(&event) {
+                        last_sent_cursor = event.created;
+                        match event_to_envelope(&event) {
                             Ok(json) => {
                                 if socket.send(Message::Text(json.into())).await.is_err() {
                                     return;
@@ -915,7 +933,13 @@ mod tests {
 
         state
             .db
-            .status_pending("wid-1", "knot.example.com", "rkey1", "did:plc:test", "build")
+            .status_pending(
+                "wid-1",
+                "knot.example.com",
+                "rkey1",
+                "did:plc:test",
+                "build",
+            )
             .unwrap();
         state.db.status_running("wid-1").unwrap();
         state

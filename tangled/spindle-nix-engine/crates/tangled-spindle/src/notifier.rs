@@ -67,16 +67,19 @@ mod tests {
 
         let event = Event {
             id: 1,
-            kind: "pipeline_status".into(),
+            kind: "sh.tangled.pipeline.status".into(),
             payload: r#"{"status":"running"}"#.into(),
             created_at: "2024-01-01T00:00:00Z".into(),
+            rkey: "1000".into(),
+            nsid: "sh.tangled.pipeline.status".into(),
+            created: 1000,
         };
 
         notifier.notify(event.clone());
 
         let received = rx.recv().await.unwrap();
         assert_eq!(received.id, 1);
-        assert_eq!(received.kind, "pipeline_status");
+        assert_eq!(received.nsid, "sh.tangled.pipeline.status");
     }
 
     #[tokio::test]
@@ -88,6 +91,9 @@ mod tests {
             kind: "test".into(),
             payload: "{}".into(),
             created_at: "2024-01-01T00:00:00Z".into(),
+            rkey: "1000".into(),
+            nsid: "test".into(),
+            created: 1000,
         };
 
         // Should not panic even with no subscribers.
@@ -105,6 +111,9 @@ mod tests {
             kind: "test".into(),
             payload: "{}".into(),
             created_at: "2024-01-01T00:00:00Z".into(),
+            rkey: "1000".into(),
+            nsid: "test".into(),
+            created: 1000,
         };
 
         notifier.notify(event);

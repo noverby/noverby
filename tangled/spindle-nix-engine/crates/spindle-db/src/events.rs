@@ -13,14 +13,20 @@ use serde::{Deserialize, Serialize};
 /// A stored pipeline event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
-    /// Auto-incrementing event ID (used as the cursor).
+    /// Auto-incrementing event ID.
     pub id: i64,
-    /// Event kind (e.g. `"pipeline_status"`).
+    /// Event kind (legacy, e.g. `"pipeline_status"`).
     pub kind: String,
     /// JSON-encoded event payload.
     pub payload: String,
     /// When the event was created (ISO 8601).
     pub created_at: String,
+    /// Record key (TID-like unique identifier for the event).
+    pub rkey: String,
+    /// AT Protocol NSID (e.g. `"sh.tangled.pipeline.status"`).
+    pub nsid: String,
+    /// Unix nanosecond timestamp (used as cursor by the appview).
+    pub created: i64,
 }
 
 /// A knot cursor record.
@@ -38,27 +44,45 @@ pub struct KnotCursor {
 // events table
 // ---------------------------------------------------------------------------
 
+/// Parameters for inserting a new pipeline event.
+pub struct InsertEventParams<'a> {
+    /// Record key (unique identifier for this event).
+    pub rkey: &'a str,
+    /// AT Protocol NSID (e.g. `"sh.tangled.pipeline.status"`).
+    pub nsid: &'a str,
+    /// JSON-encoded event payload.
+    pub payload: &'a str,
+    /// Unix nanosecond timestamp.
+    pub created: i64,
+}
+
 /// Insert a new pipeline event.
 ///
-/// Returns the auto-generated event ID, which serves as the cursor for
-/// WebSocket clients.
-pub fn insert_event(conn: &Connection, kind: &str, payload: &str) -> rusqlite::Result<i64> {
+/// Returns the auto-generated event ID.
+pub fn insert_event(conn: &Connection, params: &InsertEventParams) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO events (kind, payload) VALUES (?1, ?2)",
-        params![kind, payload],
+        "INSERT INTO events (kind, payload, rkey, nsid, created) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            params.nsid,
+            params.payload,
+            params.rkey,
+            params.nsid,
+            params.created
+        ],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
-/// Get all events with an ID greater than the given cursor.
+/// Get all events with a `created` timestamp greater than the given cursor.
 ///
 /// This is the primary query for WebSocket `/events` backfill: a client
-/// provides its last-seen event ID and receives all newer events.
+/// provides its last-seen cursor (unix nanos) and receives all newer events.
 ///
-/// Results are ordered by ID ascending (oldest first).
+/// Results are ordered by `created` ascending (oldest first), limited to 100.
 pub fn get_events_after(conn: &Connection, cursor: i64) -> rusqlite::Result<Vec<Event>> {
     let mut stmt = conn.prepare(
-        "SELECT id, kind, payload, created_at FROM events WHERE id > ?1 ORDER BY id ASC",
+        "SELECT id, kind, payload, created_at, rkey, nsid, created \
+         FROM events WHERE created > ?1 ORDER BY created ASC LIMIT 100",
     )?;
 
     let events = stmt
@@ -68,6 +92,9 @@ pub fn get_events_after(conn: &Connection, cursor: i64) -> rusqlite::Result<Vec<
                 kind: row.get(1)?,
                 payload: row.get(2)?,
                 created_at: row.get(3)?,
+                rkey: row.get(4)?,
+                nsid: row.get(5)?,
+                created: row.get(6)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -92,7 +119,7 @@ pub fn get_latest_event_id(conn: &Connection) -> rusqlite::Result<Option<i64>> {
 /// Get a single event by ID.
 pub fn get_event(conn: &Connection, id: i64) -> rusqlite::Result<Option<Event>> {
     conn.query_row(
-        "SELECT id, kind, payload, created_at FROM events WHERE id = ?1",
+        "SELECT id, kind, payload, created_at, rkey, nsid, created FROM events WHERE id = ?1",
         params![id],
         |row| {
             Ok(Event {
@@ -100,6 +127,9 @@ pub fn get_event(conn: &Connection, id: i64) -> rusqlite::Result<Option<Event>> 
                 kind: row.get(1)?,
                 payload: row.get(2)?,
                 created_at: row.get(3)?,
+                rkey: row.get(4)?,
+                nsid: row.get(5)?,
+                created: row.get(6)?,
             })
         },
     )
@@ -224,6 +254,16 @@ mod tests {
         conn
     }
 
+    /// Helper to create test event params with incrementing timestamps.
+    fn test_params<'a>(nsid: &'a str, payload: &'a str, created: i64) -> InsertEventParams<'a> {
+        InsertEventParams {
+            rkey: "test-rkey",
+            nsid,
+            payload,
+            created,
+        }
+    }
+
     // -----------------------------------------------------------------------
     // events table tests
     // -----------------------------------------------------------------------
@@ -232,13 +272,21 @@ mod tests {
     fn insert_and_get_event() {
         let conn = setup_db();
 
-        let id = insert_event(&conn, "pipeline_status", r#"{"status":"running"}"#).unwrap();
+        let params = InsertEventParams {
+            rkey: "rkey-1",
+            nsid: "sh.tangled.pipeline.status",
+            payload: r#"{"status":"running"}"#,
+            created: 1000,
+        };
+        let id = insert_event(&conn, &params).unwrap();
         assert!(id > 0);
 
         let event = get_event(&conn, id).unwrap().expect("event should exist");
         assert_eq!(event.id, id);
-        assert_eq!(event.kind, "pipeline_status");
+        assert_eq!(event.nsid, "sh.tangled.pipeline.status");
+        assert_eq!(event.rkey, "rkey-1");
         assert_eq!(event.payload, r#"{"status":"running"}"#);
+        assert_eq!(event.created, 1000);
     }
 
     #[test]
@@ -252,24 +300,23 @@ mod tests {
     fn get_events_after_cursor() {
         let conn = setup_db();
 
-        let id1 = insert_event(&conn, "a", "payload1").unwrap();
-        let id2 = insert_event(&conn, "b", "payload2").unwrap();
-        let _id3 = insert_event(&conn, "c", "payload3").unwrap();
+        insert_event(&conn, &test_params("a", "payload1", 100)).unwrap();
+        insert_event(&conn, &test_params("b", "payload2", 200)).unwrap();
+        insert_event(&conn, &test_params("c", "payload3", 300)).unwrap();
 
-        // Get events after the first one
-        let events = get_events_after(&conn, id1).unwrap();
+        // Get events after cursor=100 (first event's created timestamp)
+        let events = get_events_after(&conn, 100).unwrap();
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].id, id2);
-        assert_eq!(events[0].kind, "b");
-        assert_eq!(events[1].kind, "c");
+        assert_eq!(events[0].nsid, "b");
+        assert_eq!(events[1].nsid, "c");
     }
 
     #[test]
     fn get_events_after_cursor_zero_returns_all() {
         let conn = setup_db();
 
-        insert_event(&conn, "a", "p1").unwrap();
-        insert_event(&conn, "b", "p2").unwrap();
+        insert_event(&conn, &test_params("a", "p1", 100)).unwrap();
+        insert_event(&conn, &test_params("b", "p2", 200)).unwrap();
 
         let events = get_events_after(&conn, 0).unwrap();
         assert_eq!(events.len(), 2);
@@ -279,7 +326,7 @@ mod tests {
     fn get_events_after_cursor_beyond_latest() {
         let conn = setup_db();
 
-        insert_event(&conn, "a", "p1").unwrap();
+        insert_event(&conn, &test_params("a", "p1", 100)).unwrap();
 
         let events = get_events_after(&conn, 9999).unwrap();
         assert!(events.is_empty());
@@ -303,8 +350,8 @@ mod tests {
     fn get_latest_event_id_returns_max() {
         let conn = setup_db();
 
-        insert_event(&conn, "a", "p1").unwrap();
-        let id2 = insert_event(&conn, "b", "p2").unwrap();
+        insert_event(&conn, &test_params("a", "p1", 100)).unwrap();
+        let id2 = insert_event(&conn, &test_params("b", "p2", 200)).unwrap();
 
         let latest = get_latest_event_id(&conn).unwrap();
         assert_eq!(latest, Some(id2));
@@ -320,26 +367,27 @@ mod tests {
     fn event_count_after_inserts() {
         let conn = setup_db();
 
-        insert_event(&conn, "a", "p1").unwrap();
-        insert_event(&conn, "b", "p2").unwrap();
-        insert_event(&conn, "c", "p3").unwrap();
+        insert_event(&conn, &test_params("a", "p1", 100)).unwrap();
+        insert_event(&conn, &test_params("b", "p2", 200)).unwrap();
+        insert_event(&conn, &test_params("c", "p3", 300)).unwrap();
 
         assert_eq!(event_count(&conn).unwrap(), 3);
     }
 
     #[test]
-    fn events_ordered_by_id_ascending() {
+    fn events_ordered_by_created_ascending() {
         let conn = setup_db();
 
-        let id1 = insert_event(&conn, "first", "p1").unwrap();
-        let id2 = insert_event(&conn, "second", "p2").unwrap();
-        let id3 = insert_event(&conn, "third", "p3").unwrap();
+        // Insert in non-sequential order to verify ordering by created
+        insert_event(&conn, &test_params("first", "p1", 100)).unwrap();
+        insert_event(&conn, &test_params("second", "p2", 200)).unwrap();
+        insert_event(&conn, &test_params("third", "p3", 300)).unwrap();
 
         let events = get_all_events(&conn).unwrap();
         assert_eq!(events.len(), 3);
-        assert_eq!(events[0].id, id1);
-        assert_eq!(events[1].id, id2);
-        assert_eq!(events[2].id, id3);
+        assert_eq!(events[0].created, 100);
+        assert_eq!(events[1].created, 200);
+        assert_eq!(events[2].created, 300);
     }
 
     // -----------------------------------------------------------------------

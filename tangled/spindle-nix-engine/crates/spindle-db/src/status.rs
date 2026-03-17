@@ -53,7 +53,13 @@ pub fn status_pending(
         "INSERT OR IGNORE INTO workflow_status \
          (workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name, status) \
          VALUES (?1, ?2, ?3, ?4, ?5, 'pending')",
-        params![workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name],
+        params![
+            workflow_id,
+            pipeline_knot,
+            pipeline_rkey,
+            repo_did,
+            workflow_name
+        ],
     )?;
     Ok(())
 }
@@ -427,9 +433,33 @@ mod tests {
     fn get_statuses_for_pipeline_groups_correctly() {
         let conn = setup_db();
 
-        status_pending(&conn, "knot-rkey1-test", "knot", "rkey1", "did:plc:test", "test").unwrap();
-        status_pending(&conn, "knot-rkey1-lint", "knot", "rkey1", "did:plc:test", "lint").unwrap();
-        status_pending(&conn, "knot-rkey2-test", "knot", "rkey2", "did:plc:test", "test").unwrap();
+        status_pending(
+            &conn,
+            "knot-rkey1-test",
+            "knot",
+            "rkey1",
+            "did:plc:test",
+            "test",
+        )
+        .unwrap();
+        status_pending(
+            &conn,
+            "knot-rkey1-lint",
+            "knot",
+            "rkey1",
+            "did:plc:test",
+            "lint",
+        )
+        .unwrap();
+        status_pending(
+            &conn,
+            "knot-rkey2-test",
+            "knot",
+            "rkey2",
+            "did:plc:test",
+            "test",
+        )
+        .unwrap();
 
         let pipeline1 = get_statuses_for_pipeline(&conn, "knot", "rkey1").unwrap();
         assert_eq!(pipeline1.len(), 2);
