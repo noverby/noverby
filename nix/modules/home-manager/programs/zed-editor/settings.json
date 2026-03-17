@@ -68,6 +68,7 @@
 			"language_servers": ["vtsls", "color-lsp"]
 		}
 	},
+	"ensure_final_newline_on_save": false,
 	"load_direnv": "direct",
 	"lsp": {
 		"biome": {
