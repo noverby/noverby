@@ -168,6 +168,7 @@ pub struct NodesBoolExp {
     #[cynic(rename = "_and")]
     pub and: Option<Vec<NodesBoolExp>>,
     pub key: Option<StringComparisonExp>,
+    pub name: Option<StringComparisonExp>,
     pub parent_id: Option<UuidComparisonExp>,
 }
 
@@ -246,10 +247,12 @@ pub async fn query_node_by_key(
                     is_null: None,
                 }),
                 parent_id: None,
+                name: None,
                 and: None,
             },
             NodesBoolExp {
                 key: None,
+                name: None,
                 parent_id: Some(match parent_id {
                     Some(id) => UuidComparisonExp {
                         eq: Some(Uuid(id.to_string())),
@@ -264,6 +267,7 @@ pub async fn query_node_by_key(
             },
         ]),
         key: None,
+        name: None,
         parent_id: None,
     };
 
@@ -306,4 +310,34 @@ pub async fn resolve_path(
     }
 
     Ok(None)
+}
+
+/// Search nodes by name (case-insensitive substring match)
+pub async fn search_nodes(
+    access_token: Option<&str>,
+    query: &str,
+) -> Result<Vec<NodeFields>, String> {
+    if query.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let where_clause = NodesBoolExp {
+        and: Some(vec![NodesBoolExp {
+            name: Some(StringComparisonExp {
+                eq: None,
+                ilike: Some(format!("%{query}%")),
+                is_null: None,
+            }),
+            key: None,
+            parent_id: None,
+            and: None,
+        }]),
+        key: None,
+        name: None,
+        parent_id: None,
+    };
+
+    let operation = NodesWhereQuery::build(NodesWhereVariables { where_clause });
+    let result = execute(access_token, operation).await?;
+    Ok(result.nodes)
 }

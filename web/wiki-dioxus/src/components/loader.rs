@@ -9,8 +9,10 @@ use super::content::ContentApp;
 use super::file::FileApp;
 use super::folder::FolderApp;
 use super::home::HomeApp;
+use super::member::MemberApp;
 use super::node::NodeApp;
-use super::vote::{PolicyApp, PollApp};
+use super::speak::SpeakApp;
+use super::vote::{PolicyApp, PollApp, VoteApp};
 
 /// The catch-all path page — resolves URL segments to a node
 #[component]
@@ -28,7 +30,26 @@ pub fn PathPage(segments: Vec<String>) -> Element {
     let result = node_future.read().clone();
     match result {
         Some(Ok(Some(node))) => {
-            rsx! { MimeLoader { node } }
+            // Check for ?app= query parameter
+            let app_param = web_sys::window()
+                .and_then(|w| w.location().search().ok())
+                .and_then(|s| {
+                    s.trim_start_matches('?').split('&').find_map(|pair| {
+                        let mut parts = pair.splitn(2, '=');
+                        if parts.next() == Some("app") {
+                            parts.next().map(String::from)
+                        } else {
+                            None
+                        }
+                    })
+                });
+
+            match app_param.as_deref() {
+                Some("vote") => rsx! { VoteApp { node } },
+                Some("speak") => rsx! { SpeakApp { node } },
+                Some("member") => rsx! { MemberApp { node } },
+                _ => rsx! { MimeLoader { node, path: segments.clone() } },
+            }
         }
         Some(Ok(None)) => {
             rsx! { NodeNotFound {} }
@@ -55,16 +76,16 @@ pub fn PathPage(segments: Vec<String>) -> Element {
 
 /// Routes a node to the appropriate app based on its MIME type
 #[component]
-fn MimeLoader(node: NodeWithChildren) -> Element {
+fn MimeLoader(node: NodeWithChildren, path: Vec<String>) -> Element {
     let mime_id = node.mime_id.as_deref().unwrap_or("");
 
     match mime_id {
-        "wiki/folder" => rsx! { FolderApp { node: node.clone() } },
+        "wiki/folder" => rsx! { FolderApp { node: node.clone(), parent_path: path } },
         "wiki/document" => rsx! { ContentApp { node: node.clone() } },
         "wiki/file" => rsx! { FileApp { node: node.clone() } },
         "wiki/home" => rsx! { HomeApp {} },
         "wiki/group" | "wiki/event" => {
-            rsx! { NodeApp { node: node.clone(), title: mime_name(mime_id) } }
+            rsx! { FolderApp { node: node.clone(), parent_path: path } }
         }
         "vote/policy" | "vote/change" => {
             rsx! { PolicyApp { node: node.clone() } }
@@ -77,17 +98,6 @@ fn MimeLoader(node: NodeWithChildren) -> Element {
         }
         "vote/poll" => rsx! { PollApp { node: node.clone() } },
         _ => rsx! { NodeApp { node: node.clone(), title: t("mime.unknown") } },
-    }
-}
-
-fn mime_name(mime_id: &str) -> String {
-    match mime_id {
-        "wiki/group" => t("mime.group"),
-        "wiki/event" => t("mime.event"),
-        "wiki/folder" => t("mime.folder"),
-        "wiki/document" => t("mime.document"),
-        "wiki/file" => t("mime.file"),
-        _ => t("mime.unknown"),
     }
 }
 

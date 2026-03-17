@@ -1,16 +1,18 @@
 use dioxus::prelude::*;
 
-use crate::i18n::t;
+use crate::graphql::{self, NodeFields};
+use crate::i18n::{t, Lang, LANG};
 use crate::route::Route;
-use crate::session::use_session;
-use crate::theme::{apply_theme, use_theme, THEME};
+use crate::session::{save_session, use_session, SESSION};
+use crate::theme::{apply_theme, use_theme, ThemeMode, THEME};
 
 #[component]
 pub fn Layout() -> Element {
-    let _session = use_session();
     let mut open_drawer = use_signal(|| false);
     let mut search_mode = use_signal(|| false);
     let mut search_input = use_signal(String::new);
+    let mut search_results = use_signal(Vec::<NodeFields>::new);
+    let menu_open = use_signal(|| false);
 
     let route = use_route::<Route>();
     let is_auth_page = matches!(
@@ -42,7 +44,12 @@ pub fn Layout() -> Element {
                 }
             }
 
-            // Bottom/top bar with search and breadcrumbs
+            // App rail (desktop only — right of drawer)
+            div { class: "app-rail",
+                AppRail {}
+            }
+
+            // Bottom/top bar
             div { class: "bottom-bar",
                 div { class: "bar",
                     // Menu button (mobile)
@@ -56,26 +63,14 @@ pub fn Layout() -> Element {
 
                     // Search or breadcrumbs
                     if *search_mode.read() {
-                        input {
-                            class: "breadcrumbs",
-                            style: "background: transparent; border: none; color: white; outline: none; font-size: 14px;",
-                            placeholder: "{t(\"common.search\")}",
-                            value: "{search_input}",
-                            oninput: move |evt| search_input.set(evt.value()),
-                            onkeydown: move |evt| {
-                                if evt.key() == Key::Escape {
-                                    search_mode.set(false);
-                                    search_input.set(String::new());
-                                }
-                            },
-                        }
-                        button {
-                            class: "btn-icon",
-                            onclick: move |_| {
+                        SearchBar {
+                            input: search_input,
+                            results: search_results,
+                            on_close: move |_| {
                                 search_mode.set(false);
                                 search_input.set(String::new());
+                                search_results.set(vec![]);
                             },
-                            span { class: "avatar small", "\u{2715}" }
                         }
                     } else {
                         Breadcrumbs {}
@@ -86,11 +81,8 @@ pub fn Layout() -> Element {
                         }
                     }
 
-                    // Theme toggle
-                    ThemeToggle {}
-
                     // User menu
-                    UserMenu {}
+                    UserMenu { menu_open }
                 }
             }
 
@@ -118,6 +110,76 @@ pub fn Layout() -> Element {
     }
 }
 
+/// Search bar with live GraphQL results
+#[component]
+fn SearchBar(
+    input: Signal<String>,
+    results: Signal<Vec<NodeFields>>,
+    on_close: EventHandler,
+) -> Element {
+    let session = use_session();
+    let nav = use_navigator();
+    let mut input = input;
+    let mut results = results;
+
+    rsx! {
+        div { style: "flex: 1; position: relative;",
+            input {
+                class: "breadcrumbs",
+                style: "background: transparent; border: none; color: white; outline: none; font-size: 14px; width: 100%;",
+                placeholder: "{t(\"common.search\")}",
+                value: "{input}",
+                oninput: move |evt| {
+                    let value = evt.value();
+                    input.set(value.clone());
+                    let token = session.read().access_token.clone();
+                    spawn(async move {
+                        match graphql::search_nodes(token.as_deref(), &value).await {
+                            Ok(nodes) => results.set(nodes),
+                            Err(_) => results.set(vec![]),
+                        }
+                    });
+                },
+                onkeydown: move |evt| {
+                    if evt.key() == Key::Escape {
+                        on_close.call(());
+                    }
+                },
+            }
+            // Search results dropdown
+            if !results.read().is_empty() {
+                div { class: "search-results",
+                    for node in results.read().iter() {
+                        div {
+                            class: "list-item",
+                            key: "{node.id.0}",
+                            onclick: {
+                                let key = node.key.clone();
+                                let on_close = on_close;
+                                move |_| {
+                                    nav.push(Route::PathPage { segments: vec![key.clone()] });
+                                    on_close.call(());
+                                }
+                            },
+                            div { class: "avatar small",
+                                "{super::loader::mime_icon(node.mime_id.as_deref().unwrap_or(\"\"))}"
+                            }
+                            div { class: "list-item-text",
+                                div { class: "list-item-primary", "{node.name}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        button {
+            class: "btn-icon",
+            onclick: move |_| on_close.call(()),
+            span { class: "avatar small", "\u{2715}" }
+        }
+    }
+}
+
 /// Breadcrumb navigation based on current route
 #[component]
 fn Breadcrumbs() -> Element {
@@ -131,7 +193,7 @@ fn Breadcrumbs() -> Element {
     rsx! {
         div { class: "breadcrumbs",
             Link { to: Route::HomeApp {}, "\u{1F3E0}" }
-            for (i, segment) in segments.iter().enumerate() {
+            for (i , segment) in segments.iter().enumerate() {
                 span { class: "separator", " / " }
                 if i == segments.len() - 1 {
                     span { "{segment}" }
@@ -148,62 +210,177 @@ fn Breadcrumbs() -> Element {
     }
 }
 
-/// Theme toggle button
+/// App rail — vertical icon navigation for large screens
 #[component]
-fn ThemeToggle() -> Element {
-    let theme = use_theme();
+fn AppRail() -> Element {
+    let route = use_route::<Route>();
+    let segments: Vec<String> = match &route {
+        Route::PathPage { segments } => segments.clone(),
+        _ => vec![],
+    };
+
+    if segments.is_empty() {
+        return rsx! {};
+    }
+
+    let apps = [
+        ("member", "\u{1F465}", t("mime.members")),
+        ("speak", "\u{1F3A4}", t("mime.speak")),
+        ("vote", "\u{1F4CA}", t("mime.vote")),
+    ];
 
     rsx! {
-        button {
-            class: "btn-icon",
-            onclick: move |_| {
-                let new_theme = theme.read().toggle();
-                apply_theme(&new_theme);
-                *THEME.write() = new_theme;
-            },
-            span { class: "avatar small",
-                if *theme.read() == crate::theme::ThemeMode::Dark {
-                    "\u{2600}" // sun
-                } else {
-                    "\u{1F319}" // moon
-                }
+        for (_app_id , icon , label) in apps.iter() {
+            Link {
+                to: Route::PathPage { segments: segments.clone() },
+                class: "btn-icon",
+                style: "flex-direction: column; gap: 2px; width: 56px; height: 56px;",
+                title: "{label}",
+                span { style: "font-size: 20px;", "{icon}" }
+                span { style: "font-size: 10px; color: var(--md-on-surface-variant);", "{label}" }
             }
         }
     }
 }
 
-/// User menu (login/logout)
+/// User menu with popover
 #[component]
-fn UserMenu() -> Element {
+fn UserMenu(menu_open: Signal<bool>) -> Element {
     let session = use_session();
     let nav = use_navigator();
     let is_auth = session.read().is_authenticated();
+    let theme = use_theme();
+    let mut menu_open = menu_open;
+
+    let initial = session
+        .read()
+        .user
+        .as_ref()
+        .map(|u| u.display_name.chars().next().unwrap_or('?').to_string())
+        .unwrap_or_else(|| "?".to_string());
 
     rsx! {
-        if is_auth {
+        div { style: "position: relative;",
             button {
                 class: "btn-icon",
                 onclick: move |_| {
-                    crate::nhost::sign_out();
-                    *crate::session::SESSION.write() = Default::default();
-                    crate::session::save_session(&Default::default());
-                    nav.push(Route::HomeApp {});
+                    let current = *menu_open.read();
+                    menu_open.set(!current);
                 },
-                span {
-                    class: "avatar small secondary",
-                    {session
-                        .read()
-                        .user
-                        .as_ref()
-                        .map(|u| u.display_name.chars().next().unwrap_or('?').to_string())
-                        .unwrap_or_else(|| "?".to_string())}
+                if is_auth {
+                    span { class: "avatar small secondary", "{initial}" }
+                } else {
+                    span { class: "avatar small", "\u{1F464}" }
                 }
             }
-        } else {
-            Link {
-                to: Route::Login {},
-                class: "btn-icon",
-                span { class: "avatar small", "\u{1F464}" }
+
+            // Dropdown menu
+            if *menu_open.read() {
+                div { class: "user-menu-dropdown",
+                    // Theme toggle
+                    div {
+                        class: "list-item",
+                        onclick: move |_| {
+                            let new_theme = theme.read().toggle();
+                            apply_theme(&new_theme);
+                            *THEME.write() = new_theme;
+                        },
+                        span { style: "font-size: 18px; width: 24px; text-align: center;",
+                            if *theme.read() == ThemeMode::Dark {
+                                "\u{2600}"
+                            } else {
+                                "\u{1F319}"
+                            }
+                        }
+                        div { class: "list-item-text",
+                            div { class: "list-item-primary",
+                                if *theme.read() == ThemeMode::Dark {
+                                    "{t(\"layout.light\")}"
+                                } else {
+                                    "{t(\"layout.dark\")}"
+                                }
+                            }
+                        }
+                    }
+
+                    // Language toggle
+                    div {
+                        class: "list-item",
+                        onclick: move |_| {
+                            let new_lang = match *LANG.read() {
+                                Lang::En => Lang::Da,
+                                Lang::Da => Lang::En,
+                            };
+                            *LANG.write() = new_lang;
+                        },
+                        span { style: "font-size: 18px; width: 24px; text-align: center;", "\u{1F310}" }
+                        div { class: "list-item-text",
+                            div { class: "list-item-primary",
+                                {match *LANG.read() {
+                                    Lang::En => "Dansk",
+                                    Lang::Da => "English",
+                                }}
+                            }
+                        }
+                    }
+
+                    if is_auth {
+                        // Set password
+                        div {
+                            class: "list-item",
+                            onclick: move |_| {
+                                nav.push(Route::SetPassword {});
+                                menu_open.set(false);
+                            },
+                            span { style: "font-size: 18px; width: 24px; text-align: center;", "\u{1F512}" }
+                            div { class: "list-item-text",
+                                div { class: "list-item-primary", "{t(\"auth.setPassword\")}" }
+                            }
+                        }
+
+                        // Logout
+                        div {
+                            class: "list-item",
+                            onclick: move |_| {
+                                crate::nhost::sign_out();
+                                *SESSION.write() = Default::default();
+                                save_session(&Default::default());
+                                menu_open.set(false);
+                                nav.push(Route::HomeApp {});
+                            },
+                            span { style: "font-size: 18px; width: 24px; text-align: center;", "\u{1F6AA}" }
+                            div { class: "list-item-text",
+                                div { class: "list-item-primary", "{t(\"auth.logout\")}" }
+                            }
+                        }
+                    } else {
+                        // Login
+                        div {
+                            class: "list-item",
+                            onclick: move |_| {
+                                nav.push(Route::Login {});
+                                menu_open.set(false);
+                            },
+                            span { style: "font-size: 18px; width: 24px; text-align: center;", "\u{1F511}" }
+                            div { class: "list-item-text",
+                                div { class: "list-item-primary", "{t(\"common.logIn\")}" }
+                            }
+                        }
+
+                        // Register
+                        div {
+                            class: "list-item",
+                            onclick: move |_| {
+                                nav.push(Route::Register {});
+                                menu_open.set(false);
+                            },
+                            span { style: "font-size: 18px; width: 24px; text-align: center;", "\u{1F464}" }
+                            div { class: "list-item-text",
+                                div { class: "list-item-primary", "{t(\"auth.register\")}" }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -220,6 +397,12 @@ fn DrawerContent() -> Element {
         .as_ref()
         .map(|u| u.display_name.clone())
         .unwrap_or_default();
+    let email = session
+        .read()
+        .user
+        .as_ref()
+        .map(|u| u.email.clone())
+        .unwrap_or_default();
 
     rsx! {
         div { style: "padding: 16px;",
@@ -231,7 +414,7 @@ fn DrawerContent() -> Element {
                             h3 { class: "title-medium", "{display_name}" }
                             p { class: "body-medium",
                                 style: "color: var(--md-on-surface-variant);",
-                                "{session.read().user.as_ref().map(|u| u.email.as_str()).unwrap_or(\"\")}"
+                                "{email}"
                             }
                         }
                     }
@@ -247,6 +430,36 @@ fn DrawerContent() -> Element {
                         div { class: "list-item-primary", "{t(\"common.home\")}" }
                     }
                 }
+            }
+
+            // HomeList — load groups and events from GraphQL
+            if is_auth {
+                HomeList {}
+            }
+        }
+    }
+}
+
+/// HomeList — shows user's groups and events
+#[component]
+fn HomeList() -> Element {
+    let _session = use_session();
+    // TODO: Query user's groups and events from GraphQL using _session.access_token
+    // For now, show section headers with placeholder
+    rsx! {
+        div { style: "margin-top: 16px;",
+            h4 { class: "title-small", style: "padding: 8px 16px; color: var(--md-on-surface-variant);",
+                "{t(\"layout.groups\")}"
+            }
+            p { class: "body-medium", style: "padding: 4px 16px; color: var(--md-on-surface-variant);",
+                "{t(\"layout.noGroups\")}"
+            }
+
+            h4 { class: "title-small", style: "padding: 8px 16px; margin-top: 8px; color: var(--md-on-surface-variant);",
+                "{t(\"layout.events\")}"
+            }
+            p { class: "body-medium", style: "padding: 4px 16px; color: var(--md-on-surface-variant);",
+                "{t(\"layout.noEvents\")}"
             }
         }
     }

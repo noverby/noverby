@@ -7,14 +7,15 @@ use crate::route::Route;
 use super::loader::mime_icon;
 
 #[component]
-pub fn FolderApp(node: NodeWithChildren) -> Element {
+pub fn FolderApp(node: NodeWithChildren, parent_path: Vec<String>) -> Element {
     let name = node.name.as_str();
+    let mime_id = node.mime_id.as_deref().unwrap_or("wiki/folder");
     let children = &node.children;
 
     rsx! {
         div { class: "card",
             div { class: "card-header",
-                div { class: "avatar", "{mime_icon(\"wiki/folder\")}" }
+                div { class: "avatar", "{mime_icon(mime_id)}" }
                 h3 { class: "title-medium", "{name}" }
             }
             if children.is_empty() {
@@ -28,7 +29,11 @@ pub fn FolderApp(node: NodeWithChildren) -> Element {
             } else {
                 div { class: "list",
                     for child in children.iter() {
-                        FolderItem { key: "{child.id.0}", node: child.clone() }
+                        FolderItem {
+                            key: "{child.id.0}",
+                            node: child.clone(),
+                            parent_path: parent_path.clone(),
+                        }
                     }
                 }
             }
@@ -37,16 +42,19 @@ pub fn FolderApp(node: NodeWithChildren) -> Element {
 }
 
 #[component]
-fn FolderItem(node: ChildNodeFields) -> Element {
+fn FolderItem(node: ChildNodeFields, parent_path: Vec<String>) -> Element {
     let name = node.name.as_str();
     let mime_id = node.mime_id.as_deref().unwrap_or("");
     let icon = mime_icon(mime_id);
     let is_mutable = node.mutable;
-    let key = node.key.clone();
+
+    // Build full path by appending this child's key to the parent path
+    let mut full_path = parent_path.clone();
+    full_path.push(node.key.clone());
 
     rsx! {
         Link {
-            to: Route::PathPage { segments: vec![key] },
+            to: Route::PathPage { segments: full_path },
             class: "folder-item",
             div { class: "avatar small", "{icon}" }
             div { class: "list-item-text",
