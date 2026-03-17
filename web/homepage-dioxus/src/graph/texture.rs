@@ -96,6 +96,7 @@ impl TextureManager {
         let onload = Closure::wrap(Box::new(move || {
             if let Some(tex) = gl_clone.create_texture() {
                 gl_clone.bind_texture(GL::TEXTURE_2D, Some(&tex));
+                gl_clone.pixel_storei(GL::UNPACK_FLIP_Y_WEBGL, 1);
                 let _ = gl_clone.tex_image_2d_with_u32_and_u32_and_image(
                     GL::TEXTURE_2D,
                     0,
