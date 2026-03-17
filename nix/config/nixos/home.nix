@@ -132,7 +132,7 @@
           engine = {
             maxJobs = 2;
             queueSize = 100;
-            workflowTimeout = "2h";
+            workflowTimeout = "12h";
           };
         };
 
