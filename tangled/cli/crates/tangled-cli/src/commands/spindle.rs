@@ -89,7 +89,10 @@ async fn runs(args: SpindleRunsArgs) -> Result<()> {
         .unwrap_or_else(|| "https://spindle.tangled.sh".to_string());
     let api = crate::util::make_client(&spindle_base);
 
-    let mut params: Vec<(&str, String)> = vec![("limit", args.limit.to_string())];
+    let mut params: Vec<(&str, String)> = vec![
+        ("repo_did", info.did.clone()),
+        ("limit", args.limit.to_string()),
+    ];
     if let Some(ref status) = args.status {
         params.push(("status", status.clone()));
     }
