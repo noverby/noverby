@@ -102,7 +102,7 @@
             };
 
             lookup.default.hostname = "mail.overby.me";
-            lookup.default.domain = "overby.me";
+            lookup.default.domain = "agent.overby.me";
 
             session = {
               auth.mechanisms = "[plain]";
