@@ -16,6 +16,9 @@ fn main() {
     wasm_logger::init(wasm_logger::Config::default());
     log::info!("RadikalWiki starting...");
 
+    // Load persisted session from localStorage
+    session::load_session();
+
     // Detect browser language for i18n
     if let Some(window) = web_sys::window() {
         if let Some(lang) = window.navigator().language() {

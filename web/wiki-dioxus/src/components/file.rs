@@ -11,8 +11,7 @@ pub fn FileApp(node: NodeWithChildren) -> Element {
     let name = node.name.as_str();
     let session = use_session();
 
-    // TODO: data field requires a GraphQL argument (path), fetch separately
-    let data: Option<serde_json::Value> = None;
+    let data = node.data.map(|d| d.0);
 
     let file_id = data
         .as_ref()

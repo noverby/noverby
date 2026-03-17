@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 
 use crate::graphql::{ChildNodeFields, NodeWithChildren};
 use crate::i18n::t;
+use crate::route::Route;
 
 use super::loader::mime_icon;
 
@@ -18,17 +19,16 @@ pub fn FolderApp(node: NodeWithChildren) -> Element {
             }
             if children.is_empty() {
                 div { class: "card-content",
-                    p { class: "body-medium", style: "color: var(--md-on-surface-variant);",
+                    p {
+                        class: "body-medium",
+                        style: "color: var(--md-on-surface-variant);",
                         "{t(\"common.noContent\")}"
                     }
                 }
             } else {
                 div { class: "list",
                     for child in children.iter() {
-                        FolderItem {
-                            key: "{child.id.0}",
-                            node: child.clone(),
-                        }
+                        FolderItem { key: "{child.id.0}", node: child.clone() }
                     }
                 }
             }
@@ -42,9 +42,12 @@ fn FolderItem(node: ChildNodeFields) -> Element {
     let mime_id = node.mime_id.as_deref().unwrap_or("");
     let icon = mime_icon(mime_id);
     let is_mutable = node.mutable;
+    let key = node.key.clone();
 
     rsx! {
-        div { class: "folder-item",
+        Link {
+            to: Route::PathPage { segments: vec![key] },
+            class: "folder-item",
             div { class: "avatar small", "{icon}" }
             div { class: "list-item-text",
                 div { class: "list-item-primary", "{name}" }

@@ -118,6 +118,7 @@ pub struct NodeWithChildren {
     pub context_id: Option<Uuid>,
     pub mutable: bool,
     pub index: i32,
+    pub data: Option<Jsonb>,
     pub mime: Option<MimeFields>,
     pub parent: Option<Box<ParentNodeFields>>,
     pub children: Vec<ChildNodeFields>,

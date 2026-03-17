@@ -7,8 +7,7 @@ use super::loader::mime_icon;
 #[component]
 pub fn ContentApp(node: NodeWithChildren) -> Element {
     let name = node.name.as_str();
-    // TODO: data field requires a GraphQL argument (path), fetch separately
-    let data: Option<serde_json::Value> = None;
+    let data = node.data.map(|d| d.0);
 
     rsx! {
         div { class: "card",
