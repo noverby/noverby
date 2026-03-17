@@ -867,7 +867,7 @@ mod tests {
         // Create a running workflow
         state
             .db
-            .status_pending("test-wid", "knot", "rkey", "test-workflow")
+            .status_pending("test-wid", "knot", "rkey", "did:plc:test", "test-workflow")
             .unwrap();
         state.db.status_running("test-wid").unwrap();
 
@@ -915,12 +915,12 @@ mod tests {
 
         state
             .db
-            .status_pending("wid-1", "knot.example.com", "rkey1", "build")
+            .status_pending("wid-1", "knot.example.com", "rkey1", "did:plc:test", "build")
             .unwrap();
         state.db.status_running("wid-1").unwrap();
         state
             .db
-            .status_pending("wid-2", "knot.example.com", "rkey1", "test")
+            .status_pending("wid-2", "knot.example.com", "rkey1", "did:plc:test", "test")
             .unwrap();
 
         let resp = app
@@ -948,12 +948,12 @@ mod tests {
 
         state
             .db
-            .status_pending("wid-1", "knot", "rkey1", "build")
+            .status_pending("wid-1", "knot", "rkey1", "did:plc:test", "build")
             .unwrap();
         state.db.status_running("wid-1").unwrap();
         state
             .db
-            .status_pending("wid-2", "knot", "rkey2", "test")
+            .status_pending("wid-2", "knot", "rkey2", "did:plc:test", "test")
             .unwrap();
 
         let resp = app
@@ -995,7 +995,7 @@ mod tests {
         // Create a finished workflow
         state
             .db
-            .status_pending("done-wid", "knot", "rkey", "done-workflow")
+            .status_pending("done-wid", "knot", "rkey", "did:plc:test", "done-workflow")
             .unwrap();
         state.db.status_running("done-wid").unwrap();
         state.db.status_success("done-wid").unwrap();

@@ -330,6 +330,7 @@ impl Database {
         workflow_id: &str,
         pipeline_knot: &str,
         pipeline_rkey: &str,
+        repo_did: &str,
         workflow_name: &str,
     ) -> Result<(), DbError> {
         Ok(status::status_pending(
@@ -337,6 +338,7 @@ impl Database {
             workflow_id,
             pipeline_knot,
             pipeline_rkey,
+            repo_did,
             workflow_name,
         )?)
     }
@@ -385,6 +387,14 @@ impl Database {
             pipeline_knot,
             pipeline_rkey,
         )?)
+    }
+
+    /// Get all workflow status records for a specific repo DID.
+    pub fn get_statuses_for_repo(
+        &self,
+        repo_did: &str,
+    ) -> Result<Vec<status::WorkflowStatusRow>, DbError> {
+        Ok(status::get_statuses_for_repo(&*self.conn()?, repo_did)?)
     }
 
     /// Get all workflow status records with a specific status value.
@@ -472,7 +482,8 @@ mod tests {
         );
 
         // Status
-        db.status_pending("wid-1", "knot", "rkey", "test").unwrap();
+        db.status_pending("wid-1", "knot", "rkey", "did:plc:test", "test")
+            .unwrap();
         db.status_running("wid-1").unwrap();
         db.status_success("wid-1").unwrap();
         let st = db.get_status("wid-1").unwrap().unwrap();

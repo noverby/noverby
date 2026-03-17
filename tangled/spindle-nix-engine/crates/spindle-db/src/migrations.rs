@@ -10,8 +10,14 @@ use rusqlite::Connection;
 ///
 /// Each entry is `(version, name, sql)`. Versions are 1-indexed and must
 /// be applied sequentially.
-const MIGRATIONS: &[(u32, &str, &str)] =
-    &[(1, "initial", include_str!("migrations/001_initial.sql"))];
+const MIGRATIONS: &[(u32, &str, &str)] = &[
+    (1, "initial", include_str!("migrations/001_initial.sql")),
+    (
+        2,
+        "add_repo_did",
+        include_str!("migrations/002_add_repo_did.sql"),
+    ),
+];
 
 /// Errors that can occur during migration.
 #[derive(Debug, thiserror::Error)]

@@ -1586,6 +1586,8 @@ pub struct WorkflowRun {
     pub workflow_id: String,
     pub pipeline_knot: String,
     pub pipeline_rkey: String,
+    #[serde(default)]
+    pub repo_did: String,
     pub workflow_name: String,
     pub status: String,
     pub started_at: Option<String>,

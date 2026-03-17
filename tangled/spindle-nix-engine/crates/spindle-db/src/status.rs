@@ -19,6 +19,8 @@ pub struct WorkflowStatusRow {
     pub pipeline_knot: String,
     /// Pipeline record key.
     pub pipeline_rkey: String,
+    /// Repository DID that owns this pipeline.
+    pub repo_did: String,
     /// Workflow name (from the YAML filename).
     pub workflow_name: String,
     /// Current status (e.g. `"pending"`, `"running"`, `"success"`).
@@ -44,13 +46,14 @@ pub fn status_pending(
     workflow_id: &str,
     pipeline_knot: &str,
     pipeline_rkey: &str,
+    repo_did: &str,
     workflow_name: &str,
 ) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT OR IGNORE INTO workflow_status \
-         (workflow_id, pipeline_knot, pipeline_rkey, workflow_name, status) \
-         VALUES (?1, ?2, ?3, ?4, 'pending')",
-        params![workflow_id, pipeline_knot, pipeline_rkey, workflow_name],
+         (workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name, status) \
+         VALUES (?1, ?2, ?3, ?4, ?5, 'pending')",
+        params![workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name],
     )?;
     Ok(())
 }
@@ -130,7 +133,7 @@ pub fn get_status(
     workflow_id: &str,
 ) -> rusqlite::Result<Option<WorkflowStatusRow>> {
     conn.query_row(
-        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, workflow_name, \
+        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name, \
          status, started_at, finished_at, created_at \
          FROM workflow_status WHERE workflow_id = ?1",
         params![workflow_id],
@@ -140,11 +143,12 @@ pub fn get_status(
                 workflow_id: row.get(1)?,
                 pipeline_knot: row.get(2)?,
                 pipeline_rkey: row.get(3)?,
-                workflow_name: row.get(4)?,
-                status: row.get(5)?,
-                started_at: row.get(6)?,
-                finished_at: row.get(7)?,
-                created_at: row.get(8)?,
+                repo_did: row.get(4)?,
+                workflow_name: row.get(5)?,
+                status: row.get(6)?,
+                started_at: row.get(7)?,
+                finished_at: row.get(8)?,
+                created_at: row.get(9)?,
             })
         },
     )
@@ -160,7 +164,7 @@ pub fn get_statuses_for_pipeline(
     pipeline_rkey: &str,
 ) -> rusqlite::Result<Vec<WorkflowStatusRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, workflow_name, \
+        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name, \
          status, started_at, finished_at, created_at \
          FROM workflow_status \
          WHERE pipeline_knot = ?1 AND pipeline_rkey = ?2 \
@@ -174,11 +178,47 @@ pub fn get_statuses_for_pipeline(
                 workflow_id: row.get(1)?,
                 pipeline_knot: row.get(2)?,
                 pipeline_rkey: row.get(3)?,
-                workflow_name: row.get(4)?,
-                status: row.get(5)?,
-                started_at: row.get(6)?,
-                finished_at: row.get(7)?,
-                created_at: row.get(8)?,
+                repo_did: row.get(4)?,
+                workflow_name: row.get(5)?,
+                status: row.get(6)?,
+                started_at: row.get(7)?,
+                finished_at: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
+/// Get all workflow status records for a specific repo DID.
+///
+/// Results are ordered by creation time ascending.
+pub fn get_statuses_for_repo(
+    conn: &Connection,
+    repo_did: &str,
+) -> rusqlite::Result<Vec<WorkflowStatusRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name, \
+         status, started_at, finished_at, created_at \
+         FROM workflow_status \
+         WHERE repo_did = ?1 \
+         ORDER BY id ASC",
+    )?;
+
+    let rows = stmt
+        .query_map(params![repo_did], |row| {
+            Ok(WorkflowStatusRow {
+                id: row.get(0)?,
+                workflow_id: row.get(1)?,
+                pipeline_knot: row.get(2)?,
+                pipeline_rkey: row.get(3)?,
+                repo_did: row.get(4)?,
+                workflow_name: row.get(5)?,
+                status: row.get(6)?,
+                started_at: row.get(7)?,
+                finished_at: row.get(8)?,
+                created_at: row.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -194,7 +234,7 @@ pub fn get_statuses_by_status(
     status: &str,
 ) -> rusqlite::Result<Vec<WorkflowStatusRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, workflow_name, \
+        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name, \
          status, started_at, finished_at, created_at \
          FROM workflow_status \
          WHERE status = ?1 \
@@ -208,11 +248,12 @@ pub fn get_statuses_by_status(
                 workflow_id: row.get(1)?,
                 pipeline_knot: row.get(2)?,
                 pipeline_rkey: row.get(3)?,
-                workflow_name: row.get(4)?,
-                status: row.get(5)?,
-                started_at: row.get(6)?,
-                finished_at: row.get(7)?,
-                created_at: row.get(8)?,
+                repo_did: row.get(4)?,
+                workflow_name: row.get(5)?,
+                status: row.get(6)?,
+                started_at: row.get(7)?,
+                finished_at: row.get(8)?,
+                created_at: row.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -225,7 +266,7 @@ pub fn get_statuses_by_status(
 /// Results are ordered by ID ascending.
 pub fn get_all_statuses(conn: &Connection) -> rusqlite::Result<Vec<WorkflowStatusRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, workflow_name, \
+        "SELECT id, workflow_id, pipeline_knot, pipeline_rkey, repo_did, workflow_name, \
          status, started_at, finished_at, created_at \
          FROM workflow_status \
          ORDER BY id ASC",
@@ -238,11 +279,12 @@ pub fn get_all_statuses(conn: &Connection) -> rusqlite::Result<Vec<WorkflowStatu
                 workflow_id: row.get(1)?,
                 pipeline_knot: row.get(2)?,
                 pipeline_rkey: row.get(3)?,
-                workflow_name: row.get(4)?,
-                status: row.get(5)?,
-                started_at: row.get(6)?,
-                finished_at: row.get(7)?,
-                created_at: row.get(8)?,
+                repo_did: row.get(4)?,
+                workflow_name: row.get(5)?,
+                status: row.get(6)?,
+                started_at: row.get(7)?,
+                finished_at: row.get(8)?,
+                created_at: row.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -280,6 +322,7 @@ mod tests {
             "example.com-abc123-test",
             "example.com",
             "abc123",
+            "did:plc:test",
             "test",
         )
         .unwrap();
@@ -300,8 +343,8 @@ mod tests {
     fn status_pending_is_idempotent() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
 
         let all = get_all_statuses(&conn).unwrap();
         assert_eq!(all.len(), 1);
@@ -311,7 +354,7 @@ mod tests {
     fn transition_pending_to_running() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
         status_running(&conn, "wid-1").unwrap();
 
         let row = get_status(&conn, "wid-1").unwrap().expect("should exist");
@@ -324,7 +367,7 @@ mod tests {
     fn transition_running_to_success() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
         status_running(&conn, "wid-1").unwrap();
         status_success(&conn, "wid-1").unwrap();
 
@@ -338,7 +381,7 @@ mod tests {
     fn transition_running_to_failed() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
         status_running(&conn, "wid-1").unwrap();
         status_failed(&conn, "wid-1").unwrap();
 
@@ -351,7 +394,7 @@ mod tests {
     fn transition_running_to_timeout() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
         status_running(&conn, "wid-1").unwrap();
         status_timeout(&conn, "wid-1").unwrap();
 
@@ -364,7 +407,7 @@ mod tests {
     fn transition_running_to_cancelled() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
         status_running(&conn, "wid-1").unwrap();
         status_cancelled(&conn, "wid-1").unwrap();
 
@@ -384,9 +427,9 @@ mod tests {
     fn get_statuses_for_pipeline_groups_correctly() {
         let conn = setup_db();
 
-        status_pending(&conn, "knot-rkey1-test", "knot", "rkey1", "test").unwrap();
-        status_pending(&conn, "knot-rkey1-lint", "knot", "rkey1", "lint").unwrap();
-        status_pending(&conn, "knot-rkey2-test", "knot", "rkey2", "test").unwrap();
+        status_pending(&conn, "knot-rkey1-test", "knot", "rkey1", "did:plc:test", "test").unwrap();
+        status_pending(&conn, "knot-rkey1-lint", "knot", "rkey1", "did:plc:test", "lint").unwrap();
+        status_pending(&conn, "knot-rkey2-test", "knot", "rkey2", "did:plc:test", "test").unwrap();
 
         let pipeline1 = get_statuses_for_pipeline(&conn, "knot", "rkey1").unwrap();
         assert_eq!(pipeline1.len(), 2);
@@ -409,9 +452,9 @@ mod tests {
     fn get_statuses_by_status_filters() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey1", "test").unwrap();
-        status_pending(&conn, "wid-2", "knot", "rkey2", "lint").unwrap();
-        status_pending(&conn, "wid-3", "knot", "rkey3", "build").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey1", "did:plc:test", "test").unwrap();
+        status_pending(&conn, "wid-2", "knot", "rkey2", "did:plc:test", "lint").unwrap();
+        status_pending(&conn, "wid-3", "knot", "rkey3", "did:plc:test", "build").unwrap();
 
         status_running(&conn, "wid-1").unwrap();
         status_running(&conn, "wid-2").unwrap();
@@ -441,8 +484,8 @@ mod tests {
     fn get_all_statuses_returns_all() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey1", "test").unwrap();
-        status_pending(&conn, "wid-2", "knot", "rkey2", "lint").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey1", "did:plc:test", "test").unwrap();
+        status_pending(&conn, "wid-2", "knot", "rkey2", "did:plc:test", "lint").unwrap();
 
         let rows = get_all_statuses(&conn).unwrap();
         assert_eq!(rows.len(), 2);
@@ -452,9 +495,9 @@ mod tests {
     fn count_by_status_values() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey1", "a").unwrap();
-        status_pending(&conn, "wid-2", "knot", "rkey2", "b").unwrap();
-        status_pending(&conn, "wid-3", "knot", "rkey3", "c").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey1", "did:plc:test", "a").unwrap();
+        status_pending(&conn, "wid-2", "knot", "rkey2", "did:plc:test", "b").unwrap();
+        status_pending(&conn, "wid-3", "knot", "rkey3", "did:plc:test", "c").unwrap();
 
         assert_eq!(count_by_status(&conn, "pending").unwrap(), 3);
         assert_eq!(count_by_status(&conn, "running").unwrap(), 0);
@@ -475,7 +518,7 @@ mod tests {
     fn started_at_not_set_for_pending() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
 
         let row = get_status(&conn, "wid-1").unwrap().expect("should exist");
         assert!(
@@ -488,7 +531,7 @@ mod tests {
     fn finished_at_not_set_for_running() {
         let conn = setup_db();
 
-        status_pending(&conn, "wid-1", "knot", "rkey", "test").unwrap();
+        status_pending(&conn, "wid-1", "knot", "rkey", "did:plc:test", "test").unwrap();
         status_running(&conn, "wid-1").unwrap();
 
         let row = get_status(&conn, "wid-1").unwrap().expect("should exist");
@@ -522,7 +565,7 @@ mod tests {
                 status_cancelled as fn(&Connection, &str) -> rusqlite::Result<()>,
             ),
         ] {
-            status_pending(&conn, wid, "knot", "rkey", "test").unwrap();
+            status_pending(&conn, wid, "knot", "rkey", "did:plc:test", "test").unwrap();
             status_running(&conn, wid).unwrap();
             terminal_fn(&conn, wid).unwrap();
 

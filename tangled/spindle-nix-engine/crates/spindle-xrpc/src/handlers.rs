@@ -615,6 +615,7 @@ async fn cancel_pipeline(
 /// List workflow runs. Requires member authorization.
 ///
 /// Optional query parameters:
+/// - `repo_did`: filter by repository DID
 /// - `pipeline_knot` + `pipeline_rkey`: filter by pipeline
 /// - `status`: filter by status (pending, running, success, failed, timeout, cancelled)
 /// - `limit`: max results (default 50)
@@ -628,7 +629,9 @@ async fn list_runs(
         .and_then(|v| v.parse().ok())
         .unwrap_or(50);
 
-    let rows = if let (Some(knot), Some(rkey)) =
+    let rows = if let Some(repo_did) = query.get("repo_did") {
+        ctx.db.get_statuses_for_repo(repo_did)
+    } else if let (Some(knot), Some(rkey)) =
         (query.get("pipeline_knot"), query.get("pipeline_rkey"))
     {
         ctx.db.get_statuses_for_pipeline(knot, rkey)
@@ -650,6 +653,7 @@ async fn list_runs(
                         "workflow_id": r.workflow_id,
                         "pipeline_knot": r.pipeline_knot,
                         "pipeline_rkey": r.pipeline_rkey,
+                        "repo_did": r.repo_did,
                         "workflow_name": r.workflow_name,
                         "status": r.status,
                         "started_at": r.started_at,

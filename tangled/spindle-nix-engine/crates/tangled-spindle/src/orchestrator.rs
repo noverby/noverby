@@ -215,9 +215,13 @@ pub fn process_pipeline_event(ctx: Arc<OrchestratorContext>, event: PipelineEven
     // Register all workflows as pending in the database.
     for (wid, _) in &workflow_entries {
         let wid_str = wid.to_string();
-        if let Err(e) =
-            ctx.db
-                .status_pending(&wid_str, &pipeline_id.knot, &pipeline_id.rkey, &wid.name)
+        if let Err(e) = ctx.db.status_pending(
+            &wid_str,
+            &pipeline_id.knot,
+            &pipeline_id.rkey,
+            &repo_did,
+            &wid.name,
+        )
         {
             error!(%e, workflow_id = %wid_str, "failed to create pending status");
         }
