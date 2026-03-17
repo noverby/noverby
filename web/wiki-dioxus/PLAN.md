@@ -61,11 +61,11 @@ Port of `web/wiki` (React/TypeScript) to Rust using [Dioxus](https://github.com/
 
 ### Phase 6: Interactive Features
 
-- [ ] EditorApp — rich text editing (simplified, or JS interop with Slate)
-- [x] VoteApp / PolicyApp / PollApp — voting UI (read-only)
-- [x] SpeakApp — speaker queue (read-only)
-- [x] MemberApp — member management (read-only)
-- [ ] SortApp — drag-and-drop reordering
+- [ ] EditorApp — rich text editing (requires JS interop with Slate)
+- [x] VoteApp / PolicyApp / PollApp — voting UI with poll options display
+- [x] SpeakApp — speaker queue with join/remove actions via GraphQL mutations
+- [x] MemberApp — member management with invite input
+- [ ] SortApp — drag-and-drop reordering (requires JS interop)
 
 ### Phase 7: Polish
 
@@ -74,6 +74,12 @@ Port of `web/wiki` (React/TypeScript) to Rust using [Dioxus](https://github.com/
 - [x] Error boundaries and loading states
 - [x] Responsive design (mobile drawer, desktop sidebar)
 - [x] Breadcrumb navigation
+- [x] GraphQL search with live results
+- [x] User menu popover with all options
+- [x] Language toggle (Da/En) in user menu
+- [x] App rail sidebar for large screens
+- [x] ?app= query parameter routing
+- [x] Full-path folder navigation
 - [ ] Snackbar notifications
 
 ### Phase 8: Build & Deploy

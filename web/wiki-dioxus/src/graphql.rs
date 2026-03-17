@@ -198,6 +198,69 @@ pub struct UuidComparisonExp {
     pub is_null: Option<bool>,
 }
 
+// --- Mutations ---
+
+#[derive(cynic::QueryVariables, Debug)]
+pub struct InsertNodeVariables {
+    pub object: NodesInsertInput,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone)]
+#[cynic(
+    schema_path = "graphql/schema.graphql",
+    graphql_type = "mutation_root",
+    variables = "InsertNodeVariables"
+)]
+pub struct InsertNodeMutation {
+    #[arguments(object: $object)]
+    pub insert_node: Option<InsertedNode>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone)]
+#[cynic(schema_path = "graphql/schema.graphql", graphql_type = "nodes")]
+pub struct InsertedNode {
+    pub id: Uuid,
+    pub key: String,
+}
+
+#[derive(cynic::InputObject, Debug)]
+#[cynic(
+    schema_path = "graphql/schema.graphql",
+    graphql_type = "nodes_insert_input"
+)]
+pub struct NodesInsertInput {
+    pub name: Option<String>,
+    pub key: Option<String>,
+    pub mime_id: Option<String>,
+    pub parent_id: Option<Uuid>,
+    pub context_id: Option<Uuid>,
+    pub data: Option<Jsonb>,
+    pub mutable: Option<bool>,
+    pub index: Option<i32>,
+}
+
+#[derive(cynic::QueryVariables, Debug)]
+pub struct DeleteNodeVariables {
+    pub id: Uuid,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone)]
+#[cynic(
+    schema_path = "graphql/schema.graphql",
+    graphql_type = "mutation_root",
+    variables = "DeleteNodeVariables"
+)]
+pub struct DeleteNodeMutation {
+    #[arguments(id: $id)]
+    pub delete_node: Option<DeletedNode>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone)]
+#[cynic(schema_path = "graphql/schema.graphql", graphql_type = "nodes")]
+pub struct DeletedNode {
+    pub id: Uuid,
+}
+
 // --- HTTP execution ---
 
 pub async fn execute<Q, V>(
@@ -310,6 +373,27 @@ pub async fn resolve_path(
     }
 
     Ok(None)
+}
+
+/// Insert a node
+pub async fn insert_node(
+    access_token: Option<&str>,
+    input: NodesInsertInput,
+) -> Result<Option<InsertedNode>, String> {
+    use cynic::MutationBuilder;
+    let operation = InsertNodeMutation::build(InsertNodeVariables { object: input });
+    let result = execute(access_token, operation).await?;
+    Ok(result.insert_node)
+}
+
+/// Delete a node by ID
+pub async fn delete_node(access_token: Option<&str>, id: &str) -> Result<bool, String> {
+    use cynic::MutationBuilder;
+    let operation = DeleteNodeMutation::build(DeleteNodeVariables {
+        id: Uuid(id.to_string()),
+    });
+    let result = execute(access_token, operation).await?;
+    Ok(result.delete_node.is_some())
 }
 
 /// Search nodes by name (case-insensitive substring match)

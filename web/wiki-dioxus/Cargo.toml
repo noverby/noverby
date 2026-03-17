@@ -17,6 +17,8 @@ web-sys = { version = "0.3", features = [
   "Storage",
   "Document",
   "Element",
+  "Performance",
+  "Location",
 ] }
 
 [features]
