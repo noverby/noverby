@@ -74,6 +74,9 @@
             carddavUrl = "https://mail.overby.me";
             addressbookName = "default";
           };
+          searxng = {
+            instanceUrl = "https://search.overby.me";
+          };
         };
 
         stalwart-mail = {
