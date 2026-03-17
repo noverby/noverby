@@ -62,22 +62,23 @@ Port of `web/wiki` (React/TypeScript) to Rust using [Dioxus](https://github.com/
 ### Phase 6: Interactive Features
 
 - [ ] EditorApp — rich text editing (simplified, or JS interop with Slate)
-- [ ] VoteApp / PolicyApp / PollApp — voting UI
-- [ ] SpeakApp — speaker queue
-- [ ] MemberApp — member management
+- [x] VoteApp / PolicyApp / PollApp — voting UI (read-only)
+- [x] SpeakApp — speaker queue (read-only)
+- [x] MemberApp — member management (read-only)
 - [ ] SortApp — drag-and-drop reordering
 
 ### Phase 7: Polish
 
-- [ ] i18n with Danish and English translations
-- [ ] M3-inspired theming (light/dark toggle, color tokens)
-- [ ] Error boundaries and loading states
-- [ ] Responsive design (mobile drawer, desktop sidebar)
+- [x] i18n with Danish and English translations
+- [x] M3-inspired theming (light/dark toggle, color tokens)
+- [x] Error boundaries and loading states
+- [x] Responsive design (mobile drawer, desktop sidebar)
+- [x] Breadcrumb navigation
 - [ ] Snackbar notifications
 
 ### Phase 8: Build & Deploy
 
-- [ ] Nix package derivation
+- [x] Nix package derivation
 - [ ] Optimized WASM build (wasm-opt)
 - [ ] Asset hashing and cache busting
 
