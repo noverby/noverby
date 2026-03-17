@@ -6,6 +6,7 @@
   devShells.homepage-dioxus = pkgs: {
     packages = with pkgs; [
       just
+      binaryen
       dioxus-cli
       wasm-pack
     ];
