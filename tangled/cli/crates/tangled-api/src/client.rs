@@ -1178,8 +1178,9 @@ impl TangledClient {
         Ok(out)
     }
 
-    /// Maximum inline patch size before uploading as a blob (50 KB).
-    const MAX_INLINE_PATCH_SIZE: usize = 50_000;
+    /// Maximum record payload size for AT Protocol PDS (~95 KB to leave room
+    /// for the rest of the record JSON envelope).
+    const MAX_PATCH_SIZE: usize = 95_000;
 
     #[allow(clippy::too_many_arguments)]
     pub async fn create_pull(
@@ -1202,29 +1203,26 @@ impl TangledClient {
         let repo_at = format!("at://{}/sh.tangled.repo/{}", repo_did, repo_rkey);
         let now = chrono::Utc::now().to_rfc3339();
 
-        let record = if patch.len() > Self::MAX_INLINE_PATCH_SIZE {
-            // Upload large patch as a blob
-            let blob_ref = self
-                .upload_blob(patch.as_bytes(), "text/x-diff", pds_base, access_jwt)
-                .await?;
-
-            serde_json::json!({
-                "target": { "repo": repo_at, "branch": target_branch },
-                "title": title,
-                "body": body,
-                "patch": "",
-                "patchBlob": blob_ref,
-                "createdAt": now,
-            })
+        // Truncate patch if it exceeds the AT Protocol record size limit.
+        let truncated;
+        let final_patch = if patch.len() > Self::MAX_PATCH_SIZE {
+            truncated = format!(
+                "{}\n\n--- Patch truncated ({} bytes total). Full diff available on the source branch. ---\n",
+                &patch[..Self::MAX_PATCH_SIZE],
+                patch.len()
+            );
+            &truncated
         } else {
-            serde_json::json!({
-                "target": { "repo": repo_at, "branch": target_branch },
-                "title": title,
-                "body": body,
-                "patch": patch,
-                "createdAt": now,
-            })
+            patch
         };
+
+        let record = serde_json::json!({
+            "target": { "repo": repo_at, "branch": target_branch },
+            "title": title,
+            "body": body,
+            "patch": final_patch,
+            "createdAt": now,
+        });
 
         let req = serde_json::json!({
             "repo": author_did,
