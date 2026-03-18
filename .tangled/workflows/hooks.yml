@@ -1,0 +1,11 @@
+when:
+  - event: ["push"]
+    branch: "**"
+
+engine: nix
+
+steps:
+  - name: "Run git hooks"
+    command: |
+      printf '{"PWD":"%s"}' "$PWD" > .env
+      nix develop .#default --override-input env path:$(realpath $PWD/.env) --command pre-commit run --all-files
