@@ -5,6 +5,9 @@ when:
 engine: nix
 
 steps:
+  - name: "Fetch full history"
+    command: |
+      git fetch --unshallow origin || true
   - name: "Mirror to GitHub"
     command: |
       git remote add github https://x-access-token:${GITHUB_MIRROR_TOKEN}@github.com/noverby/noverby.git 2>/dev/null || true
