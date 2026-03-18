@@ -1,5 +1,5 @@
 when:
-  - event: ["push", "pull_request"]
+  - event: ["push"]
     branch: "**"
 
 engine: nix
