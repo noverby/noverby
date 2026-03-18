@@ -3,6 +3,7 @@ accept = [200, 201, 202, 203, 204, 206, 207, 429, 403]
 exclude_path = ['devenv/configs/lychee.toml']
 exclude = [
   '\$\{',
+  'x-access-token',
   '%7B',
   'localhost',
   '127\.0\.0\.1',
