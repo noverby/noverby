@@ -25,6 +25,7 @@ open = { workspace = true }
 atrium-xrpc-client = { workspace = true, optional = true }
 
 url = { workspace = true }
+flate2 = "1"
 
 tangled-config = { path = "../tangled-config" }
 

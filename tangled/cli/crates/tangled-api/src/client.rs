@@ -1,8 +1,19 @@
+use std::io::Write;
+
 use anyhow::{anyhow, Result};
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tangled_config::session::Session;
 
 use crate::oauth::PersistedOAuthSession;
+
+/// Gzip-compress a byte slice.
+fn gzip_bytes(data: &[u8]) -> Result<Vec<u8>> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(data)?;
+    Ok(encoder.finish()?)
+}
 
 #[derive(Clone, Debug)]
 pub struct TangledClient {
@@ -1178,10 +1189,6 @@ impl TangledClient {
         Ok(out)
     }
 
-    /// Maximum record payload size for AT Protocol PDS (~95 KB to leave room
-    /// for the rest of the record JSON envelope).
-    const MAX_PATCH_SIZE: usize = 95_000;
-
     #[allow(clippy::too_many_arguments)]
     pub async fn create_pull(
         &self,
@@ -1203,24 +1210,18 @@ impl TangledClient {
         let repo_at = format!("at://{}/sh.tangled.repo/{}", repo_did, repo_rkey);
         let now = chrono::Utc::now().to_rfc3339();
 
-        // Truncate patch if it exceeds the AT Protocol record size limit.
-        let truncated;
-        let final_patch = if patch.len() > Self::MAX_PATCH_SIZE {
-            truncated = format!(
-                "{}\n\n--- Patch truncated ({} bytes total). Full diff available on the source branch. ---\n",
-                &patch[..Self::MAX_PATCH_SIZE],
-                patch.len()
-            );
-            &truncated
-        } else {
-            patch
-        };
+        // Gzip the patch and upload as a blob, matching the tangled server's
+        // convention (application/gzip patchBlob).
+        let gz_data = gzip_bytes(patch.as_bytes())?;
+        let blob_ref = self
+            .upload_blob(&gz_data, "application/gzip", pds_base, access_jwt)
+            .await?;
 
         let record = serde_json::json!({
             "target": { "repo": repo_at, "branch": target_branch },
             "title": title,
             "body": body,
-            "patch": final_patch,
+            "patchBlob": blob_ref,
             "createdAt": now,
         });
 

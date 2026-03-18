@@ -84,7 +84,9 @@ async fn create(args: PrCreateArgs) -> Result<()> {
         .as_deref()
         .ok_or_else(|| anyhow!("--head is required (source range/branch)"))?;
 
-    // Generate format-patch using external git for fidelity
+    // Generate format-patch using external git for fidelity.
+    // The patch is gzip-compressed and uploaded as a blob by the API client,
+    // so there is no record size limit concern.
     let output = Command::new("git")
         .arg("format-patch")
         .arg("--stdout")

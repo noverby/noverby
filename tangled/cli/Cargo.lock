@@ -2579,6 +2579,7 @@ dependencies = [
  "atrium-xrpc",
  "atrium-xrpc-client",
  "chrono",
+ "flate2",
  "open",
  "reqwest",
  "serde",
