@@ -1199,6 +1199,8 @@ impl TangledClient {
         patch: &str,
         title: &str,
         body: Option<&str>,
+        source_branch: &str,
+        source_sha: &str,
         pds_base: &str,
         access_jwt: &str,
     ) -> Result<String> {
@@ -1219,6 +1221,7 @@ impl TangledClient {
 
         let record = serde_json::json!({
             "target": { "repo": repo_at, "branch": target_branch },
+            "source": { "branch": source_branch, "sha": source_sha },
             "title": title,
             "body": body,
             "patchBlob": blob_ref,

@@ -84,6 +84,15 @@ async fn create(args: PrCreateArgs) -> Result<()> {
         .as_deref()
         .ok_or_else(|| anyhow!("--head is required (source range/branch)"))?;
 
+    // Resolve the HEAD SHA for the source branch.
+    let head_sha_output = Command::new("git").arg("rev-parse").arg(head).output()?;
+    if !head_sha_output.status.success() {
+        return Err(anyhow!("failed to resolve HEAD SHA for branch '{}'", head));
+    }
+    let head_sha = String::from_utf8_lossy(&head_sha_output.stdout)
+        .trim()
+        .to_string();
+
     // Generate format-patch using external git for fidelity.
     // The patch is gzip-compressed and uploaded as a blob by the API client,
     // so there is no record size limit concern.
@@ -117,6 +126,8 @@ async fn create(args: PrCreateArgs) -> Result<()> {
             &patch,
             title,
             args.body.as_deref(),
+            head,
+            &head_sha,
             &pds,
             &session.access_jwt,
         )
