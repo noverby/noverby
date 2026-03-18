@@ -5,6 +5,8 @@ when:
 engine: nix
 
 steps:
+  - name: "Print nix version"
+    command: nix --version
   - name: "Run git hooks"
     command: |
       printf '{"PWD":"%s"}' "$PWD" > .env
