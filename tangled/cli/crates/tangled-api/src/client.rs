@@ -1279,8 +1279,6 @@ impl TangledClient {
                 "application/x-www-form-urlencoded",
             )
             .await?;
-            // The appview responds with an HX-Location header for HTMX,
-            // or redirects. Parse the response to find the PR URL.
             let resp_text = String::from_utf8_lossy(&resp_body);
             // Look for the PR URL in the response
             if let Some(pr_path) = resp_text

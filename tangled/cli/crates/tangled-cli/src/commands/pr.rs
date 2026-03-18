@@ -56,14 +56,6 @@ async fn list(args: PrListArgs) -> Result<()> {
 }
 
 async fn create(args: PrCreateArgs) -> Result<()> {
-    let session = crate::util::load_session_with_refresh().await?;
-    let pds = session
-        .pds
-        .clone()
-        .or_else(|| std::env::var("TANGLED_PDS_BASE").ok())
-        .unwrap_or_else(|| "https://bsky.social".into());
-    let client = crate::util::make_client(&pds);
-
     let repo = args
         .repo
         .as_ref()
@@ -87,25 +79,24 @@ async fn create(args: PrCreateArgs) -> Result<()> {
         &title_buf
     };
 
-    let body = args.body.as_deref().unwrap_or("");
+    // The appview requires a cookie-based OAuth session to create PRs,
+    // which cannot be done programmatically from the CLI. Open the
+    // browser to the PR creation page with pre-filled parameters.
+    let appview_base =
+        std::env::var("TANGLED_APPVIEW_BASE").unwrap_or_else(|_| "https://tangled.org".to_string());
+    let mut pr_url = url::Url::parse(&format!("{}/{}/{}/pulls/new", appview_base, owner, name))?;
+    pr_url
+        .query_pairs_mut()
+        .append_pair("strategy", "branch")
+        .append_pair("sourceBranch", head)
+        .append_pair("targetBranch", base)
+        .append_pair("title", title);
+    if let Some(body) = args.body.as_deref() {
+        pr_url.query_pairs_mut().append_pair("body", body);
+    }
 
-    // Submit the PR via the appview web form. The appview handles
-    // generating the format-patch from the branches on the knot server,
-    // inserting the DB record, and creating the AT Protocol record.
-    let pr_url = client
-        .create_pull_via_appview(
-            owner,
-            name,
-            base,
-            head,
-            title,
-            body,
-            &pds,
-            &session.access_jwt,
-        )
-        .await?;
-
-    println!("Created PR: {}", pr_url);
+    println!("Opening PR creation page: {}", pr_url);
+    open::that(pr_url.as_str())?;
     Ok(())
 }
 
