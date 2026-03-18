@@ -1,4 +1,4 @@
-{
+{src, ...}: {
   devShells.mojo-gui = pkgs: let
     # Rust toolchain with Windows cross-compilation target (from rust-overlay).
     # This is NOT added to PATH (to avoid shadowing the devenv-provided Rust).
@@ -99,12 +99,19 @@
       openssl
     ];
 
-    # ── Monorepo source ─────────────────────────────────────────────────
+    # ── Filtered monorepo source ────────────────────────────────────────
     #
-    # The Mojo tests and build-all checks need both mojo-gui/ and
-    # mojo-wasmtime/ (sibling project). Using the flake root as source
-    # ensures both are available. Nix filters to git-tracked files only.
-    monoSrc = ../../.;
+    # The Mojo tests and build-all checks need both mojo/gui/ and
+    # mojo/wasmtime/src/ (the wasmtime_mojo package). Rather than
+    # pulling the entire repo root, use lib.fileset to include only
+    # the directories actually needed.
+    monoSrc = lib.fileset.toSource {
+      root = src;
+      fileset = lib.fileset.unions [
+        ./.
+        ../wasmtime/src
+      ];
+    };
 
     # ── Deno dependency caches ───────────────────────────────────────────
     #
