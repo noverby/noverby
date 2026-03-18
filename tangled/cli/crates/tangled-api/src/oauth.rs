@@ -336,3 +336,32 @@ pub async fn oauth_post(
     }
     Ok(body)
 }
+
+/// Make an authenticated XRPC POST request with arbitrary content type.
+pub async fn oauth_post_raw(
+    persisted: &PersistedOAuthSession,
+    url: &str,
+    raw_body: &[u8],
+    content_type: &str,
+) -> Result<Vec<u8>> {
+    let dpop_client = make_dpop_client(persisted)?;
+    let auth_value = format!("DPoP {}", persisted.oauth_session.token_set.access_token);
+    let request = atrium_xrpc::http::Request::builder()
+        .method("POST")
+        .uri(url)
+        .header("content-type", content_type)
+        .header("Authorization", &auth_value)
+        .body(raw_body.to_vec())
+        .context("failed to build request")?;
+    let response = dpop_client
+        .send_http(request)
+        .await
+        .map_err(|e| anyhow::anyhow!("request failed: {e}"))?;
+    let status = response.status();
+    let body = response.into_body();
+    if !status.is_success() {
+        let text = String::from_utf8_lossy(&body);
+        return Err(anyhow::anyhow!("{status}: {text}"));
+    }
+    Ok(body)
+}

@@ -124,6 +124,44 @@ impl TangledClient {
         Ok(())
     }
 
+    /// Upload a blob to the PDS via com.atproto.repo.uploadBlob.
+    /// Returns the blob JSON value (with $type, ref, mimeType, size).
+    pub async fn upload_blob(
+        &self,
+        data: &[u8],
+        mime_type: &str,
+        pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<serde_json::Value> {
+        let pds_client = self.derive(pds_base);
+        let url = pds_client.xrpc_url("com.atproto.repo.uploadBlob");
+
+        if let Some(oauth) = pds_client.should_use_oauth(Some(access_jwt)) {
+            let body = crate::oauth::oauth_post_raw(oauth, &url, data, mime_type).await?;
+            let res: serde_json::Value = serde_json::from_slice(&body)?;
+            return Ok(res["blob"].clone());
+        }
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(&url)
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", access_jwt),
+            )
+            .header(reqwest::header::CONTENT_TYPE, mime_type)
+            .body(data.to_vec())
+            .send()
+            .await?;
+        let status = res.status();
+        if !status.is_success() {
+            let body = res.text().await.unwrap_or_default();
+            return Err(anyhow!("{}: {}", status, body));
+        }
+        let res: serde_json::Value = res.json().await?;
+        Ok(res["blob"].clone())
+    }
+
     pub async fn get_json<TRes: DeserializeOwned>(
         &self,
         method: &str,
@@ -1140,6 +1178,9 @@ impl TangledClient {
         Ok(out)
     }
 
+    /// Maximum inline patch size before uploading as a blob (50 KB).
+    const MAX_INLINE_PATCH_SIZE: usize = 50_000;
+
     #[allow(clippy::too_many_arguments)]
     pub async fn create_pull(
         &self,
@@ -1153,50 +1194,45 @@ impl TangledClient {
         pds_base: &str,
         access_jwt: &str,
     ) -> Result<String> {
-        #[derive(Serialize)]
-        struct Target<'a> {
-            repo: &'a str,
-            branch: &'a str,
-        }
-        #[derive(Serialize)]
-        struct Rec<'a> {
-            target: Target<'a>,
-            title: &'a str,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            body: Option<&'a str>,
-            patch: &'a str,
-            #[serde(rename = "createdAt")]
-            created_at: String,
-        }
-        #[derive(Serialize)]
-        struct Req<'a> {
-            repo: &'a str,
-            collection: &'a str,
-            validate: bool,
-            record: Rec<'a>,
-        }
         #[derive(Deserialize)]
         struct Res {
             uri: String,
         }
+
         let repo_at = format!("at://{}/sh.tangled.repo/{}", repo_did, repo_rkey);
         let now = chrono::Utc::now().to_rfc3339();
-        let rec = Rec {
-            target: Target {
-                repo: &repo_at,
-                branch: target_branch,
-            },
-            title,
-            body,
-            patch,
-            created_at: now,
+
+        let record = if patch.len() > Self::MAX_INLINE_PATCH_SIZE {
+            // Upload large patch as a blob
+            let blob_ref = self
+                .upload_blob(patch.as_bytes(), "text/x-diff", pds_base, access_jwt)
+                .await?;
+
+            serde_json::json!({
+                "target": { "repo": repo_at, "branch": target_branch },
+                "title": title,
+                "body": body,
+                "patch": "",
+                "patchBlob": blob_ref,
+                "createdAt": now,
+            })
+        } else {
+            serde_json::json!({
+                "target": { "repo": repo_at, "branch": target_branch },
+                "title": title,
+                "body": body,
+                "patch": patch,
+                "createdAt": now,
+            })
         };
-        let req = Req {
-            repo: author_did,
-            collection: "sh.tangled.repo.pull",
-            validate: false,
-            record: rec,
-        };
+
+        let req = serde_json::json!({
+            "repo": author_did,
+            "collection": "sh.tangled.repo.pull",
+            "validate": false,
+            "record": record,
+        });
+
         let pds_client = self.derive(pds_base);
         let res: Res = pds_client
             .post_json("com.atproto.repo.createRecord", &req, Some(access_jwt))

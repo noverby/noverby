@@ -102,7 +102,14 @@ async fn runs(args: SpindleRunsArgs) -> Result<()> {
     if runs.is_empty() {
         println!("No pipeline runs found");
     } else {
-        let headers = ["WORKFLOW_ID", "NAME", "STATUS", "CREATED", "STARTED", "FINISHED"];
+        let headers = [
+            "WORKFLOW_ID",
+            "NAME",
+            "STATUS",
+            "CREATED",
+            "STARTED",
+            "FINISHED",
+        ];
         let rows: Vec<[String; 6]> = runs
             .iter()
             .map(|r| {
