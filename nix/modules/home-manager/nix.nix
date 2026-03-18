@@ -4,7 +4,7 @@
   ...
 }: {
   nix = {
-    package = lib.mkDefault pkgs.nix;
+    package = lib.mkDefault pkgs.pkgsUnstable.nixVersions.latest;
     settings = {
       allow-import-from-derivation = true;
     };
