@@ -5,10 +5,6 @@ when:
 engine: nix
 
 steps:
-  - name: "Setup Nix"
-    command: |
-      mkdir -p $HOME/.config/nix
-      echo "experimental-features = nix-command flakes ca-derivations dynamic-derivations recursive-nix" > $HOME/.config/nix/nix.conf
   - name: "Run git hooks"
     command: |
       printf '{"PWD":"%s"}' "$PWD" > .env
