@@ -145,6 +145,13 @@
         description = "Additional environment variables for the service.";
       };
 
+      nixPackage = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.nix;
+        defaultText = lib.literalExpression "pkgs.nix";
+        description = "The Nix package to use for builds.";
+      };
+
       extraPackages = lib.mkOption {
         type = lib.types.listOf lib.types.package;
         default = [];
@@ -205,7 +212,7 @@ in {
           pkgs.git
           pkgs.gnutar
           pkgs.gzip
-          pkgs.nix
+          runner.nixPackage
         ]
         ++ runner.extraPackages);
 

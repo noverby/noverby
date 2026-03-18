@@ -27,7 +27,7 @@
     home-manager
     cloud-hypervisor
     tangled-spindle-nix-engine
-    {
+    ({pkgs, ...}: {
       age.secrets = {
         spindle-token = {
           file = inputs.self.secrets.spindle-token;
@@ -129,6 +129,7 @@
           hostname = "spindle.overby.me";
           owner = "did:plc:eukcx4amfqmhfrnkix7zwm34";
           tokenFile = "/run/agenix/spindle-token";
+          nixPackage = pkgs.pkgsUnstable.nixVersions.latest;
           engine = {
             maxJobs = 2;
             queueSize = 100;
@@ -201,6 +202,6 @@
         nameservers = ["194.242.2.2"];
         firewall.allowedTCPPorts = [22 25 80 443 465 993];
       };
-    }
+    })
   ];
 }
