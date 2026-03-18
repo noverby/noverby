@@ -623,7 +623,7 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Version Control | [Tangled 🇪🇺🌀](https://tangled.sh/@overby.me), [Codeberg 🇪🇺](https://codeberg.org/noverby) | | [Mirror](https://codeberg.org/Recommendations/Mirror_to_Codeberg) | [Microsoft GitHub 🔒🇺🇸](https://github.com/noverby), [GitLab 🇺🇸](https://gitlab.com/noverby) |
+| ✅ | Version Control | [Tangled 🇪🇺🌀](https://tangled.sh/@overby.me) | | [Mirror](https://codeberg.org/Recommendations/Mirror_to_Codeberg) | [Codeberg 🇪🇺](https://codeberg.org/overby-me), [Microsoft GitHub 🔒🇺🇸](https://github.com/noverby), [GitLab 🇺🇸](https://gitlab.com/noverby) |
 
 #### Finance
 
