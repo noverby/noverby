@@ -346,7 +346,7 @@
 | ✅ | Social Protocol | [AT Protocol 🌀📖](https://atproto.com) | | [Bridgy Fed](https://fed.brid.gy/) | [ActivityPub 📖](https://www.w3.org/TR/activitypub/) |
 | 🚧 | DNS Protocol | [DNS-over-HTTPS 📖](https://en.wikipedia.org/wiki/DNS_over_HTTPS) | [DNS-over-TLS 📖](https://en.wikipedia.org/wiki/DNS_over_TLS) | 🆗 | [DNS 📖](https://en.wikipedia.org/wiki/Domain_Name_System) |
 | 🚧 | Identity Protocol | [DID 📖](https://www.w3.org/TR/did-core/) | [ATProto DID 🌀](https://atproto.com/specs/did) | 🆗 | |
-| 🚧 | Email Protocol | [IMAP 📖](https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol) | [JMAP 📖](https://jmap.io) | 🆗 | [POP3 📖](https://en.wikipedia.org/wiki/Post_Office_Protocol) |
+| ✅ | Email Protocol | [JMAP 📖](https://jmap.io) | | 🆗 | [IMAP 📖](https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol), [POP3 📖](https://en.wikipedia.org/wiki/Post_Office_Protocol) |
 
 </details>
 
