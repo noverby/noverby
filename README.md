@@ -80,6 +80,8 @@
 | [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/rust/nixos) | NixOS distribution with Rust user space |
 | [Nixpkgs-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/rust/nixpkgs) | Rust-based C toolchain replacements for Nix package builds |
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/systemd) | Systemd replacement |
+| [Direnv-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/direnv) | Direnv reimplementation |
+| [Cachix-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/cachix) | Cachix CLI reimplementation |
 | [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/pkg-config) | pkg-config reimplementation |
 | [H264-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h264-decoder) | Pure Rust H.264 decoder library and CLI |
 | [H265-decoder-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/rust/h265-decoder) | Pure Rust H.265/HEVC decoder library |
