@@ -215,6 +215,7 @@
         ./slides
 
         ./rust/cachix
+        ./rust/direnv
         ./rust/h264toav1
         ./ironclaw/matrix
         ./ironclaw/bluesky
