@@ -1,7 +1,40 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7ee3169..fd47a42 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -9,7 +9,9 @@ cmake_policy(SET CMP0148 NEW) # use modern Python discovery.
+ include(GNUInstallDirs)
+ 
+ # set the C++ standard for the project.
+-set(CMAKE_CXX_STANDARD 20)
++set(CMAKE_CXX_STANDARD 23)
++# Lix headers forbid NDEBUG
++add_compile_options(-UNDEBUG)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ 
+ # dependency discovery
+@@ -41,7 +43,7 @@ add_executable(xlix
+ )
+ 
+ # explicitly state the C++ standard requirement for the target.
+-target_compile_features(xlix PRIVATE cxx_std_20)
++target_compile_features(xlix PRIVATE cxx_std_23)
+ 
+ # add all required include directories for the kernel.
+ target_include_directories(xlix PRIVATE
 diff --git a/src/lix_eval_helpers.cpp b/src/lix_eval_helpers.cpp
-index 1234567..89abcde 100644
+index d16cb98..b539043 100644
 --- a/src/lix_eval_helpers.cpp
 +++ b/src/lix_eval_helpers.cpp
+@@ -113,7 +113,7 @@ namespace xeus_lix
+         }
+         // parse and evaluate the expression within the current environment
+         auto& expr = m_evaluator->parseExprFromString(std::string(expr_str), nix::CanonPath::fromCwd(), m_staticEnv);
+-        expr.eval(*m_evalState, *m_localEnv, result);
++        result = expr.eval(*m_evalState, *m_localEnv);
+         // force the result to a weak head normal form
+         m_evalState->forceValue(result, nix::noPos);
+     }
 @@ -139,9 +139,9 @@ namespace xeus_lix
              return markdown_stream.str();
          }
@@ -15,16 +48,16 @@ index 1234567..89abcde 100644
              {
                  auto docComment = lambdaDocsForPos(*path, pos);
 diff --git a/src/lix_interpreter.cpp b/src/lix_interpreter.cpp
-index 78d0526..8298711 100644
+index 3e68111..fd97555 100644
 --- a/src/lix_interpreter.cpp
 +++ b/src/lix_interpreter.cpp
-@@ -101,11 +101,10 @@ namespace xeus_lix
+@@ -96,16 +96,14 @@ namespace xeus_lix
                      [&](nix::ExprReplBindings& bindings) {
                          for (auto& [name, expr] : bindings.symbols)
                          {
 -                            nix::Value* val = m_evaluator->mem.allocValue();
 -                            expr->eval(*m_evalState, *m_localEnv, *val);
-+                            expr->eval(*m_evalState, *m_localEnv, m_localEnv->values[m_displacement]);
++                            m_localEnv->values[m_displacement] = expr->eval(*m_evalState, *m_localEnv);
                              (void)expr.release();
                              m_staticEnv->vars.insert_or_assign(name, m_displacement);
 -                            m_localEnv->values[m_displacement++] = val;
@@ -32,7 +65,13 @@ index 78d0526..8298711 100644
                          }
                      },
                      [&](std::unique_ptr<nix::Expr>& expr) {
-@@ -120,18 +119,17 @@ namespace xeus_lix
+-                        nix::Value val(nix::Value::null_t{});
+-                        expr->eval(*m_evalState, *m_localEnv, val);
++                        nix::Value val = expr->eval(*m_evalState, *m_localEnv);
+                         (void)expr.release();
+ 
+                         nl::json pub_data;
+@@ -118,18 +116,17 @@ namespace xeus_lix
                              if (val.type() == nix::nAttrs)
                              {
                                  // a `_toMime` attribute signals a rich representation
@@ -56,7 +95,7 @@ index 78d0526..8298711 100644
                                          std::string data_str(
                                              m_evalState->forceString(data_val_ref, attr.pos, "mime data")
                                          );
-@@ -402,7 +400,7 @@ namespace xeus_lix
+@@ -400,7 +397,7 @@ namespace xeus_lix
  
                  if (base_val.type() == nix::nAttrs)
                  {
@@ -66,7 +105,7 @@ index 78d0526..8298711 100644
                          std::string_view attr_name_sv = m_evaluator->symbols[attr.name];
                          std::string attr_name(attr_name_sv);
 diff --git a/src/lix_logger.cpp b/src/lix_logger.cpp
-index 1234567..89abcde 100644
+index 70e58c8..cdeba30 100644
 --- a/src/lix_logger.cpp
 +++ b/src/lix_logger.cpp
 @@ -8,7 +8,7 @@ namespace xeus_lix
@@ -78,7 +117,7 @@ index 1234567..89abcde 100644
      {
          // error/warn: redirected to stderr of cell
          if (lvl <= nix::lvlWarn) {
-@@ -19,10 +19,11 @@ namespace xeus_lix
+@@ -19,21 +19,23 @@ namespace xeus_lix
              p_interpreter->publish_stream("stdout", std::string(s) + "\n");
          }
          // talkative+: ignore
@@ -91,7 +130,6 @@ index 1234567..89abcde 100644
      {
          std::stringstream oss;
          // use lix's own error formatting utility.
-@@ -30,26 +31,30 @@ namespace xeus_lix
          nix::showErrorInfo(oss, ei, nix::loggerSettings.showTrace.get());
          // ErrorInfo structures are typically more severe and should always be shown.
          p_interpreter->publish_stream("stderr", oss.str());
@@ -105,8 +143,7 @@ index 1234567..89abcde 100644
          nix::ActivityId,
          nix::Verbosity,
          nix::ActivityType,
-         const std::string&,
-         const Fields&,
+@@ -42,13 +44,16 @@ namespace xeus_lix
          nix::ActivityId
      )
      {
@@ -126,10 +163,10 @@ index 1234567..89abcde 100644
      }
  }
 diff --git a/src/lix_logger.hpp b/src/lix_logger.hpp
-index 1234567..89abcde 100644
+index 4a34544..ae7751b 100644
 --- a/src/lix_logger.hpp
 +++ b/src/lix_logger.hpp
-@@ -14,15 +14,15 @@ namespace xeus_lix
+@@ -15,15 +15,15 @@ namespace xeus_lix
          explicit JupyterLogger(interpreter* interp);
  
          // redirects general log messages
@@ -151,19 +188,26 @@ index 1234567..89abcde 100644
      private:
          interpreter* p_interpreter;
 diff --git a/src/lix_repl_commands.cpp b/src/lix_repl_commands.cpp
-index 99249e0..732c589 100644
+index 3f3ee57..99a99c0 100644
 --- a/src/lix_repl_commands.cpp
 +++ b/src/lix_repl_commands.cpp
-@@ -103,7 +103,7 @@ namespace xeus_lix
+@@ -98,12 +98,11 @@ namespace xeus_lix
+     void interpreter::repl_load(const std::string& arg)
+     {
+         auto path = m_aio->blockOn(nix::lookupFileArg(*m_evaluator, arg)).unwrap();
+-        nix::Value v(nix::Value::null_t{}), v_autocalled(nix::Value::null_t{});
+-        m_evalState->evalFile(path, v);
++        nix::Value v = m_evalState->evalFile(path);
          nix::Bindings* auto_args = m_evaluator->buildBindings(0).finish();
-         m_evalState->autoCallFunction(*auto_args, v, v_autocalled, nix::noPos);
+-        m_evalState->autoCallFunction(*auto_args, v, v_autocalled, nix::noPos);
++        nix::Value v_autocalled = m_evalState->autoCallFunction(*auto_args, v, nix::noPos);
          m_evalState->forceAttrs(v_autocalled, nix::noPos, "while loading file attributes");
 -        add_to_scope(*v_autocalled.attrs);
 +        add_to_scope(*v_autocalled.attrs());
          m_loaded_files.push_back(path.to_string());
      }
  
-@@ -152,7 +152,7 @@ namespace xeus_lix
+@@ -149,7 +148,7 @@ namespace xeus_lix
          nix::Value v(nix::Value::null_t{});
          eval_pure_expression(arg, v);
          m_evalState->forceAttrs(v, nix::noPos, "while evaluating attribute set for :add");
@@ -172,18 +216,28 @@ index 99249e0..732c589 100644
      }
  
      // :b <expr> - Build a derivation
-@@ -304,13 +304,17 @@ namespace xeus_lix
+@@ -293,20 +292,22 @@ namespace xeus_lix
+             return;
+         }
+         auto flakeRef = nix::parseFlakeRef(std::string(arg), nix::absPath("."), true);
+-        nix::Value v(nix::Value::null_t{});
+-        nix::flake::callFlake(
++        nix::Value v = nix::flake::callFlake(
+             *m_evalState,
+             nix::flake::lockFlake(
+                 *m_evalState,
                  flakeRef,
                  nix::flake::LockFlags{ .updateLockFile = false,
                                         .useRegistries = !nix::evalSettings.pureEval.get(),
 -                                       .allowUnlocked = !nix::evalSettings.pureEval.get() }
+-            ),
+-            v
 +                                       .allowUnlocked = !nix::evalSettings.pureEval.get(),
 +                                       .referenceLockFilePath = {},
 +                                       .outputLockFilePath = {},
 +                                       .inputOverrides = {},
 +                                       .inputUpdates = {} }
-             ),
-             v
++            )
          );
          m_evalState->forceAttrs(v, nix::noPos, "while loading flake outputs");
 -        add_to_scope(*v.attrs);
@@ -191,3 +245,11 @@ index 99249e0..732c589 100644
      }
  
      // :p <expr> - Evaluate and print expression recursively Strings are printed directly, without escaping.
+@@ -328,7 +329,6 @@ namespace xeus_lix
+                 v,
+                 nix::PrintOptions{ .ansiColors = true,
+                                    .force = true,
+-                                   .derivationPaths = true,
+                                    .maxDepth = std::numeric_limits<unsigned int>::max(),
+                                    .prettyIndent = 2 }
+             );

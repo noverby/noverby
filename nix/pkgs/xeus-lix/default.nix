@@ -51,6 +51,7 @@ python3.pkgs.toPythonModule (stdenv.mkDerivation {
 
   cmakeFlags = [
     "-DPython3_EXECUTABLE=${python3}/bin/python3"
+    "-DCMAKE_CXX_FLAGS=-DSYSTEM=\\\"${stdenv.hostPlatform.system}\\\""
   ];
 
   meta = {
