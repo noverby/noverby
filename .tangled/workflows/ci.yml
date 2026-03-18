@@ -1,6 +1,5 @@
 when:
   - event: ["push", "pull_request"]
-    branch: main
 
 engine: nix
 
