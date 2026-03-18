@@ -191,6 +191,7 @@
         ./nix/modules/flakelight/desktops.nix
         ./nix/modules/flakelight/devenvModules.nix
         ./nix/modules/flakelight/devenvConfigurations.nix
+        ./nix/modules/flakelight/devShellNames.nix
         ./nix/modules/flakelight/colmena.nix
         ./nix/modules/flakelight/perSystemLib.nix
         ./nix/modules/flakelight/zedExtensions.nix
