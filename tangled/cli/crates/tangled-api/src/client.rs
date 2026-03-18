@@ -1242,6 +1242,97 @@ impl TangledClient {
         Self::uri_rkey(&res.uri).ok_or_else(|| anyhow!("missing rkey in pull uri"))
     }
 
+    /// Create a PR via the appview web form endpoint.
+    /// This is the correct way to create PRs — the appview generates the
+    /// format-patch from branches, inserts the DB record, and creates the
+    /// AT Protocol record.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_pull_via_appview(
+        &self,
+        owner: &str,
+        repo_name: &str,
+        target_branch: &str,
+        source_branch: &str,
+        title: &str,
+        body: &str,
+        _pds_base: &str,
+        access_jwt: &str,
+    ) -> Result<String> {
+        let appview_base = std::env::var("TANGLED_APPVIEW_BASE")
+            .unwrap_or_else(|_| "https://tangled.org".to_string());
+        let url = format!("{}/{}/{}/pulls/new", appview_base, owner, repo_name);
+
+        let form_params = [
+            ("targetBranch", target_branch),
+            ("sourceBranch", source_branch),
+            ("title", title),
+            ("body", body),
+        ];
+
+        if let Some(oauth) = self.should_use_oauth(Some(access_jwt)) {
+            let form_body = serde_urlencoded::to_string(form_params)
+                .map_err(|e| anyhow!("failed to encode form: {}", e))?;
+            let resp_body = crate::oauth::oauth_post_raw(
+                oauth,
+                &url,
+                form_body.as_bytes(),
+                "application/x-www-form-urlencoded",
+            )
+            .await?;
+            // The appview responds with an HX-Location header for HTMX,
+            // or redirects. Parse the response to find the PR URL.
+            let resp_text = String::from_utf8_lossy(&resp_body);
+            // Look for the PR URL in the response
+            if let Some(pr_path) = resp_text
+                .lines()
+                .find(|l| l.contains("/pulls/"))
+                .and_then(|l| l.split('"').find(|s| s.contains("/pulls/")))
+            {
+                return Ok(format!("{}{}", appview_base, pr_path));
+            }
+            return Ok(format!("{}/{}/{}/pulls", appview_base, owner, repo_name));
+        }
+
+        let http_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+        let resp = http_client
+            .post(&url)
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", access_jwt),
+            )
+            .form(&form_params)
+            .send()
+            .await?;
+
+        let status = resp.status();
+
+        // The appview redirects (302 or HX-Location) to the new PR on success
+        if let Some(location) = resp
+            .headers()
+            .get("HX-Location")
+            .or_else(|| resp.headers().get("Location"))
+        {
+            let loc = location.to_str().unwrap_or("");
+            if loc.starts_with("http") {
+                return Ok(loc.to_string());
+            }
+            return Ok(format!("{}{}", appview_base, loc));
+        }
+
+        if !status.is_success() && !status.is_redirection() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "failed to create PR via appview: {} {}",
+                status,
+                body
+            ));
+        }
+
+        Ok(format!("{}/{}/{}/pulls", appview_base, owner, repo_name))
+    }
+
     // ========== Spindle: Secrets Management ==========
     pub async fn list_repo_secrets(
         &self,

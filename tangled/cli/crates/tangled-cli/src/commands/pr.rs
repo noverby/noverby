@@ -3,7 +3,6 @@ use crate::cli::{
     PrListArgs, PrMergeArgs, PrReopenArgs, PrReviewArgs, PrShowArgs,
 };
 use anyhow::{anyhow, Result};
-use std::path::Path;
 use std::process::Command;
 
 pub async fn run(_cli: &Cli, cmd: PrCommand) -> Result<()> {
@@ -57,7 +56,6 @@ async fn list(args: PrListArgs) -> Result<()> {
 }
 
 async fn create(args: PrCreateArgs) -> Result<()> {
-    // Must be run inside the repo checkout; we will use git format-patch to build the patch
     let session = crate::util::load_session_with_refresh().await?;
     let pds = session
         .pds
@@ -71,9 +69,6 @@ async fn create(args: PrCreateArgs) -> Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow!("--repo is required for pr create"))?;
     let (owner, name) = parse_repo_ref(repo, "");
-    let info = client
-        .get_repo_info(owner, name, Some(session.access_jwt.as_str()))
-        .await?;
 
     let base = args
         .base
@@ -84,32 +79,6 @@ async fn create(args: PrCreateArgs) -> Result<()> {
         .as_deref()
         .ok_or_else(|| anyhow!("--head is required (source range/branch)"))?;
 
-    // Resolve the HEAD SHA for the source branch.
-    let head_sha_output = Command::new("git").arg("rev-parse").arg(head).output()?;
-    if !head_sha_output.status.success() {
-        return Err(anyhow!("failed to resolve HEAD SHA for branch '{}'", head));
-    }
-    let head_sha = String::from_utf8_lossy(&head_sha_output.stdout)
-        .trim()
-        .to_string();
-
-    // Generate format-patch using external git for fidelity.
-    // The patch is gzip-compressed and uploaded as a blob by the API client,
-    // so there is no record size limit concern.
-    let output = Command::new("git")
-        .arg("format-patch")
-        .arg("--stdout")
-        .arg(format!("{}..{}", base, head))
-        .current_dir(Path::new("."))
-        .output()?;
-    if !output.status.success() {
-        return Err(anyhow!("failed to run git format-patch"));
-    }
-    let patch = String::from_utf8_lossy(&output.stdout).to_string();
-    if patch.trim().is_empty() {
-        return Err(anyhow!("no changes between base and head"));
-    }
-
     let title_buf;
     let title = if let Some(t) = args.title.as_deref() {
         t
@@ -117,25 +86,26 @@ async fn create(args: PrCreateArgs) -> Result<()> {
         title_buf = format!("{} -> {}", head, base);
         &title_buf
     };
-    let rkey = client
-        .create_pull(
-            &session.did,
-            &info.did,
-            &info.rkey,
+
+    let body = args.body.as_deref().unwrap_or("");
+
+    // Submit the PR via the appview web form. The appview handles
+    // generating the format-patch from the branches on the knot server,
+    // inserting the DB record, and creating the AT Protocol record.
+    let pr_url = client
+        .create_pull_via_appview(
+            owner,
+            name,
             base,
-            &patch,
-            title,
-            args.body.as_deref(),
             head,
-            &head_sha,
+            title,
+            body,
             &pds,
             &session.access_jwt,
         )
         .await?;
-    println!(
-        "Created PR rkey={} targeting {} branch {}",
-        rkey, info.did, base
-    );
+
+    println!("Created PR: {}", pr_url);
     Ok(())
 }
 
