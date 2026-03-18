@@ -1,0 +1,54 @@
+[package]
+name = "cachix"
+version = "0.1.0"
+edition = "2024"
+description = "CLI client for Cachix binary cache hosting service"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = [
+  "json",
+  "stream",
+  "rustls-tls",
+], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Crypto
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+sha2 = "0.10"
+md-5 = "0.10"
+base64 = "0.22"
+
+# Compression
+zstd = "0.13"
+xz2 = "0.1"
+
+# WebSocket
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+
+# Config
+dirs = "6"
+
+# Error handling
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Misc
+uuid = { version = "1", features = ["serde"] }
+url = { version = "2", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3"
+rand = "0.8"
