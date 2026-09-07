@@ -5,7 +5,9 @@ def --wrapped main [...vargs: string] {
   mut line = 0
   for arg in $vargs {
     if ($arg | str starts-with "+") {
-      $line = ($arg | str substring 1..)
+      # `+N` only; vi's bare `+` and `+/pattern` have no zeditor form, so they
+      # keep the default rather than poison the `file:line` argument.
+      $line = (try { $arg | str substring 1.. | into int } catch { 0 })
     } else if ($arg | str starts-with "-") {
       $args = ($args | append $arg)
     } else {
