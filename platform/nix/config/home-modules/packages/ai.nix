@@ -5,6 +5,7 @@
     opencode
     claude-code
     rtk
+    tracey
 
     # LLMs just love to use these tools
     bc
