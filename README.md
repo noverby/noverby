@@ -22,17 +22,17 @@
 - [🗝️ Legend](#-legend)
 - [📁 Repository](#-repository)
   - [🚀 Projects](#-projects)
-    - [safety](#safety)
+    - [safety](#-safety)
     - [media](#media)
-    - [dev](#dev)
+    - [dev](#-dev)
     - [platform](#platform)
     - [ai](#ai)
-    - [apps](#apps)
+    - [apps](#-apps)
   - [📦 Nix Packages](#-nix-packages)
-    - [AI & Social](#ai--social)
-    - [Desktop & Media](#desktop--media)
-    - [Development & Jupyter](#development--jupyter)
-    - [System & Security](#system--security)
+    - [AI & Social](#-ai--social)
+    - [Desktop & Media](#-desktop--media)
+    - [Development & Jupyter](#-development--jupyter)
+    - [System & Security](#-system--security)
   - [📋 Nix Configurations](#-nix-configurations)
   - [🧩 Nix Modules](#-nix-modules)
   - [🧰 Nix Libraries](#-nix-libraries)
@@ -40,29 +40,29 @@
   - [🔌 Hardware](#-hardware)
   - [🧮 Compute & Interfaces](#-compute--interfaces)
   - [📝 Data & Formats](#-data--formats)
-    - [Media Codecs](#media-codecs)
-    - [Documents](#documents)
-    - [Text & Object Notation](#text--object-notation)
+    - [Media Codecs](#-media-codecs)
+    - [Documents](#-documents)
+    - [Text & Object Notation](#-text--object-notation)
   - [📡 Network](#-network)
-    - [Internet & Web](#internet--web)
-    - [Atmosphere (AT Protocol)](#atmosphere-at-protocol)
+    - [Internet & Web](#-internet--web)
+    - [Atmosphere (AT Protocol)](#-atmosphere-at-protocol)
   - [🔐 Cryptography](#-cryptography)
 - [🖥️ System](#-system)
   - [💻 Devices](#-devices)
   - [⚙️ Operating System](#-operating-system)
   - [📚 Frameworks & Libraries](#-frameworks--libraries)
-    - [Data & Networking](#data--networking)
-    - [Graphics & UI](#graphics--ui)
+    - [Data & Networking](#-data--networking)
+    - [Graphics & UI](#-graphics--ui)
   - [🧱 Platform](#-platform)
-    - [Runtimes & Engines](#runtimes--engines)
-    - [Data & Storage](#data--storage)
-    - [Servers & Networking](#servers--networking)
+    - [Runtimes & Engines](#-runtimes--engines)
+    - [Data & Storage](#-data--storage)
+    - [Servers & Networking](#-servers--networking)
 - [📱 Applications](#-applications)
   - [⌨️ Command Line](#-command-line)
-    - [Filesystem Operations](#filesystem-operations)
-    - [Networking & Security](#networking--security)
-    - [Process Management](#process-management)
-    - [System Utilities](#system-utilities)
+    - [Filesystem Operations](#-filesystem-operations)
+    - [Networking & Security](#-networking--security)
+    - [Process Management](#-process-management)
+    - [System Utilities](#-system-utilities)
   - [🪟 Desktop Environment](#-desktop-environment)
   - [💼 Desktop Applications](#-desktop-applications)
   - [🎨 Media](#-media)
@@ -70,8 +70,8 @@
   - [📲 Mobile](#-mobile)
 - [🛠️ Development](#-development)
   - [🔧 Tooling](#-tooling)
-    - [Tools & Utilities](#tools--utilities)
-    - [Version Control](#version-control)
+    - [Tools & Utilities](#-tools--utilities)
+    - [Version Control](#-version-control)
   - [❄️ Configuration (Nix)](#-configuration-nix)
   - [🦀 Systems (Rust)](#-systems-rust)
   - [🕸️ Web (TypeScript)](#-web-typescript)
@@ -79,15 +79,15 @@
 - [🌐 Services](#-services)
   - [🤖 AI](#-ai)
   - [🧑 Personal Services](#-personal-services)
-    - [Communication & Productivity](#communication--productivity)
-    - [Finance](#finance)
-    - [Security & Privacy](#security--privacy)
+    - [Communication & Productivity](#-communication--productivity)
+    - [Finance](#-finance)
+    - [Security & Privacy](#-security--privacy)
   - [👥 Social Platforms](#-social-platforms)
-    - [Collaboration & Communication](#collaboration--communication)
-    - [Content Cataloging](#content-cataloging)
-    - [Discussion Platforms](#discussion-platforms)
-    - [Media Platforms](#media-platforms)
-    - [Events & Dating](#events--dating)
+    - [Collaboration & Communication](#-collaboration--communication)
+    - [Content Cataloging](#-content-cataloging)
+    - [Discussion Platforms](#-discussion-platforms)
+    - [Media Platforms](#-media-platforms)
+    - [Events & Dating](#-events--dating)
   - [☁️ Cloud](#-cloud)
 <!-- END mktoc -->
 
@@ -132,7 +132,7 @@ Original code, grouped by directory.
 
 <a id="safety"></a>
 
-#### safety
+#### 🦺 safety
 
 | Project | Description |
 |-|-|
@@ -184,7 +184,7 @@ Original code, grouped by directory.
 
 <a id="dev"></a>
 
-#### dev
+#### 🧪 dev
 
 | Project | Description |
 |-|-|
@@ -224,7 +224,7 @@ Original code, grouped by directory.
 
 <a id="apps"></a>
 
-#### apps
+#### ✨ apps
 
 | Project | Description |
 |-|-|
@@ -245,7 +245,7 @@ Third-party software packaged under `platform/nix/packages/`, grouped by theme.
 
 <a id="ai--social"></a>
 
-#### AI & Social
+#### 🤖 AI & Social
 
 | Package | Homepage | Description |
 |-|-|-|
@@ -256,7 +256,7 @@ Third-party software packaged under `platform/nix/packages/`, grouped by theme.
 
 <a id="desktop--media"></a>
 
-#### Desktop & Media
+#### 🖼️ Desktop & Media
 
 | Package | Homepage | Description |
 |-|-|-|
@@ -271,7 +271,7 @@ Third-party software packaged under `platform/nix/packages/`, grouped by theme.
 
 <a id="development--jupyter"></a>
 
-#### Development & Jupyter
+#### 📓 Development & Jupyter
 
 | Package | Homepage | Description |
 |-|-|-|
@@ -288,7 +288,7 @@ Third-party software packaged under `platform/nix/packages/`, grouped by theme.
 
 <a id="system--security"></a>
 
-#### System & Security
+#### 🛡️ System & Security
 
 | Package | Homepage | Description |
 |-|-|-|
@@ -408,7 +408,7 @@ Specifications and protocols this stack bets on, tracked separately from the imp
 
 <a id="media-codecs"></a>
 
-#### Media Codecs
+#### 🎞️ Media Codecs
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -421,7 +421,7 @@ Specifications and protocols this stack bets on, tracked separately from the imp
 
 <a id="documents"></a>
 
-#### Documents
+#### 📄 Documents
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -434,7 +434,7 @@ Specifications and protocols this stack bets on, tracked separately from the imp
 
 <a id="text--object-notation"></a>
 
-#### Text & Object Notation
+#### 🔤 Text & Object Notation
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -455,7 +455,7 @@ Specifications and protocols this stack bets on, tracked separately from the imp
 
 <a id="internet--web"></a>
 
-#### Internet & Web
+#### 🌍 Internet & Web
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -466,7 +466,7 @@ Specifications and protocols this stack bets on, tracked separately from the imp
 
 <a id="atmosphere-at-protocol"></a>
 
-#### Atmosphere (AT Protocol)
+#### 🦋 Atmosphere (AT Protocol)
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -557,7 +557,7 @@ Userspace libraries and frameworks: what the system links against and what my ow
 
 <a id="data--networking"></a>
 
-#### Data & Networking
+#### 🔗 Data & Networking
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -572,7 +572,7 @@ Userspace libraries and frameworks: what the system links against and what my ow
 
 <a id="graphics--ui"></a>
 
-#### Graphics & UI
+#### 🖌️ Graphics & UI
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -596,7 +596,7 @@ The long-running substrate: language runtimes, data stores, and self-hosted serv
 
 <a id="runtimes--engines"></a>
 
-#### Runtimes & Engines
+#### 🏎️ Runtimes & Engines
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -609,7 +609,7 @@ The long-running substrate: language runtimes, data stores, and self-hosted serv
 
 <a id="data--storage"></a>
 
-#### Data & Storage
+#### 💾 Data & Storage
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -619,7 +619,7 @@ The long-running substrate: language runtimes, data stores, and self-hosted serv
 
 <a id="servers--networking"></a>
 
-#### Servers & Networking
+#### 🗄️ Servers & Networking
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -644,7 +644,7 @@ End-user programs on top of the system, from the command line to desktop and mob
 
 <a id="filesystem-operations"></a>
 
-#### Filesystem Operations
+#### 🗃️ Filesystem Operations
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -660,7 +660,7 @@ End-user programs on top of the system, from the command line to desktop and mob
 
 <a id="networking--security"></a>
 
-#### Networking & Security
+#### 📶 Networking & Security
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -672,7 +672,7 @@ End-user programs on top of the system, from the command line to desktop and mob
 
 <a id="process-management"></a>
 
-#### Process Management
+#### 🔄 Process Management
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -684,7 +684,7 @@ End-user programs on top of the system, from the command line to desktop and mob
 
 <a id="system-utilities"></a>
 
-#### System Utilities
+#### 🔩 System Utilities
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -806,7 +806,7 @@ The toolchains everything else is built with: general tooling and version contro
 
 <a id="tools--utilities"></a>
 
-#### Tools & Utilities
+#### 🪛 Tools & Utilities
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -824,7 +824,7 @@ The toolchains everything else is built with: general tooling and version contro
 
 <a id="version-control"></a>
 
-#### Version Control
+#### 🌿 Version Control
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -969,7 +969,7 @@ Hosted services used as an individual.
 
 <a id="communication--productivity"></a>
 
-#### Communication & Productivity
+#### 📬 Communication & Productivity
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -981,7 +981,7 @@ Hosted services used as an individual.
 
 <a id="finance"></a>
 
-#### Finance
+#### 💰 Finance
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -991,7 +991,7 @@ Hosted services used as an individual.
 
 <a id="security--privacy"></a>
 
-#### Security & Privacy
+#### 🔏 Security & Privacy
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -1009,7 +1009,7 @@ Hosted services used as an individual.
 
 <a id="collaboration--communication"></a>
 
-#### Collaboration & Communication
+#### 🤝 Collaboration & Communication
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -1019,7 +1019,7 @@ Hosted services used as an individual.
 
 <a id="content-cataloging"></a>
 
-#### Content Cataloging
+#### 🏷️ Content Cataloging
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -1032,7 +1032,7 @@ Hosted services used as an individual.
 
 <a id="discussion-platforms"></a>
 
-#### Discussion Platforms
+#### 💬 Discussion Platforms
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -1042,7 +1042,7 @@ Hosted services used as an individual.
 
 <a id="media-platforms"></a>
 
-#### Media Platforms
+#### 📺 Media Platforms
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -1055,7 +1055,7 @@ Hosted services used as an individual.
 
 <a id="events--dating"></a>
 
-#### Events & Dating
+#### 🎟️ Events & Dating
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
