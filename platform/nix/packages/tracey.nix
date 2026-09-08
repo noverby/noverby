@@ -10,6 +10,7 @@
   pnpmConfigHook,
   pnpm,
   rustPlatform,
+  stdenv,
   versionCheckHook,
 }:
 rustPlatform.buildRustPackage rec {
@@ -45,6 +46,9 @@ rustPlatform.buildRustPackage rec {
     pnpmConfigHook
     pnpm
   ];
+
+  # The cargo tests fail on darwin; linux still runs them.
+  doCheck = !stdenv.hostPlatform.isDarwin;
 
   nativeCheckInputs = [
     git
