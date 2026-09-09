@@ -23,6 +23,7 @@ in {
       #cosmic-ext-applet-emoji-selector
       #cosmic-ext-applet-external-monitor-brightness
       cosmic-ext-applet-caffeine
+      cosmic-nightlight
       cosmic-ext-calculator
       cosmic-monitor
       wezterm
@@ -222,6 +223,7 @@ in {
                 "com.system76.CosmicAppletNetwork",
                 "com.system76.CosmicAppletBattery",
                 "com.system76.CosmicAppletBluetooth",
+                "io.github.cosmic_nightlight",
                 "com.system76.CosmicAppletNotifications",
                 "com.system76.CosmicAppletPower",
             ])
