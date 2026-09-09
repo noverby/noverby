@@ -92,6 +92,18 @@
     code it describes. After writing or editing comments, run the
     `deepcomment` skill over the changes before committing.
 
+    ## Writing for Human Readers
+
+    **Load the `change-summary` skill before writing an MR or PR description,
+    and the `shorten` skill before posting a review reply or comment.** Both
+    are easy to skip, because a request phrased as "update the MR text" does
+    not obviously name either skill. Skipping them produces the prose they
+    exist to prevent: an implementation narrative where the reviewer wanted a
+    summary of interfaces.
+
+    Both skills cap length, and a cap is only enforced if it is measured, so
+    count the draft against the cap before sending rather than estimating.
+
     ## Shell
 
     **Commands most likely run in [nushell](https://www.nushell.sh/), not bash/POSIX sh.**
