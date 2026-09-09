@@ -26,7 +26,10 @@ steps:
       fi
 
       export NIX_CONFIG="experimental-features = nix-command flakes ca-derivations dynamic-derivations recursive-nix"
-      nix build --extra-experimental-features "nix-command flakes ca-derivations dynamic-derivations recursive-nix" --max-jobs 1 --cores 2 \
+      # -v so the silent phases (input fetching, evaluation) leave a trail:
+      # three runs on 2026-09-09 timed out with no output at all, which made
+      # the stall undiagnosable from the logs.
+      nix build -v --extra-experimental-features "nix-command flakes ca-derivations dynamic-derivations recursive-nix" --max-jobs 1 --cores 2 \
         --no-link --print-build-logs .#checks.x86_64-linux.formatting
     name: Nix flake check (formatting)
 when:

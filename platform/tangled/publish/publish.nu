@@ -57,19 +57,31 @@ def git-ok [repo: path, args: list<string>]: nothing -> string {
   $out.stdout | str trim
 }
 
+# git-in with a hard ceiling: a knot op the limiter decides to STALL rather
+# than refuse would otherwise sit until the workflow timeout (2026-09-09: one
+# retry hung 12 minutes). coreutils timeout turns the stall into exit 124.
+def git-in-bounded [repo: path, args: list<string>]: nothing -> record {
+  ^timeout 60 git -C $repo ...$GIT_CONFIG ...$args | complete
+}
+
 # git-in, waiting out the knot's per-address burst limiter. A loop of 44 reads
-# trips it, and every later operation then stalls into the workflow timeout
-# (2026-09-09: "too many concurrent operations" starved two 15-minute runs), so
-# backing off 5/10/20s is the cheap side of that trade.
+# trips it, and every later operation is then refused, or worse, stalled
+# ("too many concurrent operations" starved two 15-minute runs, and the stall
+# variant a third), so bounded attempts with 5/10/20s backoff are the cheap
+# side of that trade.
 def git-knot [repo: path, args: list<string>]: nothing -> record {
-  mut out = (git-in $repo $args)
+  mut out = (git-in-bounded $repo $args)
   mut delay = 5sec
   for _ in 1..3 {
-    if not ($out.stderr | str contains "too many concurrent operations") { break }
+    let throttled = (
+      ($out.stderr | str contains "too many concurrent operations")
+      or $out.exit_code == 124
+    )
+    if not $throttled { break }
     print $"knot throttled, retrying in ($delay)"
     sleep $delay
     $delay = ($delay * 2)
-    $out = (git-in $repo $args)
+    $out = (git-in-bounded $repo $args)
   }
   $out
 }
@@ -334,6 +346,7 @@ def main [
   --github: string = "overby-me" # GitHub account to mirror to as well
   --no-github                 # publish to Tangled only
   --dry-run                   # filter and report, push nothing
+  --verify                    # ask the remotes about every project, changed or not
 ]: nothing -> nothing {
   check-josh
 
@@ -377,6 +390,16 @@ def main [
   let gh_token = if $no_github or $dry_run { "" } else { github-token }
   if not $no_github { print $"mirroring to github.com/($github)" }
 
+  # The parent of the published commit, for deciding which projects can skip
+  # the remotes entirely. A project whose filtered tree is identical at both
+  # revisions has nothing new to push, and NOT asking is the point: the knot
+  # throttles an address that asks 44 times, and a throttled address is what
+  # turned three CI runs into 15-minute timeouts. A push that failed earlier
+  # stays unpushed until the project next changes; `--verify` (a manual run)
+  # is the sweep that heals such drift.
+  let parent_out = (git-in $mirror ["rev-parse" $"($input)^"])
+  let parent = (if $parent_out.exit_code == 0 { $parent_out.stdout | str trim } else { null })
+
   let ssh_login = ($ssh_user | default $owner)
   let results = (
     $projects | each {|p|
@@ -386,7 +409,15 @@ def main [
       # should be visible rather than hide a good Tangled publish.
       let gh_remote = $"https://x-access-token:($gh_token)@github.com/($github)/($p.name)"
       try {
+        # Parent first: josh walks history up to it, and the tip's filter is
+        # then incremental over the same cache.
+        let prev = (if $parent == null or $verify { null } else {
+          filter-project $mirror $"($p.name).prev" (derive-filter $p) $parent
+        })
         let sha = (filter-project $mirror $p.name (derive-filter $p) $input)
+        if $prev != null and $prev == $sha {
+          {project: $p.name, output: ($sha | str substring 0..9), commits: "-", tangled: "unchanged", github: (if $no_github { "-" } else { "unchanged" })}
+        } else {
         let published = (remote-head $mirror $remote $branch)
         let commits = (git-ok $mirror ["rev-list" "--count" $"refs/josh/($p.name)"])
         let short = ($sha | str substring 0..9)
@@ -407,6 +438,7 @@ def main [
         }
 
         {project: $p.name, output: $short, commits: $commits, tangled: $tangled, github: $gh}
+        }
       } catch {|e|
         {project: $p.name, output: "-", commits: "-", tangled: $"FAILED: ($e.msg)", github: "-"}
       }

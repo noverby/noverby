@@ -54,7 +54,10 @@ let nixFeatures = "nix-command flakes ca-derivations dynamic-derivations recursi
           fi
 
           export NIX_CONFIG="experimental-features = %%{nixFeatures}"
-          nix build --extra-experimental-features "%%{nixFeatures}" --max-jobs 1 --cores 2 \
+          # -v so the silent phases (input fetching, evaluation) leave a trail:
+          # three runs on 2026-09-09 timed out with no output at all, which made
+          # the stall undiagnosable from the logs.
+          nix build -v --extra-experimental-features "%%{nixFeatures}" --max-jobs 1 --cores 2 \
             --no-link --print-build-logs .#checks.x86_64-linux.formatting
         "%%,
       },
