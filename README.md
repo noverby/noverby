@@ -22,17 +22,17 @@
 - [🗝️ Legend](#-legend)
 - [📁 Repository](#-repository)
   - [🚀 Projects](#-projects)
-    - [safety](#-safety)
-    - [media](#media)
-    - [dev](#-dev)
-    - [platform](#platform)
-    - [ai](#ai)
-    - [apps](#-apps)
+    - [🦺 safety](#safety)
+    - [🎬 media](#media)
+    - [🧪 dev](#dev)
+    - [🏗️ platform](#platform)
+    - [🧠 ai](#ai)
+    - [✨ apps](#apps)
   - [📦 Nix Packages](#-nix-packages)
-    - [AI & Social](#-ai--social)
-    - [Desktop & Media](#-desktop--media)
-    - [Development & Jupyter](#-development--jupyter)
-    - [System & Security](#-system--security)
+    - [🤖 AI & Social](#ai--social)
+    - [🖼️ Desktop & Media](#desktop--media)
+    - [📓 Development & Jupyter](#development--jupyter)
+    - [🛡️ System & Security](#system--security)
   - [📋 Nix Configurations](#-nix-configurations)
   - [🧩 Nix Modules](#-nix-modules)
   - [🧰 Nix Libraries](#-nix-libraries)
@@ -40,29 +40,29 @@
   - [🔌 Hardware](#-hardware)
   - [🧮 Compute & Interfaces](#-compute--interfaces)
   - [📝 Data & Formats](#-data--formats)
-    - [Media Codecs](#-media-codecs)
-    - [Documents](#-documents)
-    - [Text & Object Notation](#-text--object-notation)
+    - [🎞️ Media Codecs](#media-codecs)
+    - [📄 Documents](#documents)
+    - [🔤 Text & Object Notation](#text--object-notation)
   - [📡 Network](#-network)
-    - [Internet & Web](#-internet--web)
-    - [Atmosphere (AT Protocol)](#-atmosphere-at-protocol)
+    - [🌍 Internet & Web](#internet--web)
+    - [🦋 Atmosphere (AT Protocol)](#atmosphere-at-protocol)
   - [🔐 Cryptography](#-cryptography)
 - [🖥️ System](#-system)
   - [💻 Devices](#-devices)
   - [⚙️ Operating System](#-operating-system)
   - [📚 Frameworks & Libraries](#-frameworks--libraries)
-    - [Data & Networking](#-data--networking)
-    - [Graphics & UI](#-graphics--ui)
+    - [🔗 Data & Networking](#data--networking)
+    - [🖌️ Graphics & UI](#graphics--ui)
   - [🧱 Platform](#-platform)
-    - [Runtimes & Engines](#-runtimes--engines)
-    - [Data & Storage](#-data--storage)
-    - [Servers & Networking](#-servers--networking)
+    - [🏎️ Runtimes & Engines](#runtimes--engines)
+    - [💾 Data & Storage](#data--storage)
+    - [🗄️ Servers & Networking](#servers--networking)
 - [📱 Applications](#-applications)
   - [⌨️ Command Line](#-command-line)
-    - [Filesystem Operations](#-filesystem-operations)
-    - [Networking & Security](#-networking--security)
-    - [Process Management](#-process-management)
-    - [System Utilities](#-system-utilities)
+    - [🗃️ Filesystem Operations](#filesystem-operations)
+    - [📶 Networking & Security](#networking--security)
+    - [🔄 Process Management](#process-management)
+    - [🔩 System Utilities](#system-utilities)
   - [🪟 Desktop Environment](#-desktop-environment)
   - [💼 Desktop Applications](#-desktop-applications)
   - [🎨 Media](#-media)
@@ -70,8 +70,8 @@
   - [📲 Mobile](#-mobile)
 - [🛠️ Development](#-development)
   - [🔧 Tooling](#-tooling)
-    - [Tools & Utilities](#-tools--utilities)
-    - [Version Control](#-version-control)
+    - [🪛 Tools & Utilities](#tools--utilities)
+    - [🌿 Version Control](#version-control)
   - [❄️ Configuration (Nix)](#-configuration-nix)
   - [🦀 Systems (Rust)](#-systems-rust)
   - [🕸️ Web (TypeScript)](#-web-typescript)
@@ -79,15 +79,15 @@
 - [🌐 Services](#-services)
   - [🤖 AI](#-ai)
   - [🧑 Personal Services](#-personal-services)
-    - [Communication & Productivity](#-communication--productivity)
-    - [Finance](#-finance)
-    - [Security & Privacy](#-security--privacy)
+    - [📬 Communication & Productivity](#communication--productivity)
+    - [💰 Finance](#finance)
+    - [🔏 Security & Privacy](#security--privacy)
   - [👥 Social Platforms](#-social-platforms)
-    - [Collaboration & Communication](#-collaboration--communication)
-    - [Content Cataloging](#-content-cataloging)
-    - [Discussion Platforms](#-discussion-platforms)
-    - [Media Platforms](#-media-platforms)
-    - [Events & Dating](#-events--dating)
+    - [🤝 Collaboration & Communication](#collaboration--communication)
+    - [🏷️ Content Cataloging](#content-cataloging)
+    - [💬 Discussion Platforms](#discussion-platforms)
+    - [📺 Media Platforms](#media-platforms)
+    - [🎟️ Events & Dating](#events--dating)
   - [☁️ Cloud](#-cloud)
 <!-- END mktoc -->
 
@@ -174,7 +174,7 @@ Original code, grouped by directory.
 
 <a id="media"></a>
 
-#### media
+#### 🎬 media
 
 | Project | Description |
 |-|-|
@@ -198,7 +198,7 @@ Original code, grouped by directory.
 
 <a id="platform"></a>
 
-#### platform
+#### 🏗️ platform
 
 | Project | Description |
 |-|-|
@@ -209,7 +209,7 @@ Original code, grouped by directory.
 
 <a id="ai"></a>
 
-#### ai
+#### 🧠 ai
 
 | Project | Description |
 |-|-|
