@@ -54,11 +54,20 @@ let nixFeatures = "nix-command flakes ca-derivations dynamic-derivations recursi
           fi
 
           export NIX_CONFIG="experimental-features = %%{nixFeatures}"
-          # -v so the silent phases (input fetching, evaluation) leave a trail:
-          # three runs on 2026-09-09 timed out with no output at all, which made
-          # the stall undiagnosable from the logs.
-          nix build -v --extra-experimental-features "%%{nixFeatures}" --max-jobs 1 --cores 2 \
-            --no-link --print-build-logs .#checks.x86_64-linux.formatting
+          # -v so the silent phases (input fetching, evaluation) leave a trail,
+          # and `timeout` so that trail survives: the spindle persists a step's
+          # output only when the step ENDS, so a workflow-timeout kill erases
+          # exactly the evidence that would explain it (four blind 15-minute
+          # runs on 2026-09-09). Failing at 13m keeps the step inside the 15m
+          # budget with its output intact.
+          if ! timeout 780 nix build -v --extra-experimental-features "%%{nixFeatures}" --max-jobs 1 --cores 2 \
+            --no-link --print-build-logs .#checks.x86_64-linux.formatting; then
+            status=$?
+            if [ "$status" = 124 ]; then
+              echo "nix build cut off after 13m so the log above survives"
+            fi
+            exit "$status"
+          fi
         "%%,
       },
     ],
