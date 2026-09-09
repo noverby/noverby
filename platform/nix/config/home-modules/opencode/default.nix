@@ -6,16 +6,6 @@
 }: let
   opencodeDir = "${config.home.homeDirectory}/.config/opencode";
 
-  # The vendored set lives at home-modules/claude-code/skills/vendored. One
-  # copy on disk, referenced from both agent CLIs' config trees, rather than
-  # two trees that would have to be kept in step by hand.
-  vendoredSkills = let
-    dir = ../claude-code/skills/vendored;
-  in
-    lib.mapAttrs' (name: _:
-      lib.nameValuePair ".config/opencode/skills/${name}" {source = dir + "/${name}";})
-    (lib.filterAttrs (_: type: type == "directory") (lib.readDir dir));
-
   inherit (pkgs.pkgsUnstable) rtk;
 
   # Opencode's analogue of the Claude Code PreToolUse hook is the plugin
@@ -169,15 +159,19 @@
   };
 in {
   home = {
-    file =
-      {
-        ".config/opencode/plugins/rtk-rewrite.js".source = rtkRewritePlugin;
-        ".config/opencode/RTK.md".source = rtkAwarenessMd;
-      }
-      # Skills, by reading the directory rather than listing them: they arrive
-      # as a set from one upstream, so naming each here would be a second list
-      # to keep in step with the first.
-      // vendoredSkills;
+    # OpenCode searches `~/.claude/skills` and `~/.agents/skills`, and the
+    # claude-code module installs the set to both, so it would see every skill
+    # twice. Its docs require names to be unique across search locations;
+    # disabling the `.claude` source leaves `~/.agents/skills` as the one it
+    # reads.
+    sessionVariables.OPENCODE_DISABLE_CLAUDE_CODE_SKILLS = "1";
+
+    # No skills here. They arrive via the prefixes above, not a third copy
+    # under `~/.config/opencode/skills`.
+    file = {
+      ".config/opencode/plugins/rtk-rewrite.js".source = rtkRewritePlugin;
+      ".config/opencode/RTK.md".source = rtkAwarenessMd;
+    };
 
     # Copy opencode.json and tui.json (not symlink) so OpenCode can write to
     # them. OpenCode has no AGENTS.md bootstrap step to mirror here: global

@@ -7,15 +7,23 @@
   # RTK hook script path (managed via home.file)
   rtkHookPath = "${config.home.homeDirectory}/.claude/hooks/rtk-rewrite.sh";
 
-  # One `.claude/skills/<name>` entry per directory in skills/vendored, whose
-  # README says where they came from. A file there is documentation about the
-  # set rather than a skill, so only directories count.
-  vendoredSkills = let
+  # The vendored set, whose README says where the skills came from. A file
+  # there is documentation about the set rather than a skill, so only
+  # directories count.
+  #
+  # Installed to two prefixes because no single one reaches every agent:
+  # Claude Code reads `~/.claude/skills` alone, Zed reads `~/.agents/skills`
+  # alone, and OpenCode reads both. The duplicate that would give OpenCode is
+  # suppressed by `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`, set in the opencode
+  # module, so each agent sees every skill exactly once.
+  skillsFor = prefix: let
     dir = ./skills/vendored;
   in
     lib.mapAttrs' (name: _:
-      lib.nameValuePair ".claude/skills/${name}" {source = dir + "/${name}";})
+      lib.nameValuePair "${prefix}/${name}" {source = dir + "/${name}";})
     (lib.filterAttrs (_: type: type == "directory") (lib.readDir dir));
+
+  vendoredSkills = skillsFor ".claude/skills" // skillsFor ".agents/skills";
 
   inherit (pkgs.pkgsUnstable) rtk;
 
