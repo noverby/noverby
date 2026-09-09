@@ -57,6 +57,33 @@ def git-ok [repo: path, args: list<string>]: nothing -> string {
   $out.stdout | str trim
 }
 
+# git-in, waiting out the knot's per-address burst limiter. A loop of 44 reads
+# trips it, and every later operation then stalls into the workflow timeout
+# (2026-09-09: "too many concurrent operations" starved two 15-minute runs), so
+# backing off 5/10/20s is the cheap side of that trade.
+def git-knot [repo: path, args: list<string>]: nothing -> record {
+  mut out = (git-in $repo $args)
+  mut delay = 5sec
+  for _ in 1..3 {
+    if not ($out.stderr | str contains "too many concurrent operations") { break }
+    print $"knot throttled, retrying in ($delay)"
+    sleep $delay
+    $delay = ($delay * 2)
+    $out = (git-in $repo $args)
+  }
+  $out
+}
+
+# git-knot with git-ok's contract.
+def git-knot-ok [repo: path, args: list<string>]: nothing -> string {
+  let out = (git-knot $repo $args)
+  if $out.exit_code != 0 {
+    let what = ($args | str join ' ' | redact)
+    error make {msg: $"git ($what) failed: ($out.stderr | str trim | redact)"}
+  }
+  $out.stdout | str trim
+}
+
 # The GitHub mirror pushes over HTTPS with a token rather than over SSH,
 # because --ssh-key forces IdentitiesOnly for the knot: that same key would
 # then be the only one offered to GitHub too.
@@ -278,7 +305,7 @@ def filter-project [mirror: path, name: string, filter: string, rev: string]: no
 # An unreachable remote is reported, not fatal: it is also what a not-yet-
 # created repo looks like. The push that follows fails loudly enough.
 def remote-head [mirror: path, remote: string, branch: string]: nothing -> any {
-  let out = (git-in $mirror ["ls-remote" $remote $"refs/heads/($branch)"])
+  let out = (git-knot $mirror ["ls-remote" $remote $"refs/heads/($branch)"])
   if $out.exit_code != 0 {
     print $"warning: cannot read ($remote): ($out.stderr | str trim | lines | first)"
     return null
@@ -366,7 +393,7 @@ def main [
 
         let tangled = if $published == $sha { "skipped" } else if $dry_run { "would push" } else {
           # Force: rewriting monorepo history rewrites every filtered commit.
-          git-ok $mirror ["push" "--force" $remote $"($sha):refs/heads/($branch)"] | ignore
+          git-knot-ok $mirror ["push" "--force" $remote $"($sha):refs/heads/($branch)"] | ignore
           "pushed"
         }
 
