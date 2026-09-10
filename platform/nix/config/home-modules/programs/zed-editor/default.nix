@@ -36,17 +36,10 @@
       "meson"
     ];
 
-    # The @opencode@ and @goose@ placeholders in settings.json are overwritten
-    # here rather than substituted into the text: it keeps the file plain JSON
-    # for editors, insulates a running zed from PATH differences, and a store
-    # path may not pass through importJSON, which rejects strings with context.
-    # Both serve the agent panel over ACP on stdio.
-    userSettings = lib.recursiveUpdate (lib.importJSON ./settings.json) {
-      agent_servers = {
-        OpenCode.command = "${pkgs.pkgsUnstable.opencode}/bin/opencode";
-        Goose.command = "${pkgs.pkgsUnstable.goose-cli}/bin/goose";
-      };
-    };
+    # The agent servers are named by bare command on purpose: a pinned store
+    # path kept serving the OLD binary after a profile update until zed was
+    # reconfigured, while PATH already points at the profile's current one.
+    userSettings = lib.importJSON ./settings.json;
     userKeymaps = lib.importJSON ./keymap.json;
     userTasks = lib.importJSON ./tasks.json;
   };

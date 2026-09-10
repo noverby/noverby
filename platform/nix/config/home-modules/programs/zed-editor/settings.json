@@ -12,12 +12,12 @@
 	"agent_servers": {
 		"OpenCode": {
 			"type": "custom",
-			"command": "@opencode@",
+			"command": "opencode",
 			"args": ["acp"]
 		},
 		"Goose": {
 			"type": "custom",
-			"command": "@goose@",
+			"command": "goose",
 			"args": ["acp"]
 		}
 	},
